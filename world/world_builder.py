@@ -18,7 +18,7 @@ class WorldBuilder:
             }
         },
         "region": {
-            "prompt": "Generate a region description for a {theme} campaign",
+            "prompt": "Generate a unique region description for a {theme} campaign",
             "response": {
                 "name": "string",
                 "description": "string",
@@ -28,7 +28,12 @@ class WorldBuilder:
             }
         },
         "location": {
-            "prompt": "Generate a {location_type} location for a {theme} setting",
+            "prompt": (
+                "Generate a {location_type} location for a {theme} setting. "
+                "The name MUST be unique and not in this list: {existing_names}. "
+                "Use thematic modifiers like 'Black', 'Shadow', 'North' instead of numbers. "
+                "Examples: Blackraven Keep, Shadowglen Village, Northpass Crossing"
+            ),
             "response": {
                 "id": "string",
                 "name": "string",
@@ -40,7 +45,7 @@ class WorldBuilder:
             }
         },
         "faction": {
-            "prompt": "Generate a faction for a {theme} setting",
+            "prompt": "Generate a unique faction for a {theme} setting",
             "response": {
                 "id": "string",
                 "name": "string",
@@ -163,71 +168,107 @@ class WorldBuilder:
         self._cache[cache_key] = result        
         return result
     
-    def _generate_fallback(self, entity_type: str, **kwargs) -> dict:
-        """Fallback generator for when AI returns a string instead of structured data"""
-        theme = kwargs.get("theme", "fantasy")
-        location_type = kwargs.get("location_type", "generic")
-        
-        fallbacks = {
-            "campaign_foundation": {
-                "name": f"The {theme.capitalize()} Chronicles",
-                "description": f"A grand adventure in a {theme} world",
-                "core_conflict": "The struggle between light and darkness",
-                "major_factions": ["Order of the Sun", "Shadow Collective"],
-                "key_locations": ["Capital City", "Dark Forest"]
-            },
-            "region": {
-                "name": f"{theme.capitalize()} Frontier",
-                "description": f"A wild frontier region in a {theme} setting",
-                "geography": "Varied landscapes with mountains, forests, and rivers",
-                "climate": "Temperate with seasonal changes",
-                "key_features": ["Great River", "Ancient Forest", "Mystic Mountains"]
-            },
-            "location": {
-                "id": f"loc_{random.randint(1000,9999)}",
-                "name": f"{location_type.capitalize()} of {theme.capitalize()}",
-                "type": location_type,
-                "description": f"A {location_type} location in a {theme} setting",
-                "features": ["Central square", "Market district", "Ancient monument"],
-                "services": ["Inn", "Blacksmith", "General Store"],
-                "dungeon_type": f"{theme}_dungeon"
-            },
-            "faction": {
-                "id": f"fac_{random.randint(1000,9999)}",
-                "name": f"{theme.capitalize()} Guardians",
-                "ideology": "Protecting the realm from darkness",
-                "goals": ["Maintain order", "Defend the weak"],
-                "resources": ["Skilled warriors", "Ancient artifacts"],
-                "relationships": {"Merchant Guild": "Allied"},
-                "activities": ["Patrol borders", "Train recruits"]
-            },
-            "npc": {
-                "id": f"npc_{random.randint(1000,9999)}",
-                "name": f"Guardian {random.choice(['Aelar', 'Borin', 'Celia'])}",
-                "role": "Protector",
-                "motivation": "Keep the town safe",
-                "dialogue": ["The darkness is gathering...", "We need brave adventurers!"]
-            },
-            "dungeon_type": {
-                "type": f"{theme}_crypt",
-                "description": f"Ancient crypt filled with {theme} creatures",
-                "themes": ["Decay", "Ancient evil"],
-                "common_creatures": ["Skeletons", "Zombies", "Ghosts"]
-            },
-            "quest": {
-                "id": f"quest_{random.randint(1000,9999)}",
-                "title": f"The {theme.capitalize()} Threat",
-                "description": f"Deal with a growing threat in the {theme} region",
-                "objectives": ["Investigate the source", "Defeat the leader"],
-                "dungeon_required": True
-            },
-            "story_arc": {
-                "name": f"Rise of the {theme.capitalize()} Lord",
-                "description": f"A powerful entity threatens the {theme} realm",
-                "key_events": ["The awakening", "The gathering storm", "The final confrontation"],
-                "major_players": ["The Hero", "The Dark Lord", "The Wise Mentor"],
-                "potential_endings": ["Heroic victory", "Bittersweet peace", "Darkness prevails"]
-            }
+def _generate_fallback(self, entity_type: str, **kwargs) -> dict:
+    """Fallback generator for when AI returns a string instead of structured data"""
+    theme = kwargs.get("theme", "fantasy")
+    location_type = kwargs.get("location_type", "generic")
+    
+    # Enhanced name generation system
+    base_names = {
+        "dark_fantasy": ["Raven", "Shadow", "Gloom", "Dread", "Bleak", "Ashen", "Crimson"],
+        "fantasy": ["Elm", "Oak", "Stone", "Golden", "Silver", "High", "Wind"]
+    }
+    
+    modifiers = {
+        "dark_fantasy": ["Black", "Dark", "Deep", "Lost", "Forgotten", "Ancient", "Cursed"],
+        "fantasy": ["North", "South", "East", "West", "Upper", "Lower", "New"]
+    }
+    
+    suffixes = {
+        "dark_fantasy": ["Hollow", "Vale", "Fell", "Spire", "Keep", "Crypt", "Grave"],
+        "fantasy": ["Grove", "Field", "Meadow", "Crossing", "Bridge", "Haven"]
+    }
+    
+    # Generate thematic names
+    theme_type = theme if theme in base_names else "fantasy"
+    base = random.choice(base_names[theme_type])
+    modifier = random.choice(modifiers[theme_type])
+    suffix = random.choice(suffixes[theme_type])
+    
+    # Create unique name combinations
+    name_options = [
+        f"{modifier}{base}",
+        f"{base}{suffix}",
+        f"{modifier}{base}{suffix}",
+        f"{base}-{suffix}",
+        f"{modifier} {base}"
+    ]
+    
+    fallbacks = {
+        "campaign_foundation": {
+            "name": f"The {theme.capitalize()} Chronicles",
+            "description": f"A grand adventure in a {theme} world",
+            "core_conflict": "The struggle between light and darkness",
+            "major_factions": ["Order of the Sun", "Shadow Collective"],
+            "key_locations": ["Capital City", "Dark Forest"]
+        },
+        "region": {
+            "name": f"{theme.capitalize()} Frontier",
+            "description": f"A wild frontier region in a {theme} setting",
+            "geography": "Varied landscapes with mountains, forests, and rivers",
+            "climate": "Temperate with seasonal changes",
+            "key_features": ["Great River", "Ancient Forest", "Mystic Mountains"]
+        },
+        "location": {
+            "id": f"loc_{random.randint(1000,9999)}",
+            "name": random.choice(name_options),
+            "type": location_type,
+            "description": f"A {location_type} location in a {theme} setting",
+            "features": ["Central square", "Market district", "Ancient monument"],
+            "services": ["Inn", "Blacksmith", "General Store"],
+            "dungeon_type": f"{theme}_dungeon"
+        },
+        "faction": {
+            "id": f"fac_{random.randint(1000,9999)}",
+            "name": f"{theme.capitalize()} Guardians",
+            "ideology": "Protecting the realm from darkness",
+            "goals": ["Maintain order", "Defend the weak"],
+            "resources": ["Skilled warriors", "Ancient artifacts"],
+            "relationships": {"Merchant Guild": "Allied"},
+            "activities": ["Patrol borders", "Train recruits"]
+        },
+        "npc": {
+            "id": f"npc_{random.randint(1000,9999)}",
+            "name": f"Guardian {random.choice(['Aelar', 'Borin', 'Celia'])}",
+            "role": "Protector",
+            "motivation": "Keep the town safe",
+            "dialogue": ["The darkness is gathering...", "We need brave adventurers!"]
+        },
+        "dungeon_type": {
+            "type": f"{theme}_crypt",
+            "description": f"Ancient crypt filled with {theme} creatures",
+            "themes": ["Decay", "Ancient evil"],
+            "common_creatures": ["Skeletons", "Zombies", "Ghosts"]
+        },
+        "quest": {
+            "id": f"quest_{random.randint(1000,9999)}",
+            "title": random.choice([
+                f"The {modifier} {suffix}",
+                f"{base}'s Last Stand",
+                f"Curse of the {modifier}{base}",
+                f"{suffix} of Shadows"
+            ]),
+            "description": f"Deal with a growing threat in the {theme} region",
+            "objectives": ["Investigate the source", "Defeat the leader"],
+            "dungeon_required": True
+        },
+        "story_arc": {
+            "name": f"Rise of the {theme.capitalize()} Lord",
+            "description": f"A powerful entity threatens the {theme} realm",
+            "key_events": ["The awakening", "The gathering storm", "The final confrontation"],
+            "major_players": ["The Hero", "The Dark Lord", "The Wise Mentor"],
+            "potential_endings": ["Heroic victory", "Bittersweet peace", "Darkness prevails"]
         }
-        
-        return fallbacks.get(entity_type, {})
+    }
+    
+    return fallbacks.get(entity_type, {})

@@ -48,7 +48,9 @@ class WorldController:
         }
 
         # Precompute deterministic terrain data
-        self.terrain_grid = self.generate_terrain()
+        self.map_width = 1000
+        self.map_height = 800
+        self.terrain_grid = self.generate_terrain(self.map_width, self.map_height)
         self.hexes = self.generate_hex_map(self.terrain_grid)
         self.paths = self.generate_paths(
             [loc.to_dict() for loc in self.world_map.locations.values()], 
@@ -73,7 +75,11 @@ class WorldController:
             location.features = loc_data.get("features", [])
             location.services = loc_data.get("services", [])
             self.world_map.add_location(location)
-            print(f"Loading location: {loc_data['name']} from JSON: x={loc_data.get('x')}, y={loc_data.get('y')}")
+
+            # set to True to show locations as they are loaded
+            if False:
+                print(f"Loading location: {loc_data['name']} from JSON: x={loc_data.get('x')}, y={loc_data.get('y')}")
+            #
 
         
         # Create connections between locations
@@ -222,17 +228,21 @@ class WorldController:
             locations.append(loc_dict)
         
         # Generate terrain grid
-        terrain_grid = self.generate_terrain(width=1000, height=800)
-        self.debug_terrain_distribution(terrain_grid)
+        terrain_grid = self.terrain_grid # Use precomputed grid
+        
+        # Set to True to allow distribution display for debugging, turned off since it worked
+        if False:
+            self.debug_terrain_distribution(terrain_grid)
+        #
         
         # Generate hex map
-        hexes = self.generate_hex_map(terrain_grid, hex_size=60)
+        hexes = self.hexes
         
         # Generate paths between locations
-        paths = self.generate_paths([loc.to_dict() for loc in self.world_map.locations.values()], hexes)
+        paths = self.paths
         currentLocation = self.current_location.id if self.current_location else None
-        print(f"len(hexes {len(hexes)}")
-        print(f"paths {paths}")
+        # print(f"len(hexes) {len(hexes)}")
+        # print(f"paths {paths}")
         return {
             "width": 1000,
             "height": 800,
@@ -281,25 +291,27 @@ class WorldController:
         heightmap = self._generate_heightmap(width, height)
         terrain_grid = []
         
+        tolerance = 1e-5
+
         for y in range(height):
             row = []
             for x in range(width):
                 height_val = heightmap[y][x]
                 
                 # Adjusted thresholds for better distribution
-                if height_val < 0.2:  # Increased ocean range
+                if height_val < 0.2 + tolerance:  # Increased ocean range
                     terrain = "ocean"
-                elif height_val < 0.25:
+                elif height_val < 0.25 + tolerance:
                     terrain = "coast"
-                elif height_val < 0.35:  # Added lake range
+                elif height_val < 0.35 + tolerance:  # Added lake range
                     terrain = "lake"
-                elif height_val < 0.45:  # Added river range
+                elif height_val < 0.45 + tolerance:  # Added river range
                     terrain = "river"
-                elif height_val < 0.6:
+                elif height_val < 0.6 + tolerance:
                     terrain = "plains"
-                elif height_val < 0.75:  # Reduced hill range
+                elif height_val < 0.75 + tolerance:  # Reduced hill range
                     terrain = "hills"
-                elif height_val < 0.9:
+                elif height_val < 0.9 + tolerance:
                     terrain = "mountains"
                 else:
                     terrain = "snowcaps"  # Only highest peaks
@@ -309,13 +321,11 @@ class WorldController:
         
         return terrain_grid
 
-    # world_controller.py
     def _generate_heightmap(self, width, height, octaves=4):
         # Replace all random calls with deterministic versions:
         # Instead of np.random.rand()
         # Create coherent noise with multiple frequencies
-        terrain_rng = random.Random(self.seed)  # Dedicated RNG
-        np_terrain_rng = np.random.default_rng(self.seed)  # NumPy RNG
+
         heightmap = np.zeros((height, width))
         scale = 0.01
         persistence = 0.5
@@ -325,7 +335,7 @@ class WorldController:
             amplitude = persistence ** octave
             
             # Generate noise layer
-            layer = np_terrain_rng.random(height, width) * amplitude
+            layer = self.np_rng.random((height, width)) * amplitude # (()) make it a tuple
    
             # Stretch and scale
             y_coords = np.linspace(0, scale*freq, height)
@@ -359,9 +369,9 @@ class WorldController:
         
         # Add water bodies
         for _ in range(3):  # Create 3 lakes
-            lake_x = self.rng.randint(100, width-100)
-            lake_y = self.rng.randint(100, height-100)
-            lake_size = self.rng.randint(30, 80)
+            lake_x = self.np_rng.integers(100, width-100)
+            lake_y = self.np_rng.integers(100, height-100)
+            lake_size = self.np_rng.integers(30, 80)
             for dy in range(-lake_size, lake_size):
                 for dx in range(-lake_size, lake_size):
                     nx, ny = lake_x + dx, lake_y + dy
@@ -373,11 +383,11 @@ class WorldController:
 
         # Add rivers
         for _ in range(2):  # Create 2 rivers
-            start_x, start_y = self.rng.randint(0, width-1), self.rng.randint(0, height-1)
+            start_x, start_y = self.np_rng.integers(0, width-1), self.np_rng.integers(0, height-1)
             for _ in range(200):  # River length
                 heightmap[start_y][start_x] -= 0.2  # Dig deeper riverbed
                 # Flow downhill
-                start_x = (start_x + self.rng.choice([-1, 0, 1])) % width
+                start_x = (start_x + self.np_rng.choice([-1, 0, 1])) % width
                 start_y = (start_y + 1) % height  # Generally flow south
         
         # Normalize to 0-1 range AFTER all modifications
@@ -560,108 +570,255 @@ class WorldController:
         return False
 
     def generate_paths(self, locations, hexes):
+        """Generate logical, non-crossing paths with regional hierarchy"""
         paths = []
-        connected_pairs = set()  # Track already connected pairs
-        # Sort locations for consistent processing order
-        locations = sorted(locations, key=lambda loc: loc['id'])
-
-        # Ensure water locations are connected
-        water_types = {"ocean", "coast", "lake", "river"}
-        water_locations = [loc for loc in locations if loc.get("terrain") in water_types]
+        connected_pairs = set()
         
-        # Connect locations based on terrain accessibility
-        for i, start in enumerate(locations):
-            # Find closest locations that make sense to connect to
-            possible_targets = []
-            for j, end in enumerate(locations):
-                if i == j:
-                    continue
-                
-                # Don't connect extremely distant locations
-                distance = math.sqrt((start["x"]-end["x"])**2 + (start["y"]-end["y"])**2)
-                if distance > 300:
-                    continue
-
-                # Get terrain types from hex data
-                start_terrain = self._get_terrain_for_location(start, hexes)
-                end_terrain = self._get_terrain_for_location(end, hexes)
-                
-                # Only connect compatible terrains
-                terrain_compatible = (
-                    (start_terrain, end_terrain) in [
-                        ("plains", "plains"),
-                        ("plains", "hills"),
-                        ("hills", "mountains"),
-                        ("hills", "snowcaps"),  # Added
-                        ("mountains", "snowcaps"),  # Added
-                        ("coast", "plains"),
-                        ("coast", "hills"),
-                        ("mountain_pass", "mountains"),
-                        ("mountain_pass", "plains"),
-                        # Water connections
-                        ("coast", "ocean"),
-                        ("lake", "plains"),
-                        ("lake", "hills"),
-                        ("river", "plains"),
-                        ("river", "hills"),
-                        # Allow all same-terrain connections
-                        (start_terrain, start_terrain)
-                    ] or start_terrain == end_terrain  # Always allow same terrain
-                )
-                
-                if terrain_compatible:
-                    possible_targets.append((distance, end))
-            
-            # Connect to 1-3 nearest compatible locations
-            # Deterministic connection count based on ID
-            connect_count = 1 + (hash(start['id']) % 3)
-
-            possible_targets.sort(key=lambda x: x[0])
-            for _, target in possible_targets[:connect_count]:
-                # Create unique pair identifier
-                pair_id = tuple(sorted([start["id"], target["id"]]))
-
-                if pair_id not in connected_pairs:
+        # Step 1: Group locations into regions
+        regions = self._cluster_locations(locations, hexes)
+        
+        # Step 2: Create intra-region connections
+        for region in regions:
+            if len(region) > 1:
+                region_paths = self._create_minimum_spanning_tree(region, hexes)
+                for path in region_paths:
+                    pair_id = frozenset([path['start'], path['end']])
+                    paths.append(path)
                     connected_pairs.add(pair_id)
-                    path_points = self._create_organic_path(start, target, hexes)
-                    paths.append({
-                        "points": path_points,
-                        "type": self._get_path_type(start_terrain, end_terrain),
-                        "start": start["id"],
-                        "end": target["id"]
-                    })
+        
+        # Step 3: Connect regions
+        region_centroids = self._calculate_region_centroids(regions)
+        region_connections = self._connect_regions(region_centroids, regions, hexes)
+        paths.extend(region_connections)
+        
+        # Step 4: Ensure water locations are connected
+        water_paths = self._connect_water_locations(locations, hexes, connected_pairs)
+        paths.extend(water_paths)
+        
+        return paths
 
-                path_points = self._create_organic_path(start, target, hexes)
+    def _cluster_locations(self, locations, hexes, max_distance=250):
+        """Group locations into regions based on proximity"""
+        regions = []
+        unassigned = locations.copy()
+        
+        while unassigned:
+            # Start new region with first unassigned location
+            region = [unassigned.pop(0)]
+            base_x, base_y = region[0]['x'], region[0]['y']
+            
+            # Find nearby locations
+            i = 0
+            while i < len(region):
+                current = region[i]
+                j = 0
+                while j < len(unassigned):
+                    other = unassigned[j]
+                    distance = math.sqrt((current['x']-other['x'])**2 + 
+                                         (current['y']-other['y'])**2)
+                    if distance < max_distance:
+                        region.append(unassigned.pop(j))
+                    else:
+                        j += 1
+                i += 1
+            
+            regions.append(region)
+        
+        return regions
+
+    def _create_minimum_spanning_tree(self, locations, hexes):
+        """Create efficient network using Kruskal's algorithm"""
+        paths = []
+        connections = []
+        
+        # Create all possible connections
+        for i in range(len(locations)):
+            for j in range(i+1, len(locations)):
+                start = locations[i]
+                end = locations[j]
+                distance = math.sqrt((start['x']-end['x'])**2 + (start['y']-end['y'])**2)
+                connections.append((distance, start, end))
+        
+        # Sort by distance
+        connections.sort(key=lambda x: x[0])
+        
+        # Union-Find data structure
+        parent = {loc['id']: loc['id'] for loc in locations}
+        
+        def find(loc_id):
+            if parent[loc_id] != loc_id:
+                parent[loc_id] = find(parent[loc_id])
+            return parent[loc_id]
+        
+        def union(loc1_id, loc2_id):
+            root1 = find(loc1_id)
+            root2 = find(loc2_id)
+            if root1 != root2:
+                parent[root2] = root1
+                return True
+            return False
+        
+        # Build MST
+        for dist, start, end in connections:
+            if union(start['id'], end['id']):
+                path_points = self._create_organic_path(start, end, hexes)
+                path_type = self._get_path_type(
+                    self._get_terrain_for_location(start, hexes),
+                    self._get_terrain_for_location(end, hexes)
+                )
                 paths.append({
                     "points": path_points,
-                    "type": self._get_path_type(start_terrain, end_terrain),
-                    "start": start["id"],
-                    "end": target["id"]
+                    "type": path_type,
+                    "start": start['id'],
+                    "end": end['id']
                 })
+        
+        return paths
 
-            for loc in water_locations:
-                # Find closest land location
-                land_locations = [l for l in locations if l.get("terrain") not in water_types]
-                if not land_locations:
+    def _calculate_region_centroids(self, regions):
+        """Calculate center points of each region"""
+        centroids = []
+        for region in regions:
+            x_sum = sum(loc['x'] for loc in region)
+            y_sum = sum(loc['y'] for loc in region)
+            centroids.append({
+                'x': x_sum / len(region),
+                'y': y_sum / len(region),
+                'region': region
+            })
+        return centroids
+
+    def _connect_regions(self, centroids, regions, hexes):
+        """Connect regions using direct paths between closest points"""
+        paths = []
+        if len(centroids) < 2:
+            return paths
+        
+        # Find closest region pairs
+        region_pairs = []
+        for i in range(len(centroids)):
+            for j in range(i+1, len(centroids)):
+                dist = math.sqrt((centroids[i]['x']-centroids[j]['x'])**2 + 
+                                 (centroids[i]['y']-centroids[j]['y'])**2)
+                region_pairs.append((dist, i, j))
+        
+        # Sort by distance
+        region_pairs.sort(key=lambda x: x[0])
+        
+        # Connect closest regions first
+        connected_regions = set()
+        for dist, i, j in region_pairs:
+            if i not in connected_regions or j not in connected_regions:
+                # Find closest locations between regions
+                start_loc = min(centroids[i]['region'], 
+                               key=lambda loc: math.sqrt((loc['x']-centroids[j]['x'])**2 + 
+                                                        (loc['y']-centroids[j]['y'])**2))
+                end_loc = min(centroids[j]['region'], 
+                             key=lambda loc: math.sqrt((loc['x']-centroids[i]['x'])**2 + 
+                                                      (loc['y']-centroids[i]['y'])**2))
+                
+                path_points = self._create_organic_path(start_loc, end_loc, hexes)
+                path_type = "highway"
+                
+                paths.append({
+                    "points": path_points,
+                    "type": path_type,
+                    "start": start_loc['id'],
+                    "end": end_loc['id']
+                })
+                
+                connected_regions.add(i)
+                connected_regions.add(j)
+        
+        return paths
+
+    def _connect_water_locations(self, locations, hexes, connected_pairs):
+        """Ensure water locations are properly connected"""
+        water_types = {"ocean", "coast", "lake", "river"}
+        water_locations = [loc for loc in locations if 
+                          self._get_terrain_for_location(loc, hexes) in water_types]
+        
+        paths = []
+        
+        # Connect water locations to their nearest land neighbor
+        for water_loc in water_locations:
+            # Find closest land location
+            closest_land = None
+            min_distance = float('inf')
+            for loc in locations:
+                if loc == water_loc:
                     continue
                     
-                # Find closest land location deterministically
-                closest = min(
-                    land_locations,
-                    key=lambda l: math.sqrt((loc['x']-l['x'])**2 + (loc['y']-l['y'])**2)
-                )
-                
-                # Create connection if not exists
-                pair_id = tuple(sorted([loc["id"], closest["id"]]))
+                loc_terrain = self._get_terrain_for_location(loc, hexes)
+                if loc_terrain not in water_types:
+                    distance = math.sqrt((water_loc['x']-loc['x'])**2 + (water_loc['y']-loc['y'])**2)
+                    if distance < min_distance and distance < 400:
+                        min_distance = distance
+                        closest_land = loc
+            
+            if closest_land:
+                pair_id = frozenset([water_loc['id'], closest_land['id']])
                 if pair_id not in connected_pairs:
-                    connected_pairs.add(pair_id)
-                    path_points = self._create_organic_path(loc, closest, hexes)
+                    path_points = f"{water_loc['x']},{water_loc['y']} {closest_land['x']},{closest_land['y']}"
                     paths.append({
                         "points": path_points,
                         "type": "ferry_route",
-                        "start": loc["id"],
-                        "end": closest["id"]
+                        "start": water_loc['id'],
+                        "end": closest_land['id']
                     })
+                    connected_pairs.add(pair_id)
+        
+        return paths
+
+
+    def _create_region_network(self, locations, hexes):
+        """Create efficient network within a region using minimum spanning tree"""
+        paths = []
+        if len(locations) < 2:
+            return paths
+        
+        # Create all possible connections
+        connections = []
+        for i in range(len(locations)):
+            for j in range(i+1, len(locations)):
+                start = locations[i]
+                end = locations[j]
+                distance = math.sqrt((start['x']-end['x'])**2 + (start['y']-end['y'])**2)
+                connections.append((distance, start, end))
+        
+        # Sort by distance
+        connections.sort(key=lambda x: x[0])
+        
+        # Kruskal's algorithm for MST
+        parent = {loc['id']: loc['id'] for loc in locations}
+        
+        def find(loc_id):
+            if parent[loc_id] != loc_id:
+                parent[loc_id] = find(parent[loc_id])
+            return parent[loc_id]
+        
+        def union(loc1_id, loc2_id):
+            root1 = find(loc1_id)
+            root2 = find(loc2_id)
+            if root1 != root2:
+                parent[root2] = root1
+                return True
+            return False
+        
+        # Add connections until we have a spanning tree
+        for dist, start, end in connections:
+            if union(start['id'], end['id']):
+                path_points = self._create_organic_path(start, end, hexes)
+                path_type = self._get_path_type(
+                    self._get_terrain_for_location(start, hexes),
+                    self._get_terrain_for_location(end, hexes)
+                )
+                paths.append({
+                    "points": path_points,
+                    "type": path_type,
+                    "start": start['id'],
+                    "end": end['id']
+                })
         
         return paths
 

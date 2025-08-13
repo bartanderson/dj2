@@ -1,109 +1,174 @@
 {
   "locations": [
     {
-      "id": "TOWN-001",
-      "name": "Ravenhurst",
-      "type": "Town",
-      "description": "A foreboding, mist-shrouded settlement on the edge of a vast and treacherous forest.",
-      "x": 482,
-      "y": 82,
-      "dungeon_type": "Underground crypts and tunnels",
-      "dungeon_level": 1,
+      "id": "loc_0_0_ac6b4110",
+      "name": "Gloomfellkeep",
+      "type": "town",
+      "description": "A town known for its mysterious past",
+      "x": 809,
+      "y": 331,
+      "dungeon_type": "dark_fantasy_caverns",
+      "dungeon_level": 2,
       "features": [
-        "Ancient castle ruins",
-        "Mysterious market stalls",
-        "Hidden cult activity"
+        "Ancient Observatory",
+        "Haunted Grounds"
       ],
       "services": [
-        "Inn for weary travelers",
-        "Blacksmith for tooling and repairs",
-        "Seedy information broker"
+        "Inn",
+        "Blacksmith",
+        "Market",
+        "Temple",
+        "Tavern"
       ],
-      "image_url": "/static/world_images/loc-TOWN-001.jpg",
+      "image_url": "/static/world_images/loc-loc_0_0_ac6b4110.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "Ruin-001",
-      "name": "Zha'thik's Citadel",
-      "type": "Abandoned Fortress",
-      "description": "A foreboding, ancient stronghold shrouded in perpetual twilight, said to be the remnants of a powerful sorcerer-king's seat of power.",
-      "x": 300,
-      "y": 278,
-      "dungeon_type": "Exploration/Combat",
+      "id": "loc_0_1_e4c968e7",
+      "name": "GloomPeak",
+      "type": "mountain",
+      "description": "A mountain known for its ancient guardians",
+      "x": 275,
+      "y": 509,
+      "dungeon_type": "dark_fantasy_fortress",
       "dungeon_level": 1,
       "features": [
-        "Crumbing walls and towers",
-        "Overgrown gardens and courtyards",
-        "Flickering torches and sconces",
-        "Musty dungeon cells"
+        "Ancient Observatory",
+        "Sacred Spring"
       ],
-      "services": [
-        "Local guides available for hire",
-        "Rumored treasure hidden within the citadel's depths"
-      ],
-      "image_url": "/static/world_images/loc-Ruin-001.jpg",
+      "services": [],
+      "image_url": "/static/world_images/loc-loc_0_1_e4c968e7.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "Village_of_Shadows",
-      "name": "Ravenhurst",
+      "id": "loc_0_2_54cfdad6",
+      "name": "Bonepeak Ruins",
+      "type": "ruin",
+      "description": "A ruin known for its dark secrets",
+      "x": 876,
+      "y": 94,
+      "dungeon_type": "dark_fantasy_lair",
+      "dungeon_level": 5,
+      "features": [
+        "Ancient Monument",
+        "Haunted Grounds"
+      ],
+      "services": [],
+      "image_url": "/static/world_images/loc-loc_0_2_54cfdad6.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "loc_0_3_3e370908",
+      "name": "Ravenash",
       "type": "village",
-      "description": "A small, isolated settlement on the edge of a dense forest, shrouded in perpetual twilight.",
-      "x": 139,
-      "y": 654,
-      "dungeon_type": "abandoned_mines",
-      "dungeon_level": 1,
+      "description": "A village known for its dark secrets",
+      "x": 131,
+      "y": 288,
+      "dungeon_type": "dark_fantasy_crypt",
+      "dungeon_level": 4,
       "features": [
-        "Crumbling wooden houses",
-        "Overgrown gardens and orchards",
-        "Rustic blacksmith shop",
-        "Ancient, gnarled trees"
+        "Forgotten Monument",
+        "Cursed Spring"
       ],
       "services": [
-        "Inn: The Shadowed Rest",
-        "General Store: Raven's Provisions",
-        "Healer: Elara Moonwhisper"
+        "Healer",
+        "General Store",
+        "Meeting Hall"
       ],
-      "image_url": "/static/world_images/loc-Village_of_Shadows.jpg",
+      "image_url": "/static/world_images/loc-loc_0_3_3e370908.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "Mt-Korvus",
-      "name": "Korvus' Peak",
-      "type": "Mountain",
-      "description": "A foreboding and snow-capped mountain range, shrouded in an eternal veil of mist and darkness. The air is crisp with the scent of decay and death.",
-      "x": 80,
-      "y": 145,
-      "dungeon_type": "Crypt of the Ancients",
-      "dungeon_level": 1,
+      "id": "loc_1_0_1bfcb5a7",
+      "name": "Dreadscarkeep",
+      "type": "town",
+      "description": "A town known for its strategic importance",
+      "x": 596,
+      "y": 300,
+      "dungeon_type": "dark_fantasy_caverns",
+      "dungeon_level": 4,
       "features": [
-        "Snowy slopes",
-        "Frozen caves",
-        "Treacherous ice bridges",
-        "Ancient ruins",
-        "Fearsome crevices"
+        "Forgotten Monument",
+        "Cursed Grounds"
       ],
       "services": [
-        "Guided expeditions",
-        "Cave exploration",
-        "Ice climbing lessons"
+        "Inn",
+        "Blacksmith",
+        "Market",
+        "Temple",
+        "Tavern"
       ],
-      "image_url": "/static/world_images/loc-Mt-Korvus.jpg",
+      "image_url": "/static/world_images/loc-loc_1_0_1bfcb5a7.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "loc_1_1_d665a0c3",
+      "name": "Blackfenrest",
+      "type": "forest",
+      "description": "A forest known for its dark secrets",
+      "x": 117,
+      "y": 266,
+      "dungeon_type": "dark_fantasy_fortress",
+      "dungeon_level": 2,
+      "features": [
+        "Hidden Monument",
+        "Sacred Grounds"
+      ],
+      "services": [],
+      "image_url": "/static/world_images/loc-loc_1_1_d665a0c3.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "loc_1_2_32d1a7b0",
+      "name": "ViperSummit",
+      "type": "mountain",
+      "description": "A mountain known for its ancient guardians",
+      "x": 647,
+      "y": 458,
+      "dungeon_type": "dark_fantasy_fortress",
+      "dungeon_level": 2,
+      "features": [
+        "Ancient Observatory",
+        "Sacred Woods"
+      ],
+      "services": [],
+      "image_url": "/static/world_images/loc-loc_1_2_32d1a7b0.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "loc_1_3_2cd336d1",
+      "name": "Crowwoundwatch",
+      "type": "forest",
+      "description": "A forest known for its ancient guardians",
+      "x": 660,
+      "y": 529,
+      "dungeon_type": "dark_fantasy_fortress",
+      "dungeon_level": 5,
+      "features": [
+        "Ancient Observatory",
+        "Cursed Woods"
+      ],
+      "services": [],
+      "image_url": "/static/world_images/loc-loc_1_3_2cd336d1.jpg",
       "discovered": false,
       "quests": []
     }
   ],
   "factions": [
     {
-      "id": "TheShadowBrotherhood",
-      "name": "The Shadow Brotherhood",
-      "ideology": "Chaos and Anarchy through darkness and terror",
+      "id": "fac_a0c85beb",
+      "name": "Circle of Serpentgravewatch",
+      "ideology": "Power-hungry cult seeking forbidden knowledge",
       "goals": [
-        "Spread fear throughout the land",
-        "Establish a new order with themselves at the top"
+        "Protect the relic",
+        "Conquer Viperashspire"
       ],
       "relationships": {},
       "activities": []
@@ -111,41 +176,106 @@
   ],
   "quests": [
     {
-      "id": "RavenhurstQuest1",
-      "title": "The Shadows of Ravenhurst's Past",
-      "description": "Delve into the forgotten history of Ravenhurst and uncover the secrets that lie within its ancient walls.",
+      "id": "quest_3410ce10",
+      "title": "Gloomfellkeep's Secret",
+      "description": "Investigate the ancient artifact in Gloomfellkeep",
       "objectives": [
-        "Investigate strange occurrences in the abandoned wing of Ravenhurst Manor",
-        "Uncover a hidden diary belonging to the former lord of Ravenhurst",
-        "Confront the dark forces that have taken hold within the manor's depths"
+        "Find clues in Gloomfellkeep",
+        "Confront the beast",
+        "Purify the artifact"
       ],
-      "location_id": "TOWN-001",
+      "location_id": "loc_0_0_ac6b4110",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "Q001",
-      "title": "Breaching the Spire of Shadows",
-      "description": "The dark forces have taken hold of Zha'thik's Citadel, and it is up to brave adventurers to put an end to their evil plans.",
+      "id": "quest_413ca4bd",
+      "title": "The Ashes of GloomPeak",
+      "description": "Recover the ancient artifact in GloomPeak",
       "objectives": [
-        "Infiltrate the citadel undetected",
-        "Retrieve a valuable artifact from the heart of the citadel",
-        "Eliminate the dark sorcerer controlling the forces within"
+        "Find clues in GloomPeak",
+        "Negotiate with the guardian",
+        "Retrieve the relic"
       ],
-      "location_id": "Ruin-001",
+      "location_id": "loc_0_1_e4c968e7",
+      "completed": false,
+      "dungeon_required": false
+    },
+    {
+      "id": "quest_248ce4da",
+      "title": "Bleak Reckoning",
+      "description": "Recover the cursed relic in Bonepeak Ruins",
+      "objectives": [
+        "Decipher texts in Bonepeak Ruins",
+        "Negotiate with the beast",
+        "Retrieve the source"
+      ],
+      "location_id": "loc_0_2_54cfdad6",
+      "completed": false,
+      "dungeon_required": false
+    },
+    {
+      "id": "quest_73134ac2",
+      "title": "The Blackwatch Affair",
+      "description": "Investigate the forbidden tome in Ravenash",
+      "objectives": [
+        "Gather allies in Ravenash",
+        "Confront the beast",
+        "Destroy the source"
+      ],
+      "location_id": "loc_0_3_3e370908",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "KP-001",
-      "title": "The Lost Oracle of Korvus'",
-      "description": "Retrieve the ancient artifact from the long-abandoned temple on Korvus' Peak, said to hold the secrets of the land.",
+      "id": "quest_3ac3f801",
+      "title": "The Gloomhollow Affair",
+      "description": "Destroy the ancient artifact in Dreadscarkeep",
       "objectives": [
-        "Reach the top of Korvus' Peak without succumbing to the treacherous paths and unforgiving climate.",
-        "Locate and retrieve the Oracle's Chalice from the ancient temple.",
-        "Return the artifact to the village elder before nightfall."
+        "Decipher texts in Dreadscarkeep",
+        "Negotiate with the guardian",
+        "Retrieve the artifact"
       ],
-      "location_id": "Mt-Korvus",
+      "location_id": "loc_1_0_1bfcb5a7",
+      "completed": false,
+      "dungeon_required": true
+    },
+    {
+      "id": "quest_317370c0",
+      "title": "Hidden Bone",
+      "description": "Recover the ancient artifact in Blackfenrest",
+      "objectives": [
+        "Gather allies in Blackfenrest",
+        "Confront the guardian",
+        "Purify the source"
+      ],
+      "location_id": "loc_1_1_d665a0c3",
+      "completed": false,
+      "dungeon_required": true
+    },
+    {
+      "id": "quest_569af66a",
+      "title": "Bleak Reckoning: Chapter 1",
+      "description": "Investigate the ancient artifact in ViperSummit",
+      "objectives": [
+        "Find clues in ViperSummit",
+        "Evade the guardian",
+        "Purify the relic"
+      ],
+      "location_id": "loc_1_2_32d1a7b0",
+      "completed": false,
+      "dungeon_required": true
+    },
+    {
+      "id": "quest_1d3c681d",
+      "title": "The Blood of Crowwoundwatch",
+      "description": "Destroy the cursed relic in Crowwoundwatch",
+      "objectives": [
+        "Gather allies in Crowwoundwatch",
+        "Evade the spirit",
+        "Retrieve the relic"
+      ],
+      "location_id": "loc_1_3_2cd336d1",
       "completed": false,
       "dungeon_required": true
     }
