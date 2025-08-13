@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dungeon Explorer</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <style>
+        :root {
+            --sidebar-width: 300px;
+            --chat-height: 200px;
+        }
+        
+        .app-container {
+            display: flex;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* Map area */
+        .map-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1a1a2e;
+            overflow: hidden;
+        }
+        
+        .controls {
+            padding: 15px;
+            background: #16213e;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .direction-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            flex: 1;
+        }
+        .debug-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 10px 15px;
+            background: #16213e;
+        }
+
+        /* Diagonal direction buttons */
+        button[id$='east'], button[id$='west'] {
+            font-size: 14px; /* Slightly smaller for diagonal labels */
+        }
+                
+        button {
+            padding: 12px;
+            background: #0f3460;
+            color: #e6e6e6;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background: #133b74;
+        }
+        
+        #dungeon-map {
+            flex: 1;
+            object-fit: contain;
+            max-height: calc(100vh - 200px);
+        }
+        
+        /* Chat sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: #1b1b2f;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #0f3460;
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            padding: 15px;
+            background: #0f3460;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .chat-log {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #1f1f3d;
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #16213e;
+            color: #e6e6e6;
+            animation: fadeIn 0.3s;
+        }
+        
+        .message.error {
+            background: #4a1a1a; /* Dark red background */
+            color: #ff9999;      /* Light red text */
+            white-space: pre-wrap; /* Preserve newlines */
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .message.user {
+            background: #0f3460;
+            align-self: flex-end;
+        }
+        
+        .message.ai {
+            background: #1a3c5f;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            background: #16213e;
+            border-top: 1px solid #0f3460;
+            flex-direction: column;
+        }
+        .chat-buttons {
+            display: flex;
+            padding: 15px;
+            background: #16213e;
+            border-top: 1px solid #0f3460;
+            flex-direction: row;
+        }
+        
+        #chat-text {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: #1f1f3d;
+            color: white;
+            resize: none;
+        }
+        
+        #send-chat {
+            margin-left: 10px;
+            padding: 0 20px;
+            background: #4ecca3;
+            color: #1a1a2e;
+            font-weight: bold;
+        }
+        
+        #send-chat:hover {
+            background: #3dbb91;
+        }
+        
+        .position-info {
+            padding: 10px;
+            background: #16213e;
+            color: #e6e6e6;
+            text-align: center;
+            font-family: monospace;
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Main Map Area -->
+        <div class="map-container">
+            <img id="dungeon-map" src="" alt="Dungeon Map">
+        </div>
+        
+        <!-- Chat Sidebar -->
+        <div class="sidebar">
+            <div class="controls">
+                <div class="direction-buttons">
+                    <!-- Row 1: Northwest, North, Northeast -->
+                    <button id="northwest">↖ NW</button>
+                    <button id="north">↑ North</button>
+                    <button id="northeast">↗ NE</button>
+                    <button id="west">← West</button>
+                    <button id="wait">Wait</button>
+                    <button id="east">East →</button>
+                    <button id="southwest">↙ SW</button>
+                    <button id="south">↓ South</button>
+                    <button id="southeast">↘ SE</button>
+                </div>
+                <div class="debug-controls">
+                    <button id="debug-toggle">Toggle Debug View</button>
+                    <button id="reset">Generate New Dungeon</button>
+                    <button id="debug-state">Debug State</button>
+                    <div class="position-info">
+                        <p>Position: <span id="position">(?, ?)</span></p>
+                    </div>
+                </div>
+             </div>
+            <div class="chat-container">
+                <div class="chat-header">Dungeon Master Assistant</div>
+                <div class="chat-log" id="chat-log">
+                    <div class="message ai">
+                        Welcome to the dungeon! I'm your AI Dungeon Master assistant. 
+                        What would you like to do?
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <div class="chat-buttons">
+                        <div class="debug-controls">
+                            <button id="debug-grid">Debug Grid</button>
+                        </div>
+                        <button id="send-chat">Send</button>
+                    </div>
+                    <div>
+                    <textarea id="chat-text" 
+                              placeholder="Tell the AI what to do..."
+                              rows="3"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize variables
+        let debugMode = false;
+        const chatLog = document.getElementById('chat-log');
+        const chatInput = document.getElementById('chat-text');
+        
+        // Initialize the map
+        function updateMap() {
+            const map = document.getElementById('dungeon-map');
+            const now = Date.now();
+            map.src = `/api/dungeon-image?debug=${debugMode}&t=${now}`;
+        }
+        
+        // Function to move party
+        function move(direction) {
+            const map = document.getElementById('dungeon-map');
+            map.style.opacity = '0.7';
+            
+            fetch('/api/move', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({direction: direction, steps: 1})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('position').textContent = 
+                        `${data.new_position[0]}, ${data.new_position[1]}`; // swap display coords to match map
+                    updateMap();
+                }
+                addToChatLog(data.message, data.success ? 'system' : 'error');
+            })
+            .finally(() => {
+                setTimeout(() => map.style.opacity = '1', 300);
+            });
+        }
+
+        
+        // Function to send chat messages
+        function sendChat() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to chat
+            addToChatLog(message, 'user');
+            chatInput.value = '';
+            
+            // Disable send button during processing
+            const sendBtn = document.getElementById('send-chat');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+            
+            // Send to AI command processor
+            fetch('/api/ai-command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: message})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addToChatLog(`AI: ${data.message}`, 'ai');
+                    updateMap();
+                } else {
+                    // Enhanced error display
+                    let errorMsg = `Error: ${data.message}`;
+                    
+                    if (data.traceback) {
+                        errorMsg += `\n\nTechnical Details:\n${data.traceback}`;
+                    }
+                    
+                    if (data.ai_response) {
+                        errorMsg += `\n\nAI Response:\n${data.ai_response}`;
+                    }
+                    
+                    addToChatLog(errorMsg, 'error');
+                }
+            })
+            .catch(error => {
+                addToChatLog(`System Error: ${error.message}`, 'ai');
+            })
+            .finally(() => {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+            });
+        }
+                
+        // Add messages to chat log
+        function addToChatLog(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender);
+            messageDiv.textContent = text;
+            chatLog.appendChild(messageDiv);
+            
+            // Auto-scroll to bottom
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function initMovementControls() {
+            // Setup direction buttons
+            const directions = [
+                'north', 'south', 'east', 'west',
+                'northeast', 'northwest', 'southeast', 'southwest'
+            ];
+            
+            directions.forEach(dir => {
+                const btn = document.getElementById(dir);
+                if (btn) {
+                    btn.addEventListener('click', () => move(dir));
+                }
+            });
+            
+            // Setup wait button
+            const waitBtn = document.getElementById('wait');
+            if (waitBtn) {
+                waitBtn.addEventListener('click', () => {
+                    addToChatLog("Party waits and observes", 'system');
+                    updateMap();  // Refresh visibility
+                });
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Add this check to ignore when focused on input/textarea
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+                const key = e.key.toLowerCase();
+                const mapping = {
+                    'w': 'north',
+                    's': 'south',
+                    'a': 'west',
+                    'd': 'east',
+                    'q': 'northwest',
+                    'e': 'northeast',
+                    'z': 'southwest',
+                    'c': 'southeast',
+                    'x': 'south',
+                    ' ': 'wait'  // Space for wait
+                };
+                
+                if (mapping[key]) {
+                    if (mapping[key] === 'wait') {
+                        addToChatLog("Party waits and observes", 'system');
+                        updateMap();
+                    } else {
+                        move(mapping[key]);
+                    }
+                    e.preventDefault();  // Prevent scrolling on space
+                }
+            });
+        }
+
+
+        document.getElementById('debug-grid').addEventListener('click', () => {
+            fetch('/api/ai-command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: "!debug grid"})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const filename = data.filename || 'dungeon_debug.txt';
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = `/api/download-debug?file=${filename}`;
+                    downloadLink.textContent = 'Download Dungeon Debug Grid';
+                    downloadLink.download = filename;
+                    
+                    const messageDiv = document.createElement('div');
+                    messageDiv.classList.add('message', 'system');
+                    messageDiv.innerHTML = `Debug grid saved!<br>`;
+                    messageDiv.appendChild(downloadLink);
+                    
+                    chatLog.appendChild(messageDiv);
+                    chatLog.scrollTop = chatLog.scrollHeight;
+                } else {
+                    addToChatLog(`Error: ${data.message}`, 'error');
+                }
+            });
+        });
+
+        
+        document.getElementById('debug-toggle').addEventListener('click', () => {
+            debugMode = !debugMode;
+            updateMap();
+        });
+        
+        document.getElementById('send-chat').addEventListener('click', sendChat);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChat();
+            }
+        });
+        
+        // Initialize on load
+        window.addEventListener('load', () => {
+            updateMap();
+            chatInput.focus();
+            initMovementControls();  // Initialize movement controls
+        });
+    </script>
+</body>
+</html>

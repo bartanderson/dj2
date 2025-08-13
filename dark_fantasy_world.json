@@ -1,0 +1,154 @@
+{
+  "locations": [
+    {
+      "id": "TOWN-001",
+      "name": "Ravenhurst",
+      "type": "Town",
+      "description": "A foreboding, mist-shrouded settlement on the edge of a vast and treacherous forest.",
+      "x": 482,
+      "y": 82,
+      "dungeon_type": "Underground crypts and tunnels",
+      "dungeon_level": 1,
+      "features": [
+        "Ancient castle ruins",
+        "Mysterious market stalls",
+        "Hidden cult activity"
+      ],
+      "services": [
+        "Inn for weary travelers",
+        "Blacksmith for tooling and repairs",
+        "Seedy information broker"
+      ],
+      "image_url": "/static/world_images/loc-TOWN-001.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "Ruin-001",
+      "name": "Zha'thik's Citadel",
+      "type": "Abandoned Fortress",
+      "description": "A foreboding, ancient stronghold shrouded in perpetual twilight, said to be the remnants of a powerful sorcerer-king's seat of power.",
+      "x": 300,
+      "y": 278,
+      "dungeon_type": "Exploration/Combat",
+      "dungeon_level": 1,
+      "features": [
+        "Crumbing walls and towers",
+        "Overgrown gardens and courtyards",
+        "Flickering torches and sconces",
+        "Musty dungeon cells"
+      ],
+      "services": [
+        "Local guides available for hire",
+        "Rumored treasure hidden within the citadel's depths"
+      ],
+      "image_url": "/static/world_images/loc-Ruin-001.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "Village_of_Shadows",
+      "name": "Ravenhurst",
+      "type": "village",
+      "description": "A small, isolated settlement on the edge of a dense forest, shrouded in perpetual twilight.",
+      "x": 139,
+      "y": 654,
+      "dungeon_type": "abandoned_mines",
+      "dungeon_level": 1,
+      "features": [
+        "Crumbling wooden houses",
+        "Overgrown gardens and orchards",
+        "Rustic blacksmith shop",
+        "Ancient, gnarled trees"
+      ],
+      "services": [
+        "Inn: The Shadowed Rest",
+        "General Store: Raven's Provisions",
+        "Healer: Elara Moonwhisper"
+      ],
+      "image_url": "/static/world_images/loc-Village_of_Shadows.jpg",
+      "discovered": false,
+      "quests": []
+    },
+    {
+      "id": "Mt-Korvus",
+      "name": "Korvus' Peak",
+      "type": "Mountain",
+      "description": "A foreboding and snow-capped mountain range, shrouded in an eternal veil of mist and darkness. The air is crisp with the scent of decay and death.",
+      "x": 80,
+      "y": 145,
+      "dungeon_type": "Crypt of the Ancients",
+      "dungeon_level": 1,
+      "features": [
+        "Snowy slopes",
+        "Frozen caves",
+        "Treacherous ice bridges",
+        "Ancient ruins",
+        "Fearsome crevices"
+      ],
+      "services": [
+        "Guided expeditions",
+        "Cave exploration",
+        "Ice climbing lessons"
+      ],
+      "image_url": "/static/world_images/loc-Mt-Korvus.jpg",
+      "discovered": false,
+      "quests": []
+    }
+  ],
+  "factions": [
+    {
+      "id": "TheShadowBrotherhood",
+      "name": "The Shadow Brotherhood",
+      "ideology": "Chaos and Anarchy through darkness and terror",
+      "goals": [
+        "Spread fear throughout the land",
+        "Establish a new order with themselves at the top"
+      ],
+      "relationships": {},
+      "activities": []
+    }
+  ],
+  "quests": [
+    {
+      "id": "RavenhurstQuest1",
+      "title": "The Shadows of Ravenhurst's Past",
+      "description": "Delve into the forgotten history of Ravenhurst and uncover the secrets that lie within its ancient walls.",
+      "objectives": [
+        "Investigate strange occurrences in the abandoned wing of Ravenhurst Manor",
+        "Uncover a hidden diary belonging to the former lord of Ravenhurst",
+        "Confront the dark forces that have taken hold within the manor's depths"
+      ],
+      "location_id": "TOWN-001",
+      "completed": false,
+      "dungeon_required": true
+    },
+    {
+      "id": "Q001",
+      "title": "Breaching the Spire of Shadows",
+      "description": "The dark forces have taken hold of Zha'thik's Citadel, and it is up to brave adventurers to put an end to their evil plans.",
+      "objectives": [
+        "Infiltrate the citadel undetected",
+        "Retrieve a valuable artifact from the heart of the citadel",
+        "Eliminate the dark sorcerer controlling the forces within"
+      ],
+      "location_id": "Ruin-001",
+      "completed": false,
+      "dungeon_required": true
+    },
+    {
+      "id": "KP-001",
+      "title": "The Lost Oracle of Korvus'",
+      "description": "Retrieve the ancient artifact from the long-abandoned temple on Korvus' Peak, said to hold the secrets of the land.",
+      "objectives": [
+        "Reach the top of Korvus' Peak without succumbing to the treacherous paths and unforgiving climate.",
+        "Locate and retrieve the Oracle's Chalice from the ancient temple.",
+        "Return the artifact to the village elder before nightfall."
+      ],
+      "location_id": "Mt-Korvus",
+      "completed": false,
+      "dungeon_required": true
+    }
+  ],
+  "seed": 42
+}

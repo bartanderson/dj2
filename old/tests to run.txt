@@ -1,0 +1,32 @@
+python test_generator.py        # check # Verify dungeon generation
+python test_puzzles.py          # check # Verify puzzle system
+
+python test_ai_integration.py   # check # Test AI puzzle handling
+python tests/test_persistence.py # check # Test saving/loading
+#Finally, run the full integration test:
+
+python tests/test_runner.py     # check # End-to-end gameplay test
+
+1 Implement Movement Logic: these 3 are in the last response #4 is in the one previous, get them all done when you're fresh
+
+	Update move_party in state.py to actually change positions
+
+	Add validation for traversable cells
+
+2 Enhance NPC System:
+
+	Store created NPCs in game state
+
+	Add interaction capabilities
+
+3 Improve Search Mechanics:
+
+	Implement actual item discovery
+
+	Add chance-based finding mechanics
+
+4 Add Visualization: -- Look in Implementing Dungeon Visualization and State Integration
+
+	Implement the visualize_dungeon method
+
+	Create ASCII or image-based dungeon maps

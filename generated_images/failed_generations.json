@@ -1,0 +1,8 @@
+[
+  {
+    "request_id": "invalid-prompt",
+    "prompt": "test",
+    "exception": "Prompt must be at least 10 characters",
+    "traceback": ""
+  }
+]

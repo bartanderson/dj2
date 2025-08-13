@@ -1,0 +1,94 @@
+.world-container {
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    gap: 15px;
+    padding: 15px;
+    background: #0a1929;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.location-preview {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    z-index: 10;
+}
+
+.world-map {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.location-panel {
+    grid-column: 2;
+    grid-row: 1;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.location-image {
+    height: 200px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat; /* Add this */
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border: 1px solid #3a5f85; /* Add border */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* Add shadow */
+}
+
+.character-manager {
+    grid-column: 2;
+    grid-row: 2;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.quest-log {
+    grid-column: 1 / span 2;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.character-card {
+    background: #1a3a5a;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.character-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    margin-right: 10px;
+    background-size: cover;
+}
+
+.quest-item {
+    padding: 8px;
+    margin: 5px 0;
+    background: #1a3a5a;
+    border-left: 3px solid #4ecca3;
+    border-radius: 4px;
+}

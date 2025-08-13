@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procedural Dungeon Generator</title>
+    <style>
+        :root {
+            --primary: #4a6fa5;
+            --secondary: #6b8cbc;
+            --dark: #2c3e50;
+            --light: #ecf0f1;
+            --accent: #e74c3c;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a3a, #2c3e50);
+            color: var(--light);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        header {
+            text-align: center;
+            padding: 20px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #3498db, #e74c3c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .subtitle {
+            font-size: 1rem;
+            color: #bdc3c7;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .content {
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+        
+        .controls {
+            flex: 1;
+            min-width: 300px;
+            background: rgba(30, 40, 50, 0.7);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-group:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .control-group h2 {
+            margin-bottom: 10px;
+            color: #3498db;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        label {
+            min-width: 100px;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        
+        input[type="number"], select {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 5px;
+            width: 100px;
+            font-size: 0.85rem;
+            height: 32px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            max-width: 200px;
+        }
+        
+        .visualization {
+            flex: 2;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .dungeon-display {
+            position: relative;
+            overflow: auto;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background: #1a1a1a;
+        }
+        
+        .dungeon-image {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .stats {
+            background: rgba(30, 40, 50, 0.7);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .stat-card {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #3498db;
+            margin: 5px 0;
+        }
+        
+        .stat-label {
+            color: #bdc3c7;
+            font-size: 0.85rem;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+        
+        button {
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 140px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #generateBtn {
+            background: linear-gradient(to right, #27ae60, #2ecc71);
+        }
+        
+        #randomizeBtn {
+            background: linear-gradient(to right, #e67e22, #f39c12);
+        }
+        
+        /* Legend styling */
+        .legend-panel {
+            background: rgba(30, 40, 50, 0.85);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            margin-top: 15px;
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+
+        .legend-icon {
+            width: 36px;
+            height: 36px;
+            position: relative;
+            border: 1px solid #34495e;
+            background: #ecf0f1;
+        }
+
+        .legend-text {
+            font-size: 0.8rem;
+        }
+        
+        /* NEW: Grid layout for controls */
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .range-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 200px;
+        }
+        
+        #deadEndRemoval {
+            flex: 1;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                flex-direction: column;
+            }
+            
+            .controls, .visualization {
+                width: 100%;
+            }
+            
+            .controls {
+                max-height: none;
+            }
+            
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            input[type="number"], select {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .range-container {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Procedural Dungeon Generator</h1>
+            <p class="subtitle">Generate unique dungeon maps with customizable parameters</p>
+            <button id="togglePanel">☰ Toggle Side Panel</button>
+        </header>
+        
+        <div class="content">
+            <div class="controls">
+                <div class="control-grid">
+                    <!-- Core Parameters Column -->
+                    <div>
+                        <div class="control-group">
+                            <h2>⚙️ Core Parameters</h2>
+                            <div class="control-row">
+                                <label for="seed">Seed:</label>
+                                <input type="number" id="seed" value="12345">
+                            </div>
+                            <div class="control-row">
+                                <label for="rows">Rows (odd):</label>
+                                <input type="number" id="rows" min="5" max="99" step="2" value="39">
+                            </div>
+                            <div class="control-row">
+                                <label for="cols">Columns (odd):</label>
+                                <input type="number" id="cols" min="5" max="99" step="2" value="39">
+                            </div>
+                            <div class="control-row">
+                                <label for="cellSize">Cell Size (px):</label>
+                                <input type="number" id="cellSize" min="5" max="50" value="18">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Room Settings Column -->
+                    <div>
+                        <div class="control-group">
+                            <h2>🏰 Room Settings</h2>
+                            <div class="control-row">
+                                <label for="roomMin">Min Room Size:</label>
+                                <input type="number" id="roomMin" min="2" max="20" value="3">
+                            </div>
+                            <div class="control-row">
+                                <label for="roomMax">Max Room Size:</label>
+                                <input type="number" id="roomMax" min="2" max="20" value="9">
+                            </div>
+                            <div class="control-row">
+                                <label for="roomLayout">Room Layout:</label>
+                                <select id="roomLayout">
+                                    <option value="Packed">Packed</option>
+                                    <option value="Scattered" selected>Scattered</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Corridor Settings -->
+                <div class="control-group">
+                    <h2>🚪 Corridor Settings</h2>
+                    <div class="control-row">
+                        <label for="corridorLayout">Corridor Layout:</label>
+                        <select id="corridorLayout">
+                            <option value="Labyrinth">Labyrinth</option>
+                            <option value="Bent" selected>Bent</option>
+                            <option value="Straight">Straight</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label for="deadEndRemoval">Dead End Removal:</label>
+                        <div class="range-container">
+                            <input type="range" id="deadEndRemoval" min="0" max="100" value="50">
+                            <span id="deadEndValue">50%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Dungeon Layout -->
+                <div class="control-group">
+                    <h2>📐 Dungeon Layout</h2>
+                    <div class="control-row">
+                        <label for="dungeonLayout">Layout Type:</label>
+                        <select id="dungeonLayout">
+                            <option value="None" selected>None</option>
+                            <option value="Box">Box</option>
+                            <option value="Cross">Cross</option>
+                            <option value="Round">Round</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label for="stairs">Stair Count:</label>
+                        <input type="number" id="stairs" min="0" max="10" value="2">
+                    </div>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="buttons">
+                    <button id="generateBtn">🎮 Generate Dungeon</button>
+                    <button id="randomizeBtn">🎲 Randomize Parameters</button>
+                </div>
+                
+                <!-- Stats -->
+                <div class="stats">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="roomCount">0</div>
+                            <div class="stat-label">Rooms Generated</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="doorCount">0</div>
+                            <div class="stat-label">Doors Placed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="corridorCount">0</div>
+                            <div class="stat-label">Corridor Cells</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="size">0x0</div>
+                            <div class="stat-label">Dungeon Size</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization">
+                <div class="dungeon-display">
+                    <img id="dungeonImage" class="dungeon-image" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400' viewBox='0 0 600 400'%3E%3Crect fill='%232c3e50' width='600' height='400'/%3E%3Ctext fill='%233498db' font-family='Arial' font-size='24' text-anchor='middle' x='300' y='190'%3EDungeon Preview%3C/text%3E%3Ctext fill='%23ecf0f1' font-family='Arial' font-size='16' text-anchor='middle' x='300' y='220'%3EParameters will generate a dungeon here%3C/text%3E%3C/svg%3E" alt="Dungeon Map">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const dungeonImage = document.getElementById('dungeonImage');
+            let currentSeed = 12345;
+            
+            // Toggle panel visibility
+            document.getElementById('togglePanel').addEventListener('click', function() {
+                const controls = document.querySelector('.controls');
+                const stats = document.querySelector('.stats');
+                const isVisible = controls.style.display !== 'none';
+                
+                controls.style.display = isVisible ? 'none' : 'block';
+                stats.style.display = isVisible ? 'none' : 'block';
+            });
+            
+            // Update dead end removal value display
+            document.getElementById('deadEndRemoval').addEventListener('input', function() {
+                document.getElementById('deadEndValue').textContent = this.value + '%';
+            });
+            
+            function updateImage() {
+                const params = new URLSearchParams({
+                    seed: document.getElementById('seed').value,
+                    rows: document.getElementById('rows').value,
+                    cols: document.getElementById('cols').value,
+                    cellSize: document.getElementById('cellSize').value,
+                    roomMin: document.getElementById('roomMin').value,
+                    roomMax: document.getElementById('roomMax').value,
+                    roomLayout: document.getElementById('roomLayout').value,
+                    corridorLayout: document.getElementById('corridorLayout').value,
+                    deadEndRemoval: document.getElementById('deadEndRemoval').value,
+                    dungeonLayout: document.getElementById('dungeonLayout').value,
+                    stairs: document.getElementById('stairs').value
+                });
+                
+                // // Generate a placeholder image
+                // const canvas = document.createElement('canvas');
+                // canvas.width = 600;
+                // canvas.height = 400;
+                // const ctx = canvas.getContext('2d');
+                
+                // // Background
+                // ctx.fillStyle = '#2c3e50';
+                // ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // // Text
+                // ctx.fillStyle = '#3498db';
+                // ctx.font = '24px Arial';
+                // ctx.textAlign = 'center';
+                // ctx.fillText('Dungeon Preview', canvas.width/2, canvas.height/2 - 20);
+                // ctx.fillStyle = '#ecf0f1';
+                // ctx.font = '16px Arial';
+                // ctx.fillText('Parameters will generate a dungeon here', canvas.width/2, canvas.height/2 + 20);
+                
+                // dungeonImage.src = canvas.toDataURL();
+                dungeonImage.src = `/dungeon.png?${params.toString()}&t=${Date.now()}`;
+            }
+            
+            function updateStats() {
+                // Simulate stats update
+                document.getElementById('roomCount').textContent = Math.floor(Math.random() * 20) + 5;
+                document.getElementById('doorCount').textContent = Math.floor(Math.random() * 40) + 10;
+                document.getElementById('corridorCount').textContent = Math.floor(Math.random() * 300) + 100;
+                document.getElementById('size').textContent = `${document.getElementById('rows').value}x${document.getElementById('cols').value}`;
+            }
+            
+            function generateDungeon() {
+                updateImage();
+                updateStats();
+            }
+            
+            // Generate button event
+            document.getElementById('generateBtn').addEventListener('click', generateDungeon);
+            
+            // Randomize parameters button
+            document.getElementById('randomizeBtn').addEventListener('click', () => {
+                document.getElementById('seed').value = Math.floor(Math.random() * 100000);
+                document.getElementById('rows').value = 5 + Math.floor(Math.random() * 30) * 2;
+                document.getElementById('cols').value = 5 + Math.floor(Math.random() * 30) * 2;
+                document.getElementById('cellSize').value = 10 + Math.floor(Math.random() * 15);
+                document.getElementById('roomMin').value = 3 + Math.floor(Math.random() * 5);
+                document.getElementById('roomMax').value = 7 + Math.floor(Math.random() * 8);
+                document.getElementById('deadEndRemoval').value = 30 + Math.floor(Math.random() * 70);
+                document.getElementById('deadEndValue').textContent = document.getElementById('deadEndRemoval').value + '%';
+                document.getElementById('stairs').value = Math.floor(Math.random() * 5);
+                
+                generateDungeon();
+            });
+            
+            // Initial setup
+            generateDungeon();
+        });
+    </script>
+</body>
+</html>

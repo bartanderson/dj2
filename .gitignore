@@ -1,10 +1,15 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+Scripts
 *.py[codz]
 *$py.class
 
 # C extensions
 *.so
+
+# image files for testing
+*.png
+*.jpg
 
 # Distribution / packaging
 .Python

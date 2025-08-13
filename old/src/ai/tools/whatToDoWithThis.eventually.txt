@@ -1,0 +1,80 @@
+    def _define_enhanced_tools(self) -> List[Dict[str, Any]]:
+        """Enhanced toolset for AI DM with dungeon manipulation capabilities"""
+        
+        # Add dungeon manipulation tools
+        enhanced_tools = [
+            {
+                "function": {
+                    "name": "generate_dungeon_level",
+                    "description": "Generate a new dungeon level with specific parameters",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "theme": {"type": "string", "enum": ["cavern", "ruins", "fortress", "temple", "labyrinth"]},
+                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard", "deadly"]},
+                            "special_features": {"type": "array", "items": {"type": "string"}}
+                        }
+                    }
+                }
+            },
+            {
+                "function": {
+                    "name": "add_dungeon_feature",
+                    "description": "Add environmental feature to current position",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "feature_type": {"type": "string"},
+                            "feature_data": {"type": "object"}
+                        },
+                        "required": ["feature_type"]
+                    }
+                }
+            },
+            {
+                "function": {
+                    "name": "transform_cell",
+                    "description": "Permanently change cell type at position",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "position": {"type": "array", "items": {"type": "number"}},
+                            "new_type": {"type": "string"}
+                        },
+                        "required": ["position", "new_type"]
+                    }
+                }
+            },
+            {
+                "function": {
+                    "name": "create_npc",
+                    "description": "Create a new NPC with specific characteristics",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "role": {"type": "string"},
+                            "personality": {"type": "string"},
+                            "goals": {"type": "array", "items": {"type": "string"}},
+                            "location": {"type": "array", "items": {"type": "number"}}
+                        },
+                        "required": ["name", "role"]
+                    }
+                }
+            },
+            {
+                "function": {
+                    "name": "generate_quest",
+                    "description": "Create a new quest for the party",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "quest_type": {"type": "string", "enum": ["fetch", "kill", "explore", "escort", "discover"]},
+                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]},
+                            "thematic_elements": {"type": "array", "items": {"type": "string"}}
+                        }
+                    }
+                }
+            }
+        ]
+        return enhanced_tools

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>World Explorer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/world.css') }}">
+</head>
+<body>
+    <div class="world-container">
+        <!-- World Map Display -->
+        <div id="location-preview" class="location-preview"></div>
+        <div class="world-map" id="world-map">
+            <!-- Generated world map will appear here -->
+        </div>
+        
+        <!-- Location Details Panel -->
+        <div class="location-panel">
+            <div class="location-image" id="location-image"></div>
+            <div class="location-description" id="location-description"></div>
+            <div class="location-actions">
+                <button id="explore-location">Explore</button>
+                <button id="talk-to-npcs">Talk to NPCs</button>
+                <button id="manage-inventory">Inventory</button>
+                <button id="enter-dungeon">Enter Dungeon</button>
+            </div>
+        </div>
+        
+        <!-- Character Management -->
+        <div class="character-manager">
+            <h3>Your Party</h3>
+            <div id="party-members"></div>
+            <button id="create-character">Create Character</button>
+            <button id="manage-party">Manage Party</button>
+        </div>
+        
+        <!-- Quest Log -->
+        <div class="quest-log">
+            <h3>Active Quests</h3>
+            <ul id="quest-list"></ul>
+        </div>
+    </div>
+
+<svg id="svg-filters" style="position: absolute; width: 0; height: 0;">
+    <!-- Mountain pattern - simple triangles -->
+    <pattern id="mountainPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+        <path d="M0,15 L15,0 L30,15 Z" fill="#8d99ae" opacity="0.6"/>
+    </pattern>
+    
+    <!-- Forest pattern - simple circles -->
+    <pattern id="forestPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+        <circle cx="10" cy="10" r="4" fill="#2d6a4f" opacity="0.7"/>
+        <circle cx="20" cy="15" r="5" fill="#2d6a4f" opacity="0.7"/>
+    </pattern>
+    
+    <!-- Water pattern - simple waves -->
+    <pattern id="waterPattern" width="40" height="20" patternUnits="userSpaceOnUse">
+        <path d="M0,10 C10,5 20,15 30,10 S40,5 50,10" 
+              stroke="#4d6fb8" fill="none" stroke-width="2"/>
+    </pattern>
+    
+    <!-- Snow pattern - simple dots -->
+    <pattern id="snowPattern" width="10" height="10" patternUnits="userSpaceOnUse">
+        <circle cx="3" cy="3" r="1" fill="white"/>
+        <circle cx="8" cy="8" r="1" fill="white"/>
+    </pattern>
+</svg>
+    
+    <script src="{{ url_for('static', filename='js/world.js') }}"></script>
+</body>
+</html>
