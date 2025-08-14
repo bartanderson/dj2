@@ -272,3 +272,25 @@ def _generate_fallback(self, entity_type: str, **kwargs) -> dict:
     }
     
     return fallbacks.get(entity_type, {})
+
+def generate_tavern_start(theme):
+    return {
+        "id": "starting_tavern",
+        "name": "The Adventurer's Respite",
+        "type": "tavern",
+        "description": (
+            "A bustling establishment where weary travelers gather. "
+            "Notice boards overflow with job postings, and mysterious "
+            "strangers whisper of distant lands. This is where your adventure begins."
+        ),
+        "features": [
+            "Central fireplace", "Notice board", "Private booths", 
+            "Performance stage", "Alchemy corner"
+        ],
+        "services": [
+            "Bartender", "Quest giver", "Innkeeper", 
+            "Local guide", "Merchant"
+        ],
+        "dungeon_type": None,
+        "is_starting_location": True
+    }

@@ -1,7 +1,7 @@
 # world_map.py
 from world.campaign import Location
 from world.utils import convex_hull
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 class WorldMap:
     TERRAIN_COLORS = {
@@ -14,7 +14,7 @@ class WorldMap:
     def __init__(self):
         self.locations: Dict[str, Location] = {}
         self.connections: Dict[str, List[str]] = {}
-        self.current_location: str = None
+        self.current_location_id: Optional[str] = None  # Change to ID
     
     def add_location(self, location: Location):
         self.locations[location.id] = location
@@ -31,13 +31,18 @@ class WorldMap:
     
     def get_location(self, location_id: str) -> Location:
         return self.locations.get(location_id)
+
+    def get_current_location(self) -> Optional[Location]:
+        if self.current_location_id:
+            return self.locations[self.current_location_id]
+        return None
     
     def get_adjacent_locations(self, location_id: str) -> List[Location]:
         return [self.locations[adj_id] for adj_id in self.connections.get(location_id, [])]
     
     def travel_to(self, location_id: str) -> bool:
         if location_id in self.locations:
-            self.current_location = location_id
+            self.current_location_id = location_id
             return True
         return False
     

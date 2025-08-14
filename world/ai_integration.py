@@ -7,7 +7,7 @@ import re
 import json
 
 class DungeonAI:
-    def __init__(self, dungeon_state, ollama_host="http://localhost:11434", seed=None):
+    def __init__(self, dungeon_state=None, ollama_host="http://localhost:11434", seed=None):
         self.state = dungeon_state
         self.ollama = Client(host=ollama_host)
         self.seed = seed
@@ -59,6 +59,24 @@ class DungeonAI:
             "polygon": "points (list of [x,y] coordinates 0.0-1.0)"
         }
         return params.get(primitive, "")
+
+       
+    def generate_travel_description(self, start_loc, end_loc, terrain):
+        prompt = (
+            f"Describe traveling from {start_loc.name} to {end_loc.name} "
+            f"through {terrain} terrain. Include sensory details about the "
+            "environment, weather conditions, and notable features. "
+            "Write in second person perspective."
+        )
+        return self.generate_text(prompt)
+    
+    def generate_encounter_description(self, encounter_type, terrain):
+        prompt = (
+            f"Describe a {encounter_type} encounter in {terrain} terrain. "
+            "Include details about the entities involved and the immediate "
+            "situation. End with a question about how the party responds."
+        )
+        return self.generate_text(prompt) 
 
     def create_dm_prompt(game_state, player_action):
         prompt = f"""
@@ -197,6 +215,15 @@ class DungeonAI:
     def process_command(self, natural_language: str) -> dict:
         #print(f"\n=== FULL SYSTEM PROMPT ===\n{self.system_prompt}\n")
         print(f"\n=== USER COMMAND ===\n{natural_language}\n")
+
+        # If no state, return a simple response
+        if not self.state:
+            return {
+                "success": True,
+                "message": "AI system is running but dungeon state is not available",
+                "debug_info": "No dungeon state provided"
+            }
+            
         # Generate response chunks
         response_chunks = self.ollama.generate(
             #model="deepseek-r1:8b",

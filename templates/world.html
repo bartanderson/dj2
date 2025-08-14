@@ -37,33 +37,95 @@
             <h3>Active Quests</h3>
             <ul id="quest-list"></ul>
         </div>
+
+        <!-- Add to right column -->
+        <div class="dm-chat">
+            <h3>Dungeon Master</h3>
+            
+            <!-- Dialog History -->
+            <div id="dialog-history" class="dialog-history">
+                <div class="dialog-entry">DM: Welcome adventurers!</div>
+            </div>
+            
+            <!-- Current Chat -->
+            <div id="chat-messages" class="chat-messages"></div>
+            
+            <!-- Input -->
+            <div class="chat-input">
+                <input type="text" id="dm-chat-input" placeholder="Ask the DM or describe your action...">
+                <button id="send-chat">Send</button>
+            </div>
+        </div>
+
+        <!-- Travel Interface (hidden by default) -->
+        <div id="travel-interface" class="travel-interface hidden">
+            <div class="travel-header">
+                <h2 id="travel-title">Journey in Progress</h2>
+                <div id="travel-progress">Progress: 0/0</div>
+            </div>
+            
+            <div class="travel-content">
+                <!-- Travel Narration Panel -->
+                <div class="travel-narration" id="travel-narration">
+                    <p>Your journey begins...</p>
+                </div>
+                
+                <!-- Travel Image -->
+                <div class="travel-image" id="travel-image"></div>
+                
+                <!-- Travel Options -->
+                <div class="travel-options" id="travel-options">
+                    <button id="continue-journey">Continue</button>
+                </div>
+                
+                <!-- Encounter Options -->
+                <div class="encounter-options hidden" id="encounter-options"></div>
+            </div>
+        </div>
+        <div id="character-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <div id="character-creation">
+                    <h2>Create Your Character</h2>
+                    <div id="creation-steps">
+                        <!-- Steps will be dynamically inserted here -->
+                    </div>
+                    <div class="step-navigation">
+                        <button id="prev-step">Back</button>
+                        <button id="next-step">Next</button>
+                        <button id="finish-creation" class="hidden">Complete Character</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-<svg id="svg-filters" style="position: absolute; width: 0; height: 0;">
-    <!-- Mountain pattern - simple triangles -->
-    <pattern id="mountainPattern" width="30" height="30" patternUnits="userSpaceOnUse">
-        <path d="M0,15 L15,0 L30,15 Z" fill="#8d99ae" opacity="0.6"/>
-    </pattern>
-    
-    <!-- Forest pattern - simple circles -->
-    <pattern id="forestPattern" width="30" height="30" patternUnits="userSpaceOnUse">
-        <circle cx="10" cy="10" r="4" fill="#2d6a4f" opacity="0.7"/>
-        <circle cx="20" cy="15" r="5" fill="#2d6a4f" opacity="0.7"/>
-    </pattern>
-    
-    <!-- Water pattern - simple waves -->
-    <pattern id="waterPattern" width="40" height="20" patternUnits="userSpaceOnUse">
-        <path d="M0,10 C10,5 20,15 30,10 S40,5 50,10" 
-              stroke="#4d6fb8" fill="none" stroke-width="2"/>
-    </pattern>
-    
-    <!-- Snow pattern - simple dots -->
-    <pattern id="snowPattern" width="10" height="10" patternUnits="userSpaceOnUse">
-        <circle cx="3" cy="3" r="1" fill="white"/>
-        <circle cx="8" cy="8" r="1" fill="white"/>
-    </pattern>
-</svg>
+    <svg id="svg-filters" style="position: absolute; width: 0; height: 0;">
+        <!-- Mountain pattern - simple triangles -->
+        <pattern id="mountainPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+            <path d="M0,15 L15,0 L30,15 Z" fill="#8d99ae" opacity="0.6"/>
+        </pattern>
+        
+        <!-- Forest pattern - simple circles -->
+        <pattern id="forestPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="4" fill="#2d6a4f" opacity="0.7"/>
+            <circle cx="20" cy="15" r="5" fill="#2d6a4f" opacity="0.7"/>
+        </pattern>
+        
+        <!-- Water pattern - simple waves -->
+        <pattern id="waterPattern" width="40" height="20" patternUnits="userSpaceOnUse">
+            <path d="M0,10 C10,5 20,15 30,10 S40,5 50,10" 
+                  stroke="#4d6fb8" fill="none" stroke-width="2"/>
+        </pattern>
+        
+        <!-- Snow pattern - simple dots -->
+        <pattern id="snowPattern" width="10" height="10" patternUnits="userSpaceOnUse">
+            <circle cx="3" cy="3" r="1" fill="white"/>
+            <circle cx="8" cy="8" r="1" fill="white"/>
+        </pattern>
+    </svg>
     
     <script src="{{ url_for('static', filename='js/world.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/travel.js') }}"></script>
 </body>
 </html>

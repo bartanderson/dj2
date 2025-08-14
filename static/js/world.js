@@ -1,3 +1,4 @@
+# static\js\world.js
 // Initialize world state
 let worldState = {
     currentLocation: null,
@@ -48,6 +49,39 @@ async function loadWorldData() {
         renderLocationDetails(null);
     }
 }
+
+// Update party display with more details
+function updatePartyDisplay(party) {
+    const container = document.getElementById('party-members');
+    container.innerHTML = '';
+    
+    party.forEach(character => {
+        const card = document.createElement('div');
+        card.className = 'character-card';
+        card.innerHTML = `
+            <div class="character-avatar" 
+                 style="background-image: url('${character.avatar_url}')"></div>
+            <div class="character-info">
+                <h4>${character.name}</h4>
+                <p>${character.race} ${character.class}</p>
+                <p>Level ${character.level}</p>
+                <div class="health-bar">
+                    <div class="health-fill" style="width: ${(character.current_hp/character.max_hp)*100}%">
+                        ${character.current_hp}/${character.max_hp} HP
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+// Periodically update party display
+setInterval(() => {
+    fetch('/api/get-party')
+        .then(response => response.json())
+        .then(updatePartyDisplay);
+}, 5000);
 
 function renderMinimalMap(locations) {
     const worldMap = document.getElementById('world-map');
@@ -117,6 +151,8 @@ function renderMinimalMap(locations) {
 
 function renderWorldMap(mapData) {
     const worldMap = document.getElementById('world-map');
+    if (!worldMap) return; // Safety check
+    
     worldMap.innerHTML = '';
     
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -168,20 +204,16 @@ function renderWorldMap(mapData) {
                     polygon.setAttribute('fill', "url(#forestPattern)");
                     break;
                 case "ocean":
-                    polygon.setAttribute('fill', "url(#oceanPattern)");
-                    polygon.setAttribute('filter', "url(#deep-water-filter)");
+                    polygon.setAttribute('fill', terrainColors["ocean"]);
                     break;
                 case "coast":
-                    polygon.setAttribute('fill', "url(#waterPattern)");
-                    polygon.setAttribute('filter', "url(#shallow-water-filter)");
+                    polygon.setAttribute('fill', terrainColors["coast"]);
                     break;
                 case "lake":
                     polygon.setAttribute('fill', terrainColors["lake"]);
-                    polygon.setAttribute('filter', "url(#lake-filter)");
                     break;
                 case "river":
                     polygon.setAttribute('fill', terrainColors["river"]);
-                    polygon.setAttribute('filter', "url(#river-filter)");
                     break;
                 case "snowcaps":
                     polygon.setAttribute('fill', terrainColors["snowcaps"]);
@@ -203,7 +235,6 @@ function renderWorldMap(mapData) {
         });
     }
 
-    
     // Draw organic paths safely
     if (mapData.paths && Array.isArray(mapData.paths)) {
         mapData.paths.forEach(path => {
@@ -229,34 +260,53 @@ function renderWorldMap(mapData) {
                     pathElem.setAttribute('stroke-width', '2');
                     break;
                 default:
-                    pathElem.setAttribute('stroke', '#ffffff' /*'#8d6e63'*/);
+                    pathElem.setAttribute('stroke', '#8d6e63');
                     pathElem.setAttribute('stroke-width', '2');
             }
             
             pathElem.setAttribute('fill', 'none');
-            pathElem.setAttribute('stroke-width', '4');
             pathElem.setAttribute('stroke-linecap', 'round');
             pathElem.setAttribute('stroke-linejoin', 'round');
             svg.appendChild(pathElem);
         });
-    }    
+    }
 
+    // === FOG OF WAR LOCATION RENDERING ===
+    // Filter locations based on fog of war
+    const visibleLocations = mapData.fog_of_war 
+        ? mapData.locations.filter(loc => mapData.known_locations.includes(loc.id))
+        : mapData.locations;
     
-    // Draw locations
-    mapData.locations.forEach(location => {
+    // Render only visible locations
+    visibleLocations.forEach(location => {
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.setAttribute('transform', `translate(${location.x},${location.y})`);
         
-        // Base circle
+        // Create location marker circle
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('r', '12');
-        circle.setAttribute('fill', location.isCurrent ? '#4ecca3' : '#3a5f85');
-        circle.setAttribute('stroke', '#fff');
+        
+        // Apply special styling for starting location
+        if (location.id === mapData.starting_location) {
+            circle.setAttribute('fill', '#ff9900');  // Orange for starting tavern
+            circle.setAttribute('stroke', '#ff6600');
+        } 
+        // Regular styling for current location
+        else if (location.isCurrent) {
+            circle.setAttribute('fill', '#4ecca3');  // Green for current location
+            circle.setAttribute('stroke', '#fff');
+        }
+        // Regular styling for other locations
+        else {
+            circle.setAttribute('fill', '#3a5f85');  // Blue for other locations
+            circle.setAttribute('stroke', '#fff');
+        }
+        
         circle.setAttribute('stroke-width', '2');
         circle.setAttribute('data-location-id', location.id);
         circle.classList.add('location-marker');
         
-        // Location type icon
+        // Create location type icon
         let icon;
         if (location.type === "mountain_pass") {
             icon = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -272,23 +322,34 @@ function renderWorldMap(mapData) {
             icon.setAttribute('fill', '#fff');
         }
         
+        // Add elements to group
         group.appendChild(circle);
         group.appendChild(icon);
         
-        // Event handlers
+        // Add event handlers
         group.addEventListener('click', () => travelToLocation(location.id));
         group.addEventListener('mouseenter', () => {
-            document.getElementById('location-preview').textContent = location.name;
+            const preview = document.getElementById('location-preview');
+            if (preview) preview.textContent = location.name;
         });
         group.addEventListener('mouseleave', () => {
-            document.getElementById('location-preview').textContent = '';
+            const preview = document.getElementById('location-preview');
+            if (preview) preview.textContent = '';
         });
         
+        // Add group to SVG
         svg.appendChild(group);
     });
     
+    // Add SVG to DOM
     worldMap.appendChild(svg);
+    
+    // Show tavern introduction if at starting location
+    if (worldState.currentLocation?.id === mapData.starting_location) {
+        showTavernIntroduction();
+    }
 }
+
 // Render location details
 function renderLocationDetails(location) {
     const locationImage = document.getElementById('location-image');
@@ -348,43 +409,36 @@ function renderLocationDetails(location) {
         description.innerHTML = '<p>Error loading location details</p>';
     }
 }
-// function renderLocationDetails(location) {
-//     const locationImage = document.getElementById('location-image');
-//     const description = document.getElementById('location-description');
-    
-//     // Set background image with fallback
-//     if (location.imageUrl) {
-//         locationImage.style.backgroundImage = `url('${location.imageUrl}')`;
-//     } else {
-//         // Create placeholder based on location name
-//         const name = location?.name ? location.name.replace(/ /g, '+') : 'Unknown';
-//         locationImage.style.backgroundImage = 
-//             `url('https://via.placeholder.com/300x200?text=${name}')`;
-//     }
 
-//     // Only proceed if location exists
-//     if (!location) {
-//         console.error("No location data provided");
-//         return;
-//     }
-    
-//     description.innerHTML = `
-//         <h2>${location.name}</h2>
-//         <p>${location.description}</p>
-//         <div class="location-features">
-//             <h4>Features:</h4>
-//             <ul>
-//                 ${location.features.map(f => `<li>${f}</li>`).join('')}
-//             </ul>
-//         </div>
-//         <div class="location-services">
-//             <h4>Services:</h4>
-//             <ul>
-//                 ${location.services.map(s => `<li>${s}</li>`).join('')}
-//             </ul>
-//         </div>
-//     `;
-// }
+function showTavernIntroduction() {
+    const descriptionDiv = document.getElementById('location-description');
+    if (descriptionDiv) {
+        descriptionDiv.innerHTML += `
+            <div class="tavern-intro">
+                <h3>Welcome Adventurer!</h3>
+                <p>This is where your journey begins. Explore the tavern to:</p>
+                <ul>
+                    <li>Form a party with other players</li>
+                    <li>Learn about local quests</li>
+                    <li>Discover rumors of distant lands</li>
+                </ul>
+                <button id="explore-tavern">Begin Exploration</button>
+            </div>
+        `;
+        
+        document.getElementById('explore-tavern').addEventListener('click', startTavernExperience);
+    }
+}
+
+function startTavernExperience() {
+    // Fetch initial rumors
+    fetch(`/api/location/${worldState.currentLocation.id}/rumors`)
+        .then(response => response.json())
+        .then(rumors => {
+            // Display rumors to player
+            showRumors(rumors);
+        });
+}
 
 // Travel to a new location
 async function travelToLocation(locationId) {

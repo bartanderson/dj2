@@ -9,6 +9,7 @@ import json
 import numpy as np
 from collections import defaultdict
 from scipy.ndimage import gaussian_filter
+from world.narrative_system import NarrativeSystem
 # from party_system import PartySystem
 # from dungeon import DungeonSystem
 # from narrative_engine import NarrativeEngine
@@ -24,14 +25,16 @@ class WorldController:
     #     self.party_system = game_state.party_system
     #     self.narrative = game_state.narrative
     #     self.pacing = PacingManager()
-    def __init__(self, world_data, seed=42):
+    def __init__(self, world_data, ai_system, seed=42):
         self.world_map = WorldMap()
         self.quests: Dict[str, Quest] = {}  # Global quest storage
-
-        # Load seed and create deterministic RNG
-        self.seed = world_data.get("seed", 42)
+        self.session_log = []  # Add this line
+        self.seed = world_data.get("seed", seed)
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
+        self.ai_system = ai_system  # Store AI system
+        self.characters = {}  # Store player characters
+        self.narrative_system = NarrativeSystem(self, ai_system)
 
         self.load_world_data(world_data)
         self.current_location = None
@@ -47,6 +50,15 @@ class WorldController:
             "snowcaps": {"color": "#ffffff", "height": 1.0}
         }
 
+        self.fog_of_war = True
+        self.known_locations = set()  # Locations revealed through rumors
+        
+        # Set starting location
+        starting_id = world_data.get("starting_location_id", "starting_tavern")
+        self.starting_location_id = starting_id  # Store for later
+        self.reveal_location(starting_id)
+        self.travel_to_location(starting_id)
+
         # Precompute deterministic terrain data
         self.map_width = 1000
         self.map_height = 800
@@ -56,6 +68,40 @@ class WorldController:
             [loc.to_dict() for loc in self.world_map.locations.values()], 
             self.hexes
         )
+
+    def set_current_scene(self, location_id: str):
+        """Set narrative scene when arriving at a location"""
+        location = self.world_map.get_location(location_id)
+        scene_desc = f"{location.name}: {location.description}"
+        self.narrative_system.set_current_scene(scene_desc)
+    
+    def add_character(self, character_data: dict):
+        """Add a character to the world state"""
+        self.characters[character_data['player_id']] = character_data
+        
+        # Add to narrative system if it exists
+        if hasattr(self, 'narrative_system'):
+            self.narrative_system._initialize_characters()
+
+    def travel_to_location(self, location_id: str) -> bool:
+        if self.world_map.travel_to(location_id):
+            location = self.world_map.get_location(location_id)
+            self.current_location = location
+            
+            # Reveal location when traveled to
+            self.reveal_location(location_id)
+            
+            # First discovery triggers events
+            if not hasattr(location, 'visited') or not location.visited:
+                location.visited = True
+                print(f"Discovered new location: {location.name}")
+                # Add narrative event
+                # Safely log if session_log exists
+                if hasattr(self, 'session_log'):
+                    self.session_log.append(f"First visit to {location.name}")
+            self.set_current_scene(location_id)  # Update narrative scene
+            return True
+        return False
 
 
     def load_world_data(self, world_data):
@@ -70,10 +116,13 @@ class WorldController:
                 y=loc_data.get("y", 0),
                 dungeon_type=loc_data.get("dungeon_type"),
                 dungeon_level=loc_data.get("dungeon_level", 1),
-                image_url=loc_data.get("image_url")
+                image_url=loc_data.get("image_url"),
+                features=loc_data.get("features", []),  # Add this
+                services=loc_data.get("services", [])   # Add this
             )
-            location.features = loc_data.get("features", [])
-            location.services = loc_data.get("services", [])
+            location.discovered = loc_data.get("discovered", False)
+            location.quests = loc_data.get("quests", [])
+
             self.world_map.add_location(location)
 
             # set to True to show locations as they are loaded
@@ -195,30 +244,28 @@ class WorldController:
     def get_location_data(self):
         """Get location data for frontend"""
         return [loc.to_dict() for loc in self.world_map.locations.values()]
-
-    def travel_to_location(self, location_id: str) -> bool:
-        if self.world_map.travel_to(location_id):
-            location = self.world_map.get_location(location_id)
-            self.current_location = location
-            
-            # First discovery triggers events
-            if not location.discovered:
-                location.discovered = True
-                #self.narrative.on_location_discovered(location)
-                #self.pacing.on_discovery_event()
-                print(f"Discovered new location: {location.name}")
-
-                # Update game state
-                self.current_location = location            
-            return True
-        return False
-
     
     def get_current_location_data(self) -> dict:
         if not self.current_location:
             return {}
         return self.current_location.to_dict()
-        
+
+    def reveal_location(self, location_id: str):
+        """Mark location as discovered"""
+        if location_id in self.world_map.locations:
+            self.known_locations.add(location_id)
+            location = self.world_map.locations[location_id]
+            location.discovered = True
+            
+            # First discovery triggers events
+            if not hasattr(location, 'discovered_count'):
+                location.discovered_count = 0
+            location.discovered_count += 1
+            
+            # Safely add to session log if it exists
+            if hasattr(self, 'session_log'):
+                self.session_log.append(f"Discovered {location.name}")
+            
     def get_map_data(self) -> dict:
         """Get complete map data for rendering"""
         locations = []
@@ -240,7 +287,7 @@ class WorldController:
         
         # Generate paths between locations
         paths = self.paths
-        currentLocation = self.current_location.id if self.current_location else None
+        currentLocation = self.world_map.current_location_id
         # print(f"len(hexes) {len(hexes)}")
         # print(f"paths {paths}")
         return {
@@ -261,8 +308,35 @@ class WorldController:
                 "hills": "#8d9946",
                 "mountains": "#8d99ae",
                 "snowcaps": "#ffffff"
-            }
+            },
+            "fog_of_war": self.fog_of_war,
+            "known_locations": list(self.known_locations),
+            "starting_location": self.starting_location_id
         }
+
+    def get_rumors(self, location_id: str) -> list:
+        """Generate 3 rumors about nearby locations"""
+        location = self.world_map.get_location(location_id)
+        if not location:
+            return []
+        
+        # Get nearby locations (excluding current)
+        nearby = sorted(
+            [loc for loc in self.world_map.locations.values() if loc.id != location_id],
+            key=lambda l: ((l.x - location.x)**2 + (l.y - location.y)**2)
+        )[:3]  # Get 3 closest
+        
+        directions = ["north", "northeast", "east", "southeast", 
+                     "south", "southwest", "west", "northwest"]
+        
+        rumors = []
+        for loc in nearby:
+            dx, dy = loc.x - location.x, loc.y - location.y
+            angle = math.atan2(dy, dx)
+            dir_idx = int((angle + math.pi) / (math.pi/4)) % 8
+            rumors.append(f"Travelers speak of {loc.name} to the {directions[dir_idx]}")
+        
+        return rumors
 
     def debug_terrain_distribution(self, terrain_grid):
         from collections import defaultdict

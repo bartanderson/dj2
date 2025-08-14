@@ -1,7 +1,34 @@
 {
   "locations": [
     {
-      "id": "loc_0_0_ac6b4110",
+      "id": "starting_tavern",
+      "name": "The Adventurer's Respite",
+      "type": "tavern",
+      "description": "A bustling establishment where weary travelers gather. Notice boards overflow with job postings, and mysterious strangers whisper of distant lands. This is where your adventure begins.",
+      "x": 500,
+      "y": 400,
+      "dungeon_type": null,
+      "dungeon_level": 0,
+      "features": [
+        "Central fireplace",
+        "Notice board",
+        "Private booths",
+        "Performance stage"
+      ],
+      "services": [
+        "Bartender",
+        "Quest giver",
+        "Innkeeper",
+        "Local guide"
+      ],
+      "image_url": "/static/tavern.jpg",
+      "discovered": false,
+      "quests": [
+        "quest_tavern_intro"
+      ]
+    },
+    {
+      "id": "loc_0_0_0c085c19",
       "name": "Gloomfellkeep",
       "type": "town",
       "description": "A town known for its mysterious past",
@@ -20,12 +47,12 @@
         "Temple",
         "Tavern"
       ],
-      "image_url": "/static/world_images/loc-loc_0_0_ac6b4110.jpg",
+      "image_url": "/static/world_images/loc-loc_0_0_0c085c19.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_0_1_e4c968e7",
+      "id": "loc_0_1_fe139103",
       "name": "GloomPeak",
       "type": "mountain",
       "description": "A mountain known for its ancient guardians",
@@ -38,12 +65,12 @@
         "Sacred Spring"
       ],
       "services": [],
-      "image_url": "/static/world_images/loc-loc_0_1_e4c968e7.jpg",
+      "image_url": "/static/world_images/loc-loc_0_1_fe139103.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_0_2_54cfdad6",
+      "id": "loc_0_2_9acc78ac",
       "name": "Bonepeak Ruins",
       "type": "ruin",
       "description": "A ruin known for its dark secrets",
@@ -56,12 +83,12 @@
         "Haunted Grounds"
       ],
       "services": [],
-      "image_url": "/static/world_images/loc-loc_0_2_54cfdad6.jpg",
+      "image_url": "/static/world_images/loc-loc_0_2_9acc78ac.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_0_3_3e370908",
+      "id": "loc_0_3_a4ccbcd5",
       "name": "Ravenash",
       "type": "village",
       "description": "A village known for its dark secrets",
@@ -78,12 +105,12 @@
         "General Store",
         "Meeting Hall"
       ],
-      "image_url": "/static/world_images/loc-loc_0_3_3e370908.jpg",
+      "image_url": "/static/world_images/loc-loc_0_3_a4ccbcd5.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_1_0_1bfcb5a7",
+      "id": "loc_1_0_8e631089",
       "name": "Dreadscarkeep",
       "type": "town",
       "description": "A town known for its strategic importance",
@@ -102,12 +129,12 @@
         "Temple",
         "Tavern"
       ],
-      "image_url": "/static/world_images/loc-loc_1_0_1bfcb5a7.jpg",
+      "image_url": "/static/world_images/loc-loc_1_0_8e631089.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_1_1_d665a0c3",
+      "id": "loc_1_1_0e535545",
       "name": "Blackfenrest",
       "type": "forest",
       "description": "A forest known for its dark secrets",
@@ -120,12 +147,12 @@
         "Sacred Grounds"
       ],
       "services": [],
-      "image_url": "/static/world_images/loc-loc_1_1_d665a0c3.jpg",
+      "image_url": "/static/world_images/loc-loc_1_1_0e535545.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_1_2_32d1a7b0",
+      "id": "loc_1_2_9475535b",
       "name": "ViperSummit",
       "type": "mountain",
       "description": "A mountain known for its ancient guardians",
@@ -138,12 +165,12 @@
         "Sacred Woods"
       ],
       "services": [],
-      "image_url": "/static/world_images/loc-loc_1_2_32d1a7b0.jpg",
+      "image_url": "/static/world_images/loc-loc_1_2_9475535b.jpg",
       "discovered": false,
       "quests": []
     },
     {
-      "id": "loc_1_3_2cd336d1",
+      "id": "loc_1_3_fee27e66",
       "name": "Crowwoundwatch",
       "type": "forest",
       "description": "A forest known for its ancient guardians",
@@ -156,14 +183,14 @@
         "Cursed Woods"
       ],
       "services": [],
-      "image_url": "/static/world_images/loc-loc_1_3_2cd336d1.jpg",
+      "image_url": "/static/world_images/loc-loc_1_3_fee27e66.jpg",
       "discovered": false,
       "quests": []
     }
   ],
   "factions": [
     {
-      "id": "fac_a0c85beb",
+      "id": "fac_6bce564e",
       "name": "Circle of Serpentgravewatch",
       "ideology": "Power-hungry cult seeking forbidden knowledge",
       "goals": [
@@ -176,7 +203,20 @@
   ],
   "quests": [
     {
-      "id": "quest_3410ce10",
+      "id": "quest_tavern_intro",
+      "title": "The First Meeting",
+      "description": "Gather information and form alliances at The Adventurer's Respite",
+      "objectives": [
+        "Speak to 3 NPCs",
+        "Learn about the region",
+        "Form a party"
+      ],
+      "location_id": "starting_tavern",
+      "completed": false,
+      "dungeon_required": false
+    },
+    {
+      "id": "quest_b68a2c2b",
       "title": "Gloomfellkeep's Secret",
       "description": "Investigate the ancient artifact in Gloomfellkeep",
       "objectives": [
@@ -184,12 +224,12 @@
         "Confront the beast",
         "Purify the artifact"
       ],
-      "location_id": "loc_0_0_ac6b4110",
+      "location_id": "loc_0_0_0c085c19",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "quest_413ca4bd",
+      "id": "quest_ce310274",
       "title": "The Ashes of GloomPeak",
       "description": "Recover the ancient artifact in GloomPeak",
       "objectives": [
@@ -197,12 +237,12 @@
         "Negotiate with the guardian",
         "Retrieve the relic"
       ],
-      "location_id": "loc_0_1_e4c968e7",
+      "location_id": "loc_0_1_fe139103",
       "completed": false,
       "dungeon_required": false
     },
     {
-      "id": "quest_248ce4da",
+      "id": "quest_aaa6cf0a",
       "title": "Bleak Reckoning",
       "description": "Recover the cursed relic in Bonepeak Ruins",
       "objectives": [
@@ -210,12 +250,12 @@
         "Negotiate with the beast",
         "Retrieve the source"
       ],
-      "location_id": "loc_0_2_54cfdad6",
+      "location_id": "loc_0_2_9acc78ac",
       "completed": false,
       "dungeon_required": false
     },
     {
-      "id": "quest_73134ac2",
+      "id": "quest_d5fceab5",
       "title": "The Blackwatch Affair",
       "description": "Investigate the forbidden tome in Ravenash",
       "objectives": [
@@ -223,12 +263,12 @@
         "Confront the beast",
         "Destroy the source"
       ],
-      "location_id": "loc_0_3_3e370908",
+      "location_id": "loc_0_3_a4ccbcd5",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "quest_3ac3f801",
+      "id": "quest_7a9747fb",
       "title": "The Gloomhollow Affair",
       "description": "Destroy the ancient artifact in Dreadscarkeep",
       "objectives": [
@@ -236,12 +276,12 @@
         "Negotiate with the guardian",
         "Retrieve the artifact"
       ],
-      "location_id": "loc_1_0_1bfcb5a7",
+      "location_id": "loc_1_0_8e631089",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "quest_317370c0",
+      "id": "quest_befbb36d",
       "title": "Hidden Bone",
       "description": "Recover the ancient artifact in Blackfenrest",
       "objectives": [
@@ -249,12 +289,12 @@
         "Confront the guardian",
         "Purify the source"
       ],
-      "location_id": "loc_1_1_d665a0c3",
+      "location_id": "loc_1_1_0e535545",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "quest_569af66a",
+      "id": "quest_d4e55277",
       "title": "Bleak Reckoning: Chapter 1",
       "description": "Investigate the ancient artifact in ViperSummit",
       "objectives": [
@@ -262,12 +302,12 @@
         "Evade the guardian",
         "Purify the relic"
       ],
-      "location_id": "loc_1_2_32d1a7b0",
+      "location_id": "loc_1_2_9475535b",
       "completed": false,
       "dungeon_required": true
     },
     {
-      "id": "quest_1d3c681d",
+      "id": "quest_2792f36d",
       "title": "The Blood of Crowwoundwatch",
       "description": "Destroy the cursed relic in Crowwoundwatch",
       "objectives": [
@@ -275,10 +315,11 @@
         "Evade the spirit",
         "Retrieve the relic"
       ],
-      "location_id": "loc_1_3_2cd336d1",
+      "location_id": "loc_1_3_fee27e66",
       "completed": false,
       "dungeon_required": true
     }
   ],
-  "seed": 42
+  "seed": 42,
+  "starting_location_id": "starting_tavern"
 }

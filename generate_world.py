@@ -8,6 +8,63 @@ from world.t2i import TextToImage  # New image generator
 import uuid
 import time
 
+def create_starting_tavern(theme="fantasy"):
+    return Location(
+        id="starting_tavern",
+        name="The Adventurer's Respite",
+        type="tavern",
+        description=(
+            "A bustling establishment where weary travelers gather. "
+            "Notice boards overflow with job postings, and mysterious "
+            "strangers whisper of distant lands. This is where your adventure begins."
+        ),
+        x=500,  # Center of the map
+        y=400,
+        features=["Central fireplace", "Notice board", "Private booths", "Performance stage"],
+        services=["Bartender", "Quest giver", "Innkeeper", "Local guide"],
+        dungeon_type=None,
+        dungeon_level=0,
+        image_url="/static/tavern.jpg"  # Default image
+    )
+
+def generate_location_image_prompt(location_data, theme, location_type):
+    """Create robust prompt for location image generation"""
+    # Base description
+    prompt = f"{theme} {location_type}: {location_data['name']}"
+    
+    # Add description details
+    if location_data.get('description'):
+        desc = location_data['description'][:200].replace('\n', ' ').strip()
+        if desc:
+            prompt += f", {desc}"
+    
+    # Add features if available
+    if location_data.get('features'):
+        features = ", ".join(location_data['features'][:3])
+        prompt += f", featuring {features}"
+    
+    # Add quality boosters
+    prompt += ", detailed, atmospheric, fantasy art, digital painting"
+    
+    # Ensure minimum length
+    if len(prompt) < 30:
+        prompt += ", imaginative fantasy landscape"
+    
+    return prompt
+
+def save_world(world_state, filename, seed):
+    """Save world state to JSON file"""
+    data = {
+        "locations": [loc.to_dict() for loc in world_state.locations.values()],
+        "factions": [fac.to_dict() for fac in world_state.factions.values()],
+        "quests": [q.to_dict() for q in world_state.quests.values()],
+        "seed": seed
+    }
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+
 class MinimalState:
     """Dummy state for AI initialization"""
     def __init__(self):
@@ -36,7 +93,8 @@ class NameGenerator:
                 "titles": ["Light", "Hope", "Crown", "Sword", "Shield", "Dragon", "Star", "Moon"]
             }
         }
-    
+   
+
     def generate_name(self, base_type, theme="dark_fantasy", location_type=None):
         """Generate unique thematic name"""
         theme_data = self.themes.get(theme, self.themes["dark_fantasy"])
@@ -95,48 +153,24 @@ class NameGenerator:
         self.used_names.add(title)
         return title
 
-def generate_location_image_prompt(location_data, theme, location_type):
-    """Create robust prompt for location image generation"""
-    # Base description
-    prompt = f"{theme} {location_type}: {location_data['name']}"
-    
-    # Add description details
-    if location_data.get('description'):
-        desc = location_data['description'][:200].replace('\n', ' ').strip()
-        if desc:
-            prompt += f", {desc}"
-    
-    # Add features if available
-    if location_data.get('features'):
-        features = ", ".join(location_data['features'][:3])
-        prompt += f", featuring {features}"
-    
-    # Add quality boosters
-    prompt += ", detailed, atmospheric, fantasy art, digital painting"
-    
-    # Ensure minimum length
-    if len(prompt) < 30:
-        prompt += ", imaginative fantasy landscape"
-    
-    return prompt
 
 
-def generate_unique_name(base_name, existing_names, theme, location_type, seed, region_idx, loc_idx):
-    """Generate unique name with thematic modifiers"""
-    modifiers = {
-        "dark_fantasy": [
-            "Black", "Shadow", "Gloom", "Dread", "Bleak", "Ashen", "Crimson", 
-            "Dire", "Grim", "Raven", "Vile", "Forsaken", "Doom", "Wraith"
-        ],
-        "generic": [
-            "North", "South", "East", "West", "Upper", "Lower", "New", "Old",
-            "Port", "Fort", "Crossing", "Bridge", "Haven", "Hold", "Spire"
-        ],
-        "features": [
-            "Falls", "Peak", "Vale", "Wood", "Marsh", "Crag", "Hollow", "Gorge",
-            "Cliff", "Summit", "Pass", "Reach", "Watch", "Keep", "Sanctum"
-        ]
-    }
+    def generate_unique_name(base_name, existing_names, theme, location_type, seed, region_idx, loc_idx):
+        """Generate unique name with thematic modifiers"""
+        modifiers = {
+            "dark_fantasy": [
+                "Black", "Shadow", "Gloom", "Dread", "Bleak", "Ashen", "Crimson", 
+                "Dire", "Grim", "Raven", "Vile", "Forsaken", "Doom", "Wraith"
+            ],
+            "generic": [
+                "North", "South", "East", "West", "Upper", "Lower", "New", "Old",
+                "Port", "Fort", "Crossing", "Bridge", "Haven", "Hold", "Spire"
+            ],
+            "features": [
+                "Falls", "Peak", "Vale", "Wood", "Marsh", "Crag", "Hollow", "Gorge",
+                "Cliff", "Summit", "Pass", "Reach", "Watch", "Keep", "Sanctum"
+            ]
+        }
 
 def generate_world(theme="dark_fantasy", region_count=3, locations_per_region=4, seed=42):
     # Set all random seeds
@@ -156,6 +190,25 @@ def generate_world(theme="dark_fantasy", region_count=3, locations_per_region=4,
     
     # Initialize world state
     world = WorldState()
+
+    # Add starting tavern - MUST BE FIRST LOCATION
+    tavern = create_starting_tavern(theme)
+    world.add_location(tavern)
+    print(f"Added starting tavern at ({tavern.x}, {tavern.y})")
+    
+    # Generate starting quest
+    starting_quest = Quest(
+        id="quest_tavern_intro",
+        title="The First Meeting",
+        description="Gather information and form alliances at The Adventurer's Respite",
+        objectives=["Speak to 3 NPCs", "Learn about the region", "Form a party"],
+        location_id=tavern.id,
+        dungeon_required=False
+    )
+    world.add_quest(starting_quest)
+
+    # Add starting quest to tavern
+    tavern.quests.append(starting_quest.id)
     
     # Initialize image generator
     model_path = Path.home() / ".sdkit" / "models" / "stable-diffusion" / "realisticVisionV60B1_v51VAE.safetensors"
@@ -302,20 +355,23 @@ def generate_world(theme="dark_fantasy", region_count=3, locations_per_region=4,
             json.dump(failures, f, indent=2)
         print(f"Saved failure details to: {failure_file}")
     
-    # Save generated world
-    save_world(world, f"{theme}_world.json", seed)
-    print(f"\nWorld generation complete! Saved to {theme}_world.json")
+    # # Save generated world
+    # save_world(world, f"{theme}_world.json", seed)
+    # print(f"\nWorld generation complete! Saved to {theme}_world.json")
 
-def save_world(world_state, filename, seed):
-    """Save world state to JSON file"""
-    data = {
-        "locations": [loc.to_dict() for loc in world_state.locations.values()],
-        "factions": [fac.to_dict() for fac in world_state.factions.values()],
-        "quests": [q.to_dict() for q in world_state.quests.values()],
-        "seed": seed
+    # Return world data with starting location marked
+    world_data = {
+        "locations": [loc.to_dict() for loc in world.locations.values()],
+        "factions": [fac.to_dict() for fac in world.factions.values()],
+        "quests": [q.to_dict() for q in world.quests.values()],
+        "seed": seed,
+        "starting_location_id": tavern.id  # Critical for WorldController
     }
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=2)
+    return world_data  # Instead of saving directly
+
 
 if __name__ == "__main__":
-    generate_world(theme="dark_fantasy", region_count=2)
+    world_data = generate_world(theme="dark_fantasy", region_count=2)
+    with open("dark_fantasy_world.json", "w") as f:
+        json.dump(world_data, f, indent=2)
+    print(f"World generation complete! Saved to dark_fantasy_world.json")

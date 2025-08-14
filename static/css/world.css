@@ -68,21 +68,42 @@
     padding: 15px;
 }
 
+.health-bar {
+    height: 20px;
+    background: #333;
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.health-fill {
+    height: 100%;
+    background: #d9534f;
+    transition: width 0.5s;
+    color: white;
+    font-size: 12px;
+    text-align: center;
+    line-height: 20px;
+}
+
 .character-card {
-    background: #1a3a5a;
+    display: flex;
     padding: 10px;
     margin: 5px 0;
+    background: #1a3a5a;
     border-radius: 4px;
-    display: flex;
-    align-items: center;
 }
 
 .character-avatar {
-    width: 50px;
-    height: 50px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
-    margin-right: 10px;
     background-size: cover;
+    margin-right: 10px;
+}
+
+.character-info {
+    flex-grow: 1;
 }
 
 .quest-item {
@@ -91,4 +112,286 @@
     background: #1a3a5a;
     border-left: 3px solid #4ecca3;
     border-radius: 4px;
+}
+
+.tavern-intro {
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid #d4af37;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.tavern-intro h3 {
+    color: #ffcc00;
+    margin-top: 0;
+}
+
+.tavern-intro button {
+    background: #d4af37;
+    color: #000;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.tavern-rumors {
+    margin-top: 15px;
+    border-top: 1px solid #444;
+    padding-top: 10px;
+}
+
+/* Travel Interface */
+.travel-interface {
+    grid-column: 1 / span 2;
+    grid-row: 1 / span 3;
+    background: #0a1929;
+    border: 2px solid #2c5282;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+}
+
+.travel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2c5282;
+}
+
+.travel-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: 1fr auto;
+    gap: 15px;
+    flex-grow: 1;
+}
+
+.travel-narration {
+    grid-column: 1;
+    grid-row: 1;
+    background: rgba(0, 10, 20, 0.7);
+    border: 1px solid #3a5f85;
+    border-radius: 6px;
+    padding: 15px;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-size: 16px;
+}
+
+.travel-image {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    background-size: cover;
+    background-position: center;
+    border-radius: 6px;
+    border: 1px solid #3a5f85;
+}
+
+.travel-options {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+}
+
+.encounter-options {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+}
+
+.travel-options button, .encounter-options button {
+    background: #2c5282;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.travel-options button:hover, .encounter-options button:hover {
+    background: #3a5f85;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Character Creation Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.7);
+}
+
+.modal-content {
+    background: #0d2136;
+    margin: 10% auto;
+    padding: 20px;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 600px;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.creation-step {
+    display: none;
+    padding: 15px;
+    border: 1px solid #3a5f85;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.creation-step.active {
+    display: block;
+}
+
+.step-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+}
+
+.option-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.option-card {
+    background: #1a3a5a;
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: 2px solid transparent;
+}
+
+.option-card:hover {
+    background: #2a4a6a;
+    border-color: #4ecca3;
+}
+
+.option-card.selected {
+    background: #2a5a7a;
+    border-color: #ffcc00;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+}
+
+/* DM Chat Panel */
+.dm-chat {
+    grid-column: 2;
+    grid-row: 2;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    height: 300px;
+}
+
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.chat-input {
+    display: flex;
+}
+
+.chat-input input {
+    flex-grow: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #3a5f85;
+    background: #0a1929;
+    color: white;
+}
+
+.chat-input button {
+    margin-left: 5px;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.message.player {
+    background: rgba(30, 60, 100, 0.7);
+    align-self: flex-end;
+}
+
+.message.dm {
+    background: rgba(80, 40, 20, 0.7);
+    align-self: flex-start;
+}
+
+/* Dialog History */
+.dialog-history {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.dialog-entry {
+    padding: 3px 0;
+    border-bottom: 1px solid #333;
+}
+
+/* Message styling */
+.message.dm {
+    background: rgba(90, 50, 30, 0.7);
+}
+
+.message.npc {
+    background: rgba(30, 60, 30, 0.7);
+}
+
+.message.system {
+    background: rgba(30, 30, 60, 0.7);
+    font-style: italic;
 }

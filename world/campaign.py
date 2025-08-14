@@ -5,7 +5,9 @@ class Location:
     def __init__(self, id: str, name: str, type: str, description: str, 
                  x: int = 0, y: int = 0,  # Add coordinates here
                  dungeon_type: Optional[str] = None, dungeon_level: int = 1,
-                 image_url: Optional[str] = None):
+                 image_url: Optional[str] = None,
+                 features: Optional[List[str]] = None,  # Add this parameter
+                 services: Optional[List[str]] = None):  # Add this parameter
         self.id = id
         self.name = name
         self.type = type
@@ -14,8 +16,8 @@ class Location:
         self.y = y  
         self.dungeon_type = dungeon_type
         self.dungeon_level = dungeon_level
-        self.features: List[str] = []
-        self.services: List[str] = []
+        self.features = features or []  # Initialize with empty list if None
+        self.services = services or []   # Initialize with empty list if None
         self.image_url = image_url
         self.discovered = False
         self.quests: List[str] = []  # Store quest IDs, not objects
