@@ -225,13 +225,16 @@ class CharacterCreator {
     }
 
     completeCharacter() {
+        // Add this initialization
+        if (!this.creationState) {
+            this.creationState = { step: 0 };
+        }
         // Save text-based fields
         this.characterData.personality = document.getElementById('personality-traits').value;
         this.characterData.ideals = document.getElementById('character-ideals').value;
         this.characterData.bonds = document.getElementById('character-bonds').value;
         this.characterData.flaws = document.getElementById('character-flaws').value;
         
-        // Save character to server
         fetch('/api/create-character', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -239,11 +242,81 @@ class CharacterCreator {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
+            if (data.success && data.id) {
                 this.modal.classList.add('hidden');
-                // Add character to party UI
-                this.addCharacterToParty(data.character);
+                
+                // Show party assignment UI instead of automatically adding to party
+                showPartyAssignmentDialog(data.character, data.id);
             }
+        });
+    }
+
+    function showPartyAssignmentDialog(character, charId) {
+        const dialog = document.createElement('div');
+        dialog.className = 'party-assignment-dialog';
+        dialog.innerHTML = `
+            <h3>Assign ${character.name} to a Party</h3>
+            <div class="party-options" id="party-options"></div>
+            <div class="dialog-actions">
+                <button id="create-new-party-btn">Create New Party</button>
+                <button id="assign-solo-btn">Explore Solo</button>
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+        
+        // Fetch available parties and populate options
+        fetch('/api/parties')
+            .then(response => response.json())
+            .then(data => {
+                const optionsContainer = document.getElementById('party-options');
+                data.parties.forEach(party => {
+                    const option = document.createElement('div');
+                    option.className = 'party-option';
+                    option.innerHTML = `
+                        <input type="radio" name="party" value="${party.id}" id="party-${party.id}">
+                        <label for="party-${party.id}">${party.name} (${party.members.length} members)</label>
+                    `;
+                    optionsContainer.appendChild(option);
+                });
+            });
+        
+        // Handle button clicks
+        document.getElementById('create-new-party-btn').addEventListener('click', () => {
+            const name = prompt("Enter new party name:");
+            if (name) {
+                fetch('/api/create-party', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name, members: [charId]})
+                }).then(() => {
+                    dialog.remove();
+                    refreshWorldState();
+                });
+            }
+        });
+        
+        document.getElementById('assign-solo-btn').addEventListener('click', () => {
+            // Character will explore solo (not in any party)
+            dialog.remove();
+            refreshWorldState();
+        });
+        
+        // Handle party selection
+        document.querySelectorAll('.party-option input').forEach(input => {
+            input.addEventListener('change', () => {
+                fetch('/api/add-to-party', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        char_id: charId,
+                        party_id: input.value
+                    })
+                }).then(() => {
+                    dialog.remove();
+                    refreshWorldState();
+                });
+            });
         });
     }
 

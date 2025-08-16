@@ -1,4 +1,4 @@
-# static\js\world.js
+// static\js\world.js
 // Initialize world state
 let worldState = {
     currentLocation: null,
@@ -30,6 +30,9 @@ async function loadWorldData() {
         } else {
             renderLocationDetails(null); // Handle no current location
         }
+
+        // Update party display with data from world-state
+        updatePartyDisplay(data.party || []);
     } catch (error) {
         console.error('Error loading world data:', error);
         
@@ -47,41 +50,128 @@ async function loadWorldData() {
         
         renderMinimalMap(locations);
         renderLocationDetails(null);
+        updatePartyDisplay([]);  // Show empty party
     }
 }
 
-// Update party display with more details
-function updatePartyDisplay(party) {
-    const container = document.getElementById('party-members');
+function updatePartyDisplay(parties, characters) {
+    const container = document.getElementById('party-list');
+    if (!container) return;
+    
     container.innerHTML = '';
     
-    party.forEach(character => {
-        const card = document.createElement('div');
-        card.className = 'character-card';
-        card.innerHTML = `
-            <div class="character-avatar" 
-                 style="background-image: url('${character.avatar_url}')"></div>
-            <div class="character-info">
-                <h4>${character.name}</h4>
-                <p>${character.race} ${character.class}</p>
-                <p>Level ${character.level}</p>
-                <div class="health-bar">
-                    <div class="health-fill" style="width: ${(character.current_hp/character.max_hp)*100}%">
-                        ${character.current_hp}/${character.max_hp} HP
+    parties.forEach(party => {
+        const partyCard = document.createElement('div');
+        partyCard.className = 'party-card';
+        
+        let membersHTML = '';
+        party.members.forEach(char_id => {
+            const char = characters[char_id];
+            membersHTML += `
+                <div class="party-member">
+                    <div class="member-avatar" 
+                         style="background-image: url('${char.avatar_url}')">
                     </div>
+                    <span>${char.name}</span>
+                    <button class="remove-member" data-char="${char_id}">Remove</button>
                 </div>
+            `;
+        });
+        
+        partyCard.innerHTML = `
+            <h4>${party.name}</h4>
+            <div class="party-members">${membersHTML}</div>
+            <div class="party-actions">
+                <button class="disband-party" data-party="${party.id}">Disband</button>
             </div>
         `;
-        container.appendChild(card);
+        
+        container.appendChild(partyCard);
+    });
+    
+    // Add event listeners
+    document.querySelectorAll('.remove-member').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const char_id = btn.dataset.char;
+            fetch('/api/remove-from-party', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({char_id})
+            }).then(refreshWorldState);
+        });
+    });
+    
+    document.querySelectorAll('.disband-party').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const party_id = btn.dataset.party;
+            fetch(`/api/disband-party/${party_id}`, {method: 'POST'})
+                .then(refreshWorldState);
+        });
+    });
+    
+    document.getElementById('create-new-party').addEventListener('click', () => {
+        const name = prompt("Enter new party name:");
+        if (name) {
+            fetch('/api/create-party', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name})
+            }).then(refreshWorldState);
+        }
     });
 }
 
-// Periodically update party display
-setInterval(() => {
-    fetch('/api/get-party')
-        .then(response => response.json())
-        .then(updatePartyDisplay);
-}, 5000);
+async function refreshWorldState() {
+    try {
+        const response = await fetch('/api/world-state');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Update world map and location details
+        renderWorldMap(data.worldMap);
+        
+        if (data.currentLocation) {
+            worldState.currentLocation = data.currentLocation;
+            renderLocationDetails(data.currentLocation);
+        } else {
+            renderLocationDetails(null);
+        }
+        
+        // Update party display with new party data
+        updatePartyDisplay(data.parties, data.characters);
+        
+        // Update other UI elements as needed
+        updateQuestLog(data.activeQuests);
+        updateInventory(data.inventory);
+        
+    } catch (error) {
+        console.error('Error refreshing world state:', error);
+        // Handle errors gracefully
+    }
+}
+
+function updateQuestLog(worldData) {
+    // Implement your quest log updating logic here
+    console.log("Updating quest log with:", worldData.quests);
+    
+    // Example implementation:
+    const questLogElement = document.getElementById('quest-log');
+    if (questLogElement) {
+        questLogElement.innerHTML = worldData.quests
+            .map(quest => `<div class="quest">${quest.name}: ${quest.description}</div>`)
+            .join('');
+    }
+}
+
+setInterval(refreshWorldState, 5000);
+
+// Also call it on initial load
+window.addEventListener('load', () => {
+    refreshWorldState();
+});
 
 function renderMinimalMap(locations) {
     const worldMap = document.getElementById('world-map');
@@ -462,6 +552,7 @@ window.addEventListener('load', () => {
     //document.getElementById('manage-inventory').addEventListener('click', openInventory);
     //document.getElementById('talk-to-npcs').addEventListener('click', talkToNPCs);
 });
+
 
 // Enter dungeon from current location
 function enterDungeon() {

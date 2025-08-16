@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, render_template, send_from_directory
+from flask import Flask, jsonify, render_template, send_from_directory, session, current_app
+import random
+import uuid
 import json
 from world.world_controller import WorldController
 from world.world_map import WorldMap
 from world.ai_integration import DungeonAI
-
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ with open('dark_fantasy_world.json', 'r') as f:
 ai_system = DungeonAI(dungeon_state=None, ollama_host="http://localhost:11434")
 
 # Initialize world controller
-controller = WorldController(world_data, ai_system, seed=42)
+world_controller = WorldController(world_data, ai_system, seed=42)
 
 # Temporary storage (replace with database in production)
 character_database = {}
@@ -71,62 +72,81 @@ def index():
 def start_journey():
     data = request.get_json()
     destination_id = data.get('destination_id')
-    success = controller.travel_system.start_journey(destination_id)
+    success = world_controller.travel_system.start_journey(destination_id)
     return jsonify({"success": success})
 
 @app.route('/api/travel-progress', methods=['GET'])
 def travel_progress():
-    progress = controller.travel_system.progress_journey()
+    progress = world_controller.travel_system.progress_journey()
     return jsonify(progress)
 
 @app.route('/api/resolve-encounter', methods=['POST'])
 def resolve_encounter():
     data = request.get_json()
     choice = data.get('choice')
-    result = controller.travel_system.resolve_encounter(choice)
+    result = world_controller.travel_system.resolve_encounter(choice)
     return jsonify({"result": result})
 
 
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
+    print("got here dm-response")
     data = request.get_json()
     player_id = session.get('user_id', 'guest')
     message = data['message']
+    print(f"data {data} player_id {player_id} message {message}")
     
     # Process through narrative system
-    result = controller.narrative_system.process_player_action(player_id, message)
+    result = world_controller.narrative_system.process_player_action(player_id, message)
     
     return jsonify(result)
 
 @app.route('/api/world-state')
 def world_state():
-    return jsonify({
-        "worldMap": controller.get_map_data(),
-        "currentLocation": controller.get_current_location_data()
-    })
+    try:
+        return jsonify({
+            "worldMap": world_controller.get_map_data(),
+            "currentLocation": world_controller.get_current_location_data(),
+            "parties": world_controller.get_active_parties(),
+            "characters": world_controller.characters
+            })
+    except Exception as e:
+        print(f"Error in world_state: {str(e)}")
+        return jsonify({
+            "worldMap": {"error": "Map data unavailable"},
+            "currentLocation": None,
+            "party": []
+        })
 
 @app.route('/api/locations')
 def all_locations():
-    return jsonify({
-        "locations": [loc.to_dict() for loc in controller.world_map.locations.values()]
-    })
+    try:
+        return jsonify({
+            "locations": [
+                loc.to_dict() 
+                for loc in world_controller.world_map.locations.values()
+            ]
+        })
+    except Exception as e:
+        print(f"Error in all_locations: {str(e)}")
+        return jsonify({"locations": []})
 
 @app.route('/api/travel/<location_id>', methods=['POST'])
 def travel_to(location_id):
-    success = controller.travel_to_location(location_id)
+    success = world_controller.travel_to_location(location_id)
     return jsonify({
         "success": success,
-        "location": controller.get_current_location_data()
+        "location": world_controller.get_current_location_data()
     })
 
 @app.route('/api/location/<location_id>/rumors')
 def get_location_rumors(location_id):
-    rumors = controller.get_rumors(location_id)
+    rumors = world_controller.get_rumors(location_id)
     return jsonify({"rumors": rumors})
 
 @app.route('/api/enter-dungeon', methods=['POST'])
 def enter_dungeon():
-    success = controller.enter_dungeon()
+    success = world_controller.enter_dungeon()
     return jsonify({"success": success})
 
 @app.route('/api/create-character', methods=['POST'])
@@ -134,7 +154,7 @@ def create_character():
     data = request.get_json()
     user_id = session.get('user_id', 'default_user')
     
-    # Generate character details
+    # Generate character details (your existing code)
     character = {
         "id": str(uuid.uuid4()),
         "owner": user_id,
@@ -148,27 +168,69 @@ def create_character():
         "flaws": data.get("flaws", ""),
         "level": 1,
         "hit_points": calculate_starting_hp(data['class']),
-        "abilities": generate_abilities(data['race'], data['class'])
+        "max_hp": calculate_starting_hp(data['class']),
+        "abilities": generate_abilities(data['race'], data['class']),
+        "avatar_url": "/static/images/default_avatar.png"  # Placeholder
     }
     
-    # Generate avatar
+    # Generate avatar (your existing code)
     avatar_prompt = f"Fantasy portrait: {data['race']} {data['class']} {data['background']}"
     character["avatar_url"] = t2i.generate_image(avatar_prompt)
     
-    # Save character
+    # Save character to user database (your existing code)
     if user_id not in character_database:
         character_database[user_id] = []
     character_database[user_id].append(character)
     
-    # Add to party if not full
+    # Add to session party (your existing code)
     party = session.get('party', [])
-    if len(party) < 4:
+    if len(party) < 4:  # Maintain your party size limit
         party.append(character['id'])
         session['party'] = party
-
-    controller.add_character(character)
     
-    return jsonify({"success": True, "character": character})
+    # Add to world_controller
+    world_controller.add_character(character)  # Add to characters dictionary
+    world_controller.add_to_party(character['id'])  # Add to party list
+    
+    return jsonify({
+        "success": True, 
+        "character": character,
+        "party_size": len(party)  # Return current party size
+    })
+
+@app.route('/api/create-party', methods=['POST'])
+def create_party():
+    data = request.json
+    party_id = controller.create_party(
+        name=data.get('name', 'New Party'),
+        initial_members=data.get('members', [])
+    )
+    return jsonify({"success": True, "party_id": party_id})
+
+# Move character between parties
+@app.route('/api/move-character', methods=['POST'])
+def move_character():
+    data = request.json
+    success = controller.add_to_party(
+        char_id=data['char_id'],
+        party_id=data['party_id']
+    )
+    return jsonify({"success": success})
+
+# Get all parties
+@app.route('/api/parties')
+def get_parties():
+    return jsonify({
+        "parties": controller.get_active_parties(),
+        "default_party": controller.default_party_id
+    })
+
+# Disband a party
+@app.route('/api/disband-party/<party_id>', methods=['POST'])
+def disband_party(party_id):
+    success = controller.disband_party(party_id)
+    return jsonify({"success": success})
+
 
 def generate_character_name(race, cls):
     name_parts = {
@@ -190,6 +252,38 @@ def calculate_starting_hp(cls):
     }
     return base_hp.get(cls, 8) + random.randint(1, 4)
 
+@app.route('/api/guide-character-creation', methods=['POST'])
+def guide_character_creation():
+    data = request.get_json()
+    player_id = session.get('user_id', 'guest')
+    message = data.get('message', '')
+    
+    # Get current creation state
+    creation_state = session.get('creation_state', {
+        'step': 0,
+        'character': {
+            'race': None,
+            'class': None,
+            'background': None,
+            'personality': None,
+            'ideals': None,
+            'bonds': None,
+            'flaws': None
+        }
+    })
+    
+    # Process through AI narrative system
+    result = controller.narrative_system.guide_character_creation(
+        player_id, 
+        message, 
+        creation_state
+    )
+    
+    # Update session state
+    session['creation_state'] = result['new_state']
+    
+    return jsonify(result)
+
 def generate_abilities(race, cls):
     abilities = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
     scores = {ab: random.randint(8, 15) for ab in abilities}
@@ -208,6 +302,13 @@ def generate_abilities(race, cls):
     
     return scores
 
+@app.route('/api/get-party')
+def get_party():
+    # Replace with proper method that exists
+    return jsonify({
+        "active_parties": world_controller.get_active_parties(),
+        "characters": world_controller.characters
+    })
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0")

@@ -395,3 +395,155 @@
     background: rgba(30, 30, 60, 0.7);
     font-style: italic;
 }
+/* Character card popup */
+.character-card-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    z-index: 1000;
+    overflow-y: auto;
+    box-shadow: 0 0 20px rgba(0,0,0,0.7);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px;
+    background: #1a3a5a;
+    border-bottom: 1px solid #3a5f85;
+}
+
+.close-card {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.card-body {
+    padding: 15px;
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 15px;
+}
+
+.character-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+    border: 2px solid #d4af37;
+}
+
+.character-details, .character-traits {
+    grid-column: span 2;
+}
+
+.abilities {
+    grid-column: span 2;
+}
+
+.ability-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 5px;
+}
+
+.ability-score {
+    text-align: center;
+    background: #1a3a5a;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.ability-name {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+.ability-value {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #d4af37;
+}
+
+.card-footer {
+    padding: 15px;
+    text-align: center;
+    border-top: 1px solid #3a5f85;
+}
+
+.add-to-party {
+    padding: 10px 20px;
+    background: #d4af37;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.party-assignment-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1a3a5a;
+    padding: 20px;
+    border: 2px solid #3a5f85;
+    border-radius: 8px;
+    z-index: 1000;
+}
+
+.party-option {
+    padding: 10px;
+    margin: 5px 0;
+    background: #0d2136;
+    border-radius: 4px;
+}
+
+.party-manager {
+    grid-column: 2;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.character-roster {
+    grid-column: 1;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .character-card-popup {
+        width: 95%;
+    }
+    
+    .card-body {
+        grid-template-columns: 1fr;
+    }
+    
+    .character-avatar {
+        justify-self: center;
+    }
+    
+    .ability-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}

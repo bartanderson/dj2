@@ -26,19 +26,46 @@ class WorldController:
     #     self.narrative = game_state.narrative
     #     self.pacing = PacingManager()
     def __init__(self, world_data, ai_system, seed=42):
+        self.known_locations = set()  # Locations revealed through rumors
         self.world_map = WorldMap()
-        self.quests: Dict[str, Quest] = {}  # Global quest storage
+        self.quests = {}  # Global quest storage
         self.session_log = []  # Add this line
         self.seed = world_data.get("seed", seed)
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
         self.ai_system = ai_system  # Store AI system
-        self.characters = {}  # Store player characters
         self.narrative_system = NarrativeSystem(self, ai_system)
-
-        self.load_world_data(world_data)
         self.current_location = None
         self.active_quests = []
+
+        # Party system initialization
+        self.characters = {}  # Store player characters
+        self.parties = {}     # Active parties: {party_id: party_data}
+        self.character_parties = {}  # char_id -> party_id mapping
+        self.default_party_id = "main_party"
+
+
+        self.load_world_data(world_data)
+
+        # Set starting location
+        starting_id = world_data.get("starting_location_id", "starting_tavern")
+        self.starting_location_id = starting_id  # Store for later
+        self.reveal_location(starting_id)
+
+        # Initialize default party AFTER loading world data
+        self.parties[self.default_party_id] = {
+            "name": "Main Party",
+            "members": [],
+            "location": self.starting_location_id
+        }
+
+        # Set current location
+        self.travel_to_location(self.starting_location_id)
+
+        if not self.world_map.locations:
+            print("initializeing self.world_map.locations")
+            self.world_map.locations = {}            
+
         self.terrain_types = {
             "ocean": {"color": "#4d6fb8", "height": -1.0},
             "coast": {"color": "#a2c4c9", "height": -0.3},
@@ -51,14 +78,7 @@ class WorldController:
         }
 
         self.fog_of_war = True
-        self.known_locations = set()  # Locations revealed through rumors
         
-        # Set starting location
-        starting_id = world_data.get("starting_location_id", "starting_tavern")
-        self.starting_location_id = starting_id  # Store for later
-        self.reveal_location(starting_id)
-        self.travel_to_location(starting_id)
-
         # Precompute deterministic terrain data
         self.map_width = 1000
         self.map_height = 800
@@ -69,19 +89,83 @@ class WorldController:
             self.hexes
         )
 
+    def get_all_locations(self):
+        """Get all locations as dictionaries"""
+        return [
+            loc.to_dict()
+            for loc in self.world_map.locations.values()
+        ]
+
     def set_current_scene(self, location_id: str):
         """Set narrative scene when arriving at a location"""
         location = self.world_map.get_location(location_id)
         scene_desc = f"{location.name}: {location.description}"
         self.narrative_system.set_current_scene(scene_desc)
-    
-    def add_character(self, character_data: dict):
-        """Add a character to the world state"""
-        self.characters[character_data['player_id']] = character_data
         
-        # Add to narrative system if it exists
-        if hasattr(self, 'narrative_system'):
-            self.narrative_system._initialize_characters()
+    def add_character(self, character_data):
+        """Add a new character"""
+        char_id = f"char_{uuid.uuid4().hex[:6]}"
+        self.characters[char_id] = character_data
+        return char_id
+        
+    def create_party(self, name, initial_members=None):
+        """Create a new party"""
+        party_id = f"party_{uuid.uuid4().hex[:6]}"
+        self.parties[party_id] = {
+            "name": name,
+            "members": initial_members or [],
+            "location": self.current_location
+        }
+        for char_id in initial_members or []:
+            self.character_parties[char_id] = party_id
+        return party_id
+    
+    def add_to_party(self, char_id, party_id):
+        """Add character to a party"""
+        if char_id not in self.characters:
+            return False
+        
+        # Remove from current party
+        current_party = self.character_parties.get(char_id)
+        if current_party and current_party in self.parties:
+            self.parties[current_party]["members"].remove(char_id)
+        
+        # Add to new party
+        if party_id not in self.parties:
+            self.create_party(f"Party for {self.characters[char_id]['name']}", [char_id])
+        else:
+            self.parties[party_id]["members"].append(char_id)
+            self.character_parties[char_id] = party_id
+        return True
+    
+    def remove_from_party(self, char_id):
+        """Remove character from their current party"""
+        party_id = self.character_parties.get(char_id)
+        if party_id and party_id in self.parties:
+            self.parties[party_id]["members"].remove(char_id)
+            del self.character_parties[char_id]
+        return True
+    
+    def disband_party(self, party_id):
+        """Disband a party and return members to solo status"""
+        if party_id not in self.parties or party_id == self.default_party_id:
+            return False
+        
+        for char_id in self.parties[party_id]["members"][:]:
+            self.remove_from_party(char_id)
+        del self.parties[party_id]
+        return True
+    
+    def get_character_party(self, char_id):
+        """Get party data for a character"""
+        party_id = self.character_parties.get(char_id)
+        if party_id and party_id in self.parties:
+            return self.parties[party_id]
+        return None
+    
+    def get_active_parties(self):
+        """Get all active parties"""
+        return [party for party in self.parties.values() if party["members"]]
 
     def travel_to_location(self, location_id: str) -> bool:
         if self.world_map.travel_to(location_id):

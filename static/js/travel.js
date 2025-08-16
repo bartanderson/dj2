@@ -1,4 +1,4 @@
-# static\js\travel.js
+// static\js\travel.js
 class TravelUI {
     constructor() {
         this.travelInterface = document.getElementById('travel-interface');
