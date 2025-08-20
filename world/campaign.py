@@ -1,6 +1,8 @@
 import uuid
 from typing import List, Dict, Optional
 
+#classes defined here Location, NPC, Quest, Faction, WorldState
+
 class Location:
     def __init__(self, id: str, name: str, type: str, description: str, 
                  x: int = 0, y: int = 0,  # Add coordinates here

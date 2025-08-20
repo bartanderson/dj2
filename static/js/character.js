@@ -336,6 +336,123 @@ class CharacterCreator {
     }
 }
 
+generateCharacterToken() {
+    const prompt = `Token image: ${this.characterData.race} ${this.characterData.class}`;
+    fetch('/api/generate-token', {
+        method: 'POST',
+        body: JSON.stringify({ prompt })
+    })
+    .then(response => response.json())
+    .then(data => {
+        this.characterData.token = data.url;
+        document.getElementById('character-token').src = data.url;
+    });
+}
+
+renderEquipmentStep() {
+    return `
+        <h3>Starting Equipment</h3>
+        <div class="equipment-section">
+            <h4>Class Equipment</h4>
+            <div id="class-equipment">
+                <p>Loading equipment options...</p>
+            </div>
+        </div>
+        
+        <div class="equipment-section">
+            <h4>Equipment Choices</h4>
+            <div id="equipment-choices"></div>
+        </div>
+        
+        <div class="equipment-section">
+            <h4>Personal Item</h4>
+            <div id="personal-item-preview"></div>
+            <button id="generate-personal-item">Generate Personal Item</button>
+        </div>
+        
+        <div class="ai-guidance">
+            <h4>Equipment Suggestions</h4>
+            <div id="equipment-suggestions"></div>
+        </div>
+    `;
+}
+
+// Load class equipment
+loadClassEquipment(className) {
+    fetch(`/api/starting-equipment/${className}`)
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('class-equipment');
+            container.innerHTML = `
+                <h5>Standard Equipment</h5>
+                <ul>
+                    ${data.packages.map(item => `<li>${item}</li>`).join('')}
+                </ul>
+            `;
+            
+            const choicesContainer = document.getElementById('equipment-choices');
+            choicesContainer.innerHTML = `
+                <h5>Choose Options</h5>
+                ${data.choices.map(choice => `
+                    <div class="equipment-choice">
+                        <p>${choice.description}</p>
+                        <select>
+                            ${choice.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                        </select>
+                    </div>
+                `).join('')}
+            `;
+        });
+}
+
+// Generate personal item
+document.getElementById('generate-personal-item').addEventListener('click', () => {
+    const concept = `${this.characterData.race} ${this.characterData.class}`;
+    
+    fetch('/api/generate-personal-item', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ concept })
+    })
+    .then(response => response.json())
+    .then(item => {
+        this.characterData.personal_item = item;
+        this.previewPersonalItem(item);
+    });
+});
+
+// Preview personal item
+previewPersonalItem(item) {
+    const container = document.getElementById('personal-item-preview');
+    container.innerHTML = `
+        <div class="item-card">
+            <h5>${item.name}</h5>
+            <p>${item.description}</p>
+            <p class="significance"><em>${item.special_significance}</em></p>
+        </div>
+    `;
+}
+
+// Load equipment suggestions
+loadEquipmentSuggestions() {
+    const concept = `${this.characterData.race} ${this.characterData.class} ${this.characterData.background}`;
+    
+    fetch('/api/equipment-suggestions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ concept })
+    })
+    .then(response => response.json())
+    .then(suggestions => {
+        const container = document.getElementById('equipment-suggestions');
+        container.innerHTML = `
+            <ul>
+                ${suggestions.map(s => `<li>${s}</li>`).join('')}
+            </ul>
+        `;
+    });
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.characterCreator = new CharacterCreator();

@@ -13,6 +13,11 @@ import numpy as np
 from PIL import Image
 import json
 
+# Disable Triton to avoid installation issues
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)
+
 class TextToImage:
     def __init__(self, model_path: Path):
         """

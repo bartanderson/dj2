@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Any, Tuple
 from abc import ABC, abstractmethod
 import random
 import time
+from world.db import Database
 
 class ActionType(Enum):
     SOCIAL = "social"
@@ -131,6 +132,38 @@ class AIDungeonMaster:
         self.response_generator = ResponseGenerator()
         self.dialog_history = []
         self.choice_timer = 0  # For respecting choice timing
+        self.world_id = None  # Current world ID
+
+    def set_world(self, world_id):
+        self.world_id = world_id
+
+    def log_context(self, world_id, player_id, context_type, content):
+        conn = psycopg2.connect(DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO narrative_context "
+                    "(world_id, player_id, context_type, content) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (world_id, player_id, context_type, Json(content))
+                )
+                conn.commit()
+        finally:
+            conn.close()
+    
+    def get_recent_context(self, world_id, player_id, limit=10):
+        conn = psycopg2.connect(DATABASE_URL)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT content FROM narrative_context "
+                    "WHERE world_id = %s AND player_id = %s "
+                    "ORDER BY timestamp DESC LIMIT %s",
+                    (world_id, player_id, limit))
+                return [row[0] for row in cur.fetchall()]
+        finally:
+            conn.close()
+
         
     def process_player_input(self, player_id: str, message: str) -> List[Dialog]:
         """Main method to process any player input and generate appropriate responses"""
@@ -144,6 +177,12 @@ class AIDungeonMaster:
             responses.extend(self._handle_character_dialog(player_id, message))
         else:
             responses.extend(self._handle_general_input(player_id, message))
+
+        self.log_context(
+            player_id, 
+            "player_input", 
+            {"message": message, "responses": [str(r) for r in responses]}
+        )
             
         return responses
     

@@ -547,3 +547,54 @@
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+/* character.css */
+.equipment-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(40, 30, 20, 0.6);
+    border-radius: 8px;
+    border-left: 3px solid #8d6e63;
+}
+
+.equipment-choice {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(50, 40, 30, 0.7);
+    border-radius: 5px;
+}
+
+.equipment-choice select {
+    width: 100%;
+    padding: 8px;
+    background: rgba(60, 50, 40, 0.8);
+    border: 1px solid #8d6e63;
+    color: white;
+    border-radius: 4px;
+}
+
+.item-card {
+    padding: 10px;
+    background: rgba(50, 40, 30, 0.7);
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+.item-card h5 {
+    margin: 0 0 5px 0;
+    color: #ffd54f;
+}
+
+.significance {
+    font-style: italic;
+    color: #d7ccc8;
+    margin-top: 5px;
+}
+
+.ai-guidance {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(30, 20, 10, 0.7);
+    border-radius: 8px;
+    border-left: 3px solid #ffd54f;
+}

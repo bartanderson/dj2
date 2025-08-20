@@ -6,8 +6,15 @@
 </head>
 <body>
     <div class="world-container">
+        <div id="location-preview" class="location-preview hidden">
+          <img id="preview-image" class="preview-image" src="" alt="Location preview">
+          <div class="preview-text">
+            <h3 id="preview-name"></h3>
+            <p id="preview-type"></p>
+            <p id="preview-description"></p>
+          </div>
+        </div>
         <!-- World Map Display -->
-        <div id="location-preview" class="location-preview"></div>
         <div class="world-map" id="world-map">
             <!-- Generated world map will appear here -->
         </div>
@@ -68,6 +75,19 @@
             <div class="chat-input">
                 <input type="text" id="dm-chat-input" placeholder="Ask the DM or describe your action...">
                 <button id="send-chat">Send</button>
+            </div>
+        </div>
+
+        <div id="inventory-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Your Possessions</h2>
+                <div id="inventory-container"></div>
+                <div class="discovery-prompt">
+                    <p>Found something new?</p>
+                    <input type="text" id="new-item-input" placeholder="Describe an item you've discovered...">
+                    <button id="add-item-btn">Add to Inventory</button>
+                </div>
             </div>
         </div>
 

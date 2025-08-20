@@ -1,0 +1,76 @@
+/* inventory.css */
+.narrative-description {
+    font-style: italic;
+    padding: 15px;
+    background: rgba(30, 20, 10, 0.7);
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.inventory-stats {
+    font-size: 0.9em;
+    text-align: right;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+.significant-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.significant-item {
+    background: rgba(60, 40, 20, 0.7);
+    border: 1px solid #8d6e63;
+    padding: 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.significant-item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.significance {
+    font-size: 0.8em;
+    color: #d7ccc8;
+    font-style: italic;
+    margin-top: 5px;
+}
+
+.inventory-options {
+    background: rgba(40, 30, 20, 0.9);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.option-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.inventory-option {
+    background: #5d4037;
+    border: none;
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.inventory-option:hover {
+    background: #8d6e63;
+}
+
+.discovery-prompt {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(30, 20, 10, 0.5);
+    border-radius: 8px;
+}

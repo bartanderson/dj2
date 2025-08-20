@@ -7,6 +7,31 @@ let worldState = {
     discoveredLocations: []
 };
 
+function showLocationPreview(location, x, y) {
+    const preview = document.getElementById('location-preview');
+    const img = document.getElementById('preview-image');
+    const name = document.getElementById('preview-name');
+    const type = document.getElementById('preview-type');
+    const desc = document.getElementById('preview-description');
+
+    // Set content
+    img.src = location.imageUrl || 'https://dummyimage.com/80x80/333/fff&text=No+Image';
+    name.textContent = location.name;
+    type.textContent = `Type: ${location.type}`;
+    desc.textContent = location.description ? 
+      location.description.substring(0, 100) + '...' : 
+      'No description available';
+
+    // Position and show
+    preview.style.left = `${x + 20}px`;
+    preview.style.top = `${y - 20}px`;
+    preview.classList.remove('hidden');
+}
+
+function hideLocationPreview() {
+    document.getElementById('location-preview').classList.add('hidden');
+}
+
 // Load world data from server
 async function loadWorldData() {
     try {
@@ -121,6 +146,7 @@ function updatePartyDisplay(parties, characters) {
     });
 }
 
+
 async function refreshWorldState() {
     try {
         const response = await fetch('/api/world-state');
@@ -144,8 +170,8 @@ async function refreshWorldState() {
         updatePartyDisplay(data.parties, data.characters);
         
         // Update other UI elements as needed
-        updateQuestLog(data.activeQuests);
-        updateInventory(data.inventory);
+        updateQuestLog(data.parties); // Pass parties instead of activeQuests
+        //updateInventory(data.inventory); // todo need to figure out what this is supposed to do. Is this for locations. Has to do with how dm manages inventory, stores, available items, packs, etc.
         
     } catch (error) {
         console.error('Error refreshing world state:', error);
@@ -153,18 +179,69 @@ async function refreshWorldState() {
     }
 }
 
-function updateQuestLog(worldData) {
-    // Implement your quest log updating logic here
-    console.log("Updating quest log with:", worldData.quests);
+function getCurrentPlayerPartyId() {
+    // Get current player ID from your authentication system
+    const playerId = getCurrentPlayerId(); 
     
-    // Example implementation:
-    const questLogElement = document.getElementById('quest-log');
-    if (questLogElement) {
-        questLogElement.innerHTML = worldData.quests
-            .map(quest => `<div class="quest">${quest.name}: ${quest.description}</div>`)
-            .join('');
+    // Find which party the player belongs to
+    // This assumes parties have a 'members' array
+    for (const party of worldState.parties) {
+        if (party.members.includes(playerId)) {
+            return party.id;
+        }
+    }
+    
+    // Player not in any party
+    return null;
+}
+
+function updateQuestLog(worldData) {
+    try {
+        const questLog = document.getElementById('quest-log');
+        if (!questLog) return;
+        
+        // Check if player's party has quests
+        const playerParty = worldData.parties.find(p => p.id === playerPartyId);
+        
+        if (!playerParty || !playerParty.quests || playerParty.quests.length === 0) {
+            questLog.innerHTML = '<div class="no-quest">No active quests</div>';
+            return;
+        }
+        
+        let html = '';
+        for (const quest of playerParty.quests) {
+            html += `
+                <div class="quest">
+                    <div class="quest-header">
+                        <h3>${quest.name}</h3>
+                        <span class="quest-status">${quest.status}</span>
+                    </div>
+                    <p class="quest-description">${quest.description}</p>
+                    <div class="objectives">`;
+            
+            // Add objectives
+            for (const [key, objective] of Object.entries(quest.objectives)) {
+                const status = objective.completed ? '✓' : '◯';
+                html += `
+                    <div class="objective ${objective.completed ? 'completed' : ''}">
+                        <span class="objective-status">${status}</span>
+                        ${objective.description}
+                    </div>`;
+            }
+            
+            html += `</div></div>`;
+        }
+        
+        questLog.innerHTML = html;
+    } catch (error) {
+        console.error("Error updating quest log:", error);
+        const questLog = document.getElementById('quest-log');
+        if (questLog) {
+            questLog.innerHTML = '<div class="error">Failed to load quests</div>';
+        }
     }
 }
+
 
 setInterval(refreshWorldState, 5000);
 
@@ -249,6 +326,13 @@ function renderWorldMap(mapData) {
     svg.setAttribute('width', '100%');
     svg.setAttribute('height', '100%');
     svg.setAttribute('viewBox', `0 0 ${mapData.width} ${mapData.height}`);
+
+    // Add background
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('width', '100%');
+    bg.setAttribute('height', '100%');
+    bg.setAttribute('fill', '#0d2136'); // Dark blue background
+    svg.appendChild(bg);
     
     // Define patterns for terrains
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -325,7 +409,7 @@ function renderWorldMap(mapData) {
         });
     }
 
-    // Draw organic paths safely
+    // Draw organic paths between locations
     if (mapData.paths && Array.isArray(mapData.paths)) {
         mapData.paths.forEach(path => {
             const pathElem = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -366,6 +450,9 @@ function renderWorldMap(mapData) {
     const visibleLocations = mapData.fog_of_war 
         ? mapData.locations.filter(loc => mapData.known_locations.includes(loc.id))
         : mapData.locations;
+
+    // Get preview element
+    const preview = document.getElementById('location-preview');
     
     // Render only visible locations
     visibleLocations.forEach(location => {
@@ -418,13 +505,27 @@ function renderWorldMap(mapData) {
         
         // Add event handlers
         group.addEventListener('click', () => travelToLocation(location.id));
-        group.addEventListener('mouseenter', () => {
-            const preview = document.getElementById('location-preview');
-            if (preview) preview.textContent = location.name;
+        // Preview event handlers
+        group.addEventListener('mouseenter', (e) => {
+            if (preview) {
+                preview.textContent = location.name;
+                preview.classList.remove('hidden');
+            }
         });
+        
+        group.addEventListener('mousemove', (e) => {
+            if (preview) {
+                const rect = worldMap.getBoundingClientRect();
+                preview.style.left = `${e.clientX - rect.left + 15}px`;
+                preview.style.top = `${e.clientY - rect.top - 15}px`;
+            }
+        });
+        
         group.addEventListener('mouseleave', () => {
-            const preview = document.getElementById('location-preview');
-            if (preview) preview.textContent = '';
+            if (preview) {
+                preview.textContent = '';
+                preview.classList.add('hidden');
+            }
         });
         
         // Add group to SVG
@@ -439,6 +540,42 @@ function renderWorldMap(mapData) {
         showTavernIntroduction();
     }
 }
+
+// Minimal CSS for location preview
+const previewStyles = `
+    .location-preview {
+        position: absolute;
+        background: rgba(30, 30, 40, 0.9);
+        border: 2px solid #5d4037;
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: white;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 14px;
+        z-index: 1000;
+        pointer-events: none;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+        max-width: 200px;
+        text-align: center;
+        transition: opacity 0.2s;
+    }
+    
+    .location-preview.hidden {
+        opacity: 0;
+    }
+`;
+
+// Add styles to document head
+const styleEl = document.createElement('style');
+styleEl.innerHTML = previewStyles;
+document.head.appendChild(styleEl);
+
+// Initialize preview element
+const previewEl = document.createElement('div');
+previewEl.id = 'location-preview';
+previewEl.className = 'location-preview hidden';
+document.querySelector('.world-container').appendChild(previewEl);
+
 
 // Render location details
 function renderLocationDetails(location) {
@@ -497,6 +634,47 @@ function renderLocationDetails(location) {
         console.error('Error rendering location details:', error);
         locationImage.style.backgroundImage = "url('https://dummyimage.com/300x200/333/fff&text=Error')";
         description.innerHTML = '<p>Error loading location details</p>';
+    }
+}
+
+// In your tavern completion handler
+async function completeTavernIntro() {
+    const playerId = getCurrentPlayerId();
+    const playerPartyId = getCurrentPlayerPartyId();
+    
+    if (!playerPartyId) {
+        console.error("Player not in a party");
+        return;
+    }
+    
+    try {
+        const response = await fetch('/complete_tavern_intro', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ 
+                party_id: playerPartyId,
+                player_id: playerId 
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            // Refresh world state to show quests
+            await refreshWorldState();
+            
+            // Transition from tavern to world view
+            document.getElementById('tavern-scene').style.display = 'none';
+            document.getElementById('world-map').style.display = 'block';
+        } else {
+            console.error('Failed to complete tavern intro:', result.error);
+        }
+    } catch (error) {
+        console.error('Error completing tavern intro:', error);
     }
 }
 
