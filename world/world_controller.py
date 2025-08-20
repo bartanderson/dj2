@@ -55,6 +55,7 @@ class WorldController:
         self.ai_system = ai_system
         self.seed = seed
         self.terrain_types = TERRAIN_TYPES
+        self.fog_of_war = True
         
         # Initialize state tracking
         self.known_locations = set()
@@ -193,6 +194,7 @@ class WorldController:
         # 5. Generate terrain
         self.terrain_grid = self.generate_terrain()
         self.hexes = self.generate_hex_map(self.terrain_grid)
+        # location dicts not part of the object, just a temp var to simplify self.paths call
         location_dicts = [loc.to_dict() for loc in self.world_map.locations.values()]
         self.paths = self.generate_paths(location_dicts, self.hexes)
 

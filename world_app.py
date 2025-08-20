@@ -72,7 +72,7 @@ def setup_world_system():
             world_data = world_manager.load_from_db(world_id)
         
         # 5. Initialize world controller
-        controller = WorldController(
+        world_controller = WorldController(
             #world_data=world_data,
             world_id=world_id,
             ai_system=base_ai,
@@ -81,15 +81,15 @@ def setup_world_system():
         print("✓ World controller initialized")
         
         # 6. Initialize AI systems with proper state
-        controller.world_ai = WorldAI(world_state=controller)
-        controller.dungeon_ai = None  # Will be set when entering dungeon
+        world_controller.world_ai = WorldAI(world_state=world_controller)
+        world_controller.dungeon_ai = None  # Will be set when entering dungeon
         print("✓ AI systems initialized")
         
         # 7. Verify everything is working
-        print(f"✓ World loaded with {len(controller.world_map.locations)} locations")
-        print(f"✓ Starting at: {controller.starting_location_id}")
+        print(f"✓ World loaded with {len(world_controller.world_map.locations)} locations")
+        print(f"✓ Starting at: {world_controller.starting_location_id}")
         
-        return controller, world_id
+        return world_controller, world_id
         
     except Exception as e:
         print(f"❌ Error initializing world system: {e}")
@@ -101,15 +101,16 @@ def setup_world_system():
 def main():
     """Main entry point for the world application"""
     try:
-        controller, world_id = setup_world_system()
+        world_controller, world_id = setup_world_system()
         print(f"\n🎉 World system ready! World ID: {world_id}")
         
-        # Test command processing
-        test_command = "describe the starting location"
-        result = controller.process_command(test_command)
-        print(f"\nTest command result: {result}")
+        # # This was a nice idea, but was not completed. There is no tool World Map.
+        # # Test command processing
+        # test_command = "describe the starting location"
+        # result = controller.process_command(test_command)
+        # print(f"\nTest command result: {result}")
         
-        return controller
+        return world_controller
         
     except Exception as e:
         print(f"❌ Failed to initialize world system: {e}")
@@ -295,6 +296,12 @@ def world_state():
         characters_dict = {}
         for char_id, char in world_controller.characters.items():
             characters_dict[char_id] = char.to_dict()
+
+        # print(f"before getting world_map")
+        # print(f"world_map: {world_controller.get_map_data()}")
+        # print(f"currentLocation: {world_controller.get_current_location_data()}")
+        # print(f"parties: {world_controller.get_active_parties()}")
+        # print(f"currentLocation: {characters_dict}")
             
         return jsonify({
             "worldMap": world_controller.get_map_data(),
@@ -365,5 +372,5 @@ def guide_character_creation():
     return jsonify(result)
 
 if __name__ == '__main__':
-    controller = main()
+    world_controller = main()
     app.run(debug=True, host="0.0.0.0")
