@@ -1,15 +1,21 @@
 # world_app.py
+# import eventlet
+# eventlet.monkey_patch() # this has to be run before importing any other modules
+
 from flask import Flask, jsonify, render_template, send_from_directory, session, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import sys
 import random
 import uuid
 import json
+from datetime import datetime
 from pathlib import Path
 from world.world_map import WorldMap
 from world.t2i import TextToImage  # Import the image generator
 from world.persistence import WorldManager
 from world.world_controller import WorldController
 from world.ai_integration import BaseAI, WorldAI
+
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -18,7 +24,14 @@ sys.path.append(str(project_root))
 app = Flask(__name__)
 
 avatar_dir = Path("static/character_avatars")
-#t2i = TextToImage(model_path)
+t2i = None
+
+# Initialize SocketIO
+socketio = SocketIO(app, 
+                   cors_allowed_origins="*", 
+                   async_mode='threading',
+                   logger=True,
+                   engineio_logger=True)
 
 def setup_world_system():
     """Complete world initialization flow with proper integration"""
@@ -32,7 +45,8 @@ def setup_world_system():
         # 2. Set up image generation paths
         model_path = Path.home() / ".sdkit" / "models" / "stable-diffusion" / "realisticVisionV60B1_v51VAE.safetensors"
         image_output_dir = Path("static/world_images")
-        
+        t2i = TextToImage(model_path)
+
         # 3. Create world manager with image capabilities
         world_manager = WorldManager(ai_system=base_ai)
         print("✓ World manager initialized")
@@ -371,6 +385,257 @@ def guide_character_creation():
     session['creation_state'] = result['new_state']
     return jsonify(result)
 
+
+#### start of socketio stuff #################################################################
+
+# Add these WebSocket event handlers after your existing routes
+@socketio.on('connect')
+def handle_connect():
+    session_id = request.sid
+    print(f"Client connected: {session_id}")
+    emit('connected', {'session_id': session_id, 'timestamp': datetime.now().isoformat()})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    session_id = request.sid
+    print(f"Client disconnected: {session_id}")
+    
+    # Clean up session data
+    if hasattr(world_controller, 'session_manager'):
+        session_data = world_controller.session_manager.sessions.get(session_id)
+        if session_data:
+            character_id = session_data.get('character_id')
+            party_id = session_data.get('party_id')
+            
+            # Notify party members about disconnection
+            if party_id:
+                emit('player_left', {
+                    'session_id': session_id,
+                    'player_name': session_data.get('player_name'),
+                    'character_id': character_id
+                }, room=party_id)
+            
+            # Clean up session
+            world_controller.session_manager.cleanup_session(session_id)
+
+@socketio.on('player_register')
+def handle_player_register(data):
+    session_id = request.sid
+    player_name = data.get('player_name', 'Unknown Player')
+    device_info = data.get('device_info', {})
+    
+    # Generate a device ID if not provided
+    if 'device_id' not in device_info:
+        device_info['device_id'] = f"device_{uuid.uuid4().hex[:8]}"
+    
+    # Create a new session
+    session_data = world_controller.session_manager.create_session(
+        player_name, device_info, session_id
+    )
+    
+    # Get available characters (not assigned to any session)
+    available_chars = []
+    for char_id, char_data in world_controller.characters.items():
+        if char_id not in world_controller.session_manager.character_assignments:
+            available_chars.append({
+                'id': char_id,
+                'name': char_data.name,
+                'class': char_data.classs.name if hasattr(char_data.classs, 'name') else 'Unknown',
+                'race': char_data.race
+            })
+    
+    emit('registration_success', {
+        'session_id': session_id,
+        'player_name': player_name,
+        'available_characters': available_chars
+    })
+
+@socketio.on('assign_character')
+def handle_assign_character(data):
+    session_id = request.sid
+    character_id = data.get('character_id')
+    
+    if character_id not in world_controller.characters:
+        emit('error', {'message': 'Character not found'})
+        return
+    
+    success = world_controller.session_manager.assign_character(session_id, character_id)
+    if success:
+        character = world_controller.characters[character_id]
+        session_data = world_controller.session_manager.sessions[session_id]
+        
+        # Assign to default party if not in one
+        party_id = character.party_id or world_controller.default_party_id
+        world_controller.session_manager.assign_to_party(session_id, party_id)
+        
+        # Join the party room
+        join_room(party_id)
+        
+        # Notify all party members
+        emit('character_assigned', {
+            'character_id': character_id,
+            'session_id': session_id,
+            'player_name': session_data['player_name'],
+            'character_name': character.name,
+            'party_id': party_id
+        }, room=party_id)
+        
+        # Send full party state to the new member
+        party_members = []
+        for member_sid in world_controller.session_manager.party_views.get(party_id, []):
+            if member_sid in world_controller.session_manager.sessions:
+                member_data = world_controller.session_manager.sessions[member_sid]
+                if member_data.get('character_id'):
+                    char_data = world_controller.characters[member_data['character_id']]
+                    party_members.append({
+                        'session_id': member_sid,
+                        'player_name': member_data['player_name'],
+                        'character_id': member_data['character_id'],
+                        'character_name': char_data.name,
+                        'position': char_data.position
+                    })
+        
+        emit('party_state', {
+            'party_id': party_id,
+            'members': party_members
+        })
+    else:
+        emit('error', {'message': 'Failed to assign character'})
+
+@socketio.on('character_move')
+def handle_character_move(data):
+    session_id = request.sid
+    character_id = data.get('character_id')
+    new_position = data.get('position')
+    
+    # Verify this session owns the character
+    if (world_controller.session_manager.character_assignments.get(character_id) == session_id and
+        character_id in world_controller.characters):
+        
+        # Update character position
+        world_controller.characters[character_id].position = new_position
+        
+        # Broadcast to all party members
+        character = world_controller.characters[character_id]
+        party_id = character.party_id or world_controller.default_party_id
+        
+        emit('character_moved', {
+            'character_id': character_id,
+            'position': new_position,
+            'session_id': session_id
+        }, room=party_id)
+
+@socketio.on('join_party')
+def handle_join_party(data):
+    session_id = request.sid
+    party_id = data.get('party_id')
+    
+    if session_id not in world_controller.session_manager.sessions:
+        emit('error', {'message': 'Session not registered'})
+        return
+    
+    # Leave current party
+    current_party = world_controller.session_manager.sessions[session_id].get('party_id')
+    if current_party:
+        leave_room(current_party)
+        emit('player_left_party', {
+            'session_id': session_id,
+            'player_name': world_controller.session_manager.sessions[session_id]['player_name']
+        }, room=current_party)
+    
+    # Join new party
+    success = world_controller.session_manager.assign_to_party(session_id, party_id)
+    if success:
+        join_room(party_id)
+        
+        # Notify new party members
+        session_data = world_controller.session_manager.sessions[session_id]
+        character_id = session_data.get('character_id')
+        character_name = world_controller.characters[character_id].name if character_id else "No character"
+        
+        emit('player_joined_party', {
+            'session_id': session_id,
+            'player_name': session_data['player_name'],
+            'character_id': character_id,
+            'character_name': character_name
+        }, room=party_id)
+        
+        # Send full party state to the new member
+        party_members = []
+        for member_sid in world_controller.session_manager.party_views.get(party_id, []):
+            if member_sid != session_id and member_sid in world_controller.session_manager.sessions:
+                member_data = world_controller.session_manager.sessions[member_sid]
+                if member_data.get('character_id'):
+                    char_data = world_controller.characters[member_data['character_id']]
+                    party_members.append({
+                        'session_id': member_sid,
+                        'player_name': member_data['player_name'],
+                        'character_id': member_data['character_id'],
+                        'character_name': char_data.name,
+                        'position': char_data.position
+                    })
+        
+        emit('party_state', {
+            'party_id': party_id,
+            'members': party_members
+        })
+    else:
+        emit('error', {'message': 'Failed to join party'})
+
+@socketio.on('request_world_state')
+def handle_request_world_state():
+    session_id = request.sid
+    emit('world_state', {
+        'characters': {cid: char.to_dict() for cid, char in world_controller.characters.items()},
+        'parties': world_controller.get_active_parties(),
+        'locations': [loc.to_dict() for loc in world_controller.world_map.locations.values()]
+    })
+#######end of socketio stuff###########
+
+#utility stuff for ip detection
+import socket
+import subprocess
+import re
+
+def get_ip_address():
+    """Get the local IP address"""
+    try:
+        # Create a socket connection to get the local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+
+def get_zerotier_ip():
+    """Try to get ZeroTier IP address with multiple methods"""
+    # Method 1: Try zerotier-cli command
+    try:
+        result = subprocess.run(["zerotier-cli", "listnetworks"], 
+                              capture_output=True, text=True, timeout=5)
+        # Parse the output to find the IP address
+        lines = result.stdout.split('\n')
+        for line in lines:
+            if "OK" in line and "PRIVATE" in line:
+                parts = line.split()
+                if len(parts) > 8:
+                    ip_cidr = parts[8]
+                    # Extract just the IP address from CIDR notation
+                    ip = ip_cidr.split('/')[0]
+                    return ip
+    except:
+        pass
+
 if __name__ == '__main__':
     world_controller = main()
-    app.run(debug=True, host="0.0.0.0")
+    #app.run(debug=True, host="0.0.0.0")
+    # Display connection information
+    print("🌍 DUNGEON WORLD SERVER")
+    print("Server running on:")
+    print(f"Local URL: http://localhost:5000")
+    print(f"Network URL: http://{get_ip_address()}:5000")
+    print(f"ZeroTier URL: http://{get_zerotier_ip()}:5000")
+    print("Server starting... (Press Ctrl+C to stop)")
+    socketio.run(app, debug=True, host="0.0.0.0", port=5000)

@@ -17,7 +17,12 @@ from world.narrative_system import NarrativeSystem
 from world.character_builder import CharacterBuilder
 from world.character import Character
 from world.persistence import WorldManager
-from world.ai_integration import WorldAI, DungeonAI
+from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
+from world.world_session import SessionManager
+
+import warnings
+warnings.filterwarnings("ignore", message=".*Triton.*")
+warnings.filterwarnings("ignore", message=".*redirects.*")
 
 # WorldGenerator creates the content (locations, NPCs, quests, factions)
 # WorldController handles the world state, terrain, and navigation
@@ -98,6 +103,7 @@ class WorldController:
         # Initialize AI systems
         self.world_ai = WorldAI(world_state=self)
         self.dungeon_ai = None  # Will be initialized when entering dungeon
+        self.session_manager = SessionManager()
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
@@ -780,31 +786,14 @@ class WorldController:
             loc_dict["imageUrl"] = loc.image_url
             locations.append(loc_dict)
         
-        # Generate terrain grid
-        terrain_grid = self.terrain_grid # Use precomputed grid
-        
-        # Set to True to allow distribution display for debugging, turned off since it worked
-        if False:
-            self.debug_terrain_distribution(terrain_grid)
-        #
-        
-        # Generate hex map
-        hexes = self.hexes
-        
-        # Generate paths between locations
-        paths = self.paths
-        currentLocation = self.world_map.current_location_id
-        # print(f"len(hexes) {len(hexes)}")
-        # print(f"paths {paths}")
+        # Return generation parameters instead of terrain data
         return {
             "width": 1000,
             "height": 800,
-            "terrain": terrain_grid,
             "connections": self.get_connections(),
             "locations": locations,
-            "currentLocation": currentLocation,
-            "hexes": hexes,
-            "paths": paths,
+            "currentLocation": self.world_map.current_location_id,
+            "paths": self.paths,
             "terrainColors": {
                 "ocean": "#4d6fb8",
                 "coast": "#a2c4c9",
@@ -814,6 +803,11 @@ class WorldController:
                 "hills": "#8d9946",
                 "mountains": "#8d99ae",
                 "snowcaps": "#ffffff"
+            },
+            "generation": {
+                "seed": self.seed,
+                "width": 1000,
+                "height": 800
             },
             "fog_of_war": self.fog_of_war,
             "known_locations": list(self.known_locations),
@@ -1195,12 +1189,13 @@ class WorldController:
         
         return counts
 
-    def get_terrain_data(self):
-        terrain_map = defaultdict(list)
-        for location in self.locations.values():
-            if hasattr(location, 'terrain'):
-                terrain_map[location.terrain].append((location.x, location.y))
-        return terrain_map
+    # removed see world.js for its rendering of terrain and the paths which we follow with place_locations
+    # def get_terrain_data(self):
+    #     terrain_map = defaultdict(list)
+    #     for location in self.locations.values():
+    #         if hasattr(location, 'terrain'):
+    #             terrain_map[location.terrain].append((location.x, location.y))
+    #     return terrain_map
 
     def place_locations(self, hexes, terrain_grid):
         locations = []

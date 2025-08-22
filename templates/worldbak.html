@@ -3,133 +3,9 @@
 <head>
     <title>World Explorer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/world.css') }}">
-    <style>
-        /* Multiplayer UI Styles */
-        .status-connected { background-color: #4CAF50; color: white; }
-        .status-disconnected { background-color: #f44336; color: white; }
-        .status-connecting { background-color: #FF9800; color: white; }
-        .status-error { background-color: #f44336; color: white; }
-        #connection-status {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            padding: 8px 12px;
-            border-radius: 4px;
-            z-index: 10000;
-            font-size: 14px;
-        }
-
-        .character-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .character-option {
-            border: 1px solid #ddd;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            background: #f9f9f9;
-        }
-
-        .character-option h3 {
-            margin: 0 0 10px 0;
-            color: #333;
-        }
-
-        .character-option p {
-            margin: 0 0 15px 0;
-            color: #666;
-        }
-
-        .character-option button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .party-panel {
-            position: fixed;
-            top: 50px;
-            right: 20px;
-            width: 250px;
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            z-index: 9999;
-        }
-
-        .notifications {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 10001;
-        }
-
-        .notification {
-            background: #333;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 4px;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-
-        .notification.error {
-            background: #f44336;
-        }
-
-        .notification.success {
-            background: #4CAF50;
-        }
-        
-        .party-member {
-            margin: 10px 0;
-            padding: 8px;
-            background: #f0f0f0;
-            border-radius: 4px;
-        }
-        
-        .party-actions {
-            margin-top: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .party-actions button {
-            padding: 8px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        
-        #invite-player-btn {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        #leave-party-btn {
-            background: #f44336;
-            color: white;
-        }
-    </style>
 </head>
 <body>
     <div class="world-container">
-        <!-- Connection Status -->
-        <div id="connection-status" class="status-disconnected">Disconnected</div>
-        
-        <!-- Notification System -->
-        <div id="notification-container" class="notifications"></div>
-        
         <div id="location-preview" class="location-preview hidden">
           <img id="preview-image" class="preview-image" src="" alt="Location preview">
           <div class="preview-text">
@@ -138,16 +14,10 @@
             <p id="preview-description"></p>
           </div>
         </div>
-        
         <!-- World Map Display -->
-
         <div class="world-map" id="world-map">
-            <!-- Generated world map will appear here or will it? had to move those two targets here for it to do that I think -->
-            <!-- For client side terrain generation -->
-            <canvas id="terrain-canvas" style="position: absolute; z-index: 0;"></canvas>
-            <div id="map-overlay" style="position: absolute; z-index: 1;"></div>
+            <!-- Generated world map will appear here -->
         </div>
-
         
         <!-- Location Details Panel -->
         <div class="location-panel">
@@ -176,7 +46,24 @@
             </div>
         </div>
 
-        <div id="notification" class="notification hidden"></div>
+        <div id="connection-status" class="status-disconnected">Disconnected</div>
+
+        <!-- Player Registration Modal -->
+        <div id="player-registration-modal" class="modal">
+            <div class="modal-content">
+                <h2>Join the Adventure</h2>
+                <input type="text" id="player-name-input" placeholder="Enter your name" maxlength="20">
+                <button id="register-player-btn">Enter World</button>
+            </div>
+        </div>
+
+        <!-- Character Selection Modal -->
+        <div id="character-selection-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Select Your Character</h2>
+                <div id="available-characters-list" class="character-list"></div>
+            </div>
+        </div>
 
         <!-- Party Management UI -->
         <div id="party-management" class="party-panel hidden">
@@ -187,6 +74,34 @@
                 <button id="leave-party-btn">Leave Party</button>
             </div>
         </div>
+
+        <!-- Notification System -->
+        <div id="notification-container" class="notifications"></div>
+
+        <style>
+
+        
+        <!-- Character Management -->
+        <div class="character-manager">
+            <h3>Your Party</h3>
+            <div id="party-members"></div>
+            <button id="create-character">Create Character</button>
+            <button id="manage-party">Manage Party</button>
+        </div>
+
+        <div class="party-manager">
+            <h3>Party Management</h3>
+            <div class="party-controls">
+                <button id="create-party-btn">Create New Party</button>
+                <button id="merge-parties-btn">Merge Parties</button>
+            </div>
+            <div id="party-container"></div>
+        </div>
+
+        <div class="character-roster">
+            <h3>All Characters</h3>
+            <div id="character-list"></div>
+        </div>
                 
         <!-- Quest Log -->
         <div class="quest-log">
@@ -194,7 +109,7 @@
             <ul id="quest-list"></ul>
         </div>
 
-        <!-- DM Chat -->
+        <!-- Add to right column -->
         <div class="dm-chat">
             <h3>Dungeon Master</h3>
             
@@ -213,7 +128,6 @@
             </div>
         </div>
 
-        <!-- Inventory Modal -->
         <div id="inventory-modal" class="modal hidden">
             <div class="modal-content">
                 <span class="close">&times;</span>
@@ -227,7 +141,7 @@
             </div>
         </div>
 
-        <!-- Travel Interface -->
+        <!-- Travel Interface (hidden by default) -->
         <div id="travel-interface" class="travel-interface hidden">
             <div class="travel-header">
                 <h2 id="travel-title">Journey in Progress</h2>
@@ -252,8 +166,6 @@
                 <div class="encounter-options hidden" id="encounter-options"></div>
             </div>
         </div>
-        
-        <!-- Character Creation Modal -->
         <div id="character-modal" class="modal hidden">
             <div class="modal-content">
                 <span class="close">&times;</span>
@@ -296,12 +208,7 @@
             <circle cx="8" cy="8" r="1" fill="white"/>
         </pattern>
     </svg>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
-    <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
     
-    <!-- SocketIO Library -->
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/world.js') }}"></script>
     <script src="{{ url_for('static', filename='js/travel.js') }}"></script>
 </body>
