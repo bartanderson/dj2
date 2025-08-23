@@ -65,7 +65,10 @@ class WorldManager:
         
         # Generate the world data with all provided parameters
         world_data = self.generator.generate(theme, **kwargs)
-        
+
+        # Ensure the seed is included in the world data
+        world_data["seed"] = self.generator.seed
+
         # Save to database
         world_id = self.save_to_db(world_data)
         return world_id
@@ -78,7 +81,7 @@ class WorldManager:
                 # Insert world metadata
                 cur.execute(
                     "INSERT INTO worlds (theme, seed) VALUES (%s, %s) RETURNING id",
-                    (world_data["theme"], world_data["seed"])
+                    (world_data["theme"], world_data.get("seed", 42))
                 )
                 world_id = cur.fetchone()[0]
                 

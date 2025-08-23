@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeon World Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #2a4b8c);
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Main layout */
+        .app-container {
+            display: grid;
+            grid-template-columns: 60px 1fr;
+            grid-template-rows: 60px 1fr;
+            grid-template-areas:
+                "header header"
+                "sidebar main";
+            height: 100vh;
+        }
+        
+        /* Header */
+        .app-header {
+            grid-area: header;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 1px solid #4ecca3;
+            z-index: 100;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecca3;
+        }
+        
+        .header-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        /* Sidebar */
+        .app-sidebar {
+            grid-area: sidebar;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            gap: 15px;
+            z-index: 90;
+            border-right: 1px solid #4ecca3;
+        }
+        
+        .menu-item {
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            background: rgba(78, 204, 163, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .menu-item:hover {
+            background: rgba(78, 204, 163, 0.4);
+        }
+        
+        .menu-item.active {
+            background: rgba(78, 204, 163, 0.6);
+        }
+        
+        .menu-icon {
+            font-size: 1.2rem;
+        }
+        
+        /* Main content area */
+        .app-main {
+            grid-area: main;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* World map */
+        .world-map-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: #0d2136;
+            overflow: hidden;
+        }
+        
+        #world-map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Flyout panels */
+        .flyout-panel {
+            position: absolute;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            border-left: 2px solid #4ecca3;
+            transition: right 0.3s ease;
+            z-index: 80;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .flyout-panel.active {
+            right: 0;
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #4ecca3;
+        }
+        
+        .close-panel {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        /* Notification system */
+        .notification-container {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .notification {
+            background: rgba(0, 0, 0, 0.8);
+            border-left: 4px solid #4ecca3;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            max-width: 300px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .notification.error {
+            border-left-color: #f44336;
+        }
+        
+        .notification.success {
+            border-left-color: #4CAF50;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        /* Connection status */
+        #connection-status {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .status-connected { background-color: #4CAF50; }
+        .status-disconnected { background-color: #f44336; }
+        .status-connecting { background-color: #FF9800; }
+        
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            background: #4ecca3;
+            color: #1a2a6c;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .btn:hover {
+            background: #3bb998;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .flyout-panel {
+                width: 300px;
+            }
+            
+            .app-container {
+                grid-template-columns: 1fr;
+                grid-template-areas:
+                    "header"
+                    "main";
+            }
+            
+            .app-sidebar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 60px;
+                flex-direction: row;
+                justify-content: space-around;
+                padding: 0 10px;
+                z-index: 100;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">Dungeon World</div>
+            <div class="header-controls">
+                <div id="connection-status" class="status-disconnected">Disconnected</div>
+                <button class="btn">Settings</button>
+            </div>
+        </header>
+        
+        <!-- Sidebar Menu -->
+        <nav class="app-sidebar">
+            <div class="menu-item active" data-panel="world">
+                <div class="menu-icon">🗺️</div>
+            </div>
+            <div class="menu-item" data-panel="character">
+                <div class="menu-icon">👤</div>
+            </div>
+            <div class="menu-item" data-panel="inventory">
+                <div class="menu-icon">🎒</div>
+            </div>
+            <div class="menu-item" data-panel="quests">
+                <div class="menu-icon">📜</div>
+            </div>
+            <div class="menu-item" data-panel="party">
+                <div class="menu-icon">👥</div>
+            </div>
+            <div class="menu-item" data-panel="chat">
+                <div class="menu-icon">💬</div>
+            </div>
+        </nav>
+        
+        <!-- Main Content Area -->
+        <main class="app-main">
+            <!-- World Map -->
+            <div class="world-map-container">
+                <div id="world-map">
+                    <!-- Map will be rendered here -->
+                    <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                        <div style="text-align: center;">
+                            <h2>World Map</h2>
+                            <p>Interactive map would appear here</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Flyout Panels -->
+            <div id="character-panel" class="flyout-panel">
+                <div class="panel-header">
+                    <h2>Character</h2>
+                    <button class="close-panel">×</button>
+                </div>
+                <p>Character management content would appear here.</p>
+            </div>
+            
+            <div id="inventory-panel" class="flyout-panel">
+                <div class="panel-header">
+                    <h2>Inventory</h2>
+                    <button class="close-panel">×</button>
+                </div>
+                <p>Inventory management content would appear here.</p>
+            </div>
+            
+            <div id="quests-panel" class="flyout-panel">
+                <div class="panel-header">
+                    <h2>Quests</h2>
+                    <button class="close-panel">×</button>
+                </div>
+                <p>Quest log and management would appear here.</p>
+            </div>
+            
+            <div id="party-panel" class="flyout-panel">
+                <div class="panel-header">
+                    <h2>Party</h2>
+                    <button class="close-panel">×</button>
+                </div>
+                <p>Party management content would appear here.</p>
+            </div>
+            
+            <div id="chat-panel" class="flyout-panel">
+                <div class="panel-header">
+                    <h2>DM Chat</h2>
+                    <button class="close-panel">×</button>
+                </div>
+                <p>Chat interface would appear here.</p>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Notification Container -->
+    <div class="notification-container">
+        <!-- Notifications will be added here dynamically -->
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Panel management
+            const menuItems = document.querySelectorAll('.menu-item');
+            const panels = document.querySelectorAll('.flyout-panel');
+            const closeButtons = document.querySelectorAll('.close-panel');
+            
+            // Handle menu item clicks
+            menuItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const panelId = this.getAttribute('data-panel') + '-panel';
+                    
+                    // Toggle active class on menu items
+                    menuItems.forEach(mi => mi.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Show the selected panel, hide others
+                    panels.forEach(panel => {
+                        if (panel.id === panelId) {
+                            panel.classList.add('active');
+                        } else {
+                            panel.classList.remove('active');
+                        }
+                    });
+                });
+            });
+            
+            // Handle close button clicks
+            closeButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const panel = this.closest('.flyout-panel');
+                    panel.classList.remove('active');
+                    
+                    // Reset the active menu item to World
+                    menuItems.forEach(mi => mi.classList.remove('active'));
+                    document.querySelector('.menu-item[data-panel="world"]').classList.add('active');
+                });
+            });
+            
+            // Simulate connection status change
+            setTimeout(() => {
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('connection-status').className = 'status-connected';
+                
+                // Show a notification
+                showNotification('Successfully connected to world server', 'success');
+            }, 1500);
+            
+            // Function to show notifications
+            function showNotification(message, type = 'info') {
+                const notificationContainer = document.querySelector('.notification-container');
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                notification.textContent = message;
+                
+                notificationContainer.appendChild(notification);
+                
+                // Remove notification after 5 seconds
+                setTimeout(() => {
+                    notification.remove();
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html>

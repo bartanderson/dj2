@@ -37,7 +37,7 @@ class WorldGenerator:
     def generate(self, theme="dark_fantasy", **custom_params):
         """Generate a complete world with configurable parameters including images"""
         # Merge default and custom parameters
-        params = {**self.default_params, **custom_params}
+        params = {**self.default_params, **custom_params}    
         
         # Initialize image generator if needed
         if params.get("generate_images", True):

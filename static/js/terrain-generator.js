@@ -56,150 +56,13 @@ class PerlinNoise {
         }
 }
 
-// this has the code we used to get values to tune the noise to distribute the terrain types
-// class TerrainGenerator {
-//     constructor(seed, width, height) {
-//         this.seed = seed;
-//         this.width = width;
-//         this.height = height;
-//         this.rng = new Math.seedrandom(this.seed.toString());
-//         this.perlinNoise = new PerlinNoise(this.seed);
-//         this.terrainTypes = {
-//             "ocean": {"color": "#4d6fb8", "height_range": [-1, 0.4]},
-//             "coast": {"color": "#a2c4c9", "height_range": [0.4, 0.45]},
-//             "plains": {"color": "#689f38", "height_range": [0.45, 0.65]},
-//             "hills": {"color": "#8d9946", "height_range": [0.65, 0.8]},
-//             "mountains": {"color": "#8d99ae", "height_range": [0.8, 0.95]},
-//             "snowcaps": {"color": "#ffffff", "height_range": [0.95, 1]}
-//         };
-//     }
-    
-//     generateHeightmap() {
-//         const heightmap = new Array(this.height).fill(null).map(() => new Array(this.width).fill(0));
-//         const scale = 0.005;
-//         const octaves = 4;
-//         const persistence = 0.5;
-//         const lacunarity = 2;
-        
-//         let maxNoise = 0;
-//         let amplitude = 1;
-//         for (let i = 0; i < octaves; i++) {
-//             maxNoise += amplitude;
-//             amplitude *= persistence;
-//         }
-
-//         // Add this section to calculate and log stats
-//         let rawNoiseValues = [];
-//         let totalNoise = 0;
-//         let minRawNoise = Infinity;
-//         let maxRawNoise = -Infinity;
-
-        
-//         for (let y = 0; y < this.height; y++) {
-//             for (let x = 0; x < this.width; x++) {
-//                 let noise = 0;
-//                 amplitude = 1;
-//                 let frequency = 1;
-//                 for (let i = 0; i < octaves; i++) {
-//                     noise += this.perlinNoise.noise(x * scale * frequency, y * scale * frequency, this.seed) * amplitude;
-//                     amplitude *= persistence;
-//                     frequency *= lacunarity;
-//                 }
-//                 heightmap[y][x] = noise;
-
-//                 // Track min, max, and total
-//                 rawNoiseValues.push(noise);
-//                 totalNoise += noise;
-//                 if (noise < minRawNoise) minRawNoise = noise;
-//                 if (noise > maxRawNoise) maxRawNoise = noise;
-//             }
-//         }
-
-//         console.log("--- Raw Noise Stats (Before Normalization) ---");
-//         console.log("Min Raw Noise:", minRawNoise);
-//         console.log("Max Raw Noise:", maxRawNoise);
-//         console.log("Average Raw Noise:", totalNoise / (this.width * this.height));
-//         console.log("--------------------------------------------");
-
-        
-//         // Normalize heightmap
-//         for (let y = 0; y < this.height; y++) {
-//             for (let x = 0; x < this.width; x++) {
-//                 heightmap[y][x] = (heightmap[y][x] + maxNoise) / (2 * maxNoise);
-//             }
-//         }
-//         return heightmap;
-//     }
-    
-//     generateTerrain(heightmap) {
-//         const terrain = new Array(this.height).fill(null).map(() => new Array(this.width).fill(0));
-//         for (let y = 0; y < this.height; y++) {
-//             for (let x = 0; x < this.width; x++) {
-//                 const height = heightmap[y][x];
-//                 let terrainType = "ocean";
-//                 if (height >= this.terrainTypes["snowcaps"].height_range[0]) {
-//                     terrainType = "snowcaps";
-//                 } else if (height >= this.terrainTypes["mountains"].height_range[0]) {
-//                     terrainType = "mountains";
-//                 } else if (height >= this.terrainTypes["hills"].height_range[0]) {
-//                     terrainType = "hills";
-//                 } else if (height >= this.terrainTypes["plains"].height_range[0]) {
-//                     terrainType = "plains";
-//                 } else if (height >= this.terrainTypes["coast"].height_range[0]) {
-//                     terrainType = "coast";
-//                 }
-//                 terrain[y][x] = this.terrainTypes[terrainType].color;
-//             }
-//         }
-//         return terrain;
-//     }
-
-//     renderTerrain(terrain, canvasId) {
-//         const canvas = document.getElementById(canvasId);
-//         if (!canvas) {
-//             console.error(`Canvas with ID ${canvasId} not found.`);
-//             return;
-//         }
-
-//         const rect = canvas.getBoundingClientRect();
-//         canvas.width = rect.width;
-//         canvas.height = rect.height;
-        
-//         const ctx = canvas.getContext('2d');
-//         const imageData = ctx.createImageData(canvas.width, canvas.height);
-//         const data = imageData.data;
-
-//         const scaleX = this.width / canvas.width;
-//         const scaleY = this.height / canvas.height;
-
-//         for (let y = 0; y < canvas.height; y++) {
-//             for (let x = 0; x < canvas.width; x++) {
-//                 const originalX = Math.floor(x * scaleX);
-//                 const originalY = Math.floor(y * scaleY);
-
-//                 const hexColor = terrain[originalY][originalX];
-                
-//                 const r = parseInt(hexColor.substring(1, 3), 16);
-//                 const g = parseInt(hexColor.substring(3, 5), 16);
-//                 const b = parseInt(hexColor.substring(5, 7), 16);
-                
-//                 const index = (y * canvas.width + x) * 4;
-                
-//                 data[index] = r;
-//                 data[index + 1] = g;
-//                 data[index + 2] = b;
-//                 data[index + 3] = 255;
-//             }
-//         }
-//         ctx.putImageData(imageData, 0, 0);
-//     }
-// }
-
 class TerrainGenerator {
     constructor(seed, width, height) {
         this.seed = seed;
         this.width = width;
         this.height = height;
+        console.log("this.seed")
+        console.log(this.seed)
         this.rng = new Math.seedrandom(this.seed.toString());
         this.perlinNoise = new PerlinNoise(this.seed);
         this.terrainTypes = {
@@ -213,6 +76,7 @@ class TerrainGenerator {
     }
     
     generateHeightmap() {
+        const generateStats = 0;
         const heightmap = new Array(this.height).fill(null).map(() => new Array(this.width).fill(0));
         const scale = 0.005;
         const octaves = 4;
@@ -225,6 +89,15 @@ class TerrainGenerator {
             maxNoise += amplitude;
             amplitude *= persistence;
         }
+
+        if (generateStats) {
+            // Add this section to calculate and log stats
+            let rawNoiseValues = [];
+            let totalNoise = 0;
+            let minRawNoise = Infinity;
+            let maxRawNoise = -Infinity;
+        }
+
         
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
@@ -237,7 +110,23 @@ class TerrainGenerator {
                     frequency *= lacunarity;
                 }
                 heightmap[y][x] = noise;
+                if (generateStats) {
+                    // Track min, max, and total
+                    rawNoiseValues.push(noise);
+                    totalNoise += noise;
+                    if (noise < minRawNoise) minRawNoise = noise;
+                    if (noise > maxRawNoise) maxRawNoise = noise;
+                }
             }
+        }
+
+        if (generateStats) {
+            // this along with the associated usages above generate data to allow determining the range of noise values to determine distribution within that range should something need to be changed
+            console.log("--- Raw Noise Stats (Before Normalization) ---");
+            console.log("Min Raw Noise:", minRawNoise);
+            console.log("Max Raw Noise:", maxRawNoise);
+            console.log("Average Raw Noise:", totalNoise / (this.width * this.height));
+            console.log("--------------------------------------------");
         }
         
         // Normalize heightmap

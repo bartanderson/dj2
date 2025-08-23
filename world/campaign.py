@@ -8,8 +8,9 @@ class Location:
                  x: int = 0, y: int = 0,  # Add coordinates here
                  dungeon_type: Optional[str] = None, dungeon_level: int = 1,
                  image_url: Optional[str] = None,
-                 features: Optional[List[str]] = None,  # Add this parameter
-                 services: Optional[List[str]] = None):  # Add this parameter
+                 features: Optional[List[str]] = None,
+                 services: Optional[List[str]] = None,
+                 discovered: bool = False):
         self.id = id
         self.name = name
         self.type = type
@@ -21,8 +22,8 @@ class Location:
         self.features = features or []  # Initialize with empty list if None
         self.services = services or []   # Initialize with empty list if None
         self.image_url = image_url
-        self.discovered = False
         self.quests: List[str] = []  # Store quest IDs, not objects
+        self.discovered = discovered
 
     def to_dict(self) -> dict:
         return {

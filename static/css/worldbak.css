@@ -1,0 +1,686 @@
+body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            font-family: Arial, sans-serif;
+            background: #2c3e50;
+}
+.world-container {
+  height: 100vh; /* Make container full viewport height */
+  display: flex;
+  flex-direction: column;
+}
+
+.location-preview {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    z-index: 10;
+}
+
+#main-map-container {
+
+}
+
+.world-map {
+  height: 70vh; /* This makes the height responsive to viewport height */
+  min-height: 400px; /* Prevents it from getting too small */
+
+}
+
+#terrain-canvas,
+#map-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;  /* These two lines are the key */
+    height: 100%;
+    display:block;
+}
+
+.location-panel {
+    grid-column: 2;
+    grid-row: 1;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.location-image {
+    height: 200px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat; /* Add this */
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border: 1px solid #3a5f85; /* Add border */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* Add shadow */
+}
+
+.character-manager {
+    grid-column: 2;
+    grid-row: 2;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.quest-log {
+    grid-column: 1 / span 2;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.health-bar {
+    height: 20px;
+    background: #333;
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow: hidden;
+}
+
+.health-fill {
+    height: 100%;
+    background: #d9534f;
+    transition: width 0.5s;
+    color: white;
+    font-size: 12px;
+    text-align: center;
+    line-height: 20px;
+}
+
+.character-card {
+    display: flex;
+    padding: 10px;
+    margin: 5px 0;
+    background: #1a3a5a;
+    border-radius: 4px;
+}
+
+.character-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background-size: cover;
+    margin-right: 10px;
+}
+
+.character-info {
+    flex-grow: 1;
+}
+
+.quest-item {
+    padding: 8px;
+    margin: 5px 0;
+    background: #1a3a5a;
+    border-left: 3px solid #4ecca3;
+    border-radius: 4px;
+}
+
+.tavern-intro {
+    background: rgba(0, 0, 0, 0.7);
+    border: 2px solid #d4af37;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.tavern-intro h3 {
+    color: #ffcc00;
+    margin-top: 0;
+}
+
+.tavern-intro button {
+    background: #d4af37;
+    color: #000;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.tavern-rumors {
+    margin-top: 15px;
+    border-top: 1px solid #444;
+    padding-top: 10px;
+}
+
+/* Travel Interface */
+.travel-interface {
+    grid-column: 1 / span 2;
+    grid-row: 1 / span 3;
+    background: #0a1929;
+    border: 2px solid #2c5282;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+}
+
+.travel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2c5282;
+}
+
+.travel-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: 1fr auto;
+    gap: 15px;
+    flex-grow: 1;
+}
+
+.travel-narration {
+    grid-column: 1;
+    grid-row: 1;
+    background: rgba(0, 10, 20, 0.7);
+    border: 1px solid #3a5f85;
+    border-radius: 6px;
+    padding: 15px;
+    overflow-y: auto;
+    line-height: 1.6;
+    font-size: 16px;
+}
+
+.travel-image {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    background-size: cover;
+    background-position: center;
+    border-radius: 6px;
+    border: 1px solid #3a5f85;
+}
+
+.travel-options {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+}
+
+.encounter-options {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+}
+
+.travel-options button, .encounter-options button {
+    background: #2c5282;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+.travel-options button:hover, .encounter-options button:hover {
+    background: #3a5f85;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Character Creation Modal */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.7);
+}
+
+.modal-content {
+    background: #0d2136;
+    margin: 10% auto;
+    padding: 20px;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 600px;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.creation-step {
+    display: none;
+    padding: 15px;
+    border: 1px solid #3a5f85;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.creation-step.active {
+    display: block;
+}
+
+.step-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+}
+
+.option-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.option-card {
+    background: #1a3a5a;
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: 2px solid transparent;
+}
+
+.option-card:hover {
+    background: #2a4a6a;
+    border-color: #4ecca3;
+}
+
+.option-card.selected {
+    background: #2a5a7a;
+    border-color: #ffcc00;
+    box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+}
+
+/* DM Chat Panel */
+.dm-chat {
+    grid-column: 2;
+    grid-row: 2;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    height: 300px;
+}
+
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.chat-input {
+    display: flex;
+}
+
+.chat-input input {
+    flex-grow: 1;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #3a5f85;
+    background: #0a1929;
+    color: white;
+}
+
+.chat-input button {
+    margin-left: 5px;
+}
+
+.message {
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 4px;
+}
+
+.message.player {
+    background: rgba(30, 60, 100, 0.7);
+    align-self: flex-end;
+}
+
+.message.dm {
+    background: rgba(80, 40, 20, 0.7);
+    align-self: flex-start;
+}
+
+/* Dialog History */
+.dialog-history {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.dialog-entry {
+    padding: 3px 0;
+    border-bottom: 1px solid #333;
+}
+
+/* Message styling */
+.message.dm {
+    background: rgba(90, 50, 30, 0.7);
+}
+
+.message.npc {
+    background: rgba(30, 60, 30, 0.7);
+}
+
+.message.system {
+    background: rgba(30, 30, 60, 0.7);
+    font-style: italic;
+}
+/* Character card popup */
+.character-card-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    z-index: 1000;
+    overflow-y: auto;
+    box-shadow: 0 0 20px rgba(0,0,0,0.7);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px;
+    background: #1a3a5a;
+    border-bottom: 1px solid #3a5f85;
+}
+
+.close-card {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5em;
+    cursor: pointer;
+}
+
+.card-body {
+    padding: 15px;
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 15px;
+}
+
+.character-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+    border: 2px solid #d4af37;
+}
+
+.character-details, .character-traits {
+    grid-column: span 2;
+}
+
+.abilities {
+    grid-column: span 2;
+}
+
+.ability-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 5px;
+}
+
+.ability-score {
+    text-align: center;
+    background: #1a3a5a;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.ability-name {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+.ability-value {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #d4af37;
+}
+
+.card-footer {
+    padding: 15px;
+    text-align: center;
+    border-top: 1px solid #3a5f85;
+}
+
+.add-to-party {
+    padding: 10px 20px;
+    background: #d4af37;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.party-assignment-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1a3a5a;
+    padding: 20px;
+    border: 2px solid #3a5f85;
+    border-radius: 8px;
+    z-index: 1000;
+}
+
+.party-option {
+    padding: 10px;
+    margin: 5px 0;
+    background: #0d2136;
+    border-radius: 4px;
+}
+
+.party-manager {
+    grid-column: 2;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.character-roster {
+    grid-column: 1;
+    grid-row: 3;
+    background: #0d2136;
+    border: 2px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .character-card-popup {
+        width: 95%;
+    }
+    
+    .card-body {
+        grid-template-columns: 1fr;
+    }
+    
+    .character-avatar {
+        justify-self: center;
+    }
+    
+    .ability-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* character.css */
+.equipment-section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(40, 30, 20, 0.6);
+    border-radius: 8px;
+    border-left: 3px solid #8d6e63;
+}
+
+.equipment-choice {
+    margin: 10px 0;
+    padding: 10px;
+    background: rgba(50, 40, 30, 0.7);
+    border-radius: 5px;
+}
+
+.equipment-choice select {
+    width: 100%;
+    padding: 8px;
+    background: rgba(60, 50, 40, 0.8);
+    border: 1px solid #8d6e63;
+    color: white;
+    border-radius: 4px;
+}
+
+.item-card {
+    padding: 10px;
+    background: rgba(50, 40, 30, 0.7);
+    border-radius: 5px;
+    margin: 10px 0;
+}
+
+.item-card h5 {
+    margin: 0 0 5px 0;
+    color: #ffd54f;
+}
+
+.significance {
+    font-style: italic;
+    color: #d7ccc8;
+    margin-top: 5px;
+}
+
+.ai-guidance {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(30, 20, 10, 0.7);
+    border-radius: 8px;
+    border-left: 3px solid #ffd54f;
+}
+
+/* Notification styles */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    border-radius: 5px;
+    color: white;
+    z-index: 10000;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.notification.info {
+    background-color: #3498db;
+}
+
+.notification.success {
+    background-color: #2ecc71;
+}
+
+.notification.error {
+    background-color: #e74c3c;
+}
+
+.notification.hidden {
+    display: none;
+}
+
+/* Character selection modal */
+.character-option {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.character-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    margin-right: 15px;
+}
+
+.character-info {
+    flex-grow: 1;
+}
+
+.select-character {
+    background-color: #4ecca3;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.select-character:hover {
+    background-color: #3da58a;
+}
+
+/* Ownership badge */
+.ownership-badge {
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+}

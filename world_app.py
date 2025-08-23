@@ -130,13 +130,6 @@ def main():
         print(f"❌ Failed to initialize world system: {e}")
         return None
 
-# World generation endpoint
-@app.route('/api/generate-world', methods=['POST'])
-def generate_world():
-    data = request.json
-    theme = data.get('theme', 'dark_fantasy')
-    world_id = generate_world(theme)
-    return jsonify({"world_id": world_id})
 
 # World loading endpoint
 @app.route('/api/load-world/<int:world_id>', methods=['POST'])
@@ -313,9 +306,9 @@ def world_state():
 
         # print(f"before getting world_map")
         # print(f"world_map: {world_controller.get_map_data()}")
-        # print(f"currentLocation: {world_controller.get_current_location_data()}")
-        # print(f"parties: {world_controller.get_active_parties()}")
-        # print(f"currentLocation: {characters_dict}")
+        print(f"currentLocation: {world_controller.get_current_location_data()}")
+        print(f"parties: {world_controller.get_active_parties()}")
+        print(f"characters: {characters_dict}")
             
         return jsonify({
             "worldMap": world_controller.get_map_data(),

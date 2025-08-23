@@ -7,6 +7,230 @@ let worldState = {
     discoveredLocations: []
 };
 
+function showNotification(message, type = 'info') {
+    // Create notification container if it doesn't exist
+    let notificationContainer = document.querySelector('.notification-container');
+    if (!notificationContainer) {
+        notificationContainer = document.createElement('div');
+        notificationContainer.className = 'notification-container';
+        notificationContainer.style.position = 'fixed';
+        notificationContainer.style.top = '20px';
+        notificationContainer.style.right = '20px';
+        notificationContainer.style.zIndex = '1000';
+        document.body.appendChild(notificationContainer);
+    }
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    // Add basic styling
+    notification.style.padding = '10px 15px';
+    notification.style.marginBottom = '10px';
+    notification.style.borderRadius = '4px';
+    notification.style.color = 'white';
+    notification.style.fontFamily = 'Arial, sans-serif';
+    notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    
+    // Set background color based on type
+    switch(type) {
+        case 'error':
+            notification.style.background = '#f44336'; // red
+            break;
+        case 'success':
+            notification.style.background = '#4CAF50'; // green
+            break;
+        case 'warning':
+            notification.style.background = '#ff9800'; // orange
+            break;
+        default: // info
+            notification.style.background = '#2196F50'; // blue
+    }
+    
+    notificationContainer.appendChild(notification);
+    
+    // Remove notification after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+        // Remove container if it's empty
+        if (notificationContainer.children.length === 0) {
+            notificationContainer.remove();
+        }
+    }, 5000);
+}
+
+
+// Add to your existing JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    // Map zoom and pan variables
+    let scale = 1;
+    let panX = 0;
+    let panY = 0;
+    const maxScale = 3;
+    const minScale = 0.5;
+    
+    // Get map elements
+    const terrainCanvas = document.getElementById('terrain-canvas');
+    const mapOverlay = document.getElementById('map-overlay');
+
+    // Zoom functionality
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
+    const centerBtn = document.getElementById('center-map');
+        
+    // Zoom in functionality
+    if (zoomInBtn) {
+        document.getElementById('zoom-in').addEventListener('click', function() {
+            if (scale < maxScale) {
+                scale += 0.25;
+                updateMapTransform();
+            }
+        });
+    }
+
+    // Zoom out functionality
+    if(zoomOutBtn) {
+        document.getElementById('zoom-out').addEventListener('click', function() {
+            if (scale > minScale) {
+                scale -= 0.25;
+                updateMapTransform();
+            }
+        });
+    }
+
+    // Center map functionality
+    if(centerBtn){
+        document.getElementById('center-map').addEventListener('click', function() {
+            scale = 1;
+            panX = 0;
+            panY = 0;
+            updateMapTransform();
+        });
+    }
+
+    mapOverlay.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        mapOverlay.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mouseup', function() {
+        isDragging = false;
+        mapOverlay.style.cursor = 'grab';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateMapTransform();
+    });
+
+    // Update map transform
+    function updateMapTransform() {
+        const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        terrainCanvas.style.transform = transform;
+        mapOverlay.style.transform = transform;
+    }
+
+    // Pan functionality with mouse drag
+    let isDragging = false;
+    let startX, startY;
+    
+    mapOverlay.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        mapOverlay.style.cursor = 'grabbing';
+    });
+    
+    document.addEventListener('mouseup', function() {
+        isDragging = false;
+        mapOverlay.style.cursor = 'grab';
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateMapTransform();
+    });
+    
+    // Update map transform
+    function updateMapTransform() {
+        const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        terrainCanvas.style.transform = transform;
+        mapOverlay.style.transform = transform;
+    }
+    
+    // Quick action buttons
+    document.getElementById('travel-btn').addEventListener('click', function() {
+        console.log('Travel action triggered');
+        // Implement travel functionality
+    });
+    
+    document.getElementById('inventory-btn').addEventListener('click', function() {
+        console.log('Inventory action triggered');
+        // Implement inventory functionality
+    });
+    
+    document.getElementById('quests-btn').addEventListener('click', function() {
+        console.log('Quests action triggered');
+        // Implement quests functionality
+    });
+    
+    document.getElementById('party-btn').addEventListener('click', function() {
+        console.log('Party action triggered');
+        // Implement party functionality
+    });
+
+    // Check if elements exist before manipulating them
+    const worldMapContainer = document.getElementById('world-map');
+    
+    if (!worldMapContainer || !terrainCanvas || !mapOverlay) {
+        console.error('Required map elements not found in DOM');
+        return;
+    }
+    
+    // Initialize your map only if elements exist
+    loadWorldData();
+    
+    // Add event listeners only if elements exist
+    const enterDungeonBtn = document.getElementById('enter-dungeon');
+    if (enterDungeonBtn) {
+        enterDungeonBtn.addEventListener('click', enterDungeon);
+    }
+
+    // Get all menu items
+    const menuItems = document.querySelectorAll('.menu-item');
+    if(menuItems.length > 0) {
+        // Add click event listeners to all menu items
+        menuItems.forEach(item => {
+            item.addEventListener('click', function() {
+                const targetPanel = this.getAttribute('data-target');
+                
+                if (targetPanel) {
+                    // Hide all panels
+                    document.querySelectorAll('.panel').forEach(panel => {
+                        panel.style.display = 'none';
+                    });
+                    
+                    // Show the target panel
+                    const targetElement = document.getElementById(targetPanel);
+                    if (targetElement) {
+                        targetElement.style.display = 'block';
+                    }
+                }
+            });
+        });
+    }
+
+
+});
+
 function showLocationPreview(location, x, y) {
     const preview = document.getElementById('location-preview');
     const img = document.getElementById('preview-image');
@@ -37,15 +261,22 @@ async function loadWorldData() {
     fetch('/api/world-state')
         .then(response => response.json())
         .then(data => {
+
+            // Find current location by ID
+            let currentLocation = null;
+            if (data.currentLocation && data.currentLocation.id) {
+                currentLocation = data.worldMap.locations.find(
+                    loc => loc.id === data.currentLocation.id
+                );
+            }
             
             // Correctly populate the globally accessible worldState object
             window.worldState = {
                 worldMap: data.worldMap,
-                // Check if playerState exists before accessing it
-                currentLocation: data.playerState ? data.worldMap.locations.find(loc => loc.id === data.playerState.current_location_id) : null,
+                currentLocation: currentLocation,
                 locations: data.worldMap.locations
             };
-            
+        
             // Render the map for the first time
             renderWorldMap(window.worldState.worldMap);
         })
@@ -151,7 +382,7 @@ async function refreshWorldState() {
         
     } catch (error) {
         console.error('Error refreshing world state:', error);
-        // Handle errors gracefully
+        showNotification('Error refreshing world state.', 'error');
     }
 }
 
@@ -291,53 +522,59 @@ function renderMinimalMap(locations) {
 }
 
 // The consolidated function to render all map elements
+// Replace your renderWorldMap function with this:
 function renderWorldMap(worldMap) {
-    const worldMapContainer = document.getElementById('world-map');
+    // Store world data for later use
+    window.worldState = window.worldState || {};
+    window.worldState.worldMap = worldMap;
+
+    // Get map container and elements
+    const container = document.getElementById('world-map');
     const mapOverlay = document.getElementById('map-overlay');
-    if (!worldMapContainer || !mapOverlay) return;
-    
-    // Rationale: We no longer clear the parent 'world-map' div.
-    // Instead, we clear the terrain canvas and the SVG overlay individually.
-    
-    // Step 1: Generate and render the terrain
     const terrainCanvas = document.getElementById('terrain-canvas');
-    if (terrainCanvas) {
 
-        // Clear the canvas to prepare for new rendering
-        const ctx = terrainCanvas.getContext('2d');
-        ctx.clearRect(0, 0, terrainCanvas.width, terrainCanvas.height);
-        
-        const seed = worldMap.seed || 42;
-        const terrainGen = new TerrainGenerator(seed, worldMap.width, worldMap.height);
+    if (!container || !mapOverlay || !terrainCanvas) return;
+    
+    // Set canvas size to match container (fixes blurriness)
+    terrainCanvas.width = container.clientWidth;
+    terrainCanvas.height = container.clientHeight;
 
-        const heightmap = terrainGen.generateHeightmap();
+    // Ensure seed is defined with a fallback value
+    const seed = worldMap.seed || 42; // Use current timestamp as fallback
 
-        const terrain = terrainGen.generateTerrain(heightmap);
-
-        terrainGen.renderTerrain(terrain, 'terrain-canvas');
-    }
-
-    // Step 2: Render the translucent hexagon grid on top of the terrain
-    const gridRenderer = new HexGridRenderer(worldMap.width, worldMap.height);
+    
+    // Generate and render terrain
+    console.log('renderWorldMap passing worldMap.seed, container.clientWidth, container.clientHeight to TerrainGenerator', worldMap.seed, container.clientWidth, container.clientHeight)
+    const terrainGen = new TerrainGenerator(seed, container.clientWidth, container.clientHeight);
+    const heightmap = terrainGen.generateHeightmap();
+    const terrain = terrainGen.generateTerrain(heightmap);
+    
+    // Store terrain for future use
+    window.worldState.terrain = terrain;
+    
+    // Render terrain
+    terrainGen.renderTerrain(terrain, 'terrain-canvas');
+    
+    // Render hex grid
+    const gridRenderer = new HexGridRenderer(container.clientWidth, container.clientHeight);
     gridRenderer.renderGrid('terrain-canvas');
 
-    // Step 3: Clear the SVG overlay before redrawing
+    // Clear the SVG overlay before redrawing
     mapOverlay.innerHTML = '';
 
-    // Step 4: Filter locations and connections based on 'discovered'.
+    // Filter locations and connections based on 'discovered'
     const discoveredLocations = worldMap.locations.filter(loc => loc.discovered);
     const discoveredConnections = worldMap.connections.filter(conn =>
         discoveredLocations.some(loc => loc.id === conn.from_id) &&
         discoveredLocations.some(loc => loc.id === conn.to_id)
     );
 
-    // Step 5: Draw the paths for discovered connections.
+    // Draw the paths for discovered connections
     renderPaths(discoveredConnections, worldMap.locations);
 
-    // Step 6: Place the locations on top of the paths and terrain.
+    // Place the locations on top of the paths and terrain
     place_locations(discoveredLocations);
 }
-
 
 
 
@@ -435,6 +672,7 @@ class HexGridGenerator {
     }
 }
 
+
 // Function to place location markers on the map
 function place_locations(locations) {
     const mapOverlay = document.getElementById('map-overlay');
@@ -447,7 +685,7 @@ function place_locations(locations) {
         const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         marker.setAttribute('cx', loc.x);
         marker.setAttribute('cy', loc.y);
-        marker.setAttribute('r', 10);
+        marker.setAttribute('r', 10); // Changed from 100 to 10
         marker.setAttribute('class', 'location-marker');
         marker.setAttribute('fill', 'red');
         marker.setAttribute('data-location-id', loc.id);
@@ -459,266 +697,6 @@ function place_locations(locations) {
         mapOverlay.appendChild(marker);
     });
 }
-
-// function renderWorldMap(mapData) {
-//     const worldMap = document.getElementById('world-map');
-//     if (!worldMap) return; // Safety check
-    
-//     worldMap.innerHTML = '';
-    
-//     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-//     svg.setAttribute('width', '100%');
-//     svg.setAttribute('height', '100%');
-//     svg.setAttribute('viewBox', `0 0 ${mapData.width} ${mapData.height}`);
-
-//     // Add background
-//     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-//     bg.setAttribute('width', '100%');
-//     bg.setAttribute('height', '100%');
-//     bg.setAttribute('fill', '#0d2136'); // Dark blue background
-//     svg.appendChild(bg);
-    
-//     // Define patterns for terrains
-//     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-//     defs.innerHTML = `
-//         <pattern id="mountainPattern" width="20" height="20" patternUnits="userSpaceOnUse">
-//             <path d="M0,10 L5,0 L10,10 Z" fill="#8d99ae" opacity="0.7" />
-//         </pattern>
-//         <pattern id="forestPattern" width="20" height="20" patternUnits="userSpaceOnUse">
-//             <circle cx="5" cy="15" r="3" fill="#2d6a4f" />
-//             <circle cx="15" cy="12" r="4" fill="#2d6a4f" />
-//             <circle cx="10" cy="5" r="5" fill="#2d6a4f" />
-//         </pattern>
-//         <pattern id="waterPattern" width="20" height="10" patternUnits="userSpaceOnUse">
-//             <path d="M0,5 C5,2 10,8 15,5 S25,2 30,5" stroke="#4d6fb8" fill="none" />
-//         </pattern>
-//     `;
-//     svg.appendChild(defs);
-    
-//     // Draw terrain hexes safely
-//     if (mapData.hexes && Array.isArray(mapData.hexes)) {
-//         mapData.hexes.forEach(hex => {
-//             const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-//             polygon.setAttribute('points', hex.points);
-
-//             // Get terrain colors safely
-//             const terrainColors = mapData.terrainColors || {
-//                 "ocean": "#4d6fb8",
-//                 "coast": "#a2c4c9",
-//                 "lake": "#4d6fb8",
-//                 "river": "#4d6fb8",
-//                 "plains": "#689f38",
-//                 "hills": "#8d9946",
-//                 "mountains": "#8d99ae",
-//                 "snowcaps": "#ffffff"
-//             };
-            
-//             // Apply terrain-specific styling
-//             switch(hex.terrain) {
-//                 case "mountains":
-//                     polygon.setAttribute('fill', "url(#mountainPattern)");
-//                     break;
-//                 case "forest":
-//                     polygon.setAttribute('fill', "url(#forestPattern)");
-//                     break;
-//                 case "ocean":
-//                     polygon.setAttribute('fill', terrainColors["ocean"]);
-//                     break;
-//                 case "coast":
-//                     polygon.setAttribute('fill', terrainColors["coast"]);
-//                     break;
-//                 case "lake":
-//                     polygon.setAttribute('fill', terrainColors["lake"]);
-//                     break;
-//                 case "river":
-//                     polygon.setAttribute('fill', terrainColors["river"]);
-//                     break;
-//                 case "snowcaps":
-//                     polygon.setAttribute('fill', terrainColors["snowcaps"]);
-//                     polygon.setAttribute('stroke', '#aaa');
-//                     break;
-//                 default:
-//                     // Use color from terrainColors if available
-//                     if (terrainColors[hex.terrain]) {
-//                         polygon.setAttribute('fill', terrainColors[hex.terrain]);
-//                     } else {
-//                         polygon.setAttribute('fill', '#689f38'); // Default plains color
-//                     }
-//             }
-            
-//             polygon.setAttribute('stroke', '#333');
-//             polygon.setAttribute('stroke-width', '0.5');
-//             polygon.setAttribute('opacity', '0.8');
-//             svg.appendChild(polygon);
-//         });
-//     }
-
-//     // Draw organic paths between locations
-//     if (mapData.paths && Array.isArray(mapData.paths)) {
-//         mapData.paths.forEach(path => {
-//             const pathElem = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-//             pathElem.setAttribute('d', `M ${path.points.replace(/ /g, ' L ')}`);
-            
-//             // Style based on path type
-//             switch(path.type) {
-//                 case "mountain_pass":
-//                     pathElem.setAttribute('stroke', '#5d4037');
-//                     pathElem.setAttribute('stroke-dasharray', '10,5');
-//                     pathElem.setAttribute('stroke-width', '2');
-//                     break;
-//                 case "lake_route":
-//                 case "sea_route":
-//                     pathElem.setAttribute('stroke', '#1565c0');
-//                     pathElem.setAttribute('stroke-dasharray', '5,10');
-//                     pathElem.setAttribute('stroke-width', '2');
-//                     break;
-//                 case "river_path":
-//                     pathElem.setAttribute('stroke', '#5f3300');
-//                     pathElem.setAttribute('stroke-dasharray', '5,10');
-//                     pathElem.setAttribute('stroke-width', '2');
-//                     break;
-//                 default:
-//                     pathElem.setAttribute('stroke', '#8d6e63');
-//                     pathElem.setAttribute('stroke-width', '2');
-//             }
-            
-//             pathElem.setAttribute('fill', 'none');
-//             pathElem.setAttribute('stroke-linecap', 'round');
-//             pathElem.setAttribute('stroke-linejoin', 'round');
-//             svg.appendChild(pathElem);
-//         });
-//     }
-
-//     // === FOG OF WAR LOCATION RENDERING ===
-//     // Filter locations based on fog of war
-//     const visibleLocations = mapData.fog_of_war 
-//         ? mapData.locations.filter(loc => mapData.known_locations.includes(loc.id))
-//         : mapData.locations;
-
-//     // Get preview element
-//     const preview = document.getElementById('location-preview');
-    
-//     // Render only visible locations
-//     visibleLocations.forEach(location => {
-//         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-//         group.setAttribute('transform', `translate(${location.x},${location.y})`);
-        
-//         // Create location marker circle
-//         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-//         circle.setAttribute('r', '12');
-        
-//         // Apply special styling for starting location
-//         if (location.id === mapData.starting_location) {
-//             circle.setAttribute('fill', '#ff9900');  // Orange for starting tavern
-//             circle.setAttribute('stroke', '#ff6600');
-//         } 
-//         // Regular styling for current location
-//         else if (location.isCurrent) {
-//             circle.setAttribute('fill', '#4ecca3');  // Green for current location
-//             circle.setAttribute('stroke', '#fff');
-//         }
-//         // Regular styling for other locations
-//         else {
-//             circle.setAttribute('fill', '#3a5f85');  // Blue for other locations
-//             circle.setAttribute('stroke', '#fff');
-//         }
-        
-//         circle.setAttribute('stroke-width', '2');
-//         circle.setAttribute('data-location-id', location.id);
-//         circle.classList.add('location-marker');
-        
-//         // Create location type icon
-//         let icon;
-//         if (location.type === "mountain_pass") {
-//             icon = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-//             icon.setAttribute('d', 'M -6,-6 L 0,6 L 6,-6 Z');
-//             icon.setAttribute('fill', '#fff');
-//         } else if (location.type === "port") {
-//             icon = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-//             icon.setAttribute('d', 'M -8,0 L 0,-8 L 8,0 L 0,8 Z');
-//             icon.setAttribute('fill', '#fff');
-//         } else {
-//             icon = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-//             icon.setAttribute('r', '4');
-//             icon.setAttribute('fill', '#fff');
-//         }
-        
-//         // Add elements to group
-//         group.appendChild(circle);
-//         group.appendChild(icon);
-        
-//         // Add event handlers
-//         group.addEventListener('click', () => travelToLocation(location.id));
-//         // Preview event handlers
-//         group.addEventListener('mouseenter', (e) => {
-//             if (preview) {
-//                 preview.textContent = location.name;
-//                 preview.classList.remove('hidden');
-//             }
-//         });
-        
-//         group.addEventListener('mousemove', (e) => {
-//             if (preview) {
-//                 const rect = worldMap.getBoundingClientRect();
-//                 preview.style.left = `${e.clientX - rect.left + 15}px`;
-//                 preview.style.top = `${e.clientY - rect.top - 15}px`;
-//             }
-//         });
-        
-//         group.addEventListener('mouseleave', () => {
-//             if (preview) {
-//                 preview.textContent = '';
-//                 preview.classList.add('hidden');
-//             }
-//         });
-        
-//         // Add group to SVG
-//         svg.appendChild(group);
-//     });
-    
-//     // Add SVG to DOM
-//     worldMap.appendChild(svg);
-    
-//     // Show tavern introduction if at starting location
-//     if (worldState.currentLocation?.id === mapData.starting_location) {
-//         showTavernIntroduction();
-//     }
-// }
-
-// Minimal CSS for location preview
-const previewStyles = `
-    .location-preview {
-        position: absolute;
-        background: rgba(30, 30, 40, 0.9);
-        border: 2px solid #5d4037;
-        border-radius: 8px;
-        padding: 8px 12px;
-        color: white;
-        font-family: 'MedievalSharp', cursive;
-        font-size: 14px;
-        z-index: 1000;
-        pointer-events: none;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
-        max-width: 200px;
-        text-align: center;
-        transition: opacity 0.2s;
-    }
-    
-    .location-preview.hidden {
-        opacity: 0;
-    }
-`;
-
-// Add styles to document head
-const styleEl = document.createElement('style');
-styleEl.innerHTML = previewStyles;
-document.head.appendChild(styleEl);
-
-// Initialize preview element
-const previewEl = document.createElement('div');
-previewEl.id = 'location-preview';
-previewEl.className = 'location-preview hidden';
-document.querySelector('.world-container').appendChild(previewEl);
 
 
 // Render location details
@@ -842,6 +820,57 @@ function showTavernIntroduction() {
     }
 }
 
+// Update your resizeMapCanvas function to use the TerrainGenerator
+function resizeMapCanvas() {
+    const canvas = document.getElementById('terrain-canvas');
+    const container = document.getElementById('world-map');
+    
+    if (canvas && container) {
+        // Get container dimensions
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        // Set canvas size
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Re-render terrain if world data is available
+        if (window.worldState && window.worldState.worldMap && window.worldState.terrain) {
+            // Use the TerrainGenerator to render the terrain
+            console.log('resizeMapCanvas params seed, width, height passed to TerrainGenerator', window.worldState.worldMap.seed, width, height)
+            const terrainGen = new TerrainGenerator(
+                window.worldState.worldMap.seed, 
+                width, 
+                height
+            );
+            
+            // Regenerate heightmap and terrain
+            const heightmap = terrainGen.generateHeightmap();
+            const terrain = terrainGen.generateTerrain(heightmap);
+            
+            // Store the terrain for future use
+            window.worldState.terrain = terrain;
+            
+            // Render the terrain
+            terrainGen.renderTerrain(terrain, 'terrain-canvas');
+            
+            // Re-render hex grid if needed
+            const gridRenderer = new HexGridRenderer(width, height);
+            gridRenderer.renderGrid('terrain-canvas');
+        }
+    }
+}
+
+// Initial render
+window.addEventListener('load', function() {
+    if (window.worldState && window.worldState.worldMap) {
+        renderWorldMap(window.worldState.worldMap);
+    } else {
+        // Load world data if not already available
+        loadWorldData();
+    }
+});
+
 function startTavernExperience() {
     // Fetch initial rumors
     fetch(`/api/location/${worldState.currentLocation.id}/rumors`)
@@ -869,7 +898,6 @@ window.addEventListener('load', () => {
     loadWorldData();
     
     // Set up event listeners
-    document.getElementById('enter-dungeon').addEventListener('click', enterDungeon);
     //document.getElementById('create-character').addEventListener('click', createCharacter);
     //document.getElementById('manage-inventory').addEventListener('click', openInventory);
     //document.getElementById('talk-to-npcs').addEventListener('click', talkToNPCs);
@@ -878,6 +906,7 @@ window.addEventListener('load', () => {
         // Only re-render if a world map has been loaded
         if (window.worldState && window.worldState.worldMap) {
             renderWorldMap(window.worldState.worldMap);
+            resizeMapCanvas();
         }
     });
 });

@@ -63,7 +63,6 @@ class WorldController:
         self.fog_of_war = True
         
         # Initialize state tracking
-        self.known_locations = set()
         self.quests: Dict[str, Quest] = {}
         self.active_quests: List[Quest] = []
         self.session_log: List[str] = []
@@ -88,10 +87,25 @@ class WorldController:
         self.setup_world(self.world_data)
         
         # Set starting location
-        starting_id = self.world_data.get("starting_location_id", "starting_tavern")
-        self.starting_location_id = starting_id
-        self.reveal_location(starting_id)
-        self.travel_to_location(starting_id)
+        #starting_id = self.world_data.get("starting_location_id", "starting_tavern")
+
+        starting_location = None
+        for location in self.world_map.locations.values():
+            if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
+                starting_location = location
+                break
+        
+        if starting_location:
+            print("Found starting location")
+            self.starting_location_id = starting_location.id
+            self.reveal_location(starting_location.id)
+            self.travel_to_location(starting_location.id)
+        else:
+            # Fallback to first location if no tavern found
+            first_location_id = list(self.world_map.locations.keys())[0]
+            self.starting_location_id = first_location_id
+            self.reveal_location(first_location_id)
+            self.travel_to_location(first_location_id)
         
         # Initialize default party AFTER loading world data
         self.parties[self.default_party_id] = {
@@ -107,6 +121,10 @@ class WorldController:
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
+        # Extract seed from world_data with a fallback
+        self.seed = world_data.get("seed", 42)
+        self.rng = random.Random(self.seed)
+        self.np_rng = np.random.default_rng(self.seed)
         # 1. Load locations
         for loc_data in world_data["locations"]:
             # Handle both database and JSON formats
@@ -271,7 +289,7 @@ class WorldController:
     def reveal_location(self, location_id: str):
         """Mark location as discovered"""
         if location_id in self.world_map.locations:
-            self.known_locations.add(location_id)
+            self.world_map.locations[location_id].discovered = True
             location = self.world_map.locations[location_id]
             location.discovered = True
             
@@ -785,6 +803,9 @@ class WorldController:
             loc_dict = loc.to_dict()
             loc_dict["imageUrl"] = loc.image_url
             locations.append(loc_dict)
+
+        # Ensure we have a valid seed
+        seed = getattr(self, 'seed', 42)  # Use 42 as fallback if seed doesn't exist
         
         # Return generation parameters instead of terrain data
         return {
@@ -805,13 +826,13 @@ class WorldController:
                 "snowcaps": "#ffffff"
             },
             "generation": {
-                "seed": self.seed,
+                "seed": seed,
                 "width": 1000,
                 "height": 800
             },
             "fog_of_war": self.fog_of_war,
-            "known_locations": list(self.known_locations),
-            "starting_location": self.starting_location_id
+            "starting_location": self.starting_location_id,
+            "seed": seed
         }
 
     def get_connections(self):
@@ -1041,7 +1062,6 @@ class WorldController:
             # Player progression
             "parties": party_states,
             "fog_of_war": self.fog_of_war,
-            "known_locations": list(self.known_locations),
             "starting_location": self.starting_location_id,
             
             # NPC and event data
