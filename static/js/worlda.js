@@ -11,15 +11,8 @@ let worldState = {
 let scale = 1;
 let panX = 0;
 let panY = 0;
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let initialPanX = 0;
-let initialPanY = 0;
 const maxScale = 3;
 const minScale = 0.5;
-
- const terrainCanvas = document.getElementById('terrain-canvas');
 
 // Location preview class
 class LocationPreview {
@@ -194,6 +187,8 @@ function showNotification(message, type = 'info') {
 
 // Update map transform
 function updateMapTransform() {
+    const terrainCanvas = document.getElementById('terrain-canvas');
+    const mapOverlay = document.getElementById('map-overlay');
     
     if (terrainCanvas && mapOverlay) {
         const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
@@ -214,6 +209,7 @@ function safeAddEventListener(selector, event, handler) {
 
 // Add event listeners to the canvas for hover interactions
 function setupCanvasInteractions() {
+    const terrainCanvas = document.getElementById('terrain-canvas');
     if (!terrainCanvas) return;
     
     // Use a debounce function to prevent excessive preview updates
@@ -273,9 +269,6 @@ function setupCanvasInteractions() {
             }
         }
     });
-
-    // Call this function to add the panning styles
-    addPanningStyles();
 }
 
 // Function to draw paths between locations on the canvas
@@ -339,6 +332,7 @@ function renderWorldMap(worldMap) {
 
     // Get map container and elements
     const container = document.getElementById('world-map');
+    const terrainCanvas = document.getElementById('terrain-canvas');
 
     if (!container || !terrainCanvas) {
         console.error('Map container or canvas not found');
@@ -389,6 +383,61 @@ function renderWorldMap(worldMap) {
     // Set up canvas interactions
     setupCanvasInteractions();
 }
+// function renderWorldMap(worldMap) {
+//     // Store world data for later use
+//     window.worldState = window.worldState || {};
+//     window.worldState.worldMap = worldMap;
+
+//     // Get map container and elements
+//     const container = document.getElementById('world-map');
+//     const terrainCanvas = document.getElementById('terrain-canvas');
+
+//     if (!container || !terrainCanvas) return;
+    
+//     // Set canvas size to match container (fixes blurriness)
+//     terrainCanvas.width = container.clientWidth;
+//     terrainCanvas.height = container.clientHeight;
+    
+//     // Get canvas context
+//     const ctx = terrainCanvas.getContext('2d');
+    
+//     // Ensure seed is defined with a fallback value
+//     const seed = worldMap.seed || 42;
+    
+//     // Generate and render terrain
+//     const terrainGen = new TerrainGenerator(seed, container.clientWidth, container.clientHeight);
+//     const heightmap = terrainGen.generateHeightmap();
+//     const terrain = terrainGen.generateTerrain(heightmap);
+    
+//     // Store terrain for future use
+//     window.worldState.terrain = terrain;
+    
+//     // Render terrain
+//     terrainGen.renderTerrain(terrain, 'terrain-canvas');
+    
+//     // Render hex grid
+//     const gridRenderer = new HexGridRenderer(container.clientWidth, container.clientHeight);
+//     gridRenderer.renderGrid('terrain-canvas');
+
+//     // Filter locations and connections based on 'discovered'
+//     const discoveredLocations = worldMap.locations.filter(loc => loc.discovered);
+//     const discoveredConnections = worldMap.connections.filter(conn =>
+//         discoveredLocations.some(loc => loc.id === conn.from_id) &&
+//         discoveredLocations.some(loc => loc.id === conn.to_id)
+//     );
+
+//     // Draw the paths for discovered connections
+//     drawPaths(ctx, discoveredConnections, worldMap.locations);
+
+//     // Place the locations on top of the paths and terrain
+//     drawLocations(ctx, discoveredLocations);
+    
+//     // Apply initial transform
+//     updateMapTransform();
+    
+//     // Set up canvas interactions
+//     setupCanvasInteractions();
+// }
 
 // Render location details
 function renderLocationDetails(location) {
@@ -454,7 +503,6 @@ function renderLocationDetails(location) {
         description.innerHTML = '<p>Error loading location details</p>';
     }
 }
-
 // Load world data from server
 async function loadWorldData() {
     try {
@@ -518,16 +566,6 @@ async function refreshWorldState() {
         
         // Update quest log
         updateQuestLog(data.parties);
-        
-        // Update travel panel if it's visible
-        if (document.getElementById('travel-panel').style.display === 'block') {
-            populateTravelPanel();
-        }
-        
-        // Update inventory panel if it's visible
-        if (document.getElementById('inventory-panel').style.display === 'block') {
-            populateInventoryPanel();
-        }
         
     } catch (error) {
         console.error('Error refreshing world state:', error);
@@ -612,6 +650,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let startX, startY;
     
     // Get map elements
+    const terrainCanvas = document.getElementById('terrain-canvas');
+    //const mapOverlay = document.getElementById('map-overlay');
 
     // Zoom functionality
     const zoomInBtn = document.getElementById('zoom-in');
@@ -646,6 +686,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // // Pan functionality with mouse drag
+    // if (mapOverlay) {
+    //     mapOverlay.addEventListener('mousedown', function(e) {
+    //         isDragging = true;
+    //         startX = e.clientX - panX;
+    //         startY = e.clientY - panY;
+    //         mapOverlay.style.cursor = 'grabbing';
+    //     });
+    // }
+    
+    // document.addEventListener('mouseup', function() {
+    //     isDragging = false;
+    //     if (mapOverlay) {
+    //         mapOverlay.style.cursor = 'grab';
+    //     }
+    // });
+    
     document.addEventListener('mousemove', function(e) {
         if (!isDragging) return;
         e.preventDefault();
@@ -661,23 +718,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const partyBtn = document.getElementById('party-btn');
     
     if (travelBtn) {
-        travelBtn.addEventListener('click', () => {
-            showPanel('travel-panel');
-            populateTravelPanel(); // Populate with available locations
+        travelBtn.addEventListener('click', function() {
+            console.log('Travel action triggered');
+            // Implement travel functionality
         });
     }
     
     if (inventoryBtn) {
         inventoryBtn.addEventListener('click', function() {
             console.log('Inventory action triggered');
-            populateInventoryPanel(); // Populate with inventory items
+            // Implement inventory functionality
         });
     }
     
     if (questsBtn) {
         questsBtn.addEventListener('click', function() {
             console.log('Quests action triggered');
-            refreshWorldState(); // Refresh to get latest quests
+            // Implement quests functionality
         });
     }
     
@@ -756,45 +813,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Add event listener for travel button
+    const travelBtn = document.getElementById('travel-btn');
     if (travelBtn) {
         travelBtn.addEventListener('click', () => {
             showPanel('travel-panel');
-            populateTravelPanel(); // Populate with available locations
+            // You might want to populate the travel panel with available locations
         });
     }
     
     // Add event listener for inventory button
+    const inventoryBtn = document.getElementById('inventory-btn');
     if (inventoryBtn) {
         inventoryBtn.addEventListener('click', () => {
             showPanel('inventory-panel');
-            populateInventoryPanel(); // Populate with inventory items
+            // You might want to populate the inventory panel
         });
     }
     
     // Add event listener for quests button
+    const questsBtn = document.getElementById('quests-btn');
     if (questsBtn) {
         questsBtn.addEventListener('click', () => {
             showPanel('quests-panel');
-            refreshWorldState(); // Refresh to get latest quests
+            // Refresh to get latest quests
+            refreshWorldState();
         });
-    }
-    // Initialize pan functionality
-    initPanFunctionality();
-
-    // Add reset view button if it doesn't exist
-    const mapControls = document.querySelector('.map-controls');
-    if (mapControls && !document.getElementById('reset-view')) {
-        const resetButton = document.createElement('button');
-        resetButton.id = 'reset-view';
-        resetButton.innerHTML = '<i class="fas fa-home"></i>';
-        resetButton.title = 'Reset View';
-        resetButton.addEventListener('click', resetMapView);
-        mapControls.appendChild(resetButton);
-    }
-    
-    // Set initial cursor style
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grab';
     }
 
 
@@ -1045,428 +1088,12 @@ async function createParty() {
     }
 }
 
-// Function to populate the travel panel with available locations
-function populateTravelPanel() {
-    const travelLocations = document.getElementById('travel-locations');
-    if (!travelLocations || !window.worldState || !window.worldState.worldMap) return;
-    
-    travelLocations.innerHTML = '';
-    
-    const currentLocationId = window.worldState.currentLocation ? window.worldState.currentLocation.id : null;
-    
-    // Get discovered locations that aren't the current location
-    const availableLocations = window.worldState.worldMap.locations.filter(loc => 
-        loc.discovered && loc.id !== currentLocationId
-    );
-    
-    if (availableLocations.length === 0) {
-        travelLocations.innerHTML = '<div class="no-locations">No travel destinations available</div>';
-        return;
-    }
-    
-    availableLocations.forEach(location => {
-        const locationBtn = document.createElement('button');
-        locationBtn.className = 'travel-location-btn';
-        locationBtn.innerHTML = `
-            <div class="travel-location-name">${location.name}</div>
-            <div class="travel-location-type">${location.type}</div>
-        `;
-        
-        locationBtn.addEventListener('click', () => {
-            travelToLocation(location.id);
-            showPanel('location-details'); // Switch back to location details after traveling
-        });
-        
-        travelLocations.appendChild(locationBtn);
-    });
-}
-
-// Function to populate the inventory panel
-function populateInventoryPanel() {
-    const inventoryItems = document.getElementById('inventory-items');
-    if (!inventoryItems) return;
-    
-    inventoryItems.innerHTML = '';
-    
-    // Get current player's inventory (this would come from your backend)
-    const playerId = getCurrentPlayerId();
-    const playerInventory = window.worldState.characters && window.worldState.characters[playerId] 
-        ? window.worldState.characters[playerId].inventory 
-        : [];
-    
-    if (!playerInventory || playerInventory.length === 0) {
-        inventoryItems.innerHTML = '<div class="no-items">Inventory is empty</div>';
-        return;
-    }
-    
-    playerInventory.forEach(item => {
-        const itemElement = document.createElement('div');
-        itemElement.className = 'inventory-item';
-        itemElement.innerHTML = `
-            <div class="item-name">${item.name}</div>
-            <div class="item-description">${item.description}</div>
-            <div class="item-actions">
-                <button class="use-item" data-item="${item.id}">Use</button>
-                <button class="drop-item" data-item="${item.id}">Drop</button>
-            </div>
-        `;
-        
-        inventoryItems.appendChild(itemElement);
-    });
-    
-    // Add event listeners for item actions
-    document.querySelectorAll('.use-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const itemId = e.target.dataset.item;
-            useItem(itemId);
-        });
-    });
-    
-    document.querySelectorAll('.drop-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const itemId = e.target.dataset.item;
-            dropItem(itemId);
-        });
-    });
-}
-
-// Function to use an item
-async function useItem(itemId) {
-    try {
-        const response = await fetch('/api/use-item', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({item_id: itemId})
-        });
-        
-        if (response.ok) {
-            showNotification('Item used', 'success');
-            refreshWorldState();
-        } else {
-            showNotification('Failed to use item', 'error');
-        }
-    } catch (error) {
-        console.error('Error using item:', error);
-        showNotification('Error using item', 'error');
-    }
-}
-
-// Function to drop an item
-async function dropItem(itemId) {
-    try {
-        const response = await fetch('/api/drop-item', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({item_id: itemId})
-        });
-        
-        if (response.ok) {
-            showNotification('Item dropped', 'success');
-            refreshWorldState();
-        } else {
-            showNotification('Failed to drop item', 'error');
-        }
-    } catch (error) {
-        console.error('Error dropping item:', error);
-        showNotification('Error dropping item', 'error');
-    }
-}
-
-
-// Function to get current player ID
 function getCurrentPlayerId() {
-    // Check if we have a logged-in user in localStorage
-    const userData = localStorage.getItem('currentUser');
-    if (userData) {
-        try {
-            const user = JSON.parse(userData);
-            return user.id || 'default_player_id';
-        } catch (e) {
-            console.error('Error parsing user data:', e);
-        }
-    }
-    
-    // Check if we have a player ID in sessionStorage
-    const sessionPlayerId = sessionStorage.getItem('playerId');
-    if (sessionPlayerId) {
-        return sessionPlayerId;
-    }
-    
-    // Check if we have a player ID in the world state
-    if (window.worldState && window.worldState.currentPlayerId) {
-        return window.worldState.currentPlayerId;
-    }
-    
-    // Fallback to a default (you might want to implement proper authentication)
+    // TODO: Implement getting current player ID
     return 'default_player_id';
 }
 
-// Function to get current player's party ID
 function getCurrentPlayerPartyId() {
-    const playerId = getCurrentPlayerId();
-    
-    // Check if we have party information in the world state
-    if (window.worldState && window.worldState.parties) {
-        // Find which party the player belongs to
-        for (const party of window.worldState.parties) {
-            if (party.members && party.members.includes(playerId)) {
-                return party.id;
-            }
-        }
-    }
-    
-    // Check localStorage for party ID
-    const partyData = localStorage.getItem('currentParty');
-    if (partyData) {
-        try {
-            const party = JSON.parse(partyData);
-            return party.id || 'default_party_id';
-        } catch (e) {
-            console.error('Error parsing party data:', e);
-        }
-    }
-    
-    // Check sessionStorage for party ID
-    const sessionPartyId = sessionStorage.getItem('partyId');
-    if (sessionPartyId) {
-        return sessionPartyId;
-    }
-    
-    // Fallback to a default
+    // TODO: Implement getting current player party ID
     return 'default_party_id';
-}
-
-// Optional: Function to set the current player ID (for use after login)
-function setCurrentPlayerId(playerId) {
-    // Store in multiple places for redundancy
-    localStorage.setItem('currentUser', JSON.stringify({ id: playerId }));
-    sessionStorage.setItem('playerId', playerId);
-    
-    // Also set in world state if available
-    if (window.worldState) {
-        window.worldState.currentPlayerId = playerId;
-    }
-}
-
-// Optional: Function to set the current party ID
-function setCurrentPartyId(partyId) {
-    // Store in multiple places for redundancy
-    localStorage.setItem('currentParty', JSON.stringify({ id: partyId }));
-    sessionStorage.setItem('partyId', partyId);
-}
-
-// Update the refreshWorldState function to store player and party info
-async function refreshWorldState() {
-    try {
-        const response = await fetch('/api/world-state');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Store the world state
-        window.worldState = window.worldState || {};
-        window.worldState.worldMap = data.worldMap;
-        window.worldState.parties = data.parties;
-        window.worldState.characters = data.characters;
-        
-        if (data.currentLocation) {
-            window.worldState.currentLocation = data.currentLocation;
-            renderLocationDetails(data.currentLocation);
-            updateLocationDetailsPanel(data.currentLocation);
-        } else {
-            renderLocationDetails(null);
-        }
-        
-        // Try to determine and set the current player ID if not already set
-        if (!window.worldState.currentPlayerId && data.characters) {
-            // Get the first character that might belong to the current user
-            const characterIds = Object.keys(data.characters);
-            if (characterIds.length > 0) {
-                // This is a simple approach - you might want a more robust way
-                setCurrentPlayerId(characterIds[0]);
-            }
-        }
-        
-        // Update party display with new party data
-        updatePartyDisplay(data.parties, data.characters);
-        
-        // Update quest log
-        updateQuestLog(data.parties);
-        
-        // Update travel panel if it's visible
-        if (document.getElementById('travel-panel').style.display === 'block') {
-            populateTravelPanel();
-        }
-        
-        // Update inventory panel if it's visible
-        if (document.getElementById('inventory-panel').style.display === 'block') {
-            populateInventoryPanel();
-        }
-        
-    } catch (error) {
-        console.error('Error refreshing world state:', error);
-        showNotification('Error refreshing world data.', 'error');
-    }
-}
-// Function to initialize pan functionality
-function initPanFunctionality() {
-    if (!terrainCanvas) return;
-    
-    // Mouse events for panning
-    terrainCanvas.addEventListener('mousedown', startDragging);
-    terrainCanvas.addEventListener('mousemove', whileDragging);
-    terrainCanvas.addEventListener('mouseup', stopDragging);
-    terrainCanvas.addEventListener('mouseleave', stopDragging);
-    
-    // Touch events for mobile devices
-    terrainCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    terrainCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    terrainCanvas.addEventListener('touchend', handleTouchEnd);
-    
-    // Prevent context menu on long press
-    terrainCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
-}
-
-// Mouse event handlers
-function startDragging(e) {
-    if (e.button !== 0) return; // Only left mouse button
-    
-    isDragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    initialPanX = panX;
-    initialPanY = panY;
-    
-    // Change cursor to grabbing
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grabbing';
-    }
-    
-    e.preventDefault();
-}
-
-function whileDragging(e) {
-    if (!isDragging) return;
-    
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
-    
-    panX = initialPanX + dx;
-    panY = initialPanY + dy;
-    
-    updateMapTransform();
-    e.preventDefault();
-}
-
-function stopDragging() {
-    isDragging = false;
-    
-    // Change cursor back to grab
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grab';
-    }
-}
-
-// Touch event handlers for mobile devices
-function handleTouchStart(e) {
-    if (e.touches.length !== 1) return; // Only single touch for panning
-    
-    const touch = e.touches[0];
-    isDragging = true;
-    dragStartX = touch.clientX;
-    dragStartY = touch.clientY;
-    initialPanX = panX;
-    initialPanY = panY;
-    
-    e.preventDefault();
-}
-
-function handleTouchMove(e) {
-    if (!isDragging || e.touches.length !== 1) return;
-    
-    const touch = e.touches[0];
-    const dx = touch.clientX - dragStartX;
-    const dy = touch.clientY - dragStartY;
-    
-    panX = initialPanX + dx;
-    panY = initialPanY + dy;
-    
-    updateMapTransform();
-    e.preventDefault();
-}
-
-function handleTouchEnd() {
-    isDragging = false;
-}
-
-// Update the updateMapTransform function to handle boundaries
-function updateMapTransform() {
-    const container = document.getElementById('world-map');
-    
-    if (!terrainCanvas || !container) return;
-    
-    // Calculate boundaries based on scale
-    const maxPanX = (terrainCanvas.width * (scale - 1)) / 2;
-    const maxPanY = (terrainCanvas.height * (scale - 1)) / 2;
-    
-    // Constrain panning to prevent moving beyond map edges
-    panX = Math.min(Math.max(panX, -maxPanX), maxPanX);
-    panY = Math.min(Math.max(panY, -maxPanY), maxPanY);
-    
-    const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-    terrainCanvas.style.transform = transform;
-}
-
-// Add a function to reset pan and zoom
-function resetMapView() {
-    scale = 1;
-    panX = 0;
-    panY = 0;
-    updateMapTransform();
-}
-
-// Add CSS styles for better panning experience
-function addPanningStyles() {
-    const style = document.createElement('style');
-    style.textContent = `
-        #terrain-canvas {
-            cursor: grab;
-            touch-action: none; /* Prevent browser handling of touch gestures */
-        }
-        
-        #terrain-canvas:active {
-            cursor: grabbing;
-        }
-        
-        .map-controls {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .map-controls button {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-        }
-        
-        .map-controls button:hover {
-            background: rgba(0, 0, 0, 0.9);
-        }
-    `;
-    document.head.appendChild(style);
 }

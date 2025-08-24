@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dungeon World Explorer</title>
+    <link rel="icon" href="{{ url_for('static', filename='images/dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -141,11 +142,35 @@
         }
         
         #world-map {
-            width: 100%;
+        /*  width: 100%;
             height: 100%;
             position: relative;
             background: #0d2136;
             object-fit: contain; /* Maintain aspect ratio while filling container */
+        */
+
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #terrain-canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            transform-origin: 0 0;
+            cursor: default;
+        }
+
+        .location-preview {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+            pointer-events: none;
         }
         
         /* Location panel */
@@ -372,6 +397,117 @@
             fill: none;
         }
 
+/* Add these styles to your CSS file */
+#travel-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    max-width: 500px;
+    max-height: 80vh;
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #4ecca3;
+    border-radius: 8px;
+    color: white;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+#travel-panel.hidden {
+    display: none;
+}
+
+.panel-header {
+    padding: 15px 20px;
+    background: #4ecca3;
+    color: #232931;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.close-panel {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #232931;
+}
+
+.panel-content {
+    padding: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.travel-description {
+    margin-bottom: 20px;
+}
+
+.travel-locations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.travel-location-btn {
+    background: #2d6a4f;
+    border: 1px solid #4ecca3;
+    border-radius: 4px;
+    padding: 12px 15px;
+    color: white;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.travel-location-btn:hover {
+    background: #40916c;
+}
+
+.travel-location-name {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.travel-location-type {
+    font-style: italic;
+    color: #cccccc;
+    font-size: 0.9rem;
+}
+
+.no-locations-message {
+    text-align: center;
+    padding: 20px;
+    color: #cccccc;
+}
+
+.travel-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.secondary-button {
+    background: #6c757d;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    color: white;
+    cursor: pointer;
+}
+
+.secondary-button:hover {
+    background: #5a6268;
+}
+
         
         /* Responsive adjustments */
         @media (max-width: 1200px) {
@@ -507,12 +643,9 @@
         <main class="app-main">
             <!-- World Map -->
             <div class="map-container">
-                <div id="world-map">
+                <div id="world-map" style="position: relative; width: 100%; height: 100%; overflow: hidden;">
                     <!-- Terrain canvas for the generated world -->
-                    <canvas id="terrain-canvas" style="position: absolute; z-index: 0;"></canvas>
-                    
-                    <!-- SVG overlay for locations and paths -->
-                    <div id="map-overlay" style="position: absolute; z-index: 1;"></div>
+                    <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0;"></canvas>
 
                     <!-- Map will be rendered here by the application -->
                     <div class="location-image-placeholder">
@@ -527,7 +660,64 @@
                     <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
                 </div>
             </div>
-            
+            <!-- Travel panel -->
+            <div id="travel-panel" class="panel hidden">
+                <div class="panel-header">
+                    <h2>Travel to New Location</h2>
+                    <button class="close-panel" data-panel="travel-panel">×</button>
+                </div>
+                
+                <div class="panel-content">
+                    <div class="travel-description">
+                        <p>Choose a destination from your discovered locations:</p>
+                    </div>
+                    
+                    <div id="travel-locations" class="travel-locations-list">
+                        <!-- This will be populated dynamically with JavaScript -->
+                        <div class="no-locations-message">
+                            <p>You haven't discovered any locations yet.</p>
+                            <p>Explore the world to find new places!</p>
+                        </div>
+                    </div>
+                    
+                    <div class="travel-actions">
+                        <button id="cancel-travel" class="secondary-button">Cancel</button>
+                    </div>
+                </div>
+            </div>
+            <div id="inventory-panel" class="modal-panel hidden">
+                <div class="panel-header">
+                    <h2>Inventory</h2>
+                    <button class="close-panel" data-panel="inventory-panel">×</button>
+                </div>
+                
+                <div class="panel-content">
+                    <div class="inventory-description">
+                        <p>Your carried items and equipment:</p>
+                    </div>
+                    
+                    <div id="inventory-items" class="inventory-items-grid">
+                        <!-- This will be populated dynamically with JavaScript -->
+                        <div class="no-items-message">
+                            <p>Your inventory is empty.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="inventory-stats">
+                        <div class="weight-info">
+                            <span>Carried: </span>
+                            <span id="current-weight">0</span>
+                            <span> / </span>
+                            <span id="max-weight">100</span>
+                            <span> lbs</span>
+                        </div>
+                    </div>
+                    
+                    <div class="inventory-actions">
+                        <button id="close-inventory" class="secondary-button">Close</button>
+                    </div>
+                </div>
+            </div>
             <!-- Location panel -->
             <div class="location-container">
                 <div class="location-header">

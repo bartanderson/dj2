@@ -74,13 +74,6 @@
     z-index: 0;
 }
 
-#map-overlay {
-    width: 100% !important;
-    height: 100% !important;
-    position: absolute;
-    z-index: 1;
-}
-
 /* Responsive adjustments */
 @media (max-width: 900px) {
     .world-container {
