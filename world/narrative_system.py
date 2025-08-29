@@ -1,6 +1,187 @@
 
 # world\narrative_system.py
 from world.ai_dungeon_master import AIDungeonMaster, Character, GameState
+from enum import Enum
+from collections import defaultdict
+from typing import Literal
+
+# Define the pacing phase type
+PacingPhase = Literal['exploration', 'downtime', 'tension', 'climax']
+
+class NarrativeGuide:
+    def __init__(self):
+        self.fallback_hooks = [
+            "A mysterious stranger approaches you with urgent news",
+            "You overhear a conversation about strange occurrences nearby",
+            "A sudden environmental change demands attention"
+        ]
+    
+    def get_gentle_nudge(self, player_actions):
+        """Provide subtle narrative guidance based on player behavior"""
+        if player_actions.get('distracted', False):
+            return self._create_distraction_resolution()
+        if player_actions.get('off_track', False):
+            return self._redirect_to_storyline()
+        return None
+    
+    def _create_distraction_resolution(self):
+        """Resolve player distractions by tying them to main plot"""
+        return "As you investigate the side path, you discover evidence connecting it to the main quest"
+    
+    def _redirect_to_storyline(self):
+        """Redirect players without breaking immersion"""
+        return "Your exploration leads you back to the main path, where new developments await"
+    
+    def emergency_nudge(self):
+        """Forceful but narratively justified redirection"""
+        hook = random.choice(self.fallback_hooks)
+        return f"Suddenly, {hook} - demanding your immediate attention"
+
+class ConsequenceSystem:
+    def __init__(self, world_state):
+        self.world = world_state
+        self.action_registry = []
+    
+    def log_action(self, action, significance):
+        """Track player actions and their narrative weight"""
+        self.action_registry.append({
+            "action": action,
+            "significance": significance,
+            "resolved": False
+        })
+    
+    def apply_delayed_consequences(self):
+        """Apply consequences for past actions at dramatically appropriate moments"""
+        unresolved = [a for a in self.action_registry if not a['resolved']]
+        for action in unresolved:
+            if self._is_appropriate_moment(action):
+                consequence = self._generate_consequence(action)
+                self.world.add_event(consequence)
+                action['resolved'] = True
+    
+    def _generate_consequence(self, action):
+        consequence_map = {
+            "save_npc": "The NPC you saved returns to aid you in a critical moment",
+            "kill_important": "Allies of the fallen seek vengeance against you",
+            "steal_artifact": "The artifact's original owners track you down",
+            "ignore_quest": "The ignored problem has now grown beyond control"
+        }
+        return consequence_map.get(action['action'], "Your past actions have unexpected consequences")
+
+class MotivationTracker:
+    def __init__(self):
+        self.player_profiles = {}
+        self.session_tendencies = []
+    
+    def analyze_action(self, action, character):
+        """Categorize player actions into motivation types"""
+        if "explore" in action.lower():
+            return "curiosity"
+        if "fight" in action.lower() or "attack" in action.lower():
+            return "combat"
+        if "loot" in action.lower() or "take" in action.lower():
+            return "acquisition"
+        if "talk" in action.lower() or "ask" in action.lower():
+            return "social"
+        return "unknown"
+    
+    def get_narrative_leverage(self, motivation):
+        """Suggest story elements that appeal to player motivations"""
+        leverage_map = {
+            "curiosity": "You notice something strange that begs investigation",
+            "combat": "Dangerous foes appear, blocking your path forward",
+            "acquisition": "A glint of treasure catches your eye nearby",
+            "social": "An NPC approaches with potentially valuable information"
+        }
+        return leverage_map.get(motivation, "New developments unfold around you")
+
+class ChoiceArchitect:
+    def __init__(self):
+        self.decision_points = {}
+    
+    def create_branching_path(self, key_point):
+        """Create narrative branches that converge at key points"""
+        branches = {
+            "path_a": f"If you choose path A: {self._create_path_description('a')}",
+            "path_b": f"If you choose path B: {self._create_path_description('b')}"
+        }
+        convergence = self._create_convergence_point(key_point)
+        return {"branches": branches, "convergence": convergence}
+    
+    def _create_path_description(self, path):
+        return {
+            "a": "You take the mountain path, encountering harsh weather but finding ancient ruins",
+            "b": "You follow the river, facing dangerous rapids but discovering hidden caves"
+        }.get(path, "You journey through challenging terrain")
+    
+    def _create_convergence_point(self, key_point):
+        return f"Both paths lead to {key_point}, where the next phase of your adventure awaits"
+
+
+class PacingController:
+    def __init__(self):
+        self.current_phase: PacingPhase = 'exploration'
+        self.phase_progress = 0  # 0-100 scale
+        self.player_actions = 0
+    
+    def handle_player_action(self, action_type: str):
+        self.player_actions += 1
+        
+        # Pacing adjustments based on action
+        if action_type in ['combat', 'discovery']:
+            self._increase_tension(10)
+        elif action_type in ['rest', 'dialogue']:
+            self._decrease_tension(5)
+    
+    def handle_discovery_event(self):
+        self._increase_tension(15)
+    
+    def handle_dungeon_completion(self, success: bool):
+        if success:
+            self.current_phase = 'downtime'
+            self.phase_progress = 0
+        else:
+            self._increase_tension(25)
+    
+    def _increase_tension(self, amount: int):
+        self.phase_progress = min(100, self.phase_progress + amount)
+        
+        # Phase transitions
+        if self.phase_progress >= 75 and self.current_phase != 'climax':
+            self.current_phase = 'climax'
+        elif self.phase_progress >= 50 and self.current_phase not in ['tension', 'climax']:
+            self.current_phase = 'tension'
+    
+    def _decrease_tension(self, amount: int):
+        self.phase_progress = max(0, self.phase_progress - amount)
+        
+        # Phase transitions
+        if self.phase_progress < 25 and self.current_phase != 'exploration':
+            self.current_phase = 'exploration'
+        elif self.phase_progress < 50 and self.current_phase == 'tension':
+            self.current_phase = 'exploration'
+    
+    def get_pacing_recommendation(self) -> str:
+        if self.current_phase == 'exploration':
+            return "Introduce new locations or NPCs"
+        elif self.current_phase == 'downtime':
+            return "Provide roleplaying opportunities"
+        elif self.current_phase == 'tension':
+            return "Hint at upcoming dangers"
+        elif self.current_phase == 'climax':
+            return "Trigger major story event or boss battle"
+        return "Maintain current pacing"
+    
+    # Optional: Add a method to get the current phase and progress for debugging
+    def get_status(self) -> dict:
+        return {
+            "phase": self.current_phase,
+            "progress": self.phase_progress,
+            "actions": self.player_actions,
+            "recommendation": self.get_pacing_recommendation()
+        }
+
+
 
 class NarrativeSystem:
     RACE_GUIDES = {
@@ -117,7 +298,67 @@ class NarrativeSystem:
         "bard": ["Charisma", "Dexterity"]
     }
     
-    # ... existing code ...
+    def __init__(self, world_state, ai_system):
+        self.world = world_state
+        self.ai = ai_system
+
+        # Initialize the AI Dungeon Master only if AI system is available
+        if ai_system:
+            self.dm = AIDungeonMaster()
+        else:
+            self.dm = None
+
+        self.game_state = GameState()
+
+        self.guide = NarrativeGuide()
+        self.consequences = ConsequenceSystem(world_state)
+        self.motivation = MotivationTracker()
+        self.choices = ChoiceArchitect()
+        self.pacing = PacingController()
+        
+        # Initialize characters from world state
+        self._initialize_characters()
+
+    def on_location_discovered(self, location_id: str):
+        """
+        Handle location discovery narrative events including pacing updates
+        """
+        # Call the pacing system to handle the discovery event
+        self.pacing.handle_discovery_event()
+        
+        # Your existing location discovery logic goes here
+        location = self.world.world_map.get_location(location_id)
+        if location and not location.discovered:
+            location.discovered = True
+            # Generate initial quest for new location
+            new_quest = self.generate_quest(location_id, "First discovery")
+            self.world.add_quest(new_quest)
+            # Start tracking the new quest
+            if hasattr(self, 'active_quests'):
+                self.active_quests.append(new_quest.id)
+            
+            # Log the discovery
+            if hasattr(self, 'session_log'):
+                self.session_log.append(f"Discovered {location.name}")
+    
+    def on_dungeon_completed(self, success: bool):
+        """
+        Handle dungeon completion for pacing updates
+        """
+        # Call the pacing system to handle the dungeon completion
+        self.pacing.handle_dungeon_completion(success)
+        
+        # Add any additional dungeon completion logic here
+        if success:
+            # Handle successful dungeon completion
+            if hasattr(self, 'session_log'):
+                self.session_log.append("Dungeon completed successfully!")
+        else:
+            # Handle failed dungeon completion  
+            if hasattr(self, 'session_log'):
+                self.session_log.append("Dungeon attempt failed!")
+
+
     
     def guide_character_creation(self, player_id, message, creation_state):
         """Fully guided character creation with deep explanations"""
@@ -519,20 +760,6 @@ class NarrativeSystem:
             "new_state": creation_state
         }
     
-    def __init__(self, world_state, ai_system):
-        self.world = world_state
-        self.ai = ai_system
-
-        # Initialize the AI Dungeon Master only if AI system is available
-        if ai_system:
-            self.dm = AIDungeonMaster()
-        else:
-            self.dm = None
-
-        self.game_state = GameState()
-        
-        # Initialize characters from world state
-        self._initialize_characters()
         
     def _initialize_characters(self):
         """Load characters from world state into the DM system"""
@@ -770,6 +997,28 @@ class NarrativeSystem:
 
         # Update game state with current scene
         self.game_state.current_scene = self.world.get_current_scene()
+
+        # Analyze player motivation
+        motivation = self.motivation.analyze_action(message, self.characters.get(player_id))
+
+        # Map motivation to action type for pacing
+        action_type_map = {
+            "combat": "combat",
+            "curiosity": "discovery", 
+            "acquisition": "discovery",
+            "social": "dialogue",
+            "unknown": "dialogue"
+        }
+        pacing_action_type = action_type_map.get(motivation, "dialogue")
+        
+        # Update pacing based on action type
+        self.pacing.on_player_action(pacing_action_type)
+        
+        # Log action for consequences
+        self.consequences.log_action(message, motivation)
+        
+        # Update pacing
+        self.pacing.update_pace(message)
         
         # Process through DM system
         dialogs = self.dm.process_player_input(player_id, message)
@@ -782,14 +1031,30 @@ class NarrativeSystem:
                 "content": dialog.content,
                 "type": dialog.dialog_type
             })
+
+        # Apply gentle narrative guidance if needed
+        guidance = self.guide.get_gentle_nudge({
+            'action': message,
+            'motivation': motivation,
+            'pacing': self.pacing.current_pace
+        })
+        
+        if guidance:
+            responses.append({
+                "speaker": "DM",
+                "content": guidance,
+                "type": "narration"
+            })
         
         # Process consequences periodically
         if random.random() < 0.3:  # 30% chance to trigger consequences
-            self.dm.process_consequences()
+            self.consequences.apply_delayed_consequences()
         
         return {
             "responses": responses,
-            "dialog_history": [d.to_dict() for d in self.dm.get_dialog_history()]
+            "dialog_history": [d.to_dict() for d in self.dm.get_dialog_history()],
+            "motivation": motivation,
+            "pacing": self.pacing.current_pace
         }
     
     def set_current_scene(self, scene_description: str):

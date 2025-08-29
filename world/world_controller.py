@@ -19,6 +19,7 @@ from world.character import Character
 from world.persistence import WorldManager
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
+from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
 
 import warnings
 warnings.filterwarnings("ignore", message=".*Triton.*")
@@ -78,6 +79,11 @@ class WorldController:
         self.active_parties: Set[str] = set()
         self.next_quest_id = 1
         self.default_party_id = "main_party"
+
+        # Initialize players
+        self.players: Dict[str, Player] = {}
+        self.players: Dict[str, Player] = {}  # Add this for player management
+        self.session_players: Dict[str, str] = {}  # session_id -> player_id
         
         # Initialize world manager and load world data
         self.world_manager = WorldManager(ai_system)
@@ -118,6 +124,9 @@ class WorldController:
         self.world_ai = WorldAI(world_state=self)
         self.dungeon_ai = None  # Will be initialized when entering dungeon
         self.session_manager = SessionManager()
+        self.dungeon_master = AIDungeonMaster(world_controller=self)
+        self.dm_chat_handler = DMChatHandler(self)
+
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
@@ -297,6 +306,10 @@ class WorldController:
             if not hasattr(location, 'discovered_count'):
                 location.discovered_count = 0
             location.discovered_count += 1
+
+            # Call narrative system for pacing
+            if hasattr(self, 'narrative_system'):
+                self.narrative_system.on_location_discovered(location_id)
             
             # Safely add to session log if it exists
             if hasattr(self, 'session_log'):
@@ -1209,14 +1222,6 @@ class WorldController:
         
         return counts
 
-    # removed see world.js for its rendering of terrain and the paths which we follow with place_locations
-    # def get_terrain_data(self):
-    #     terrain_map = defaultdict(list)
-    #     for location in self.locations.values():
-    #         if hasattr(location, 'terrain'):
-    #             terrain_map[location.terrain].append((location.x, location.y))
-    #     return terrain_map
-
     def place_locations(self, hexes, terrain_grid):
         locations = []
         
@@ -1472,24 +1477,386 @@ class WorldController:
             return self.dungeon_ai.process_command(command)
         return self.world_ai.process_command(command)
 
-
-    # def complete_dungeon(self, success: bool, rewards: dict):
-    #     location_id = self.game_state.dungeon_location
-    #     location = self.world_map.get_location(location_id)
+    def complete_dungeon(self, success: bool, rewards: dict = None):
+        """Handle dungeon completion"""
+        location_id = self.game_state.dungeon_location
+        location = self.world_map.get_location(location_id)
         
-    #     if success:
-    #         # Apply rewards
-    #         self.party_system.apply_rewards(rewards)
+        if success:
+            # Apply rewards
+            self.party_system.apply_rewards(rewards)
             
-    #         # Complete related quests
-    #         for quest in location.quests:
-    #             if quest.dungeon_required and not quest.completed:
-    #                 quest.completed = True
-    #                 self.narrative.on_quest_complete(quest)
+            # Complete related quests
+            for quest in location.quests:
+                if quest.dungeon_required and not quest.completed:
+                    quest.completed = True
+                    self.narrative.on_quest_complete(quest)
         
-    #     # Return to world
-    #     self.game_state.set_mode('world')
-    #     self.game_state.current_dungeon = None
-    #     self.pacing.on_dungeon_complete(success)
+        # Return to world
+        self.game_state.set_mode('world')
+        self.game_state.current_dungeon = None
+        self.pacing.on_dungeon_complete(success)
         
-    #     return self.world_map.current_location
+        # Call narrative system for pacing
+        if hasattr(self, 'narrative_system'):
+            self.narrative_system.on_dungeon_completed(success)
+        
+        # Handle rewards if provided
+        if rewards:
+            # Your reward distribution logic
+            pass
+            
+        return {"status": "success", "completed": success}
+
+    # def get_or_create_player(self, session_id, player_name=None):
+    #     """Get existing player or create a new one for the session"""
+    #     print(f"DEBUG: get_or_create_player called with session_id: {session_id}")
+
+    #     existing_player_id = self._get_player_id_for_session(session_id)
+
+    #     if existing_player_id and existing_player_id in self.players:
+    #         return self.players[existing_player_id]
+        
+    #     # Check if we have this session in memory
+    #     if session_id in self.session_players:
+    #         player_id = self.session_players[session_id]
+    #         if player_id in self.players:
+    #             # Also save to database for persistence
+    #             self._save_session_to_db(session_id, player_id)
+    #             return self.players[player_id]
+        
+    #     print("DEBUG: Creating new player")
+    #    # Create new player
+    #     player = Player(name=player_name or f"Player_{session_id[:8]}")
+    #     self.players[player.id] = player
+
+    #     print("DEBUG: Save session")
+        
+    #     # Save session mapping to both memory and database
+    #     self.session_players[session_id] = player.id
+    #     self._save_session_to_db(session_id, player.id)
+        
+    #     # Save player to database
+    #     print("DEBUG: Save player to db")
+    #     self._save_player_to_db(player)
+        
+    #     return player
+
+    def get_or_create_player(self, session_id, player_name=None):
+        """Get existing player or create a new one for the session"""
+        print(f"DEBUG: get_or_create_player called with session_id: {session_id}")
+        
+        if session_id in self.session_players:
+            player_id = self.session_players[session_id]
+            print(f"DEBUG: Found existing player in memory: {player_id}")
+            return self.players[player_id]
+        
+        # Create new player
+        print("DEBUG: Creating new player")
+        player = Player(name=player_name or f"Player_{session_id[:8]}")
+        self.players[player.id] = player
+        self.session_players[session_id] = player.id
+        
+        # First, save the player to the database
+        print(f"DEBUG: Attempting to save player {player.id} to database")
+        player_saved = self._save_player_to_db(player)
+        
+        if not player_saved:
+            print(f"DEBUG: Failed to save player {player.id} to database")
+            # Remove from memory if save failed
+            del self.players[player.id]
+            del self.session_players[session_id]
+            raise Exception(f"Failed to save player {player.id} to database")
+        
+        print(f"DEBUG: Player {player.id} saved successfully to database")
+        
+        # Then, save the session to the database
+        print("DEBUG: Attempting to save session to database")
+        session_saved = self._save_session_to_db(session_id, player.id)
+        
+        if not session_saved:
+            print(f"DEBUG: Failed to save session {session_id} to database")
+            # We might want to handle this differently, but for now just log it
+            print(f"DEBUG: Session save failed, but player {player.id} was saved")
+        
+        return player
+
+    def _save_player_to_db(self, player):
+        """Save player to database with detailed error handling"""
+        print(f"DEBUG: Saving player to DB: {player.id}")
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO players (id, name, attributes) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, attributes = EXCLUDED.attributes",
+                    (player.id, player.name, json.dumps(player.attributes))
+                )
+                conn.commit()
+                print("DEBUG: Player saved successfully")
+                return True
+        except Exception as e:
+            print(f"DEBUG: Error saving player to DB: {e}")
+            conn.rollback()
+            return False
+        finally:
+            Database.return_connection(conn)
+
+    def _save_session_to_db(self, session_id, player_id):
+        """Save session-player mapping to database with detailed error handling"""
+        print(f"DEBUG: Saving session to DB: {session_id} -> {player_id}")
+        conn = Database.get_connection()
+        try:
+            # First, verify the player exists in the database
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM players WHERE id = %s", (player_id,))
+                result = cur.fetchone()
+                if not result:
+                    print(f"DEBUG: Player {player_id} does not exist in database")
+                    return False
+                    
+                # Now save the session
+                cur.execute(
+                    "INSERT INTO player_sessions (session_id, player_id) VALUES (%s, %s) "
+                    "ON CONFLICT (session_id) DO UPDATE SET player_id = EXCLUDED.player_id, last_seen = NOW()",
+                    (session_id, player_id)
+                )
+                conn.commit()
+                print("DEBUG: Session saved successfully")
+                return True
+        except Exception as e:
+            print(f"DEBUG: Error saving session to DB: {e}")
+            conn.rollback()
+            return False
+        finally:
+            Database.return_connection(conn)
+
+    def _get_player_id_for_session(self, session_id):
+        """Get player ID for a session from database"""
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT player_id FROM player_sessions WHERE session_id = %s",
+                    (session_id,)
+                )
+                result = cur.fetchone()
+                return result[0] if result else None
+        finally:
+            Database.return_connection(conn)
+
+    # def _save_session_to_db(self, session_id, player_id):
+    #     """Save session-player mapping to database"""
+    #     conn = Database.get_connection()
+    #     try:
+    #         with conn.cursor() as cur:
+    #             cur.execute(
+    #                 "INSERT INTO player_sessions (session_id, player_id) VALUES (%s, %s) "
+    #                 "ON CONFLICT (session_id) DO UPDATE SET player_id = EXCLUDED.player_id, last_seen = NOW()",
+    #                 (session_id, player_id)
+    #             )
+    #             conn.commit()
+    #     finally:
+    #         Database.return_connection(conn)
+
+        
+    # def _save_player_to_db(self, player):
+    #     """Save player to database"""
+    #     print(f"DEBUG: Saving player to DB: {player.id}")
+    #     conn = Database.get_connection()
+    #     try:
+    #         with conn.cursor() as cur:
+    #             cur.execute(
+    #                 "INSERT INTO players (id, name, attributes) VALUES (%s, %s, %s) "
+    #                 "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, attributes = EXCLUDED.attributes",
+    #                 (player.id, player.name, json.dumps(player.attributes))
+    #             )
+    #             conn.commit()
+    #             print("DEBUG: Player saved successfully")
+    #     except Exception as e:
+    #         print(f"DEBUG: Error saving player to DB: {e}")
+    #         # Don't re-raise, as we want to continue even if DB save fails
+    #     finally:
+    #         Database.return_connection(conn)
+    
+    # def associate_character_with_player(self, player_id, character_id):
+    #     """Associate a character with a player"""
+    #     if player_id in self.players and character_id in self.characters:
+    #         player = self.players[player_id]
+    #         if character_id not in player.character_ids:
+    #             player.character_ids.append(character_id)
+                
+    #         # If this is the player's first character, set it as active
+    #         if player.active_character_id is None:
+    #             player.active_character_id = character_id
+                
+    #         # Update the character's owner reference
+    #         self.characters[character_id].owner_id = player_id
+            
+    #         # Save to database
+    #         self._save_player_to_db(player)
+    #         return True
+    #     return False
+
+class DMChatHandler:
+    def __init__(self, world_controller):
+        self.world_controller = world_controller
+        self.dm = world_controller.dungeon_master
+        self.chat_history = []
+
+    def _ai_detect_tool_intent(self, message, dm_responses):
+        """Use AI to determine if this message requires tool execution"""
+        # Use the existing AI tool system to detect intent
+        prompt = f"""
+        Analyze this player message and determine if it requires executing a game action:
+        
+        Player: "{message}"
+        
+        Does this message describe an action that would use a game mechanic (like attacking, 
+        casting spells, using items, traveling, social interactions, etc.)? 
+        
+        Respond with ONLY JSON: {{"requires_tool": true/false, "reason": "brief explanation"}}
+        """
+        
+        try:
+            # Use the AI's structured data generation capability
+            response_format = {
+                "requires_tool": "boolean",
+                "reason": "string"
+            }
+            
+            result = self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+            
+            print(f"Tool intent detection: {result}")
+            return result.get("requires_tool", False)
+            
+        except Exception as e:
+            print(f"AI tool intent detection failed: {e}")
+            # If AI detection fails, we'll be conservative and assume no tool is needed
+            # This prevents false positives that could break immersion
+            return False
+    
+    def _handle_tool_usage(self, message, player_id):
+        """Use AI integration to process tool commands"""
+        try:
+            # Let the AI determine which tool to use and with what parameters
+            if self.world_controller.dungeon_ai:
+                result = self.world_controller.dungeon_ai.process_command(message)
+            else:
+                result = self.world_controller.world_ai.process_command(message)
+            
+            return result
+                
+        except Exception as e:
+            return {"success": False, "error": f"Error processing command: {str(e)}"}
+
+    def process_message(self, session_id, message, character_id=None):
+        """Process a message from a player session, optionally for a specific character"""
+        print("DEBUG: DMChatHandler.process_message called")
+        try:
+            # Get or create player for this session
+            player = self.world_controller.get_or_create_player(session_id)
+            
+            # Get character context if specified
+            character_context = {}
+            if character_id and character_id in self.world_controller.characters:
+                character = self.world_controller.characters[character_id]
+                character_context = {
+                    'character_id': character_id,
+                    'character_name': character.name,
+                    'character_class': character.classs.name if hasattr(character, 'classs') else 'Unknown',
+                    'character_race': character.race,
+                    'character_level': character.level
+                }
+                # Set this as the active character for the player
+                player.set_active_character(character_id)
+            
+            # Use active character if no specific character is specified
+            if not character_id and player.active_character_id:
+                character_id = player.active_character_id
+                character = self.world_controller.characters[character_id]
+                character_context = {
+                    'character_id': character_id,
+                    'character_name': character.name,
+                    'character_class': character.classs.name if hasattr(character, 'classs') else 'Unknown',
+                    'character_race': character.race,
+                    'character_level': character.level
+                }
+            
+            # Always process the message with the DM first to get a narrative response
+            narrative_responses = self.dm.process_player_input(
+                player.id, 
+                message,
+                character_context=character_context
+            )
+            print("DEBUG: Back from dm.process_player_input")
+            
+            # Check if tool execution is also needed
+            requires_tool = self._ai_detect_tool_intent(message, narrative_responses)
+            
+            # If tool execution is needed, process it and get follow-up narrative
+            tool_result = None
+            tool_followup_responses = []
+            
+            if requires_tool:
+                print("DEBUG: Tool execution required")
+                tool_result = self._handle_tool_usage(message, player.id)
+                
+                # Let the DM incorporate the tool result into the narrative
+                if tool_result and not tool_result.get("error"):
+                    tool_followup_responses = self.dm.process_player_input(
+                        player.id,
+                        f"Tool execution result: {tool_result.get('message', 'Action completed')}"
+                    )
+            
+            # Combine all narrative responses
+            all_narrative_responses = narrative_responses + tool_followup_responses
+            
+            # Add to chat history
+            self.chat_history.extend([(player.id, message)] + 
+                                    [("DM", r.content) for r in all_narrative_responses])
+            
+            print("DEBUG: Returning from process_message")
+            return {
+                "narrative": all_narrative_responses,
+                "tool_result": tool_result
+            }
+            
+        except Exception as e:
+            print(f"DEBUG: Exception in process_message: {e}")
+            import traceback
+            traceback.print_exc()
+            # If anything fails, return a graceful error response
+            error_response = [Dialog("DM", "I'm having trouble processing that right now. Could you try again?", "system")]
+            return {
+                "narrative": error_response,
+                "tool_result": {"error": str(e)}
+            }
+class Player:
+    def __init__(self, id=None, name="Unknown Player", attributes=None):
+        self.id = id or str(uuid.uuid4())
+        self.name = name
+        self.attributes = attributes or {}
+        self.session_id = None
+        self.character_ids = []
+        self.active_character_id = None  # Track which character is currently active
+        
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "attributes": self.attributes,
+            "session_id": self.session_id,
+            "character_ids": self.character_ids,
+            "active_character_id": self.active_character_id
+        }
+    
+    def set_active_character(self, character_id):
+        """Set a character as active for this player"""
+        if character_id in self.character_ids:
+            self.active_character_id = character_id
+            self.attributes['active_character'] = character_id
+            return True
+        return False

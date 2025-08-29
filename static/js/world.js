@@ -21,6 +21,108 @@ const minScale = 0.5;
 
  const terrainCanvas = document.getElementById('terrain-canvas');
 
+// Add to your world.js or create a new ui-manager.js file
+class WindowManager {
+    constructor() {
+        this.windows = {};
+        this.init();
+    }
+    
+    init() {
+        // Make all panel headers draggable
+        interact('.panel-header').draggable({
+            inertia: true,
+            modifiers: [
+                interact.modifiers.restrictRect({
+                    restriction: 'parent',
+                    endOnly: true
+                })
+            ],
+            autoScroll: true,
+            onmove: this.dragMoveHandler.bind(this)
+        });
+        
+        // Make panels resizable
+        interact('.resizable-panel').resizable({
+            edges: { left: true, right: true, bottom: true, top: true },
+            inertia: true,
+            modifiers: [
+                interact.modifiers.restrictEdges({
+                    outer: 'parent'
+                }),
+                interact.modifiers.restrictSize({
+                    min: { width: 200, height: 150 }
+                })
+            ],
+            onmove: this.resizeMoveHandler.bind(this)
+        });
+    }
+    
+    dragMoveHandler(event) {
+        const target = event.target.closest('.panel');
+        if (!target) return;
+        
+        const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+        const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+        
+        target.style.transform = `translate(${x}px, ${y}px)`;
+        target.setAttribute('data-x', x);
+        target.setAttribute('data-y', y);
+    }
+    
+    resizeMoveHandler(event) {
+        const target = event.target;
+        let x = (parseFloat(target.getAttribute('data-x')) || 0);
+        let y = (parseFloat(target.getAttribute('data-y')) || 0);
+        
+        target.style.width = event.rect.width + 'px';
+        target.style.height = event.rect.height + 'px';
+        
+        x += event.deltaRect.left;
+        y += event.deltaRect.top;
+        
+        target.style.transform = `translate(${x}px, ${y}px)`;
+        target.setAttribute('data-x', x);
+        target.setAttribute('data-y', y);
+    }
+    
+    createWindow(id, title, content, options = {}) {
+        const windowHtml = `
+            <div id="${id}" class="panel resizable-panel" style="position: absolute; ${options.style || ''}">
+                <div class="panel-header">
+                    <h3>${title}</h3>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="panel-content">
+                    ${content}
+                </div>
+            </div>
+        `;
+        
+        document.body.insertAdjacentHTML('beforeend', windowHtml);
+        
+        // Add close functionality
+        document.querySelector(`#${id} .close-btn`).addEventListener('click', () => {
+            this.closeWindow(id);
+        });
+        
+        this.windows[id] = document.getElementById(id);
+        return this.windows[id];
+    }
+    
+    closeWindow(id) {
+        if (this.windows[id]) {
+            this.windows[id].remove();
+            delete this.windows[id];
+        }
+    }
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    window.windowManager = new WindowManager();
+});
+
 // Location preview class
 class LocationPreview {
     constructor() {
@@ -464,20 +566,32 @@ async function loadWorldData() {
         }
         
         const data = await response.json();
-
+        
+        // Handle case where worldMap might be undefined or has error
+        if (!data.worldMap || data.worldMap.error) {
+            console.error('World map data not available:', data.worldMap?.error);
+            
+            // Don't show a notification if the server is still initializing
+            if (data.worldMap.error !== "World controller not initialized") {
+                showNotification('World data not available yet. Please try again.', 'error');
+            }
+            
+            return;
+        }
+        
         // Find current location by ID
         let currentLocation = null;
-        if (data.currentLocation && data.currentLocation.id) {
+        if (data.currentLocation && data.currentLocation.id && data.worldMap.locations) {
             currentLocation = data.worldMap.locations.find(
                 loc => loc.id === data.currentLocation.id
             );
         }
         
-        // Correctly populate the globally accessible worldState object
+        // Store world data for later use
         window.worldState = {
             worldMap: data.worldMap,
             currentLocation: currentLocation,
-            locations: data.worldMap.locations
+            locations: data.worldMap.locations || []
         };
     
         // Render the map for the first time
@@ -492,6 +606,143 @@ async function loadWorldData() {
         showNotification('Error loading world data.', 'error');
     }
 }
+
+async function waitForServerReady(maxRetries = 30, delay = 1000) {
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+        try {
+            const response = await fetch('/api/health');
+            const data = await response.json();
+            
+            if (data.status === 'ready') {
+                console.log('Server is ready');
+                return true;
+            }
+            
+            // If server is still initializing, wait and retry
+            retries++;
+            if (retries < maxRetries) {
+                console.log(`Server not ready yet (${retries}/${maxRetries}). Retrying...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        } catch (error) {
+            retries++;
+            console.error(`Health check failed (attempt ${retries}/${maxRetries}):`, error);
+            if (retries < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('Server health check failed after multiple attempts');
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+async function waitForServerReady(maxRetries = 30, delay = 1000) {
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+        try {
+            const response = await fetch('/api/health');
+            const data = await response.json();
+            
+            if (data.status === 'ready') {
+                console.log('Server is ready');
+                return true;
+            }
+            
+            // If server is still initializing, wait and retry
+            retries++;
+            if (retries < maxRetries) {
+                console.log(`Server not ready yet (${retries}/${maxRetries}). Retrying...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        } catch (error) {
+            retries++;
+            console.error(`Health check failed (attempt ${retries}/${maxRetries}):`, error);
+            if (retries < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('Server health check failed after multiple attempts');
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+// Add this function before the loadWorldDataWithRetry function
+function showLoading(show) {
+    const loadingElement = document.getElementById('loading');
+    if (loadingElement) {
+        loadingElement.style.display = show ? 'block' : 'none';
+    } else {
+        // Create a loading element if it doesn't exist
+        const loadingEl = document.createElement('div');
+        loadingEl.id = 'loading';
+        loadingEl.innerHTML = 'Loading...';
+        loadingEl.style.position = 'fixed';
+        loadingEl.style.top = '50%';
+        loadingEl.style.left = '50%';
+        loadingEl.style.transform = 'translate(-50%, -50%)';
+        loadingEl.style.background = 'rgba(0,0,0,0.7)';
+        loadingEl.style.color = 'white';
+        loadingEl.style.padding = '20px';
+        loadingEl.style.borderRadius = '5px';
+        loadingEl.style.zIndex = '9999';
+        document.body.appendChild(loadingEl);
+    }
+}
+
+async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
+    showLoading(true);
+    
+    // First, wait for the server to be ready
+    const serverReady = await waitForServerReady();
+    if (!serverReady) {
+        showNotification('Server is taking too long to initialize. Please refresh the page.', 'error');
+        showLoading(false);
+        return;
+    }
+    
+    // Now try to load world data
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+        try {
+            await loadWorldData();
+            
+            // Check if we have valid data
+            if (window.worldState && window.worldState.worldMap && 
+                window.worldState.worldMap.locations) {
+                console.log('World data loaded successfully');
+                showLoading(false);
+                return;
+            }
+            
+            // If we don't have valid data, wait and retry
+            retries++;
+            if (retries < maxRetries) {
+                console.log(`Retrying world data load (${retries}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            }
+        } catch (error) {
+            retries++;
+            console.error(`Error loading world data (attempt ${retries}/${maxRetries}):`, error);
+            if (retries < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            } else {
+                showNotification('Failed to load world data after multiple attempts.', 'error');
+                showLoading(false);
+            }
+        }
+    }
+}
+
 
 async function refreshWorldState() {
     try {
@@ -607,6 +858,9 @@ function enterDungeon() {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', function() {
+
+    window.dmChat = new DMChat();
+    
     // Map zoom and pan variables
     let isDragging = false;
     let startX, startY;
@@ -645,7 +899,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateMapTransform();
         });
     }
-    
+
     document.addEventListener('mousemove', function(e) {
         if (!isDragging) return;
         e.preventDefault();
@@ -697,7 +951,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Initialize your map only if elements exist
-    loadWorldData();
+    loadWorldDataWithRetry();
     
     // Add event listeners only if elements exist
     const enterDungeonBtn = document.getElementById('enter-dungeon');

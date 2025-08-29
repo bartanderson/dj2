@@ -57,6 +57,40 @@ class BaseAI:
             # Fallback extraction
             match = re.search(r'\{.*\}', response["response"], re.DOTALL)
             return json.loads(match.group()) if match else {"error": "Invalid JSON"}
+
+    def generate_text(self, prompt: str, temperature: float = 0.7, max_retries: int = 2) -> str:
+        """Generate natural language text with robust error handling"""
+        responses = [
+           "Yes, err... I mean, well, um... no?",
+           "As I see it, maybe, maybe not.",
+           "Reply hazy, try again.",
+           "Cannot predict now. Let's play it out a bit.",
+           "You've got to know when to hold 'em, fold 'em, you get the picture, yeah?",
+           "My sources say ... hmm? That's odd. What do you think?",
+           "Outlook not so good, but who knows, right?",
+           "Very doubtful but then again, it is your story to tell. Prove me wrong."
+        ]
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.ollama.generate(
+                    model="llama3.1:8b",
+                    system="You are a helpful Assistant. Provide clear, informative responses, but you do not give away secrets, plots, story arcs or anything that will majorly further the character or party. If that is what is asked for, gently nudge the player into making a decision on their own.",
+                    prompt=prompt,
+                    options={"temperature": temperature, "seed": self.seed}
+                )
+                return response["response"]
+            except Exception as e:
+                if attempt == max_retries:
+                    print(f"AI text generation failed after {max_retries} attempts: {e}")
+                    # Return a graceful hazy fallback instead of raising
+                    return random.choice(responses)
+                print(f"AI text generation attempt {attempt + 1} failed: {e}")
+                # Wait briefly before retrying
+                time.sleep(0.5 * (attempt + 1))
+        
+        # This should never be reached but provides a safety net
+        return "I'm at my wits end here. Perhaps you can figure it out on your own?"
+
     
     def process_command(self, natural_language: str) -> dict:
         """Core command processing pipeline"""

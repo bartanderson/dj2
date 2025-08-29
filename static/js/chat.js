@@ -1,4 +1,4 @@
-# static\js\chat.js
+// static\js\chat.js
 class DMChat {
     constructor() {
         this.chatInput = document.getElementById('dm-chat-input');
@@ -11,10 +11,6 @@ class DMChat {
                 this.sendMessage();
             }
         });
-        
-        // Load narrative systems
-        this.motivationTracker = new MotivationTracker();
-        this.narrativeGuide = new NarrativeGuide();
 
         // Handle character card display
         this.chatMessages.addEventListener('click', (e) => {
@@ -23,49 +19,70 @@ class DMChat {
                 this.displayCharacterCard(characterData);
             }
         });
+
+        this.isLoading = false;
     }
 
     sendMessage() {
-        console.log('sendMessage top')
+        console.log('sendMessage top');
         const message = this.chatInput.value.trim();
-        if (message) {
-            this.addMessage('player', message);
+        if (message && !this.isLoading) {
+            this.addMessage('player', message, 'player');
             this.chatInput.value = '';
+            this.isLoading = true;
             
-            // Analyze player motivation
-            const motivation = this.motivationTracker.analyzeAction(message);
-            console.log(`Player motivation: ${motivation}`);
-            
-            // Get AI response
-            this.getAIResponse(message, motivation);
+            // Get AI response - REMOVE motivation parameter
+            this.getAIResponse(message);
         }
     }
 
-    getAIResponse(message, motivation) {
-        // Show loading indicator
+    getAIResponse(message) {
         console.log("Sending message to DM:", message);
-        const loadingMsg = this.addMessage('dm', "DM is thinking...");
+        const loadingMsg = this.addMessage('dm', "DM is thinking...", 'system');
         
         fetch('/api/dm-response', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({message})
+            body: JSON.stringify({ message })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             console.log("Received DM response:", data);
+            
             // Remove loading message
             loadingMsg.remove();
+            this.isLoading = false;
+            console.log ("data", data)
+            // Add narrative responses
+            if (data.responses && data.responses.length > 0) {
+                data.responses.forEach(response => {
+                    this.addMessage(response.speaker, response.content, response.type);
+                });
+            } else {
+                // Fallback if no responses
+                this.addMessage('dm', "I'm not sure how to respond to that.", 'narration');
+            }
             
-            // Add all responses
-            data.responses.forEach(response => {
-                this.addMessage(response.speaker, response.content);
-            });
+            // Show tool result if available
+            if (data.tool_result) {
+                this.addMessage('system', data.tool_result, 'system');
+            }
             
-            // Update dialog history display
-            this.updateDialogHistory(data.dialog_history);
-        }).catch(error => {
+            // Update dialog history if needed
+            if (data.dialog_history) {
+                this.updateDialogHistory(data.dialog_history);
+            }
+        })
+        .catch(error => {
             console.error("DM request failed:", error);
+            loadingMsg.remove();
+            this.isLoading = false;
+            this.addMessage('system', 'Error connecting to DM. Please try again.', 'error');
         });
     }
     
@@ -82,9 +99,16 @@ class DMChat {
         });
     }
 
-    addMessage(sender, text) {
+    // Update the addMessage function to handle the new parameters
+    addMessage(sender, text, type = null) {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${sender}`;
+
+        // Set classes based on sender and type
+        let className = `message ${sender}`;
+        if (type) {
+            className += ` ${type}`;
+        }
+        messageDiv.className = className;
         
         // Handle character preview
         if (text.startsWith('PREVIEW_CHARACTER:')) {

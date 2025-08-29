@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dungeon World Explorer</title>
-    <link rel="icon" href="{{ url_for('static', filename='images/dungeon-classic.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -20,7 +20,56 @@
             height: 100vh;
             overflow: hidden;
         }
-        
+
+
+        /* begin draggable */
+        .panel {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #4ecca3;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            min-width: 200px;
+            min-height: 150px;
+            resize: both;
+            overflow: auto;
+        }
+
+        .panel-header {
+            background: #4ecca3;
+            color: #232931;
+            padding: 10px;
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header h3 {
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #232931;
+        }
+
+        .panel-content {
+            padding: 15px;
+        }
+
+        /* Make sure your existing containers are panels */
+        .map-container, .location-container, .quests-container, .chat-container {
+            position: absolute;
+            width: 400px;
+            height: 300px;
+        }
+
+        /* end draggable */
+
         /* Main layout */
         .app-container {
             display: grid;
@@ -122,12 +171,12 @@
             grid-template-areas:
                 "map location"
                 "map quests"
-                "actions actions";
+                "chat chat";
             gap: 15px;
             padding: 15px;
             background: rgba(0, 0, 0, 0.2);
         }
-        
+   
         /* World map */
         .map-container {
             aspect-ratio: 5/4;
@@ -397,116 +446,192 @@
             fill: none;
         }
 
-/* Add these styles to your CSS file */
-#travel-panel {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80%;
-    max-width: 500px;
-    max-height: 80vh;
-    background: rgba(0, 0, 0, 0.9);
-    border: 2px solid #4ecca3;
-    border-radius: 8px;
-    color: white;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-}
+        .chat-container {
+            grid-area: chat;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            height: 300px;
+            border: 1px solid #3a5f85;
+        }
 
-#travel-panel.hidden {
-    display: none;
-}
+        .chat-header {
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #3a5f85;
+        }
 
-.panel-header {
-    padding: 15px 20px;
-    background: #4ecca3;
-    color: #232931;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+        .chat-header h3 {
+            color: #4ecca3;
+            margin: 0;
+        }
 
-.panel-header h2 {
-    margin: 0;
-    font-size: 1.5rem;
-}
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
 
-.close-panel {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #232931;
-}
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
 
-.panel-content {
-    padding: 20px;
-    overflow-y: auto;
-    flex-grow: 1;
-}
+        #dm-chat-input {
+            flex: 1;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #3a5f85;
+            border-radius: 4px;
+            color: white;
+        }
 
-.travel-description {
-    margin-bottom: 20px;
-}
+        #dm-chat-input:focus {
+            outline: none;
+            border-color: #4ecca3;
+        }
 
-.travel-locations-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 20px;
-}
+        /* Message styling */
+        .message {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+        }
 
-.travel-location-btn {
-    background: #2d6a4f;
-    border: 1px solid #4ecca3;
-    border-radius: 4px;
-    padding: 12px 15px;
-    color: white;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
+        .message.player {
+            background: rgba(78, 204, 163, 0.2);
+            text-align: right;
+        }
 
-.travel-location-btn:hover {
-    background: #40916c;
-}
+        .message.dm {
+            background: rgba(59, 130, 246, 0.2);
+        }
 
-.travel-location-name {
-    font-weight: bold;
-    font-size: 1.1rem;
-}
+        .message.system {
+            background: rgba(107, 114, 128, 0.2);
+            font-style: italic;
+        }
 
-.travel-location-type {
-    font-style: italic;
-    color: #cccccc;
-    font-size: 0.9rem;
-}
+        .message.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
 
-.no-locations-message {
-    text-align: center;
-    padding: 20px;
-    color: #cccccc;
-}
 
-.travel-actions {
-    display: flex;
-    justify-content: flex-end;
-}
+        #travel-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 500px;
+            max-height: 80vh;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #4ecca3;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
 
-.secondary-button {
-    background: #6c757d;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 20px;
-    color: white;
-    cursor: pointer;
-}
+        #travel-panel.hidden {
+            display: none;
+        }
 
-.secondary-button:hover {
-    background: #5a6268;
-}
+        .panel-header {
+            padding: 15px 20px;
+            background: #4ecca3;
+            color: #232931;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .close-panel {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #232931;
+        }
+
+        .panel-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .travel-description {
+            margin-bottom: 20px;
+        }
+
+        .travel-locations-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .travel-location-btn {
+            background: #2d6a4f;
+            border: 1px solid #4ecca3;
+            border-radius: 4px;
+            padding: 12px 15px;
+            color: white;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .travel-location-btn:hover {
+            background: #40916c;
+        }
+
+        .travel-location-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .travel-location-type {
+            font-style: italic;
+            color: #cccccc;
+            font-size: 0.9rem;
+        }
+
+        .no-locations-message {
+            text-align: center;
+            padding: 20px;
+            color: #cccccc;
+        }
+
+        .travel-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .secondary-button {
+            background: #6c757d;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .secondary-button:hover {
+            background: #5a6268;
+        }
 
         
         /* Responsive adjustments */
@@ -642,22 +767,28 @@
         <!-- Main Content Area -->
         <main class="app-main">
             <!-- World Map -->
-            <div class="map-container">
-                <div id="world-map" style="position: relative; width: 100%; height: 100%; overflow: hidden;">
-                    <!-- Terrain canvas for the generated world -->
-                    <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0;"></canvas>
-
-                    <!-- Map will be rendered here by the application -->
-                    <div class="location-image-placeholder">
-                        <i class="fas fa-map-marked-alt" style="font-size: 3rem; margin-bottom: 15px;"></i>
-                        <p>World map will be rendered here</p>
-                    </div>
+            <div class="map-container panel resizable-panel">
+                <div class="panel-header">
+                    <h3>World Map</h3>
+                    <button class="close-btn">&times;</button>
                 </div>
-                
-                <div class="map-controls">
-                    <div class="map-btn" id="zoom-in"><i class="fas fa-plus"></i></div>
-                    <div class="map-btn" id="zoom-out"><i class="fas fa-minus"></i></div>
-                    <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
+                <div class="panel-content">
+                    <div id="world-map" style="position: relative; width: 100%; height: 100%; overflow: hidden;">
+                        <!-- Terrain canvas for the generated world -->
+                        <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0;"></canvas>
+
+                        <!-- Map will be rendered here by the application -->
+                        <div class="location-image-placeholder">
+                            <i class="fas fa-map-marked-alt" style="font-size: 3rem; margin-bottom: 15px;"></i>
+                            <p>World map will be rendered here</p>
+                        </div>
+                    </div>
+                    
+                    <div class="map-controls">
+                        <div class="map-btn" id="zoom-in"><i class="fas fa-plus"></i></div>
+                        <div class="map-btn" id="zoom-out"><i class="fas fa-minus"></i></div>
+                        <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
+                    </div>
                 </div>
             </div>
             <!-- Travel panel -->
@@ -717,40 +848,64 @@
                         <button id="close-inventory" class="secondary-button">Close</button>
                     </div>
                 </div>
-            </div>
-            <!-- Location panel -->
-            <div class="location-container">
-                <div class="location-header">
-                    <h2>Current Location</h2>
-                </div>
-                
-                <div class="location-image">
-                    <div class="location-image-placeholder">
-                        <i class="fas fa-map-marker-alt" style="font-size: 2rem;"></i>
-                        <p>Location image will appear here</p>
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h3>Dungeon Master Chat</h3>
+                    </div>
+                    <div id="chat-messages" class="chat-messages">
+                        <!-- Messages will appear here -->
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" id="dm-chat-input" placeholder="Ask the DM or describe your actions..." />
+                        <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i> Send</button>
                     </div>
                 </div>
-                
-                <div class="location-details">
-                    <p>Location details will be populated by the application</p>
+            </div>
+            <!-- Location panel -->
+            <div class="location-container panel resizable-panel">
+                <div class="panel-header">
+                    <h3>Location</h3>
+                    <button class="close-btn">&times;</button>
                 </div>
-                
-                <div class="location-actions">
-                    <button class="btn"><i class="fas fa-users"></i> NPCs</button>
-                    <button class="btn"><i class="fas fa-door-open"></i> Enter</button>
-                    <button class="btn"><i class="fas fa-search"></i> Explore</button>
-                    <button class="btn"><i class="fas fa-bed"></i> Rest</button>
+                <div class="panel-content">
+                    <div class="location-header">
+                        <h2>Current Location</h2>
+                    </div>
+                    
+                    <div class="location-image">
+                        <div class="location-image-placeholder">
+                            <i class="fas fa-map-marker-alt" style="font-size: 2rem;"></i>
+                            <p>Location image will appear here</p>
+                        </div>
+                    </div>
+                    
+                    <div class="location-details">
+                        <p>Location details will be populated by the application</p>
+                    </div>
+                    
+                    <div class="location-actions">
+                        <button class="btn"><i class="fas fa-users"></i> NPCs</button>
+                        <button class="btn"><i class="fas fa-door-open"></i> Enter</button>
+                        <button class="btn"><i class="fas fa-search"></i> Explore</button>
+                        <button class="btn"><i class="fas fa-bed"></i> Rest</button>
+                    </div>
                 </div>
             </div>
             
             <!-- Quests panel -->
-            <div class="quests-container">
-                <div class="location-header">
-                    <h2>Active Quests</h2>
+            <div class="quests-container panel resizable-panel">
+                <div class="panel-header">
+                    <h3>Quests</h3>
+                    <button class="close-btn">&times;</button>
                 </div>
-                
-                <div class="quests-list">
-                    <p>Quest log will be populated by the application</p>
+                <div class="panel-content">
+                    <div class="location-header">
+                        <h2>Active Quests</h2>
+                    </div>
+                    
+                    <div class="quests-list">
+                        <p>Quest log will be populated by the application</p>
+                    </div>
                 </div>
             </div>
 
@@ -806,8 +961,23 @@
             }, 1500);
         });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
     <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
     <script src="{{ url_for('static', filename='js/world.js') }}"></script>
+    <div id="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); color: white; display: flex; justify-content: center; align-items: center; z-index: 9999; display: none;">
+        <div style="text-align: center;">
+            <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #4ecca3; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 0 auto 15px;"></div>
+            <p>Loading world data...</p>
+        </div>
+    </div>
+
+    <style>
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    </style>
 </body>
 </html>

@@ -75,6 +75,14 @@ def create_tables():
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS player_sessions (
+            session_id UUID PRIMARY KEY,
+            player_id UUID REFERENCES players(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            last_seen TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS locations (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             world_id INTEGER REFERENCES worlds(id) ON DELETE CASCADE,
