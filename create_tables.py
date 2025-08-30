@@ -137,6 +137,21 @@ def create_tables():
             content JSONB NOT NULL,
             embedding VECTOR(1536)
         )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS characters (
+            id UUID PRIMARY KEY,
+            player_id UUID REFERENCES players(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            race TEXT,
+            class TEXT,
+            level INTEGER DEFAULT 1,
+            attributes JSONB,
+            inventory JSONB,
+            avatar_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
         """
     ]
     
@@ -152,7 +167,8 @@ def create_tables():
         "CREATE INDEX IF NOT EXISTS idx_narrative_world ON narrative_context(world_id)",
         "CREATE INDEX IF NOT EXISTS idx_narrative_player ON narrative_context(player_id)",
         "CREATE INDEX IF NOT EXISTS idx_narrative_timestamp ON narrative_context(timestamp)",
-        "CREATE INDEX IF NOT EXISTS idx_narrative_embedding ON narrative_context USING ivfflat (embedding)"
+        "CREATE INDEX IF NOT EXISTS idx_narrative_embedding ON narrative_context USING ivfflat (embedding)",
+        "CREATE INDEX IF NOT EXISTS idx_characters_player_id ON characters(player_id)"
     ]
     
     try:

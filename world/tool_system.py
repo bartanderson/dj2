@@ -1,3 +1,5 @@
+    # TODO: When integrating new tools, ensure that any tool invocation checks for valid, registered tool names.
+    # If a tool is not found or specified as null/None, fallback to narrative handling and avoid execution errors.
 import inspect
 import json
 import re

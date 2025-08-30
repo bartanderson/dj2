@@ -2,10 +2,16 @@
 from dnd_character import CLASSES
 from world.ai_integration import DungeonAI
 
+from .tool_system import tool
+
 class CharacterBuilder:
     def __init__(self, ai_system):
         self.ai = ai_system
         
+    @tool(
+        name="create_character",
+        description="Create a new character with AI enhancements. Requires owner_id and char_data (name, race, class, background, personal_item)."
+    )
     def create_character(self, owner_id, char_data):
         """Create a new character with AI enhancements"""
         # Create base character
@@ -36,6 +42,10 @@ class CharacterBuilder:
             
         return character
         
+    @tool(
+        name="generate_personality",
+        description="Generate personality traits for a character. Requires char_data (race, class, background)."
+    )
     def _generate_personality(self, char_data):
         """Generate personality traits using AI"""
         prompt = (
@@ -50,6 +60,10 @@ class CharacterBuilder:
             "flaws": "string"
         })
         
+    @tool(
+        name="generate_background_story",
+        description="Generate a background story for a character. Requires char_data (name, race, class, background)."
+    )
     def _generate_background_story(self, char_data):
         """Generate background story using AI"""
         prompt = (
@@ -59,6 +73,10 @@ class CharacterBuilder:
         )
         return self.ai.generate_text(prompt)
         
+    @tool(
+        name="generate_personal_item",
+        description="Generate a personalized starting item for a character concept. Requires char_concept."
+    )
     def generate_personal_item(self, char_concept):
         """Generate a personalized starting item"""
         prompt = (
@@ -72,6 +90,10 @@ class CharacterBuilder:
             "special_significance": "string"
         })
         
+    @tool(
+        name="get_equipment_suggestions",
+        description="Get AI suggestions for equipment choices for a character concept. Requires char_concept."
+    )
     def get_equipment_suggestions(self, char_concept):
         """Get AI suggestions for equipment choices"""
         prompt = (

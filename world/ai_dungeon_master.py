@@ -638,36 +638,37 @@ class AIDungeonMaster:
                               "(human, elf, dwarf, halfling, etc.)", "system")]
 
     def _handle_class_selection(self, player_id: str, message: str) -> List[Dialog]:
-        """Process class selection and move to next step"""
-        # Extract class from message using AI or simple parsing
         char_class = self._extract_class_from_message(message)
-        
         if char_class and char_class in self._get_available_classes():
             self.character_creation_states[player_id]["data"]["class"] = char_class
             self.character_creation_states[player_id]["step"] = "background"
-            
             return [Dialog("DM", f"A {char_class}, great choice! Now, what background would you like? "
-                              "(Noble, soldier, acolyte, criminal, etc.)", "narration")]
+                                 "(Noble, soldier, acolyte, criminal, etc.)", "narration")]
+        elif hasattr(self, 'last_class_candidates') and self.last_class_candidates:
+            options = ', '.join(self.last_class_candidates)
+            self.last_class_candidates = []
+            return [Dialog("DM", f"I found several possible classes matching your description: {options}. "
+                                 "Which one did you mean?", "system")]
         else:
             available_classes = ", ".join(self._get_available_classes())
             return [Dialog("DM", f"I didn't recognize that class. Available classes are: {available_classes}. "
-                              "Which would you like to play?", "system")]
+                                 "Which would you like to play?", "system")]
 
-    def _handle_background_selection(self, player_id: str, message: str) -> List[Dialog]:
-        """Process background selection and move to next step"""
-        # Extract background from message using AI or simple parsing
-        background = self._extract_background_from_message(message)
-        
-        if background and background in self._get_available_backgrounds():
-            self.character_creation_states[player_id]["data"]["background"] = background
-            self.character_creation_states[player_id]["step"] = "abilities"
+        def _handle_background_selection(self, player_id: str, message: str) -> List[Dialog]:
+            """Process background selection and move to next step"""
+            # Extract background from message using AI or simple parsing
+            background = self._extract_background_from_message(message)
             
-            return [Dialog("DM", f"A {background} background, interesting! Now, how would you like to "
-                              "determine your ability scores? (Standard array, point buy, or roll?)", "narration")]
-        else:
-            available_backgrounds = ", ".join(self._get_available_backgrounds())
-            return [Dialog("DM", f"I didn't recognize that background. Available backgrounds are: {available_backgrounds}. "
-                              "Which would you like?", "system")]
+            if background and background in self._get_available_backgrounds():
+                self.character_creation_states[player_id]["data"]["background"] = background
+                self.character_creation_states[player_id]["step"] = "abilities"
+                
+                return [Dialog("DM", f"A {background} background, interesting! Now, how would you like to "
+                                  "determine your ability scores? (Standard array, point buy, or roll?)", "narration")]
+            else:
+                available_backgrounds = ", ".join(self._get_available_backgrounds())
+                return [Dialog("DM", f"I didn't recognize that background. Available backgrounds are: {available_backgrounds}. "
+                                  "Which would you like?", "system")]
 
     # Helper methods needed for the above
     def _extract_race_from_message(self, message: str) -> Optional[str]:
@@ -682,18 +683,64 @@ class AIDungeonMaster:
         
         return None
 
-    def _extract_class_from_message(self, message: str) -> Optional[str]:
-        """Extract class from player message"""
-        # Simple implementation - can be enhanced with AI
-        classes = self._get_available_classes()
-        message_lower = message.lower()
-        
+def _extract_class_from_message(self, message: str) -> Optional[str]:
+    """Extract class from player message using AI, generic term mapping, fuzzy matching, and always guide user."""
+    classes = self._get_available_classes()
+    message_lower = message.lower()
+    # 1. AI extraction
+    try:
+        prompt = f"""Extract the intended character class from this message:
+        Message: '{message}'
+        Available classes: {', '.join(classes)}
+        Respond with JSON: {{'class': <class name or empty string>, 'confidence': 0-1, 'candidates': [<list of possible matches>]}}
+        """
+        if hasattr(self.world_controller, 'ai_system') and self.world_controller.ai_system:
+            result = self.world_controller.ai_system.generate_structured_data(prompt, {
+                "class": "string",
+                "confidence": "number",
+                "candidates": "list"
+            })
+        else:
+            result = {"class": "", "confidence": 0, "candidates": []}
+        ai_class = result.get("class", "")
+        confidence = result.get("confidence", 0)
+        candidates = result.get("candidates", [])
+        if ai_class and ai_class in classes and confidence and confidence > 0.7:
+            return ai_class
+        if candidates and len(candidates) > 1:
+            self.last_class_candidates = candidates
+            return None
+    except Exception:
+        pass
+    # 2. Generic term mapping
+    generic_map = {
+        "magic": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
+        "spell": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
+        "caster": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
+        "healer": ["Cleric", "Druid", "Paladin", "Bard"],
+        "sneak": ["Rogue", "Bard", "Ranger"],
+        "stealth": ["Rogue", "Bard", "Ranger"],
+        "strong": ["Fighter", "Barbarian", "Paladin", "Ranger"],
+        "tank": ["Fighter", "Barbarian", "Paladin"],
+        "archer": ["Ranger", "Fighter"],
+        "holy": ["Cleric", "Paladin"],
+        "nature": ["Druid", "Ranger"],
+        "leader": ["Paladin", "Bard"],
+    }
+    for key, group in generic_map.items():
+        if key in message_lower:
+            self.last_class_candidates = [cls for cls in group if cls in classes]
+            return None
+    # 3. Fuzzy matching for misspellings
+    import difflib
+    matches = difflib.get_close_matches(message_lower, [c.lower() for c in classes], n=2, cutoff=0.6)
+    if matches:
         for cls in classes:
-            if cls.lower() in message_lower:
+            if cls.lower() == matches[0]:
                 return cls
-        
+        self.last_class_candidates = [cls for cls in classes if cls.lower() in matches]
         return None
-
+    return None
     def _extract_background_from_message(self, message: str) -> Optional[str]:
         """Extract background from player message"""
         # Simple implementation - can be enhanced with AI

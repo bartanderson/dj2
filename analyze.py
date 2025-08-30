@@ -91,7 +91,7 @@ def scan_project(base_path: str, ignore_dirs: List[str]) -> List[Dict[str, Any]]
 def main():
     parser = argparse.ArgumentParser(description='Extract project structure from Python files')
     parser.add_argument('base_dir', help='Base directory to scan')
-    parser.add_argument('-i', '--ignore', nargs='+', default=['__pycache__', 'venv', '.git'],
+    parser.add_argument('-i', '--ignore', nargs='+', default=['__pycache__', 'venv', '.git', 'Lib', 'core'],
                         help='Directories to ignore')
     parser.add_argument('-o', '--output', default='project_ast.json',
                         help='Output JSON file name')

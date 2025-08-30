@@ -58,6 +58,9 @@ class WorldController:
         self.world_map = WorldMap()
         self.narrative_system = NarrativeSystem(self, ai_system)
         self.character_builder = CharacterBuilder(ai_system)
+        # Register character builder tools for AI use
+        if hasattr(ai_system, 'tool_registry'):
+            ai_system.tool_registry.register_from_class(self.character_builder)
         self.ai_system = ai_system
         self.seed = seed
         self.terrain_types = TERRAIN_TYPES
@@ -931,10 +934,74 @@ class WorldController:
             self.world_map.update_character_position(char_id, new_position)
 
     def create_character(self, player_id, char_data):
-        """Create a new character"""
+        """Create a new character and save to database"""
         character = self.character_builder.create_character(player_id, char_data)
         self.characters[character.id] = character
+        
+        # Save to database
+        self._save_character_to_db(character)
+        
         return character
+
+    def _save_character_to_db(self, character):
+        """Save character to database"""
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO characters (id, player_id, name, race, class, level, attributes, inventory, avatar_url) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (id) DO UPDATE SET "
+                    "name = EXCLUDED.name, race = EXCLUDED.race, class = EXCLUDED.class, "
+                    "level = EXCLUDED.level, attributes = EXCLUDED.attributes, "
+                    "inventory = EXCLUDED.inventory, avatar_url = EXCLUDED.avatar_url, "
+                    "updated_at = CURRENT_TIMESTAMP",
+                    (
+                        character.id, character.owner_id, character.name, 
+                        character.race, character.classs.name if hasattr(character, 'classs') else None,
+                        character.level, json.dumps(character.attributes),
+                        json.dumps([item.to_dict() for item in character.get_full_inventory()]),
+                        character.avatar_url
+                    )
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error saving character to DB: {e}")
+            conn.rollback()
+        finally:
+            Database.return_connection(conn)
+
+    def load_characters_for_player(self, player_id):
+        """Load all characters for a player from database"""
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, race, class, level, attributes, inventory, avatar_url "
+                    "FROM characters WHERE player_id = %s",
+                    (player_id,)
+                )
+                for row in cur.fetchall():
+                    character = Character(
+                        owner_id=player_id,
+                        name=row[1],
+                        race=row[2],
+                        classs=row[3],  # You might need to convert this to a Class object
+                        level=row[4]
+                    )
+                    character.id = row[0]
+                    character.attributes = row[5] or {}
+                    # Load inventory
+                    if row[6]:
+                        for item_data in row[6]:
+                            character.add_custom_item(item_data['name'], item_data.get('description', ''))
+                    character.avatar_url = row[7]
+                    
+                    self.characters[character.id] = character
+        except Exception as e:
+            print(f"Error loading characters from DB: {e}")
+        finally:
+            Database.return_connection(conn)
 
     def update_character_avatar(self, char_id, avatar_url):
         if char_id in self.characters:
@@ -1704,51 +1771,60 @@ class DMChatHandler:
         self.dm = world_controller.dungeon_master
         self.chat_history = []
 
-    def _ai_detect_tool_intent(self, message, dm_responses):
-        """Use AI to determine if this message requires tool execution"""
-        # Use the existing AI tool system to detect intent
+    def _ai_detect_tool_intent(self, message, dm_responses, character_context=None):
+        """Use AI to determine if this message requires tool execution, with richer context."""
+        # Build a more context-rich prompt for Llama
         prompt = f"""
-        Analyze this player message and determine if it requires executing a game action:
-        
-        Player: "{message}"
-        
-        Does this message describe an action that would use a game mechanic (like attacking, 
-        casting spells, using items, traveling, social interactions, etc.)? 
-        
-        Respond with ONLY JSON: {{"requires_tool": true/false, "reason": "brief explanation"}}
+        You are the AI Dungeon Master for a fantasy RPG. Your job is to interpret player requests and decide if they require a game mechanic/tool (combat, spellcasting, item use, travel, social interaction, etc.) or just narrative.
+
+        Player message: "{message}"
+        Character context: {json.dumps(character_context or {}, indent=2)}
+        Recent DM responses: {[r.content if hasattr(r, 'content') else str(r) for r in (dm_responses or [])]}
+
+        Examples:
+        - "I attack the goblin with my sword." => requires_tool: true
+        - "Can I rest here for the night?" => requires_tool: true
+        - "Tell me about the town." => requires_tool: false
+        - "I want to create a magic user." => requires_tool: true
+        - "Who is the king?" => requires_tool: false
+
+        Respond ONLY with JSON: {{"requires_tool": true/false, "reason": "brief explanation"}}
         """
-        
         try:
-            # Use the AI's structured data generation capability
             response_format = {
                 "requires_tool": "boolean",
                 "reason": "string"
             }
-            
             result = self.world_controller.world_ai.generate_structured_data(
                 prompt, response_format
             )
-            
-            print(f"Tool intent detection: {result}")
+            print(f"Tool intent detection raw AI output: {result}")
             return result.get("requires_tool", False)
-            
         except Exception as e:
             print(f"AI tool intent detection failed: {e}")
-            # If AI detection fails, we'll be conservative and assume no tool is needed
-            # This prevents false positives that could break immersion
             return False
     
     def _handle_tool_usage(self, message, player_id):
-        """Use AI integration to process tool commands"""
+        """Use AI integration to process tool commands, skipping if tool is null/None/unregistered."""
         try:
             # Let the AI determine which tool to use and with what parameters
             if self.world_controller.dungeon_ai:
                 result = self.world_controller.dungeon_ai.process_command(message)
             else:
                 result = self.world_controller.world_ai.process_command(message)
-            
+
+            # Check for tool presence and validity
+            tool_name = result.get("ai_response", {}).get("tool") if "ai_response" in result else result.get("tool")
+            if not tool_name or str(tool_name).lower() in ["none", "null"]:
+                # No valid tool, skip execution
+                return {"success": False, "skipped": True, "reason": "No valid tool specified by AI."}
+
+            # Optionally, check if tool_name is in the registered tools
+            valid_tools = set(self.world_controller.world_ai.tool_registry.tools.keys())
+            if tool_name not in valid_tools:
+                return {"success": False, "skipped": True, "reason": f"Tool '{tool_name}' not registered."}
+
             return result
-                
         except Exception as e:
             return {"success": False, "error": f"Error processing command: {str(e)}"}
 
@@ -1758,7 +1834,7 @@ class DMChatHandler:
         try:
             # Get or create player for this session
             player = self.world_controller.get_or_create_player(session_id)
-            
+
             # Get character context if specified
             character_context = {}
             if character_id and character_id in self.world_controller.characters:
@@ -1770,9 +1846,8 @@ class DMChatHandler:
                     'character_race': character.race,
                     'character_level': character.level
                 }
-                # Set this as the active character for the player
                 player.set_active_character(character_id)
-            
+
             # Use active character if no specific character is specified
             if not character_id and player.active_character_id:
                 character_id = player.active_character_id
@@ -1784,51 +1859,62 @@ class DMChatHandler:
                     'character_race': character.race,
                     'character_level': character.level
                 }
-            
+
             # Always process the message with the DM first to get a narrative response
             narrative_responses = self.dm.process_player_input(
-                player.id, 
+                player.id,
                 message,
                 character_context=character_context
             )
             print("DEBUG: Back from dm.process_player_input")
-            
-            # Check if tool execution is also needed
-            requires_tool = self._ai_detect_tool_intent(message, narrative_responses)
-            
+
+            # Check if tool execution is also needed, using richer context
+            requires_tool = self._ai_detect_tool_intent(message, narrative_responses, character_context)
+
             # If tool execution is needed, process it and get follow-up narrative
             tool_result = None
             tool_followup_responses = []
-            
+
             if requires_tool:
                 print("DEBUG: Tool execution required")
                 tool_result = self._handle_tool_usage(message, player.id)
-                
-                # Let the DM incorporate the tool result into the narrative
-                if tool_result and not tool_result.get("error"):
+                print(f"DEBUG: Tool result raw AI output: {tool_result}")
+                # Only incorporate tool result if it was not skipped and has no error
+                if tool_result and not tool_result.get("error") and not tool_result.get("skipped"):
                     tool_followup_responses = self.dm.process_player_input(
                         player.id,
                         f"Tool execution result: {tool_result.get('message', 'Action completed')}"
                     )
-            
+                elif tool_result and tool_result.get("skipped"):
+                    # Provide a context-aware fallback DM narrative for character creation
+                    fallback_message = None
+                    lowered = message.lower()
+                    if "magic user" in lowered or "wizard" in lowered or "sorcerer" in lowered or "elemental" in lowered:
+                        fallback_message = (
+                            "Let's work together to define your magic user's elemental abilities! "
+                            "What element do you want to start with—fire, water, earth, or air? "
+                            "Or do you have a special affinity in mind?"
+                        )
+                    if fallback_message:
+                        tool_followup_responses = [Dialog("DM", fallback_message, "narration")]
+
             # Combine all narrative responses
             all_narrative_responses = narrative_responses + tool_followup_responses
-            
+
             # Add to chat history
-            self.chat_history.extend([(player.id, message)] + 
+            self.chat_history.extend([(player.id, message)] +
                                     [("DM", r.content) for r in all_narrative_responses])
-            
+
             print("DEBUG: Returning from process_message")
             return {
                 "narrative": all_narrative_responses,
                 "tool_result": tool_result
             }
-            
+
         except Exception as e:
             print(f"DEBUG: Exception in process_message: {e}")
             import traceback
             traceback.print_exc()
-            # If anything fails, return a graceful error response
             error_response = [Dialog("DM", "I'm having trouble processing that right now. Could you try again?", "system")]
             return {
                 "narrative": error_response,

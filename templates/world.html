@@ -83,15 +83,20 @@
         
         /* Header */
         .app-header {
-            grid-area: header;
-            background: rgba(0, 0, 0, 0.7);
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            background: rgba(0, 0, 0, 0.85);
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
-            padding: 0 25px;
+            min-height: 56px;
+            padding: 0 18px;
             border-bottom: 2px solid #4ecca3;
-            z-index: 100;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            z-index: 9999;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
         }
         
         .logo {
@@ -103,8 +108,40 @@
         
         .header-controls {
             display: flex;
+            flex-wrap: wrap;
             gap: 15px;
             align-items: center;
+            width: auto;
+        }
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-left: 12px;
+        }
+        .action-btn {
+            min-width: 80px;
+            max-width: 120px;
+            font-size: 0.95rem;
+            padding: 7px 10px;
+        }
+        @media (max-width: 600px) {
+            .app-header {
+                flex-direction: column;
+                align-items: flex-start;
+                min-height: 70px;
+                padding: 0 8px;
+            }
+            .header-controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            .quick-actions {
+                width: 100%;
+                justify-content: flex-start;
+                margin-left: 0;
+            }
         }
         
         /* Sidebar */
@@ -162,45 +199,37 @@
         
         /* Main content area */
         .app-main {
-            grid-area: main;
-            position: relative;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr auto;
-            grid-template-areas:
-                "map location"
-                "map quests"
-                "chat chat";
-            gap: 15px;
-            padding: 15px;
             background: rgba(0, 0, 0, 0.2);
+            padding-top: 70px;
         }
    
         /* World map */
         .map-container {
-            aspect-ratio: 5/4;
-            width: 100%; 
-            grid-area: map;
-            position: relative;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             background: #0a1729;
-            border-radius: 8px;
+            border-radius: 0;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-            border: 2px solid #4ecca3;
+            box-shadow: none;
+            border: none;
+            z-index: 10;
         }
         
         #world-map {
-        /*  width: 100%;
-            height: 100%;
-            position: relative;
-            background: #0d2136;
-            object-fit: contain; /* Maintain aspect ratio while filling container */
-        */
-
-            position: relative;
-            width: 100%;
-            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
         }
 
@@ -367,7 +396,9 @@
         .map-controls {
             position: absolute;
             bottom: 15px;
-            right: 15px;
+            left: 15px;
+            right: auto;
+            top: auto;
             display: flex;
             gap: 10px;
             z-index: 10;
@@ -697,100 +728,51 @@
             <div class="logo">Dungeon World</div>
             <div class="header-controls">
                 <div id="connection-status" class="status-connected">Connected</div>
+                <!-- TODO: Hook up settings functionality here (user preferences, audio, display, controls, etc.) -->
                 <button class="btn"><i class="fas fa-cog"></i> Settings</button>
+                <div class="quick-actions">
+                    <button class="action-btn" id="travel-btn"><i class="fas fa-walking"></i><span>Travel</span></button>
+                    <button class="action-btn" id="inventory-btn"><i class="fas fa-backpack"></i><i class="fas fa-box-open" style="margin-left:4px;"></i><span>Inventory</span></button>
+                    <button class="action-btn" id="quests-btn"><i class="fas fa-scroll"></i><span>Quests</span></button>
+                    <button class="action-btn" id="party-btn"><i class="fas fa-users"></i><span>Party</span></button>
+                    <button class="action-btn" id="status-btn"><i class="fas fa-info-circle"></i><span>Status</span></button>
+                </div>
             </div>
         </header>
         
-        <!-- Sidebar Menu -->
-        <nav class="app-sidebar">
-            <div class="menu-section">
-                <div class="menu-header">Adventure</div>
-                <div class="menu-item active">
-                    <div class="menu-icon"><i class="fas fa-map-marked-alt"></i></div>
-                    <span>World Map</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-mountain"></i></div>
-                    <span>Locations</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-dragon"></i></div>
-                    <span>Encounters</span>
-                </div>
-            </div>
-            
-            <div class="menu-section">
-                <div class="menu-header">Character</div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-user"></i></div>
-                    <span>My Character</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-backpack"></i></div>
-                    <span>Inventory</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-tasks"></i></div>
-                    <span>Skills & Abilities</span>
-                </div>
-            </div>
-            
-            <div class="menu-section">
-                <div class="menu-header">Party</div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-users"></i></div>
-                    <span>Party Members</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-comments"></i></div>
-                    <span>Group Chat</span>
-                </div>
-            </div>
-            
-            <div class="menu-section">
-                <div class="menu-header">Game</div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-scroll"></i></div>
-                    <span>Quests</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-book"></i></div>
-                    <span>Lore & History</span>
-                </div>
-                <div class="menu-item">
-                    <div class="menu-icon"><i class="fas fa-dice-d20"></i></div>
-                    <span>Dungeon Master</span>
-                </div>
-            </div>
+        <!-- Tab Navigation -->
+        <nav class="tab-bar">
+            <button class="tab-btn active" data-panel="map-panel"><i class="fas fa-map-marked-alt"></i><span>Map</span></button>
+            <button class="tab-btn" data-panel="character-panel"><i class="fas fa-user"></i><span>Character</span></button>
+            <button class="tab-btn" data-panel="party-panel"><i class="fas fa-users"></i><span>Party</span></button>
+            <button class="tab-btn" data-panel="inventory-panel"><i class="fas fa-backpack"></i><span>Inventory</span></button>
+            <button class="tab-btn" data-panel="quests-panel"><i class="fas fa-scroll"></i><span>Quests</span></button>
+            <button class="tab-btn" data-panel="status-panel" id="status-tab"><i class="fas fa-info-circle"></i><span>Status</span></button>
         </nav>
+    <!-- Removed old sidebar -->
+    <!-- Removed old quick actions panel -->
         
         <!-- Main Content Area -->
         <main class="app-main">
-            <!-- World Map -->
-            <div class="map-container panel resizable-panel">
-                <div class="panel-header">
-                    <h3>World Map</h3>
-                    <button class="close-btn">&times;</button>
+            <!-- Status Panel (right half overlay) -->
+            <div id="status-panel" class="panel tab-content" style="display:none; position: absolute; top: 80px; right: 0; width: 400px; max-width: 45vw; height: calc(100vh - 80px); z-index: 1001;">
+                <div class="panel-header"><h3>Status & Next Steps</h3><button class="close-btn" id="close-status">×</button></div>
+                <div class="panel-content" id="status-content">
+                    <!-- Status info will be populated by JS -->
                 </div>
-                <div class="panel-content">
-                    <div id="world-map" style="position: relative; width: 100%; height: 100%; overflow: hidden;">
-                        <!-- Terrain canvas for the generated world -->
-                        <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0;"></canvas>
-
-                        <!-- Map will be rendered here by the application -->
-                        <div class="location-image-placeholder">
-                            <i class="fas fa-map-marked-alt" style="font-size: 3rem; margin-bottom: 15px;"></i>
-                            <p>World map will be rendered here</p>
-                        </div>
-                    </div>
-                    
-                    <div class="map-controls">
-                        <div class="map-btn" id="zoom-in"><i class="fas fa-plus"></i></div>
-                        <div class="map-btn" id="zoom-out"><i class="fas fa-minus"></i></div>
-                        <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
+            </div>
+            <!-- Chat Panel (right half overlay) -->
+            <div id="chat-panel" class="panel tab-content" style="display:none; position: absolute; top: 80px; right: 0; width: 400px; max-width: 45vw; height: calc(100vh - 80px); z-index: 1001;">
+                <div class="panel-header"><h3>DM Chat</h3><button class="close-btn" id="close-chat">×</button></div>
+                <div class="panel-content" id="chat-content">
+                    <div id="chat-messages" style="height: calc(100% - 60px); overflow-y: auto; margin-bottom: 10px;"></div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="chat-input" placeholder="Type your message..." style="flex:1; padding:8px; border-radius:4px; border:1px solid #4ecca3;">
+                        <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i></button>
                     </div>
                 </div>
             </div>
+            <!-- Removed duplicate map container -->
             <!-- Travel panel -->
             <div id="travel-panel" class="panel hidden">
                 <div class="panel-header">
@@ -840,52 +822,51 @@
                             <span id="current-weight">0</span>
                             <span> / </span>
                             <span id="max-weight">100</span>
-                            <span> lbs</span>
-                        </div>
-                    </div>
-                    
-                    <div class="inventory-actions">
-                        <button id="close-inventory" class="secondary-button">Close</button>
-                    </div>
-                </div>
-                <div class="chat-container">
-                    <div class="chat-header">
-                        <h3>Dungeon Master Chat</h3>
-                    </div>
-                    <div id="chat-messages" class="chat-messages">
-                        <!-- Messages will appear here -->
-                    </div>
-                    <div class="chat-input-container">
-                        <input type="text" id="dm-chat-input" placeholder="Ask the DM or describe your actions..." />
-                        <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i> Send</button>
-                    </div>
-                </div>
-            </div>
-            <!-- Location panel -->
-            <div class="location-container panel resizable-panel">
-                <div class="panel-header">
-                    <h3>Location</h3>
-                    <button class="close-btn">&times;</button>
-                </div>
-                <div class="panel-content">
-                    <div class="location-header">
-                        <h2>Current Location</h2>
-                    </div>
-                    
-                    <div class="location-image">
-                        <div class="location-image-placeholder">
-                            <i class="fas fa-map-marker-alt" style="font-size: 2rem;"></i>
-                            <p>Location image will appear here</p>
-                        </div>
-                    </div>
-                    
-                    <div class="location-details">
-                        <p>Location details will be populated by the application</p>
-                    </div>
-                    
-                    <div class="location-actions">
-                        <button class="btn"><i class="fas fa-users"></i> NPCs</button>
-                        <button class="btn"><i class="fas fa-door-open"></i> Enter</button>
+                            <main class="app-main">
+                                <!-- Map Panel -->
+                                <div id="map-panel" class="map-container tab-content active">
+                                    <div id="world-map" style="position: relative; width: 100vw; height: 100vh; overflow: hidden;">
+                                        <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0; width: 100vw; height: 100vh;"></canvas>
+                                        <div class="location-image-placeholder">
+                                            <i class="fas fa-map-marked-alt" style="font-size: 3rem; margin-bottom: 15px;"></i>
+                                            <p>World map will be rendered here</p>
+                                        </div>
+                                        <div class="map-controls" style="position: absolute; bottom: 15px; left: 15px; right: auto; top: auto; display: flex; gap: 10px; z-index: 10;">
+                                            <div class="map-btn" id="zoom-in"><i class="fas fa-plus"></i></div>
+                                            <div class="map-btn" id="zoom-out"><i class="fas fa-minus"></i></div>
+                                            <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Character Panel -->
+                                <div id="character-panel" class="panel tab-content" style="display:none;">
+                                    <div class="panel-header"><h3>Character</h3></div>
+                                    <div class="panel-content">
+                                        <p>Character details and controls go here.</p>
+                                    </div>
+                                </div>
+                                <!-- Party Panel -->
+                                <div id="party-panel" class="panel tab-content" style="display:none;">
+                                    <div class="panel-header"><h3>Party</h3></div>
+                                    <div class="panel-content">
+                                        <p>Party controls and member list go here.</p>
+                                    </div>
+                                </div>
+                                <!-- Inventory Panel -->
+                                <div id="inventory-panel" class="panel tab-content" style="display:none;">
+                                    <div class="panel-header"><h3>Inventory</h3></div>
+                                    <div class="panel-content">
+                                        <p>Inventory items and equipment go here.</p>
+                                    </div>
+                                </div>
+                                <!-- Quests Panel -->
+                                <div id="quests-panel" class="panel tab-content" style="display:none;">
+                                    <div class="panel-header"><h3>Quests</h3></div>
+                                    <div class="panel-content">
+                                        <p>Quest log and details go here.</p>
+                                    </div>
+                                </div>
+                            </main>
                         <button class="btn"><i class="fas fa-search"></i> Explore</button>
                         <button class="btn"><i class="fas fa-bed"></i> Rest</button>
                     </div>
@@ -909,30 +890,7 @@
                 </div>
             </div>
 
-            <div class="actions-panel">
-                <div class="panel-header">
-                    <h2>Quick Actions</h2>
-                </div>
-                <div class="actions-grid">
-                    <button class="action-btn" id="travel-btn">
-                        <i class="fas fa-walking"></i>
-                        <span>Travel</span>
-                    </button>
-                    <button class="action-btn" id="inventory-btn">
-                        <i class="fas fa-backpack"></i>
-                        <span>Inventory</span>
-                    </button>
-                    <button class="action-btn" id="quests-btn">
-                        <i class="fas fa-scroll"></i>
-                        <span>Quests</span>
-                    </button>
-                    <button class="action-btn" id="party-btn">
-                        <i class="fas fa-users"></i>
-                        <span>Party</span>
-                    </button>
-                </div>
-            </div>
-        </main>
+            </main>
     </div>
     
     <!-- Notification Container -->
@@ -942,24 +900,169 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Panel management
-            const menuItems = document.querySelectorAll('.menu-item');
-            
-            // Handle menu item clicks
-            menuItems.forEach(item => {
-                item.addEventListener('click', function() {
-                    // Toggle active class on menu items
-                    menuItems.forEach(mi => mi.classList.remove('active'));
+            // Chat/status toggle logic
+            // statusBtn already declared above, do not redeclare
+            const chatBtn = document.createElement('button');
+            chatBtn.className = 'action-btn';
+            chatBtn.id = 'chat-btn';
+            chatBtn.innerHTML = '<i class="fas fa-comments"></i><span>Chat</span>';
+            document.querySelector('.quick-actions').appendChild(chatBtn);
+
+            function showPanel(panelId) {
+                document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
+                const panel = document.getElementById(panelId);
+                if (panel) panel.style.display = '';
+            }
+
+            // Helper to check requirements and set button color/tooltip
+            function updateQuickActions() {
+                const ws = window.worldState || {};
+                const actions = [
+                    {id: 'chat-btn', req: true, info: ''},
+                    {id: 'quests-btn', req: true, info: ''},
+                    {id: 'party-btn', req: ws.characters && Object.keys(ws.characters).length > 0, info: 'Create a character to join a party.'},
+                    {id: 'inventory-btn', req: ws.characters && Object.keys(ws.characters).length > 0, info: 'Create a character to view inventory.'},
+                    {id: 'travel-btn', req: ws.currentLocation, info: 'Select a location to travel.'},
+                    {id: 'status-btn', req: true, info: ''}
+                ];
+                actions.forEach(a => {
+                    const btn = document.getElementById(a.id);
+                    if (btn) {
+                        if (!a.req) {
+                            btn.style.background = '#a94442';
+                            btn.title = a.info;
+                        } else {
+                            btn.style.background = '';
+                            btn.title = '';
+                        }
+                    }
+                });
+            }
+            // Call on load and after world state updates
+            updateQuickActions();
+            window.updateQuickActions = updateQuickActions;
+            const statusBtn = document.getElementById('status-btn');
+            if (statusBtn) {
+                statusBtn.onclick = function() {
+                    showPanel('status-panel');
+                    updateStatusPanel();
+                };
+            }
+            if (chatBtn) {
+                chatBtn.onclick = function() {
+                    showPanel('chat-panel');
+                };
+            }
+            document.getElementById('close-status').addEventListener('click', function() {
+                document.getElementById('status-panel').style.display = 'none';
+            });
+            document.getElementById('close-chat').addEventListener('click', function() {
+                document.getElementById('chat-panel').style.display = 'none';
+            });
+            // Other quick actions
+            document.getElementById('quests-btn').addEventListener('click', function() {
+                showPanel('quests-panel');
+            });
+            document.getElementById('party-btn').addEventListener('click', function() {
+                showPanel('party-panel');
+            });
+            document.getElementById('inventory-btn').addEventListener('click', function() {
+                showPanel('inventory-panel');
+            });
+            document.getElementById('travel-btn').addEventListener('click', function() {
+                showPanel('travel-panel');
+            });
+
+            // Basic chat logic (placeholder)
+            document.getElementById('send-chat').addEventListener('click', function() {
+                const input = document.getElementById('chat-input');
+                const messages = document.getElementById('chat-messages');
+                if (input.value.trim()) {
+                    const msgDiv = document.createElement('div');
+                    msgDiv.textContent = input.value;
+                    msgDiv.style.padding = '6px';
+                    msgDiv.style.borderBottom = '1px solid #333';
+                    messages.appendChild(msgDiv);
+                    input.value = '';
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            });
+            // Duplicate statusBtn declaration and event listener removed
+            // Tab navigation logic
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    tabBtns.forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
+                    tabContents.forEach(tc => tc.style.display = 'none');
+                    const panelId = this.getAttribute('data-panel');
+                    document.getElementById(panelId).style.display = '';
+                    // If switching to map panel, re-render the map
+                    if (panelId === 'map-panel' && window.worldState && window.worldState.worldMap && typeof renderWorldMap === 'function') {
+                        setTimeout(() => {
+                            renderWorldMap(window.worldState.worldMap);
+                        }, 50);
+                    }
+                    // If switching to status panel, update status info
+                    if (panelId === 'status-panel') {
+                        updateStatusPanel();
+                    }
                 });
             });
-            
             // Simulate connection status change
             setTimeout(() => {
                 document.getElementById('connection-status').textContent = 'Connected';
                 document.getElementById('connection-status').className = 'status-connected';
             }, 1500);
         });
+
+        // Status panel logic
+        function updateStatusPanel() {
+            const statusContent = document.getElementById('status-content');
+            if (!statusContent) return;
+            let html = '';
+            const ws = window.worldState || {};
+            // Check for character
+            if (!ws.characters || Object.keys(ws.characters).length === 0) {
+                html += '<div><strong>Character:</strong> <span style="color:red">Missing</span> - Create your character to begin.</div>';
+            } else {
+                html += '<div><strong>Character:</strong> <span style="color:green">Ready</span></div>';
+            }
+            // Check for party
+            if (!ws.parties || ws.parties.length === 0) {
+                html += '<div><strong>Party:</strong> <span style="color:red">Missing</span> - Join or create a party.</div>';
+            } else {
+                html += '<div><strong>Party:</strong> <span style="color:green">Ready</span></div>';
+            }
+            // Check for location
+            if (!ws.currentLocation) {
+                html += '<div><strong>Location:</strong> <span style="color:red">Unknown</span> - Select a starting location.</div>';
+            } else {
+                html += `<div><strong>Location:</strong> <span style="color:green">${ws.currentLocation.name || 'Ready'}</span></div>`;
+            }
+            // Check for quests
+            if (!ws.parties || ws.parties.length === 0 || !ws.parties[0].quests || ws.parties[0].quests.length === 0) {
+                html += '<div><strong>Quests:</strong> <span style="color:orange">None</span> - Accept a quest to begin your adventure.</div>';
+            } else {
+                html += `<div><strong>Quests:</strong> <span style="color:green">${ws.parties[0].quests.length} active</span></div>`;
+            }
+            // Next steps
+            html += '<hr><div><strong>Next Step:</strong> ';
+            if (!ws.characters || Object.keys(ws.characters).length === 0) {
+                html += 'Create your character.';
+            } else if (!ws.parties || ws.parties.length === 0) {
+                html += 'Join or create a party.';
+            } else if (!ws.currentLocation) {
+                html += 'Select a starting location.';
+            } else if (!ws.parties[0].quests || ws.parties[0].quests.length === 0) {
+                html += 'Accept a quest.';
+            } else {
+                html += 'Explore the world!';
+            }
+            html += '</div>';
+            statusContent.innerHTML = html;
+        }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>

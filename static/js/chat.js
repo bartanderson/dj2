@@ -1,24 +1,39 @@
 // static\js\chat.js
 class DMChat {
     constructor() {
-        this.chatInput = document.getElementById('dm-chat-input');
+        this.chatInput = document.getElementById('chat-input');
         this.chatMessages = document.getElementById('chat-messages');
         this.sendButton = document.getElementById('send-chat');
-        
-        this.sendButton.addEventListener('click', () => this.sendMessage());
-        this.chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.sendMessage();
-            }
-        });
 
-        // Handle character card display
-        this.chatMessages.addEventListener('click', (e) => {
-            if (e.target.classList.contains('show-character-card')) {
-                const characterData = JSON.parse(e.target.dataset.character);
-                this.displayCharacterCard(characterData);
-            }
-        });
+        // Add chat status indicator next to chat input
+        this.chatStatus = document.createElement('span');
+        this.chatStatus.id = 'chat-status-indicator';
+        this.chatStatus.style.marginLeft = '10px';
+        this.chatStatus.style.color = '#888';
+        this.chatStatus.style.fontStyle = 'italic';
+        if (this.chatInput && this.chatInput.parentNode) {
+            this.chatInput.parentNode.insertBefore(this.chatStatus, this.chatInput.nextSibling);
+        }
+
+        // Only add event listeners if elements exist
+        if (this.sendButton) {
+            this.sendButton.addEventListener('click', () => this.sendMessage());
+        }
+        if (this.chatInput) {
+            this.chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendMessage();
+                }
+            });
+        }
+        if (this.chatMessages) {
+            this.chatMessages.addEventListener('click', (e) => {
+                if (e.target.classList.contains('show-character-card')) {
+                    const characterData = JSON.parse(e.target.dataset.character);
+                    this.displayCharacterCard(characterData);
+                }
+            });
+        }
 
         this.isLoading = false;
     }
@@ -30,16 +45,19 @@ class DMChat {
             this.addMessage('player', message, 'player');
             this.chatInput.value = '';
             this.isLoading = true;
-            
+            if (this.chatStatus) {
+                this.chatStatus.textContent = 'DM is thinking...';
+            }
             // Get AI response - REMOVE motivation parameter
             this.getAIResponse(message);
         }
+        else console.log("thinks it is loading")
     }
 
     getAIResponse(message) {
         console.log("Sending message to DM:", message);
         const loadingMsg = this.addMessage('dm', "DM is thinking...", 'system');
-        
+
         fetch('/api/dm-response', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -53,10 +71,13 @@ class DMChat {
         })
         .then(data => {
             console.log("Received DM response:", data);
-            
+
             // Remove loading message
             loadingMsg.remove();
             this.isLoading = false;
+            if (this.chatStatus) {
+                this.chatStatus.textContent = '';
+            }
             console.log ("data", data)
             // Add narrative responses
             if (data.responses && data.responses.length > 0) {
@@ -67,12 +88,12 @@ class DMChat {
                 // Fallback if no responses
                 this.addMessage('dm', "I'm not sure how to respond to that.", 'narration');
             }
-            
+
             // Show tool result if available
             if (data.tool_result) {
                 this.addMessage('system', data.tool_result, 'system');
             }
-            
+
             // Update dialog history if needed
             if (data.dialog_history) {
                 this.updateDialogHistory(data.dialog_history);
@@ -82,6 +103,9 @@ class DMChat {
             console.error("DM request failed:", error);
             loadingMsg.remove();
             this.isLoading = false;
+            if (this.chatStatus) {
+                this.chatStatus.textContent = '';
+            }
             this.addMessage('system', 'Error connecting to DM. Please try again.', 'error');
         });
     }

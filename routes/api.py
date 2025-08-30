@@ -161,3 +161,21 @@ def get_dungeon_image():
 def reset_dungeon():
     current_app.game_state.dungeon.generate()
     return jsonify({"success": True, "message": "Dungeon reset"})
+
+@api_bp.route('/character', methods=['GET'])
+def get_character():
+    # For demo: get player_id from session or request (customize as needed)
+    player_id = request.args.get('player_id')
+    # You may want to use session/cookie for real user association
+    dm = getattr(current_app, 'dungeon_master', None)
+    if not dm or not player_id:
+        return jsonify({'error': 'No DM or player_id'}), 400
+    character = dm.characters.get(player_id)
+    if not character:
+        return jsonify({'error': 'Character not found'}), 404
+    # Convert dataclass to dict if needed
+    if hasattr(character, '__dict__'):
+        char_data = character.__dict__
+    else:
+        char_data = dict(character)
+    return jsonify(char_data)

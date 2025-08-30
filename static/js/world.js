@@ -675,30 +675,32 @@ async function waitForServerReady(maxRetries = 30, delay = 1000) {
 
 // Add this function before the loadWorldDataWithRetry function
 function showLoading(show) {
-    const loadingElement = document.getElementById('loading');
+    const loadingElement = document.getElementById('loading-status');
     if (loadingElement) {
         loadingElement.style.display = show ? 'block' : 'none';
+        loadingElement.textContent = show ? 'Loading...' : '';
     } else {
         // Create a loading element if it doesn't exist
         const loadingEl = document.createElement('div');
-        loadingEl.id = 'loading';
+        loadingEl.id = 'loading-status';
         loadingEl.innerHTML = 'Loading...';
         loadingEl.style.position = 'fixed';
-        loadingEl.style.top = '50%';
+        loadingEl.style.top = '10px';
         loadingEl.style.left = '50%';
-        loadingEl.style.transform = 'translate(-50%, -50%)';
+        loadingEl.style.transform = 'translateX(-50%)';
         loadingEl.style.background = 'rgba(0,0,0,0.7)';
         loadingEl.style.color = 'white';
-        loadingEl.style.padding = '20px';
+        loadingEl.style.padding = '8px 20px';
         loadingEl.style.borderRadius = '5px';
         loadingEl.style.zIndex = '9999';
+        loadingEl.style.fontSize = '1.2em';
         document.body.appendChild(loadingEl);
     }
 }
 
 async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
     showLoading(true);
-    
+
     // First, wait for the server to be ready
     const serverReady = await waitForServerReady();
     if (!serverReady) {
@@ -706,22 +708,31 @@ async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
         showLoading(false);
         return;
     }
-    
+
     // Now try to load world data
     let retries = 0;
-    
+
     while (retries < maxRetries) {
         try {
             await loadWorldData();
-            
+
             // Check if we have valid data
             if (window.worldState && window.worldState.worldMap && 
                 window.worldState.worldMap.locations) {
                 console.log('World data loaded successfully');
                 showLoading(false);
+                // Show ready status briefly
+                const loadingElement = document.getElementById('loading-status');
+                if (loadingElement) {
+                    loadingElement.textContent = 'Ready!';
+                    loadingElement.style.display = 'block';
+                    setTimeout(() => {
+                        loadingElement.style.display = 'none';
+                    }, 1200);
+                }
                 return;
             }
-            
+
             // If we don't have valid data, wait and retry
             retries++;
             if (retries < maxRetries) {
@@ -738,11 +749,11 @@ async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
             } else {
                 showNotification('Failed to load world data after multiple attempts.', 'error');
                 showLoading(false);
+                return;
             }
         }
     }
 }
-
 
 async function refreshWorldState() {
     try {
@@ -785,7 +796,6 @@ async function refreshWorldState() {
         showNotification('Error refreshing world data.', 'error');
     }
 }
-
 
 // Travel to a new location
 async function travelToLocation(locationId) {
@@ -1724,3 +1734,47 @@ function addPanningStyles() {
     `;
     document.head.appendChild(style);
 }
+
+// Load character data in the character panel
+function loadCharacterPanel(playerId) {
+    fetch(`/api/character?player_id=${encodeURIComponent(playerId)}`)
+        .then(response => response.json())
+        .then(data => {
+            const panel = document.getElementById('character-panel');
+            if (!panel) return;
+            const content = panel.querySelector('.panel-content');
+            if (!content) return;
+            if (data.error) {
+                content.innerHTML = `<p class="error">${data.error}</p>`;
+                return;
+            }
+            content.innerHTML = `
+                <h3>${data.name || 'Unnamed Character'}</h3>
+                <p><strong>Class:</strong> ${data.class || 'Unknown'}</p>
+                <p><strong>Race:</strong> ${data.race || 'Unknown'}</p>
+                <p><strong>Background:</strong> ${data.background || 'Unknown'}</p>
+                <p><strong>Traits:</strong> ${(data.traits || []).join(', ')}</p>
+                <p><strong>Goals:</strong> ${(data.goals || []).join(', ')}</p>
+            `;
+        })
+        .catch(err => {
+            const panel = document.getElementById('character-panel');
+            if (!panel) return;
+            const content = panel.querySelector('.panel-content');
+            if (!content) return;
+            content.innerHTML = `<p class="error">Failed to load character info.</p>`;
+        });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    window.windowManager = new WindowManager();
+    // Example: Hook up tab click to load character panel
+    // Replace with your actual player/session id logic
+    const playerId = window.PLAYER_ID || 'player1';
+    const charTab = document.querySelector('[data-panel="character-panel"]');
+    if (charTab) {
+        charTab.addEventListener('click', function() {
+            loadCharacterPanel(playerId);
+        });
+    }
+});

@@ -123,6 +123,8 @@ class BaseAI:
         return "You are an AI assistant. Respond with JSON containing 'tool' and 'arguments'."
 
 class WorldAI(BaseAI):
+    # TODO: When adding new tools or updating tool invocation logic, always check that the tool name provided by the AI is valid and registered.
+    # If the AI does not specify a valid tool, handle the request narratively and do not attempt tool execution.
     def __init__(self, world_state: WorldState, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.world_state = world_state
@@ -138,15 +140,21 @@ class WorldAI(BaseAI):
         - Generate quests and narrative content
         - Handle travel between locations
         - Maintain faction relationships
-        
+
         Available Tools (JSON format):
         {json.dumps(tools_spec, indent=2)}
-        
+
+        IMPORTANT:
+        - Only use tools listed above. Do NOT call tools that are not registered or shown.
+        - If a player request cannot be handled by a tool, respond narratively as a DM would, gently guiding the player and making up details as needed.
+        - If the player goes off the designed path, improvise and help them make choices, keeping the story engaging and interactive.
+
         Always respond with JSON containing:
         {{
             "thoughts": "Reasoning",
-            "tool": "tool_name",
-            "arguments": {{...}}
+            "tool": "tool_name or null",
+            "arguments": {{...}} or null,
+            "narrative": "Your DM response if no tool is used"
         }}
         """
     
