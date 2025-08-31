@@ -129,6 +129,81 @@ class ResponseGenerator:
         """Build on small character details players reveal"""
         return f"Your character's {detail} becomes relevant here because..."
 
+class CharacterCreationState:
+    def __init__(self, world_controller):
+        self.world_controller = world_controller
+        self.active = False
+        self.concept_description = ""
+        self.collected_info = {}
+        self.conversation_history = []
+        self.ready_for_creation = False
+        self.missing_info = {"race", "class", "background", "abilities", "personality"}
+        
+    def update_from_conversation(self, message: str, dm_response: str):
+        """Extract character information from natural conversation"""
+        prompt = f"""
+        Extract character creation information from this exchange:
+        Player: {message}
+        DM: {dm_response}
+        
+        Extract any mentioned: race, class, background, abilities, personality traits.
+        Return as JSON with any found information.
+        """
+        
+        try:
+            new_info = self.world_controller.ai_system.generate_structured_data(prompt, {
+                "race": "string", "class": "string", "background": "string", 
+                "abilities": "list", "personality": "string"
+            })
+            
+            # Update collected information
+            for key, value in new_info.items():
+                if value and value not in ["", "unknown", "none"]:
+                    self.collected_info[key] = value
+                    self.missing_info.discard(key)
+                    
+        except:
+            pass  # Silently fail - we'll gather info through direct questions
+            
+    def should_suggest_creation(self):
+        """Check if we have enough information to suggest finalizing"""
+        # Require at least race, class, and some abilities/personality
+        required_fields = ["race", "class"]
+        has_required = all(field in self.collected_info and 
+                          self.collected_info[field] not in [None, ""] 
+                          for field in required_fields)
+        
+        # Also need some descriptive elements
+        has_description = any(field in self.collected_info and 
+                             self.collected_info[field] not in [None, ""]
+                             for field in ["abilities", "personality", "magic_type"])
+        
+        return has_required and has_description
+        
+    def get_character_summary(self):
+        """Generate a natural language summary of the character"""
+        prompt = f"""
+        Create a compelling character summary based on these details:
+        {json.dumps(self.collected_info, indent=2)}
+        
+        Make it engaging and highlight what makes this character unique and interesting.
+        """
+        
+        try:
+            return self.world_controller.ai_system.generate_text(prompt)
+        except:
+            # Fallback summary
+            parts = []
+            if "race" in self.collected_info:
+                parts.append(f"a {self.collected_info['race']}")
+            if "class" in self.collected_info:
+                parts.append(self.collected_info['class'])
+            if "abilities" in self.collected_info:
+                parts.append(f"with {self.collected_info['abilities']}")
+                
+            return " ".join(parts) if parts else "this character"
+
+
 class AIDungeonMaster:
     def __init__(self, world_controller=None):
         self.characters = {}
@@ -194,14 +269,21 @@ class AIDungeonMaster:
         if character_context:
             self.character_context = character_context
 
-        # Check for character creation intent using AI
-        if self._detect_character_creation_intent(message):
-            return self._handle_character_creation_intent(player_id, message)
-        
-        # Check if player is in character creation flow
+        # Check if we're in an active character creation
         if player_id in self.character_creation_states:
-            return self._continue_character_creation(player_id, message)
+            state = self.character_creation_states[player_id]
+            
+            if state.ready_for_creation:
+                return self._handle_creation_confirmation(player_id, message)
+            elif state.active:
+                return self._continue_character_creation(player_id, message)
         
+        # Check if this describes a character concept
+        recent_dialogs = self.dialog_history[-5:] if hasattr(self, 'dialog_history') else []
+        if self._detect_character_concept(message, recent_dialogs):
+            return self._suggest_character_creation(player_id, message)
+        
+        # Original processing for other types of messages
         # Check if this is a question (contains question words or ends with ?)
         is_question = (any(word in message.lower() for word in 
                           ["what", "how", "why", "when", "where", "who", "which", "can you", "is there", "are there"]) 
@@ -222,7 +304,6 @@ class AIDungeonMaster:
             return self._handle_general_input(player_id, message)
 
         return responses
-
     def _is_action_attempt(self, message: str) -> bool:
         """Detect if player is attempting an action"""
         action_keywords = ['try to', 'attempt', 'roll', 'check', 'i want to', 'can i', 'i use']
@@ -411,6 +492,7 @@ class AIDungeonMaster:
     
     def _handle_general_input(self, player_id: str, message: str) -> List[Dialog]:
         """Handle all types of questions and general input with robust error handling"""
+        # This method remains exactly as it was before
         responses = []
         
         # Early validation to prevent exceptions
@@ -496,75 +578,74 @@ class AIDungeonMaster:
         # based on the three-layer approach (personal, local, ripple)
         pass
 
-    def _continue_character_creation(self, player_id: str, message: str) -> List[Dialog]:
-        """Continue character creation with direct question answering"""
+    def _answer_creation_question(self, player_id: str, message: str, topic: str) -> List[Dialog]:
+        """Answer questions about character creation in a conversational way"""
         state = self.character_creation_states[player_id]
         
-        # First, check if this is a question about character creation
-        if self._is_question_about_creation(message):
-            return self._answer_creation_question(player_id, message)
-        
-        # Then handle the current step
-        if state["step"] == "race":
-            return self._handle_race_selection(player_id, message)
-        elif state["step"] == "class":
-            return self._handle_class_selection(player_id, message)
-        elif state["step"] == "background":
-            return self._handle_background_selection(player_id, message)
-        # Add more steps as needed
-        
-        return [Dialog("DM", "I'm not sure what you mean in the character creation process. "
-                          "Would you like to continue creating your character?", "system")]
+        prompt = f"""
+        During our character creation discussion, the player said: "{message}"
+        We're currently exploring: {topic}
 
-    def _is_question_about_creation(self, message: str) -> bool:
-        """Detect if the message is a question about character creation"""
-        question_indicators = ["what", "how", "can i", "should i", "which", "why", "?"]
-        creation_terms = ["race", "class", "background", "ability", "skill", "feat", 
-                         "proficiency", "equipment", "spell"]
-        
-        message_lower = message.lower()
-        is_question = any(indicator in message_lower for indicator in question_indicators)
-        is_about_creation = any(term in message_lower for term in creation_terms)
-        
-        return is_question and is_about_creation
+        What we've discussed so far:
+        {json.dumps(state.collected_info, indent=2)}
 
-    def _answer_creation_question(self, player_id: str, message: str) -> List[Dialog]:
-        """Directly answer questions about character creation"""
-        state = self.character_creation_states[player_id]
-        current_step = state["step"]
-        
-        # Use AI to generate a helpful answer based on the current step
-        prompt = f"""Player is creating a character and is at the {current_step} step. 
-        They asked: "{message}"
-        
-        As a helpful Dungeon Master, provide a concise, helpful answer to their question 
-        about character creation, then gently guide them back to the current step.
-        
-        Keep your response under 2 sentences."""
+        Provide a helpful, engaging response that:
+        1. Addresses their comment or question about {topic}
+        2. Asks a natural follow-up question to continue developing their character concept
+        3. Keeps the process feeling like a natural conversation, not an interrogation
+
+        Make it sound like a collaborative world-building discussion.
+        """
         
         try:
-            answer = self.world_controller.ai_system.generate_text(prompt)
-            # Add a prompt to continue the creation process
-            continuation = self._get_step_prompt(current_step)
-            return [Dialog("DM", f"{answer} {continuation}", "narration")]
+            response = self.world_controller.ai_system.generate_text(prompt)
+            state.conversation_history.append(f"DM: {response}")
+            return [Dialog("DM", response, "narration")]
         except:
-            # Fallback if AI fails
-            continuation = self._get_step_prompt(current_step)
-            return [Dialog("DM", f"That's a good question! {continuation}", "narration")]
+            return [Dialog("DM", 
+                          "That's an interesting aspect to consider for your character. " +
+                          "What else would you like to explore about them?",
+                          "narration")]
 
-    def _get_step_prompt(self, step: str) -> str:
-        """Get the appropriate prompt for the current step"""
-        prompts = {
-            "race": "Now, what race would you like to play?",
-            "class": "What class are you considering?",
-            "background": "What background story appeals to you?",
-            "abilities": "How would you like to assign your ability scores?",
-            "skills": "Which skills would you like to be proficient in?",
-            "equipment": "What kind of equipment are you thinking about?",
-            "spells": "Are you interested in any particular spells?",
-            "review": "Would you like to review your character before finalizing?"
-        }
-        return prompts.get(step, "Let's continue with your character creation.")
+    def _continue_character_creation(self, player_id: str, message: str) -> List[Dialog]:
+        """Continue character creation with the new organic approach"""
+        state = self.character_creation_states[player_id]
+        state.conversation_history.append(f"Player: {message}")
+        
+        # Use AI to understand what information we're discussing
+        prompt = f"""
+        We're in the middle of character creation. The player said: "{message}"
+        
+        Previous conversation:
+        {state.conversation_history[-3:]}
+        
+        What aspect of character creation is the player talking about?
+        Options: race, class, background, abilities, personality, appearance, or other.
+        
+        Also extract any specific information mentioned about that aspect.
+        
+        Respond with JSON: {{"topic": "string", "information": "string"}}
+        """
+        
+        try:
+            analysis = self.world_controller.ai_system.generate_structured_data(
+                prompt, {"topic": "string", "information": "string"}
+            )
+            
+            # Store the information
+            if analysis["topic"] and analysis["information"]:
+                state.collected_info[analysis["topic"]] = analysis["information"]
+                
+            # Check if we have enough information to suggest finalizing
+            if self._has_sufficient_character_info(state):
+                return self._suggest_finalizing_creation(player_id)
+                
+            # Continue the natural conversation
+            return self._answer_creation_question(player_id, message, analysis["topic"])
+            
+        except Exception as e:
+            print(f"Error in character creation: {e}")
+            return [Dialog("DM", "Tell me more about your character concept.", "narration")]
 
     def _is_general_question(self, message: str) -> bool:
         """Detect if this is a general question about the game"""
@@ -591,185 +672,225 @@ class AIDungeonMaster:
             return [Dialog("DM", "That's an interesting question! As your Dungeon Master, " 
                           "I'm here to help you explore and discover the answers through play.", "narration")]
 
-
-    def _detect_character_creation_intent(self, message: str) -> bool:
-        """Use AI to detect if player wants to create a character"""
-        prompt = f"""Determine if this player message indicates they want to create a character:
-        Message: "{message}"
+    def _has_sufficient_character_info(self, state) -> bool:
+        """Check if we have enough information to create a character"""
+        # We need at least race, class, and some defining characteristics
+        required = ["race", "class"]
+        has_required = all(field in state.collected_info and 
+                          state.collected_info[field] not in [None, ""] 
+                          for field in required)
         
-        Respond with JSON: {{"is_character_creation": true/false, "confidence": 0-1}}"""
+        # Also need some descriptive elements
+        has_description = any(field in state.collected_info and 
+                             state.collected_info[field] not in [None, ""]
+                             for field in ["abilities", "personality", "background"])
+        
+        return has_required and has_description
+
+    def _suggest_finalizing_creation(self, player_id: str) -> List[Dialog]:
+        """Suggest finalizing the character creation"""
+        state = self.character_creation_states[player_id]
+        
+        prompt = f"""
+        Based on our discussion, we've developed this character concept:
+        {json.dumps(state.collected_info, indent=2)}
+
+        Create a compelling summary of this character concept and suggest moving to the final creation step.
+        Explain the different ability score generation methods in a conversational way:
+        - Standard array (balanced pre-set scores)
+        - Point buy (custom allocation within a point budget)
+        - Rolling (traditional random generation)
+
+        Make it inviting and offer to explain any of the options in more detail.
+        """
         
         try:
-            result = self.generate_structured_data(prompt, {
-                "is_character_creation": "boolean",
-                "confidence": "number"
-            })
-            return result.get("is_character_creation", False) and result.get("confidence", 0) > 0.7
+            response = self.world_controller.ai_system.generate_text(prompt)
+            state.ready_for_creation = True
+            state.conversation_history.append(f"DM: {response}")
+            return [Dialog("DM", response, "narration")]
         except:
-            # Fallback to keyword matching if AI fails
-            keywords = ["create character", "make a character", "new character", 
-                       "character creation", "I want to be a", "I'd like to play as"]
-            return any(keyword in message.lower() for keyword in keywords)
+            character_desc = f"{state.collected_info.get('race', '')} {state.collected_info.get('class', '')}"
+            return [Dialog("DM",
+                          f"Based on our conversation, we have a great {character_desc} concept. " +
+                          "Would you like to finalize this character? " +
+                          "We can use different methods for ability scores.",
+                          "narration")]
 
-    def _handle_character_creation_intent(self, player_id: str, message: str) -> List[Dialog]:
-        """Start character creation process"""
-        self.character_creation_states[player_id] = {
-            "step": "race",
-            "data": {},
-            "context": message
+    def _detect_character_concept(self, message: str, conversation_history: list) -> bool:
+        """Use AI to detect if the player is describing a character concept"""
+        prompt = f"""
+        Analyze this player message and conversation history to determine if the player
+        is describing a character concept that could lead to character creation.
+        
+        Player message: "{message}"
+        Recent conversation: {[str(d) for d in conversation_history[-3:]]}
+        
+        Look for descriptions of:
+        - Character abilities, powers, or skills
+        - Race, species, or ancestry details
+        - Class, profession, or occupation
+        - Background stories or origins
+        - Personality traits or motivations
+        
+        Respond with JSON: 
+        {{"is_character_concept": boolean, "confidence": 0.0-1.0, "concept_type": "string"}}
+        """
+        
+        try:
+            result = self.world_controller.ai_system.generate_structured_data(
+                prompt,
+                {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
+            )
+            return result.get("is_character_concept", False) and result.get("confidence", 0) > 0.6
+        except:
+            return False
+
+    def _suggest_character_creation(self, player_id: str, message: str) -> List[Dialog]:
+        """Suggest character creation based on a described concept"""
+        prompt = f"""
+        The player has described something that sounds like a character concept: "{message}"
+
+        Create a natural, engaging response that:
+        1. Acknowledges their interesting idea
+        2. Gently suggests exploring this as a character concept
+        3. Asks if they'd like to develop this into a playable character
+
+        Keep it conversational and let them guide the direction.
+        """
+        
+        try:
+            suggestion = self.world_controller.ai_system.generate_text(prompt)
+            
+            # Initialize character creation state
+            if player_id not in self.character_creation_states:
+                self.character_creation_states[player_id] = CharacterCreationState(self.world_controller)
+            
+            state = self.character_creation_states[player_id]
+            state.active = True
+            state.concept_description = message
+            state.conversation_history.append(f"Player: {message}")
+            
+            return [Dialog("DM", suggestion, "narration")]
+        except:
+            return [Dialog("DM", 
+                          "That sounds like an interesting character concept! " +
+                          "Would you like to create a character based on this idea?",
+                          "narration")]
+
+
+    def _finalize_character_creation(self, player_id: str) -> List[Dialog]:
+        """Finalize the character creation process"""
+        state = self.character_creation_states[player_id]
+        
+        # Generate character summary
+        character_summary = state.get_character_summary()
+        
+        prompt = f"""
+        Based on our conversation, we've developed this character concept:
+        {json.dumps(state.collected_info, indent=2)}
+        
+        Create a compelling summary of this character and then explain the different
+        ways we can generate their attributes:
+        
+        1. Standard Array: Balanced pre-set scores (15, 14, 13, 12, 10, 8)
+        2. Point Buy: Custom allocation with 27 points to distribute
+        3. Rolling: Traditional 4d6 drop lowest for each ability
+        
+        Explain these options conversationally and ask if they'd like to create this character.
+        """
+        
+        try:
+            final_message = self.world_controller.ai_system.generate_text(prompt)
+            state.ready_for_creation = True
+            state.conversation_history.append(f"DM: {final_message}")
+            return [Dialog("DM", final_message, "narration")]
+        except:
+            return [Dialog("DM",
+                          f"Based on our conversation, we've created a concept for {character_summary}. " +
+                          "Would you like me to create this character for you? " +
+                          "We can use different methods for ability scores: standard array, point buy, or rolling.",
+                          "narration")]
+
+    def _handle_creation_confirmation(self, player_id: str, message: str) -> List[Dialog]:
+        """Handle the player's response to the creation suggestion"""
+        state = self.character_creation_states[player_id]
+        
+        prompt = f"""
+        The player has responded to our character creation suggestion: "{message}"
+        
+        Determine if they want to proceed with creation or have questions about the process.
+        If they want to proceed, determine which attribute generation method they prefer.
+        
+        Respond with JSON:
+        {{
+            "should_create": boolean,
+            "method": "standard_array|point_buy|rolling|null",
+            "needs_more_info": boolean,
+            "response": "string"
+        }}
+        """
+        
+        try:
+            result = self.world_controller.ai_system.generate_structured_data(prompt, {
+                "should_create": "boolean",
+                "method": "string",
+                "needs_more_info": "boolean",
+                "response": "string"
+            })
+            
+            if result.get("should_create", False):
+                # Create the character
+                return self._create_character(player_id, result.get("method", "standard_array"))
+            elif result.get("needs_more_info", False):
+                # Provide more information
+                return [Dialog("DM", result.get("response", "Let me explain the options..."), "narration")]
+            else:
+                # Continue conversation
+                return [Dialog("DM", result.get("response", "Tell me more about what you'd like."), "narration")]
+                
+        except:
+            return [Dialog("DM", "I'm not sure I understand. Would you like to create this character?", "narration")]
+
+    def _create_character(self, player_id: str, method: str) -> List[Dialog]:
+        """Actually create the character using the collected information"""
+        state = self.character_creation_states[player_id]
+        
+        # Prepare character data
+        char_data = {
+            "name": state.collected_info.get("name", "Unnamed Character"),
+            "race": state.collected_info.get("race", "Human"),
+            "class": state.collected_info.get("class", "Adventurer"),
+            "background": state.collected_info.get("background", "Unknown"),
+            "personality": state.collected_info.get("personality", ""),
+            "method": method
         }
         
-        return [Dialog("DM", "Excellent! Let's create your character. What race would you like to play? "
-                          "You could be a human, elf, dwarf, halfling, or something more exotic?", "narration")]
+        # Use the existing character creation system
+        try:
+            character = self.world_controller.character_builder.create_character(player_id, char_data)
+            response = f"Excellent! I've created {character.name}, a {character.race} {character.classs.name}. "
 
-    def _handle_race_selection(self, player_id: str, message: str) -> List[Dialog]:
-        """Process race selection and move to next step"""
-        # Use AI to extract race from message
-        race = self._extract_race_from_message(message)
-        
-        if race:
-            self.character_creation_states[player_id]["data"]["race"] = race
-            self.character_creation_states[player_id]["step"] = "class"
+            # Add some flavor based on the creation method
+            if method == "standard_array":
+                response += "The standard array provides a balanced foundation for your adventures."
+            elif method == "point_buy":
+                response += "Point buy allows you to tailor your character's strengths to your play style."
+            elif method == "rolling":
+                response += "The traditional rolling method captures the randomness of natural talent!"
+                            
+                        response += " What would you like to do next with your new character?"
             
-            return [Dialog("DM", f"A {race}, excellent choice! Now, what class would you like to play? "
-                              "Fighter, wizard, rogue, cleric, or something else?", "narration")]
-        else:
-            return [Dialog("DM", "I didn't quite catch that. What race would you like to play? "
-                              "(human, elf, dwarf, halfling, etc.)", "system")]
-
-    def _handle_class_selection(self, player_id: str, message: str) -> List[Dialog]:
-        char_class = self._extract_class_from_message(message)
-        if char_class and char_class in self._get_available_classes():
-            self.character_creation_states[player_id]["data"]["class"] = char_class
-            self.character_creation_states[player_id]["step"] = "background"
-            return [Dialog("DM", f"A {char_class}, great choice! Now, what background would you like? "
-                                 "(Noble, soldier, acolyte, criminal, etc.)", "narration")]
-        elif hasattr(self, 'last_class_candidates') and self.last_class_candidates:
-            options = ', '.join(self.last_class_candidates)
-            self.last_class_candidates = []
-            return [Dialog("DM", f"I found several possible classes matching your description: {options}. "
-                                 "Which one did you mean?", "system")]
-        else:
-            available_classes = ", ".join(self._get_available_classes())
-            return [Dialog("DM", f"I didn't recognize that class. Available classes are: {available_classes}. "
-                                 "Which would you like to play?", "system")]
-
-        def _handle_background_selection(self, player_id: str, message: str) -> List[Dialog]:
-            """Process background selection and move to next step"""
-            # Extract background from message using AI or simple parsing
-            background = self._extract_background_from_message(message)
+            # Clean up the creation state
+            del self.character_creation_states[player_id]
             
-            if background and background in self._get_available_backgrounds():
-                self.character_creation_states[player_id]["data"]["background"] = background
-                self.character_creation_states[player_id]["step"] = "abilities"
-                
-                return [Dialog("DM", f"A {background} background, interesting! Now, how would you like to "
-                                  "determine your ability scores? (Standard array, point buy, or roll?)", "narration")]
-            else:
-                available_backgrounds = ", ".join(self._get_available_backgrounds())
-                return [Dialog("DM", f"I didn't recognize that background. Available backgrounds are: {available_backgrounds}. "
-                                  "Which would you like?", "system")]
+            return [Dialog("DM", response, "narration")]
+        except Exception as e:
+            print(f"Error creating character: {e}")
+            return [Dialog("DM", 
+                          "I encountered a problem creating your character. Let's try again.",
+                          "system")]
 
-    # Helper methods needed for the above
-    def _extract_race_from_message(self, message: str) -> Optional[str]:
-        """Extract race from player message"""
-        # Simple implementation - can be enhanced with AI
-        races = self._get_available_races()
-        message_lower = message.lower()
-        
-        for race in races:
-            if race.lower() in message_lower:
-                return race
-        
-        return None
-
-def _extract_class_from_message(self, message: str) -> Optional[str]:
-    """Extract class from player message using AI, generic term mapping, fuzzy matching, and always guide user."""
-    classes = self._get_available_classes()
-    message_lower = message.lower()
-    # 1. AI extraction
-    try:
-        prompt = f"""Extract the intended character class from this message:
-        Message: '{message}'
-        Available classes: {', '.join(classes)}
-        Respond with JSON: {{'class': <class name or empty string>, 'confidence': 0-1, 'candidates': [<list of possible matches>]}}
-        """
-        if hasattr(self.world_controller, 'ai_system') and self.world_controller.ai_system:
-            result = self.world_controller.ai_system.generate_structured_data(prompt, {
-                "class": "string",
-                "confidence": "number",
-                "candidates": "list"
-            })
-        else:
-            result = {"class": "", "confidence": 0, "candidates": []}
-        ai_class = result.get("class", "")
-        confidence = result.get("confidence", 0)
-        candidates = result.get("candidates", [])
-        if ai_class and ai_class in classes and confidence and confidence > 0.7:
-            return ai_class
-        if candidates and len(candidates) > 1:
-            self.last_class_candidates = candidates
-            return None
-    except Exception:
-        pass
-    # 2. Generic term mapping
-    generic_map = {
-        "magic": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
-        "spell": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
-        "caster": ["Wizard", "Sorcerer", "Warlock", "Bard", "Druid", "Cleric"],
-        "healer": ["Cleric", "Druid", "Paladin", "Bard"],
-        "sneak": ["Rogue", "Bard", "Ranger"],
-        "stealth": ["Rogue", "Bard", "Ranger"],
-        "strong": ["Fighter", "Barbarian", "Paladin", "Ranger"],
-        "tank": ["Fighter", "Barbarian", "Paladin"],
-        "archer": ["Ranger", "Fighter"],
-        "holy": ["Cleric", "Paladin"],
-        "nature": ["Druid", "Ranger"],
-        "leader": ["Paladin", "Bard"],
-    }
-    for key, group in generic_map.items():
-        if key in message_lower:
-            self.last_class_candidates = [cls for cls in group if cls in classes]
-            return None
-    # 3. Fuzzy matching for misspellings
-    import difflib
-    matches = difflib.get_close_matches(message_lower, [c.lower() for c in classes], n=2, cutoff=0.6)
-    if matches:
-        for cls in classes:
-            if cls.lower() == matches[0]:
-                return cls
-        self.last_class_candidates = [cls for cls in classes if cls.lower() in matches]
-        return None
-    return None
-    def _extract_background_from_message(self, message: str) -> Optional[str]:
-        """Extract background from player message"""
-        # Simple implementation - can be enhanced with AI
-        backgrounds = self._get_available_backgrounds()
-        message_lower = message.lower()
-        
-        for bg in backgrounds:
-            if bg.lower() in message_lower:
-                return bg
-        
-        return None
-
-    def _get_available_races(self) -> List[str]:
-        """Get available races from the system"""
-        # This should integrate with your existing race system
-        return ["Human", "Elf", "Dwarf", "Halfling", "Dragonborn", "Gnome", "Half-Elf", "Half-Orc", "Tiefling"]
-
-    def _get_available_classes(self) -> List[str]:
-        """Get available classes from the system"""
-        # This should integrate with your existing class system
-        return ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk", 
-                "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
-
-    def _get_available_backgrounds(self) -> List[str]:
-        """Get available backgrounds from the system"""
-        # This should integrate with your existing background system
-        return ["Acolyte", "Charlatan", "Criminal", "Entertainer", "Folk Hero", 
-                "Guild Artisan", "Hermit", "Noble", "Outlander", "Sage", 
-                "Sailor", "Soldier", "Urchin"]
 
 # Example usage and test
 if __name__ == "__main__":

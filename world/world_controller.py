@@ -1891,9 +1891,9 @@ class DMChatHandler:
                     lowered = message.lower()
                     if "magic user" in lowered or "wizard" in lowered or "sorcerer" in lowered or "elemental" in lowered:
                         fallback_message = (
-                            "Let's work together to define your magic user's elemental abilities! "
-                            "What element do you want to start with—fire, water, earth, or air? "
-                            "Or do you have a special affinity in mind?"
+                            "Let's continue developing your character concept together. "
+                            "What aspects would you like to explore next? "
+                            "We could discuss abilities, background, personality, or anything else that interests you."
                         )
                     if fallback_message:
                         tool_followup_responses = [Dialog("DM", fallback_message, "narration")]
