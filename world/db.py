@@ -23,7 +23,20 @@ class Database:
     
     @classmethod
     def get_connection(cls):
-        return cls._connection_pool.getconn()
+        conn = cls._connection_pool.getconn()
+        
+        # Register vector for this connection
+        try:
+            from pgvector.psycopg2 import register_vector
+            register_vector(conn)
+        except ImportError:
+            print("pgvector not available, vector operations will be limited")
+        
+        # Register UUID for this connection
+        from psycopg2.extras import register_uuid
+        register_uuid(conn)
+        
+        return conn
     
     @classmethod
     def return_connection(cls, connection):

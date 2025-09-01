@@ -1,5 +1,6 @@
 # create_tables.py
 import psycopg2
+from psycopg2.extras import register_uuid
 from dotenv import load_dotenv
 import os
 
@@ -21,7 +22,7 @@ def create_database():
     )
     conn.autocommit = True
     cur = conn.cursor()
-    
+
     try:
         cur.execute(f"CREATE DATABASE {DB_NAME}")
         print(f"Created database: {DB_NAME}")
@@ -40,6 +41,17 @@ def create_tables():
         password=DB_PASSWORD,
         port=DB_PORT
     )
+
+    # Register UUID type
+    register_uuid()
+
+    # Also register vector if available
+    try:
+        from pgvector.psycopg2 import register_vector
+        register_vector(conn)
+    except ImportError:
+        print("pgvector not available, vector operations will be limited")
+    
     cur = conn.cursor()
     
     # Enable extensions
@@ -130,12 +142,12 @@ def create_tables():
         """
         CREATE TABLE IF NOT EXISTS narrative_context (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            world_id INTEGER REFERENCES worlds(id) ON DELETE CASCADE,
+            world_id INTEGER REFERENCES worlds(id) ON DELETE CASCADE, 
             player_id UUID REFERENCES players(id) ON DELETE SET NULL,
             timestamp TIMESTAMPTZ DEFAULT NOW(),
             context_type VARCHAR(50) NOT NULL,
             content JSONB NOT NULL,
-            embedding VECTOR(1536)
+            embedding VECTOR(384)
         )
         """,
         """

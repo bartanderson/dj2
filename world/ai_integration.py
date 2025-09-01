@@ -7,7 +7,6 @@ import random
 import numpy as np
 from typing import Dict, Any, Optional
 from ollama import Client
-from sentence_transformers import SentenceTransformer
 from pgvector.psycopg2 import register_vector
 from .tool_system import ToolRegistry, tool
 from .dm_tools import DMTools
@@ -19,25 +18,88 @@ class BaseAI:
         self.ollama = Client(host=ollama_host)
         self.seed = seed
         self.tool_registry = ToolRegistry()
-        self.embedding_model = self.load_embedding_model()
         self.system_prompt = self._create_system_prompt()
         
-    def load_embedding_model(self):
-        """Load sentence transformer model for embeddings"""
-        return SentenceTransformer('all-MiniLM-L6-v2')
+    # def load_embedding_model(self):
+    #     """Load sentence transformer model for embeddings"""
+    #     return SentenceTransformer('all-MiniLM-L6-v2')
     
+    # def generate_embedding(self, text):
+    #     """Generate text embedding"""
+    #     return self.embedding_model.encode([text])[0].tolist()
+
+    # def load_embedding_model(self):
+    #     """No need to load a model directly when using Ollama's API"""
+    #     return None
+
     def generate_embedding(self, text):
-        """Generate text embedding"""
-        return self.embedding_model.encode([text])[0].tolist()
+        """Generate text embedding using Ollama's API"""
+        try:
+            response = self.ollama.embeddings(model='all-minilm:l6-v2', prompt=text)
+            return response['embedding']
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            # Fallback to a simple zero vector
+            return [0.0] * 384  # all-minilm:l6-v2 has 384 dimensions
     
-    def save_context_with_embedding(self, player_id, context_type, content):
+    def save_context_with_embedding(world_id, player_id, context_type, content, embedding):
         """Save context with embedding to database"""
-        text = f"{context_type}: {json.dumps(content)}"
-        embedding = self.generate_embedding(text)
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            port=DB_PORT
+        )
         
-        # Database operations would go here
-        # Example: self.db.save_context(world_id, player_id, context_type, content, embedding)
-        return True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO narrative_context "
+                    "(world_id, player_id, context_type, content, embedding) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (world_id, player_id, context_type, Json(content), embedding)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error saving context: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+
+    def find_similar_contexts(embedding, world_id=None, player_id=None, limit=5):
+        """Find similar contexts using vector similarity"""
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            port=DB_PORT
+        )
+        
+        try:
+            with conn.cursor() as cur:
+                query = """
+                    SELECT content, 1 - (embedding <=> %s) as similarity
+                    FROM narrative_context
+                    WHERE (%s IS NULL OR world_id = %s)
+                    AND (%s IS NULL OR player_id = %s)
+                    ORDER BY embedding <=> %s
+                    LIMIT %s
+                """
+                cur.execute(query, (
+                    embedding, 
+                    world_id, world_id,
+                    player_id, player_id,
+                    embedding,
+                    limit
+                ))
+                return cur.fetchall()
+        except Exception as e:
+            print(f"Error finding similar contexts: {e}")
+            return []
+        finally:
+            conn.close()
     
     def generate_structured_data(self, prompt: str, response_format: dict) -> dict:
         """Generate structured data with deterministic seeding"""

@@ -56,8 +56,16 @@ class ConsequenceSystem:
         for action in unresolved:
             if self._is_appropriate_moment(action):
                 consequence = self._generate_consequence(action)
-                self.world.add_event(consequence)
+                # Add to world events or directly to narrative
+                if hasattr(self.world, 'add_event'):
+                    self.world.add_event(consequence)
                 action['resolved'] = True
+
+    def _is_appropriate_moment(self, action):
+        """Determine if now is a good time to apply this consequence"""
+        # Simple implementation - 30% chance when there are unresolved actions
+        # todo - is there a better way to do this that takes a look at complexity of story arc
+        return random.random() < 0.3
     
     def _generate_consequence(self, action):
         consequence_map = {

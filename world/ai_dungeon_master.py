@@ -9,8 +9,7 @@ import json
 import uuid
 from world.db import Database
 import psycopg2
-from psycopg2.extras import Json, register_uuid
-register_uuid()
+from psycopg2.extras import Json
 
 class ActionType(Enum):
     SOCIAL = "social"
@@ -221,6 +220,12 @@ class AIDungeonMaster:
         self.world_id = world_id
 
     def log_context(self, world_id, player_id, context_type, content):
+        # Use the AI system to generate embedding if available
+        embedding = None
+        if self.world_controller and hasattr(self.world_controller, 'ai_system'):
+            text = f"{context_type}: {json.dumps(content)}"
+            embedding = self.world_controller.ai_system.generate_embedding(text)
+        
         conn = Database.get_connection()
         try:
             with conn.cursor() as cur:
@@ -228,7 +233,6 @@ class AIDungeonMaster:
                 try:
                     player_uuid = uuid.UUID(player_id) if player_id else None
                 except ValueError:
-                    # If it's not a valid UUID format, create a deterministic UUID from the string
                     player_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, player_id)
                 
                 # Handle world_id similarly if needed
@@ -239,28 +243,54 @@ class AIDungeonMaster:
                     except ValueError:
                         world_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, world_id)
                 
-                cur.execute(
-                    "INSERT INTO narrative_context "
-                    "(world_id, player_id, context_type, content) "
-                    "VALUES (%s, %s, %s, %s)",
-                    (world_uuid, player_uuid, context_type, Json(content))
-                )
+                # Update to include embedding if available
+                if embedding:
+                    cur.execute(
+                        "INSERT INTO narrative_context "
+                        "(world_id, player_id, context_type, content, embedding) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (world_uuid, player_uuid, context_type, Json(content), embedding)
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO narrative_context "
+                        "(world_id, player_id, context_type, content) "
+                        "VALUES (%s, %s, %s, %s)",
+                        (world_uuid, player_uuid, context_type, Json(content))
+                    )
                 conn.commit()
         finally:
             conn.close()
         
     def get_recent_context(self, world_id, player_id, limit=10):
-        conn = Database.get_connection()
         try:
+            # Convert IDs to UUID format
+            try:
+                player_uuid = uuid.UUID(player_id) if player_id else None
+            except ValueError:
+                player_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, player_id)
+                
+            world_uuid = None
+            if world_id:
+                try:
+                    world_uuid = uuid.UUID(world_id)
+                except ValueError:
+                    world_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, world_id)
+                    
+            conn = Database.get_connection()
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT content FROM narrative_context "
                     "WHERE world_id = %s AND player_id = %s "
                     "ORDER BY timestamp DESC LIMIT %s",
-                    (world_id, player_id, limit))
+                    (world_uuid, player_uuid, limit))
                 return [row[0] for row in cur.fetchall()]
+        except Exception as e:
+            print(f"Error getting recent context: {e}")
+            return []
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def process_player_input(self, player_id: str, message: str, character_context: Dict = None) -> List[Dialog]:
         """Main method to process any player input and generate appropriate responses"""
@@ -304,6 +334,7 @@ class AIDungeonMaster:
             return self._handle_general_input(player_id, message)
 
         return responses
+
     def _is_action_attempt(self, message: str) -> bool:
         """Detect if player is attempting an action"""
         action_keywords = ['try to', 'attempt', 'roll', 'check', 'i want to', 'can i', 'i use']
@@ -647,10 +678,12 @@ class AIDungeonMaster:
             print(f"Error in character creation: {e}")
             return [Dialog("DM", "Tell me more about your character concept.", "narration")]
 
+    # todo cleanup lists of words with AI intent replacement like in world_controller
+
     def _is_general_question(self, message: str) -> bool:
         """Detect if this is a general question about the game"""
-        question_indicators = ["what", "how", "can i", "should i", "which", "why", "?"]
-        game_terms = ["rule", "mechanic", "play", "game", "dungeon", "dm", "dungeon master"]
+        question_indicators = ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'can you', 'can i', 'could you', 'could i', 'would you', 'would i', 'is there', 'are there', "?"]
+        game_terms = ["rule", "mechanic", "play", "game", "dungeon", "dm", "dungeon master", 'adventure', 'adventurer', 'player', 'character', 'race', 'class', 'turn', 'roll', 'initiative', 'advantage']
         
         message_lower = message.lower()
         is_question = any(indicator in message_lower for indicator in question_indicators)
@@ -878,9 +911,7 @@ class AIDungeonMaster:
                 response += "Point buy allows you to tailor your character's strengths to your play style."
             elif method == "rolling":
                 response += "The traditional rolling method captures the randomness of natural talent!"
-                            
-                        response += " What would you like to do next with your new character?"
-            
+                        
             # Clean up the creation state
             del self.character_creation_states[player_id]
             

@@ -6,7 +6,7 @@ import uuid
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from typing import Dict, List, Optional, Set, Any
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from dnd_character import CLASSES
 from world.db import Database
@@ -1575,39 +1575,6 @@ class WorldController:
             
         return {"status": "success", "completed": success}
 
-    # def get_or_create_player(self, session_id, player_name=None):
-    #     """Get existing player or create a new one for the session"""
-    #     print(f"DEBUG: get_or_create_player called with session_id: {session_id}")
-
-    #     existing_player_id = self._get_player_id_for_session(session_id)
-
-    #     if existing_player_id and existing_player_id in self.players:
-    #         return self.players[existing_player_id]
-        
-    #     # Check if we have this session in memory
-    #     if session_id in self.session_players:
-    #         player_id = self.session_players[session_id]
-    #         if player_id in self.players:
-    #             # Also save to database for persistence
-    #             self._save_session_to_db(session_id, player_id)
-    #             return self.players[player_id]
-        
-    #     print("DEBUG: Creating new player")
-    #    # Create new player
-    #     player = Player(name=player_name or f"Player_{session_id[:8]}")
-    #     self.players[player.id] = player
-
-    #     print("DEBUG: Save session")
-        
-    #     # Save session mapping to both memory and database
-    #     self.session_players[session_id] = player.id
-    #     self._save_session_to_db(session_id, player.id)
-        
-    #     # Save player to database
-    #     print("DEBUG: Save player to db")
-    #     self._save_player_to_db(player)
-        
-    #     return player
 
     def get_or_create_player(self, session_id, player_name=None):
         """Get existing player or create a new one for the session"""
@@ -1712,121 +1679,52 @@ class WorldController:
         finally:
             Database.return_connection(conn)
 
-    # def _save_session_to_db(self, session_id, player_id):
-    #     """Save session-player mapping to database"""
-    #     conn = Database.get_connection()
-    #     try:
-    #         with conn.cursor() as cur:
-    #             cur.execute(
-    #                 "INSERT INTO player_sessions (session_id, player_id) VALUES (%s, %s) "
-    #                 "ON CONFLICT (session_id) DO UPDATE SET player_id = EXCLUDED.player_id, last_seen = NOW()",
-    #                 (session_id, player_id)
-    #             )
-    #             conn.commit()
-    #     finally:
-    #         Database.return_connection(conn)
-
-        
-    # def _save_player_to_db(self, player):
-    #     """Save player to database"""
-    #     print(f"DEBUG: Saving player to DB: {player.id}")
-    #     conn = Database.get_connection()
-    #     try:
-    #         with conn.cursor() as cur:
-    #             cur.execute(
-    #                 "INSERT INTO players (id, name, attributes) VALUES (%s, %s, %s) "
-    #                 "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, attributes = EXCLUDED.attributes",
-    #                 (player.id, player.name, json.dumps(player.attributes))
-    #             )
-    #             conn.commit()
-    #             print("DEBUG: Player saved successfully")
-    #     except Exception as e:
-    #         print(f"DEBUG: Error saving player to DB: {e}")
-    #         # Don't re-raise, as we want to continue even if DB save fails
-    #     finally:
-    #         Database.return_connection(conn)
-    
-    # def associate_character_with_player(self, player_id, character_id):
-    #     """Associate a character with a player"""
-    #     if player_id in self.players and character_id in self.characters:
-    #         player = self.players[player_id]
-    #         if character_id not in player.character_ids:
-    #             player.character_ids.append(character_id)
-                
-    #         # If this is the player's first character, set it as active
-    #         if player.active_character_id is None:
-    #             player.active_character_id = character_id
-                
-    #         # Update the character's owner reference
-    #         self.characters[character_id].owner_id = player_id
-            
-    #         # Save to database
-    #         self._save_player_to_db(player)
-    #         return True
-    #     return False
-
 class DMChatHandler:
     def __init__(self, world_controller):
         self.world_controller = world_controller
         self.dm = world_controller.dungeon_master
         self.chat_history = []
+        # Add conversation topic tracking
+        self.conversation_topics = defaultdict(lambda: deque(maxlen=5))  # player_id -> recent topics
 
-    def _ai_detect_tool_intent(self, message, dm_responses, character_context=None):
-        """Use AI to determine if this message requires tool execution, with richer context."""
-        # Build a more context-rich prompt for Llama
+    def _update_conversation_topics(self, player_id, message, is_dm_response=False):
+        """Extract and update recent topics from messages"""
+        if player_id not in self.conversation_topics:
+            self.conversation_topics[player_id] = deque(maxlen=5)
+        
+        # Use AI to extract the main topic from this message
+        topic = self._extract_message_topic(message)
+        if topic and topic not in self.conversation_topics[player_id]:
+            self.conversation_topics[player_id].append(topic)
+
+    def _extract_message_topic(self, message):
+        """Use AI to extract the main topic from a single message"""
         prompt = f"""
-        You are the AI Dungeon Master for a fantasy RPG. Your job is to interpret player requests and decide if they require a game mechanic/tool (combat, spellcasting, item use, travel, social interaction, etc.) or just narrative.
-
-        Player message: "{message}"
-        Character context: {json.dumps(character_context or {}, indent=2)}
-        Recent DM responses: {[r.content if hasattr(r, 'content') else str(r) for r in (dm_responses or [])]}
-
+        Extract the primary topic or subject from this message. Return only the topic phrase, not a complete sentence.
+        
+        Message: "{message}"
+        
         Examples:
-        - "I attack the goblin with my sword." => requires_tool: true
-        - "Can I rest here for the night?" => requires_tool: true
-        - "Tell me about the town." => requires_tool: false
-        - "I want to create a magic user." => requires_tool: true
-        - "Who is the king?" => requires_tool: false
-
-        Respond ONLY with JSON: {{"requires_tool": true/false, "reason": "brief explanation"}}
+        - "I want to create a magic user" → "magic character creation"
+        - "Tell me about stealth classes" → "stealth classes" 
+        - "What's the best race for a wizard?" → "wizard race selection"
+        - "Can you summarize what we discussed?" → "conversation summary request"
+        
+        Topic:
         """
+        
         try:
-            response_format = {
-                "requires_tool": "boolean",
-                "reason": "string"
-            }
-            result = self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-            print(f"Tool intent detection raw AI output: {result}")
-            return result.get("requires_tool", False)
+            topic = self.world_controller.world_ai.generate_text(prompt)
+            return topic.strip().lower()
         except Exception as e:
-            print(f"AI tool intent detection failed: {e}")
-            return False
+            print(f"AI topic extraction failed: {e}")
+            return None
     
-    def _handle_tool_usage(self, message, player_id):
-        """Use AI integration to process tool commands, skipping if tool is null/None/unregistered."""
-        try:
-            # Let the AI determine which tool to use and with what parameters
-            if self.world_controller.dungeon_ai:
-                result = self.world_controller.dungeon_ai.process_command(message)
-            else:
-                result = self.world_controller.world_ai.process_command(message)
-
-            # Check for tool presence and validity
-            tool_name = result.get("ai_response", {}).get("tool") if "ai_response" in result else result.get("tool")
-            if not tool_name or str(tool_name).lower() in ["none", "null"]:
-                # No valid tool, skip execution
-                return {"success": False, "skipped": True, "reason": "No valid tool specified by AI."}
-
-            # Optionally, check if tool_name is in the registered tools
-            valid_tools = set(self.world_controller.world_ai.tool_registry.tools.keys())
-            if tool_name not in valid_tools:
-                return {"success": False, "skipped": True, "reason": f"Tool '{tool_name}' not registered."}
-
-            return result
-        except Exception as e:
-            return {"success": False, "error": f"Error processing command: {str(e)}"}
+    def get_recent_topics(self, player_id):
+        """Get recent topics for a player"""
+        if player_id in self.conversation_topics:
+            return list(self.conversation_topics[player_id])
+        return []
 
     def process_message(self, session_id, message, character_id=None):
         """Process a message from a player session, optionally for a specific character"""
@@ -1860,15 +1758,67 @@ class DMChatHandler:
                     'character_level': character.level
                 }
 
-            # Always process the message with the DM first to get a narrative response
-            narrative_responses = self.dm.process_player_input(
-                player.id,
-                message,
-                character_context=character_context
-            )
-            print("DEBUG: Back from dm.process_player_input")
+            # Use AI to classify intent (REPLACES ALL KEYWORD-BASED DETECTION)
+            intent_context = "Character creation phase" if not character_id else "In-game phase"
+            intent_result = self._classify_intent(message, intent_context)
+            print(f"AI Intent Classification: {intent_result}")
 
-            # Check if tool execution is also needed, using richer context
+            # Handle meta-requests early (REPLACES KEYWORD-BASED META DETECTION)
+            if intent_result["intent"] == "meta_dialogue" and intent_result["confidence"] > 0.6:
+                meta_response = self._handle_meta_request(message, player.id)
+                narrative_responses = [Dialog("DM", meta_response, "narration")]
+
+                # Track topic for DM response (meta-responses are still tracked)
+                self._update_conversation_topics(player.id, meta_response, is_dm_response=True)
+                
+                # Add to chat history
+                self.chat_history.extend([(player.id, message)] + [("DM", r.content) for r in narrative_responses])
+                
+                return {
+                    "narrative": narrative_responses,
+                    "tool_result": {"meta_request": True}
+                }
+            # Track topic for regular player messages (non-meta requests)
+            self._update_conversation_topics(player.id, message, is_dm_response=False)
+
+            # If in character creation mode, generate a response using AI for character creation
+            is_character_creation = not character_id and not player.active_character_id
+            
+            if is_character_creation:
+                # Use AI to generate a character creation guidance response
+                creation_prompt = f"""
+                You are a Dungeon Master helping a player create their first character in a fantasy RPG.
+                The player says: "{message}"
+                
+                Provide helpful, friendly guidance about character creation options.
+                Focus on explaining the options available and how they might suit the player's stated interests.
+                Do not suggest in-game actions or locations. This is a meta conversation about creating a character.
+                
+                Response:
+                """
+                
+                try:
+                    response_text = self.world_controller.world_ai.generate_text(creation_prompt)
+                    narrative_responses = [Dialog("DM", response_text, "narration")]
+                except Exception as e:
+                    print(f"Error generating character creation response: {e}")
+                    # Fallback response if AI generation fails
+                    response_text = "I'd be happy to help you create a character! Let's start by choosing a race and class. What kind of character are you imagining?"
+                    narrative_responses = [Dialog("DM", response_text, "narration")]
+            else:
+                # Use the normal DM processing for in-game conversations
+                narrative_responses = self.dm.process_player_input(
+                    player.id,
+                    message,
+                    character_context=character_context
+                )
+                print("DEBUG: Back from dm.process_player_input")
+
+            # After generating narrative responses, update topics for DM responses too
+            for response in narrative_responses:
+                self._update_conversation_topics(player.id, response.content, is_dm_response=True)
+
+            # Check if tool execution is also needed, using AI classification (REPLACES KEYWORD-BASED TOOL DETECTION)
             requires_tool = self._ai_detect_tool_intent(message, narrative_responses, character_context)
 
             # If tool execution is needed, process it and get follow-up narrative
@@ -1886,17 +1836,25 @@ class DMChatHandler:
                         f"Tool execution result: {tool_result.get('message', 'Action completed')}"
                     )
                 elif tool_result and tool_result.get("skipped"):
-                    # Provide a context-aware fallback DM narrative for character creation
-                    fallback_message = None
-                    lowered = message.lower()
-                    if "magic user" in lowered or "wizard" in lowered or "sorcerer" in lowered or "elemental" in lowered:
-                        fallback_message = (
-                            "Let's continue developing your character concept together. "
-                            "What aspects would you like to explore next? "
-                            "We could discuss abilities, background, personality, or anything else that interests you."
-                        )
-                    if fallback_message:
-                        tool_followup_responses = [Dialog("DM", fallback_message, "narration")]
+                    # Use AI to generate a context-aware fallback
+                    fallback_prompt = f"""
+                    The player said: "{message}"
+                    The system tried to use a tool but none was available.
+                    
+                    Provide helpful character creation guidance about this topic.
+                    Focus on explaining options rather than suggesting in-game actions.
+                    
+                    Response:
+                    """
+                    
+                    try:
+                        fallback_text = self.world_controller.world_ai.generate_text(fallback_prompt)
+                        tool_followup_responses = [Dialog("DM", fallback_text, "narration")]
+                    except Exception as e:
+                        print(f"Error generating fallback response: {e}")
+                        # Basic fallback
+                        fallback_text = "Let's continue developing your character concept. What aspects would you like to explore next?"
+                        tool_followup_responses = [Dialog("DM", fallback_text, "narration")]
 
             # Combine all narrative responses
             all_narrative_responses = narrative_responses + tool_followup_responses
@@ -1920,6 +1878,162 @@ class DMChatHandler:
                 "narrative": error_response,
                 "tool_result": {"error": str(e)}
             }
+
+    def _classify_intent(self, message, context=None):
+        """
+        Use AI exclusively to classify message intent without any keyword fallbacks
+        """
+        prompt = f"""
+        Analyze this message and classify its primary intent. Consider both the literal meaning and contextual implications.
+        
+        MESSAGE: "{message}"
+        CONTEXT: {context or 'No specific context provided'}
+        
+        INTENT CATEGORIES:
+        1. meta_dialogue - Questions about our conversation itself (summarize, recap, what did you ask, etc.)
+        2. character_creation - Discussing character options, classes, races, backgrounds
+        3. game_mechanics - Questions about rules, dice, or how to play
+        4. world_inquiry - Questions about the game world, lore, or story
+        5. action_request - Attempting to perform an in-game action
+        6. general_question - Other types of questions not fitting above categories
+        
+        Respond with JSON: {{
+            "intent": "category_name",
+            "confidence": 0.0-1.0,
+            "explanation": "Brief reasoning for your classification"
+        }}
+        """
+        
+        try:
+            response_format = {
+                "intent": "string",
+                "confidence": "float",
+                "explanation": "string"
+            }
+            
+            result = self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+            
+            return result
+        except Exception as e:
+            print(f"AI intent classification failed: {e}")
+            return {"intent": "general_question", "confidence": 0.5, "explanation": "AI classification failed"}
+
+    def _handle_meta_request(self, message, player_id):
+        """
+        Use AI to generate appropriate responses to meta-requests about the conversation
+        """
+        # Get recent specific topics, not generic ones
+        recent_topics = self.get_recent_topics(player_id)
+        
+        prompt = f"""
+        You're a Dungeon Master handling a player's request about your conversation.
+        
+        PLAYER REQUEST: "{message}"
+        RECENT SPECIFIC TOPICS DISCUSSED: {recent_topics}
+        
+        Provide a helpful, specific response that references the actual topics we've been discussing.
+        Mention 2-3 of the most recent specific topics, not generic categories.
+        Keep your response conversational and natural.
+        
+        Example good response: "We've been talking about shadow magic, rogue classes, 
+        and your character's background as a thief from a small town. Would you like me to focus on any of these?"
+        
+        Response:
+        """
+        
+        try:
+            response = self.world_controller.world_ai.generate_text(prompt)
+            return response.strip()
+        except Exception as e:
+            print(f"AI meta-response generation failed: {e}")
+            # Fallback that uses the actual tracked topics
+            if recent_topics:
+                return f"We've recently discussed: {', '.join(recent_topics[-3:])}. Would you like to focus on any of these aspects?"
+            return "We've been discussing character creation options. What would you like to focus on?"
+
+    def _extract_conversation_context(self, player_id):
+        """
+        Use AI to extract meaningful context from the conversation history
+        """
+        # Get recent messages for this player
+        recent_messages = []
+        for i, (speaker, content) in enumerate(self.chat_history[-20:]):  # Last 20 messages
+            if speaker == player_id or speaker == "DM":
+                recent_messages.append(f"{speaker}: {content}")
+        
+        conversation_text = "\n".join(recent_messages[-10:])  # Last 10 exchanges
+        
+        prompt = f"""
+        Analyze this conversation excerpt and extract key information:
+        
+        CONVERSATION:
+        {conversation_text}
+        
+        Extract the following information as JSON:
+        - topics_discussed: List of 3-5 main topics covered
+        - last_questions: List of 1-3 recent questions asked by the DM
+        - current_focus: What the conversation is currently focused on
+        
+        Respond with JSON: {{
+            "topics_discussed": ["topic1", "topic2", ...],
+            "last_questions": ["question1", "question2", ...],
+            "current_focus": "brief description of current focus"
+        }}
+        """
+        
+        try:
+            response_format = {
+                "topics_discussed": "list",
+                "last_questions": "list",
+                "current_focus": "string"
+            }
+            
+            context = self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+            return context
+        except Exception as e:
+            print(f"AI context extraction failed: {e}")
+            return {"topics_discussed": [], "last_questions": [], "current_focus": "character creation"}
+
+    def _ai_detect_tool_intent(self, message, dm_responses, character_context=None):
+        """
+        Use AI exclusively to determine if this message requires tool execution
+        """
+        prompt = f"""
+        Determine if this player message requires executing a game mechanic/tool.
+        
+        PLAYER MESSAGE: "{message}"
+        CHARACTER CONTEXT: {character_context or 'No character context'}
+        RECENT DM RESPONSES: {[r.content for r in dm_responses] if dm_responses else 'None'}
+        
+        Consider:
+        - Character creation actions (selecting options, making choices) may need tools
+        - In-game actions (combat, exploration, social) typically need tools
+        - Questions about options or lore typically don't need tools
+        
+        Respond with JSON: {{
+            "requires_tool": true/false,
+            "reason": "Brief explanation of your decision"
+        }}
+        """
+        
+        try:
+            response_format = {
+                "requires_tool": "boolean",
+                "reason": "string"
+            }
+            
+            result = self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+            return result.get("requires_tool", False)
+        except Exception as e:
+            print(f"AI tool detection failed: {e}")
+            return False
+
 class Player:
     def __init__(self, id=None, name="Unknown Player", attributes=None):
         self.id = id or str(uuid.uuid4())
