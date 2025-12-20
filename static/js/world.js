@@ -828,24 +828,6 @@ async function travelToLocation(locationId) {
         showNotification('Error traveling to location', 'error');
     }
 }
-// async function travelToLocation(locationId) {
-//     try {
-//         const response = await fetch(`/api/travel/${locationId}`, { method: 'POST' });
-//         const data = await response.json();
-        
-//         if (data.success) {
-//             worldState.currentLocation = data.location;
-//             renderLocationDetails(data.location);
-//             renderWorldMap(data.worldMap);
-//             showNotification(`Traveled to ${data.location.name}`, 'success');
-//         } else {
-//             showNotification('Failed to travel to location', 'error');
-//         }
-//     } catch (error) {
-//         console.error('Error traveling to location:', error);
-//         showNotification('Error traveling to location', 'error');
-//     }
-// }
 
 // Enter dungeon from current location
 function enterDungeon() {

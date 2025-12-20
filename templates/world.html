@@ -680,7 +680,41 @@
                 min-height: 400px;
             }
         }
-        
+
+        .character-sheet {
+            border: 1px solid #8a6d3b;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            background-color: #fcf8e3;
+            color: #8a6d3b;
+        }
+
+        .character-sheet h3 {
+            margin-top: 0;
+            color: #8a6d3b;
+            border-bottom: 1px solid #8a6d3b;
+            padding-bottom: 5px;
+        }
+
+        .character-details p {
+            margin: 5px 0;
+        }
+
+        #finalize-character {
+            background-color: #5cb85c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #finalize-character:hover {
+            background-color: #4cae4c;
+        }
+                
         @media (max-width: 768px) {
             .app-container {
                 grid-template-columns: 1fr;
@@ -842,7 +876,20 @@
                                 <div id="character-panel" class="panel tab-content" style="display:none;">
                                     <div class="panel-header"><h3>Character</h3></div>
                                     <div class="panel-content">
-                                        <p>Character details and controls go here.</p>
+                                        <div id="character-sheet" class="character-sheet" style="display: none;">
+                                            <h3>Character Sheet (Work in Progress)</h3>
+                                            <div class="character-details">
+                                                <p><strong>Name:</strong> <span id="char-name">Not set</span></p>
+                                                <p><strong>Race:</strong> <span id="char-race">Not set</span></p>
+                                                <p><strong>Class:</strong> <span id="char-class">Not set</span></p>
+                                                <p><strong>Background:</strong> <span id="char-background">Not set</span></p>
+                                                <p><strong>Personality:</strong> <span id="char-personality">Not set</span></p>
+                                                <p><strong>Fears:</strong> <span id="char-flaws">Not set</span></p>
+                                                <p><strong>Motivations:</strong> <span id="char-ideals">Not set</span></p>
+                                                <p><strong>Skills:</strong> <span id="char-skills">Not set</span></p>
+                                            </div>
+                                            <button id="finalize-character" style="display: none;">Finalize Character</button>
+                                        </div>
                                     </div>
                                 </div>
                                 <!-- Party Panel -->

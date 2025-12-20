@@ -1728,10 +1728,36 @@ class DMChatHandler:
 
     def process_message(self, session_id, message, character_id=None):
         """Process a message from a player session, optionally for a specific character"""
+        response_data = {}
         print("DEBUG: DMChatHandler.process_message called")
         try:
             # Get or create player for this session
             player = self.world_controller.get_or_create_player(session_id)
+
+            # Check if we're in a confirmation state
+            if hasattr(player, 'awaiting_confirmation') and player.awaiting_confirmation:
+                is_confirmed, response = self._handle_confirmation(player.id, message, player.character_data)
+                player.awaiting_confirmation = False
+                
+                if is_confirmed:
+                    # Continue with character creation
+                    result = self._handle_character_creation_tools("", player.id)
+                    
+                    # If character is finally created, return it
+                    if result.get("action") == "character_created":
+                        return result
+                    else:
+                        # Still need more information
+                        return {
+                            "narrative": [Dialog("DM", result["message"], "character_creation")],
+                            "tool_result": None
+                        }
+                else:
+                    # Ask for clarification
+                    return {
+                        "narrative": [Dialog("DM", response, "clarification")],
+                        "tool_result": None
+                    }
 
             # Get character context if specified
             character_context = {}
@@ -1814,16 +1840,23 @@ class DMChatHandler:
                 )
                 print("DEBUG: Back from dm.process_player_input")
 
+
             # After generating narrative responses, update topics for DM responses too
             for response in narrative_responses:
                 self._update_conversation_topics(player.id, response.content, is_dm_response=True)
+            # If tool execution is needed, process it and get follow-up narrative
+
+            tool_result = None
+            tool_followup_responses = []
 
             # Check if tool execution is also needed, using AI classification (REPLACES KEYWORD-BASED TOOL DETECTION)
             requires_tool = self._ai_detect_tool_intent(message, narrative_responses, character_context)
 
-            # If tool execution is needed, process it and get follow-up narrative
-            tool_result = None
-            tool_followup_responses = []
+            # If we have character data from tool processing, ensure it's included in response
+            if tool_result and 'character_data' in tool_result:
+                response_data['character_data'] = tool_result['character_data']
+                # Also trigger showing the character sheet
+                response_data['show_character_sheet'] = True 
 
             if requires_tool:
                 print("DEBUG: Tool execution required")
@@ -1856,6 +1889,10 @@ class DMChatHandler:
                         fallback_text = "Let's continue developing your character concept. What aspects would you like to explore next?"
                         tool_followup_responses = [Dialog("DM", fallback_text, "narration")]
 
+            if tool_result and 'character_data' in tool_result:
+                response_data['character_data'] = tool_result['character_data']
+                response_data['show_character_sheet'] = True
+
             # Combine all narrative responses
             all_narrative_responses = narrative_responses + tool_followup_responses
 
@@ -1863,10 +1900,15 @@ class DMChatHandler:
             self.chat_history.extend([(player.id, message)] +
                                     [("DM", r.content) for r in all_narrative_responses])
 
-            print("DEBUG: Returning from process_message")
+            # In the process_message method, before returning:
+            print(f"DEBUG: Final response_data: {response_data}")
+            print(f"DEBUG: Character data in response: {'character_data' in response_data}")
+
             return {
                 "narrative": all_narrative_responses,
-                "tool_result": tool_result
+                "tool_result": tool_result,
+                # Ensure character_data is included if it exists
+                "character_data": tool_result.get('character_data') if tool_result else None
             }
 
         except Exception as e:
@@ -2034,6 +2076,402 @@ class DMChatHandler:
             print(f"AI tool detection failed: {e}")
             return False
 
+    def _handle_tool_usage(self, message, player_id):
+        """Handle tool execution for character creation and other actions"""
+        try:
+            # Get player and check if they have an active character
+            player = self.world_controller.players.get(player_id)
+            is_character_creation = not player or not player.active_character_id
+            
+            if is_character_creation:
+                # Use character builder tools for character creation
+                return self._handle_character_creation_tools(message, player_id)
+            else:
+                # Handle in-game tool usage
+                character = self.world_controller.characters[player.active_character_id]
+                
+                # Use AI to determine which tool to use based on the message
+                tool_to_use = self._determine_tool_for_message(message, "in_game")
+                
+                if tool_to_use:
+                    # Execute the appropriate tool
+                    tool_result = self.world_controller.ai_system.tool_registry.execute_tool(
+                        tool_to_use, 
+                        {"message": message, "character_id": player.active_character_id}
+                    )
+                    return {
+                        "message": f"Processed action for {character.name}: {tool_result}",
+                        "action": "in_game_tool",
+                        "tool_used": tool_to_use
+                    }
+                else:
+                    # No specific tool found, provide a generic response
+                    return {
+                        "message": f"Processed action for {character.name}: {message}",
+                        "action": "in_game_generic",
+                        "skipped": True
+                    }
+        except Exception as e:
+            print(f"Error in tool usage: {e}")
+            return {"error": str(e), "skipped": True}
+
+    def _handle_character_creation_tools(self, message, player_id):
+        """Handle tool usage during character creation phase with proper state management"""
+        player = self.world_controller.players.get(player_id)
+        
+        # Initialize character data if not present
+        if not hasattr(player, 'character_data'):
+            player.character_data = {}
+        if not hasattr(player, 'creation_state') or player.creation_state == "not_started":
+            player.update_creation_state("gathering_info")
+        
+        # Extract character information from the message
+        extracted_data = self._extract_character_data(message, player.character_data)
+        player.character_data.update(extracted_data)
+        
+        # State-based processing
+        if player.creation_state == "gathering_info":
+            # Check if we have enough info to suggest a class
+            if self._has_sufficient_data_for_class_suggestion(player.character_data):
+                # Use AI to determine appropriate class
+                class_info = self._determine_character_class(
+                    player.character_data.get('class', ''), 
+                    player.character_data
+                )
+                
+                player.character_data['suggested_class'] = class_info['primary_class']
+                player.character_data['suggested_multiclass'] = class_info['secondary_class']
+                player.character_data['class_explanation'] = class_info['explanation']
+                player.character_data['custom_traits'] = class_info['custom_traits']
+                
+                # Update state and await confirmation
+                player.update_creation_state("class_suggested")
+                player.awaiting_confirmation = True
+                
+                return {
+                    "message": f"Based on your description, I suggest {class_info['primary_class']} {('with a dip into ' + class_info['secondary_class'] + ' ') if class_info['secondary_class'] else ''}because: {class_info['explanation']}. Does this work for you?",
+                    "action": "class_suggestion",
+                    "character_data": player.character_data,
+                    "requires_confirmation": True
+                }
+        
+        elif player.creation_state == "class_suggested":
+            # We're waiting for confirmation, but got more info instead
+            # Stay in this state but update the data
+            return {
+                "message": "I'm still waiting for your confirmation on the class suggestion. Does the suggested class work for you?",
+                "action": "class_confirmation_reminder",
+                "character_data": player.character_data
+            }
+        
+        elif player.creation_state == "class_confirmed":
+            # We have a confirmed class, check if we can create the character
+            if self._has_sufficient_character_data(player.character_data):
+                # Create the character
+                character = self.world_controller.character_builder.create_character(
+                    player_id, player.character_data
+                )
+                player.active_character_id = character.id
+                self.world_controller.characters[character.id] = character
+                player.update_creation_state("completed")
+                
+                return {
+                    "message": f"Character {character.name} created successfully as a {player.character_data.get('class', 'adventurer')}!",
+                    "action": "character_created",
+                    "character_data": player.character_data,
+                    "character_id": character.id,
+                }
+        
+        # If we're still gathering info, ask for the next piece of information
+        next_question = self._determine_next_question(
+            player.character_data,
+            self._get_recent_conversation(player_id)
+        )
+        
+        return {
+            "message": next_question['question'],
+            "action": "character_creation_question",
+            "question_category": next_question['category'],
+            "character_data": player.character_data
+        }
+
+    def _extract_character_data(self, message, existing_data):
+        """Extract character data from natural language using AI"""
+        prompt = f"""
+        Extract character creation information from this message:
+        "{message}"
+        
+        Existing data: {existing_data}
+        
+        Extract: name, race, class, background, personality, fears, motivations, skills.
+        Return as JSON.
+        """
+        
+        try:
+            return self.world_controller.world_ai.generate_structured_data(
+                prompt,
+                {
+                    "name": "string",
+                    "race": "string", 
+                    "class": "string",
+                    "background": "string",
+                    "personality": "string",
+                    "fears": "string",
+                    "motivations": "string",
+                    "skills": "string"
+                }
+            )
+        except Exception as e:
+            print(f"Error extracting character data: {e}")
+            return {}
+
+    def _has_sufficient_character_data(self, char_data):
+        """Check if we have enough data to create a character"""
+        required = ["name", "race", "class"]
+        return all(field in char_data and char_data[field] for field in required)
+
+    def _get_missing_character_data(self, char_data):
+        """Return list of missing required fields"""
+        required = ["name", "race", "class"]
+        return [field for field in required if field not in char_data or not char_data[field]]
+
+    def _determine_tool_for_message(self, message, context):
+        """Use AI to determine which tool to use for a given message"""
+        prompt = f"""
+        Determine which tool to use for this message in the context of {context}.
+        
+        MESSAGE: "{message}"
+        
+        Available tools for {context}:
+        {[tool.name for tool in self.world_controller.ai_system.tool_registry.tools.values() 
+          if context in tool.name or (context == "character_creation" and "character" in tool.name)]}
+        
+        Respond with just the tool name or "none" if no tool is appropriate.
+        """
+        
+        try:
+            tool_name = self.world_controller.world_ai.generate_text(prompt).strip().lower()
+            if tool_name != "none" and tool_name in self.world_controller.ai_system.tool_registry.tools:
+                return tool_name
+            return None
+        except Exception as e:
+            print(f"Error determining tool: {e}")
+            return None
+
+    def _has_sufficient_data_for_class_suggestion(self, char_data):
+        """Check if we have enough data to make a class suggestion"""
+        # We need at least some concept of what the character does
+        has_concept = any([
+            char_data.get('class'),
+            char_data.get('skills'),
+            char_data.get('background'),
+            char_data.get('motivations')
+        ])
+        
+        # We also need basic identity info
+        has_identity = char_data.get('name') and char_data.get('race')
+        
+        return has_concept and has_identity
+
+    def _get_missing_character_data(self, char_data):
+        """Return list of missing required fields"""
+        required = ["name", "race", "class"]
+        return [field for field in required if field not in char_data or not char_data[field]]
+
+    def _determine_character_class(self, class_concept, character_data):
+        """Use AI to determine the most appropriate class for a character concept"""
+        prompt = f"""
+        Based on this character concept, determine the most appropriate D&D 5e class:
+        
+        CHARACTER CONCEPT: "{class_concept}"
+        ADDITIONAL DETAILS: {character_data}
+        
+        Consider:
+        - Combat style preferences
+        - Magic vs non-magic orientation
+        - Role in a party
+        - Alignment with character background
+        
+        Return a JSON response with:
+        - primary_class: The most appropriate standard D&D class
+        - secondary_class: An optional multiclass suggestion if appropriate
+        - explanation: Brief reasoning for the choice
+        - custom_traits: Any special traits that don't fit standard classes
+        """
+        
+        try:
+            response_format = {
+                "primary_class": "string",
+                "secondary_class": "string",
+                "explanation": "string",
+                "custom_traits": "list"
+            }
+            
+            return self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+        except Exception as e:
+            print(f"Error determining character class: {e}")
+            return {
+                "primary_class": "fighter",
+                "secondary_class": "",
+                "explanation": "Fallback class due to analysis error",
+                "custom_traits": []
+            }
+
+    def _determine_next_question(self, character_data, conversation_history):
+        """Use AI to determine the most important question to ask next"""
+        prompt = f"""
+        Based on this partial character data and conversation history, 
+        determine the single most important question to ask to move character creation forward:
+        
+        CHARACTER DATA: {character_data}
+        CONVERSATION HISTORY: {conversation_history}
+        
+        Consider:
+        - What essential information is still missing?
+        - What would provide the most clarity for class selection?
+        - What aspects need refinement?
+        - Avoid asking about things already discussed
+        
+        Return a JSON response with:
+        - question: The single most important question to ask
+        - priority: High/Medium/Low indicating how essential this question is
+        - category: race/class/background/personality/etc.
+        """
+        
+        try:
+            response_format = {
+                "question": "string",
+                "priority": "string",
+                "category": "string"
+            }
+            
+            return self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+        except Exception as e:
+            print(f"Error determining next question: {e}")
+            return {
+                "question": "What race would you like your character to be?",
+                "priority": "Medium",
+                "category": "race",
+                "action": "character_creation_question",
+                "character_data": player.character_data,  # Current state of character creation
+                "requires_response": True
+            }
+
+    def _handle_confirmation(self, player_id, message, character_data):
+        """Handle player confirmations or corrections with state transitions"""
+        # Use AI to determine if this is a confirmation or correction
+        prompt = f"""
+        Determine if this message is a confirmation or correction:
+        "{message}"
+        
+        Context: We just suggested a character class and asked for confirmation.
+        
+        Return JSON with:
+        - is_confirmation: true/false
+        - corrected_value: if it's a correction, what's the new value
+        - confidence: 0-1 confidence in the assessment
+        """
+        
+        try:
+            response_format = {
+                "is_confirmation": "boolean",
+                "corrected_value": "string",
+                "confidence": "float"
+            }
+            
+            assessment = self.world_controller.world_ai.generate_structured_data(
+                prompt, response_format
+            )
+            
+            player = self.world_controller.players.get(player_id)
+            
+            if assessment['is_confirmation'] and assessment['confidence'] > 0.7:
+                # Player confirmed the suggestion
+                player.character_data['class'] = player.character_data['suggested_class']
+                player.update_creation_state("class_confirmed")
+                
+                # Remove temporary fields
+                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
+                    if field in player.character_data:
+                        del player.character_data[field]
+                        
+                return True, "Great! Class confirmed. Let's continue with your character."
+                
+            elif assessment['corrected_value'] and assessment['confidence'] > 0.6:
+                # Player provided a correction
+                player.character_data['class'] = assessment['corrected_value']
+                player.update_creation_state("class_confirmed")
+                
+                # Clear previous suggestions
+                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
+                    if field in player.character_data:
+                        del player.character_data[field]
+                        
+                return True, f"Understood, I'll use {assessment['corrected_value']} instead. Let's continue."
+                
+            else:
+                # Unclear response, ask for clarification
+                return False, "I'm not sure if you're confirming the suggestion or suggesting something different. Could you clarify?"
+                
+        except Exception as e:
+            print(f"Error handling confirmation: {e}")
+            return False, "I had trouble understanding your response. Could you please clarify?"
+
+    def _get_recent_conversation(self, player_id, max_messages=10):
+        """Get recent conversation history for a specific player"""
+        recent_messages = []
+        
+        # Filter chat history for this player and DM responses
+        for speaker, message in reversed(self.chat_history):
+            if speaker == player_id or speaker == "DM":
+                # Format the message for context
+                formatted_msg = f"{'Player' if speaker == player_id else 'DM'}: {message}"
+                recent_messages.append(formatted_msg)
+                
+            if len(recent_messages) >= max_messages:
+                break
+        
+        # Return in chronological order (oldest first)
+        return list(reversed(recent_messages))
+
+    def _finalize_character(self, player_id, character_data):
+        """Finalize character creation and add to world state"""
+        try:
+            player = self.world_controller.players.get(player_id)
+            if not player:
+                return {"error": "Player not found"}
+            
+            # Create the character using world controller
+            character = self.world_controller.create_character(
+                player_id, 
+                player.character_data
+            )
+            
+            # Add to player's characters
+            player.character_ids.append(character.id)
+            player.active_character_id = character.id
+            
+            return {
+                "success": True,
+                "message": f"Character {character.name} created successfully!",
+                "action": "character_created",
+                "character_data": character.to_dict(),  # Complete character data
+                "character_id": character.id
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _show_character_sheet(self, character_data):
+        """Signal frontend to show and update character sheet"""
+        return {
+            "action": "show_character_sheet",
+            "character_data": character_data
+        }
+
 class Player:
     def __init__(self, id=None, name="Unknown Player", attributes=None):
         self.id = id or str(uuid.uuid4())
@@ -2041,7 +2479,12 @@ class Player:
         self.attributes = attributes or {}
         self.session_id = None
         self.character_ids = []
-        self.active_character_id = None  # Track which character is currently active
+        self.active_character_id = None
+        
+        # Character creation state attributes
+        self.character_data = {}
+        self.awaiting_confirmation = False
+        self.creation_state = "not_started"  # States: not_started, gathering_info, class_suggested, class_confirmed, completed
         
     def to_dict(self):
         return {
@@ -2050,7 +2493,10 @@ class Player:
             "attributes": self.attributes,
             "session_id": self.session_id,
             "character_ids": self.character_ids,
-            "active_character_id": self.active_character_id
+            "active_character_id": self.active_character_id,
+            "character_data": self.character_data,
+            "awaiting_confirmation": self.awaiting_confirmation,
+            "creation_state": self.creation_state
         }
     
     def set_active_character(self, character_id):
@@ -2058,5 +2504,13 @@ class Player:
         if character_id in self.character_ids:
             self.active_character_id = character_id
             self.attributes['active_character'] = character_id
+            return True
+        return False
+    
+    def update_creation_state(self, new_state):
+        """Update the character creation state with validation"""
+        valid_states = ["not_started", "gathering_info", "class_suggested", "class_confirmed", "completed"]
+        if new_state in valid_states:
+            self.creation_state = new_state
             return True
         return False

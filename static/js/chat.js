@@ -11,6 +11,10 @@ class DMChat {
         this.chatStatus.style.marginLeft = '10px';
         this.chatStatus.style.color = '#888';
         this.chatStatus.style.fontStyle = 'italic';
+        // Check if character sheet exists, create it if not
+        if (!document.getElementById('character-sheet')) {
+            this.createCharacterSheet();
+        }
         if (this.chatInput && this.chatInput.parentNode) {
             this.chatInput.parentNode.insertBefore(this.chatStatus, this.chatInput.nextSibling);
         }
@@ -48,10 +52,13 @@ class DMChat {
             if (this.chatStatus) {
                 this.chatStatus.textContent = 'DM is thinking...';
             }
-            // Get AI response - REMOVE motivation parameter
+
+            // Add a temporary loading message to the chat
+            this.loadingMessage = this.addMessage('system', "DM placeholder buffer...", 'system');
+
             this.getAIResponse(message);
         }
-        else console.log("thinks it is loading")
+        else console.log("Chat is currently loading, please wait")
     }
 
     getAIResponse(message) {
@@ -70,15 +77,27 @@ class DMChat {
             return response.json();
         })
         .then(data => {
+            this.isLoading = false; 
             console.log("Received DM response:", data);
+            console.log("Full response data:", data);
+            console.log("Character data received:", data.character_data);
 
-            // Remove loading message
-            loadingMsg.remove();
+            // Remove loading message and status
+            if (this.loadingMessage) {
+                this.loadingMessage.remove();
+            }
             this.isLoading = false;
             if (this.chatStatus) {
                 this.chatStatus.textContent = '';
             }
-            console.log ("data", data)
+
+            // Add character sheet updates HERE
+            if (data.character_data) {
+                console.log("Updating character sheet with:", data.character_data);
+                this.updateCharacterSheet(data.character_data);
+                this.showCharacterSheet();
+            }
+
             // Add narrative responses
             if (data.responses && data.responses.length > 0) {
                 data.responses.forEach(response => {
@@ -100,15 +119,72 @@ class DMChat {
             }
         })
         .catch(error => {
+            this.isLoading = false;
             console.error("DM request failed:", error);
-            loadingMsg.remove();
+            
+            // Remove loading message and status on error too
+            if (this.loadingMessage) {
+                this.loadingMessage.remove();
+            }
             this.isLoading = false;
             if (this.chatStatus) {
                 this.chatStatus.textContent = '';
             }
+
             this.addMessage('system', 'Error connecting to DM. Please try again.', 'error');
         });
     }
+
+    updateCharacterSheet(charData) {
+        const sheet = document.getElementById('character-sheet');
+        if (!sheet) {
+            console.error("Character sheet element not found!");
+            return;
+        }
+        
+        // Show the sheet
+        sheet.style.display = 'block';
+        
+        // Update each field if it exists in the data
+        const fields = ['name', 'race', 'class', 'background', 'personality', 'fears', 'motivations', 'skills'];
+        
+        fields.forEach(field => {
+            const element = document.getElementById(`char-${field}`);
+            if (element && charData[field] && charData[field] !== 'Not mentioned') {
+                element.textContent = charData[field];
+                element.style.color = '#2d3748'; // Make text visible
+            }
+        });
+        
+        // Show finalize button if we have required fields
+        const requiredFields = ['name', 'race', 'class'];
+        const hasRequired = requiredFields.every(field => 
+            charData[field] && charData[field].trim() !== '' && charData[field] !== 'Not mentioned'
+        );
+        
+        const finalizeBtn = document.getElementById('finalize-character');
+        if (finalizeBtn) {
+            if (hasRequired) {
+                finalizeBtn.style.display = 'block';
+                // Add event listener if not already added
+                if (!finalizeBtn.hasListener) {
+                    finalizeBtn.addEventListener('click', () => this.finalizeCharacter());
+                    finalizeBtn.hasListener = true;
+                }
+            } else {
+                finalizeBtn.style.display = 'none';
+            }
+        }
+        
+        console.log("Character sheet updated with:", charData);
+    }
+
+    finalizeCharacter() {
+        // Send a message to finalize the character
+        this.chatInput.value = "finalize my character";
+        this.sendMessage();
+    }
+
     
     updateDialogHistory(history) {
         const historyContainer = document.getElementById('dialog-history');
@@ -198,6 +274,12 @@ class DMChat {
                 const characterData = JSON.parse(e.target.closest('.message').querySelector('.show-full-character').dataset.character);
                 this.addCharacterToParty(characterData);
             });
+
+            // Hide the character sheet after finalizing
+            const sheet = document.getElementById('character-sheet');
+            if (sheet) {
+                sheet.style.display = 'none';
+            }
         }
 
         if (text.includes('FINAL_CHARACTER')) {
@@ -288,5 +370,14 @@ class DMChat {
             detail: { size: partyContainer.children.length }
         });
         document.dispatchEvent(event);
+    }
+
+    showCharacterSheet() {
+        const sheet = document.getElementById('character-sheet');
+        if (sheet) {
+            sheet.style.display = 'block';
+            // Bring to front
+            sheet.style.zIndex = '10000';
+        }
     }
 }
