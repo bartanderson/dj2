@@ -1,86 +1,103 @@
 # world_controller.py
+"""
+WorldController Module
+=====================
+
+Active Record pattern combining world state management with system coordination.
+See class docstring for architectural details.
+"""
 import json
 import math
 import random
 import uuid
 import numpy as np
-from scipy.ndimage import gaussian_filter
 from typing import Dict, List, Optional, Set, Any
-from collections import defaultdict, deque
 
 from dnd_character import CLASSES
 from world.db import Database
 from world.utils import convex_hull, cross
 from world.world_map import WorldMap
-from world.campaign import Location, Quest, Faction, WorldState
+from world.campaign import Location, Quest, Faction, CampaignState
 from world.narrative_system import NarrativeSystem
 from world.character_builder import CharacterBuilder
 from world.character import Character
 from world.persistence import WorldManager
+from world.dm_chat_ai import DMChatAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
 from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
+# this is new integration
+from engine.game_engine import GameEngine, GamePhase
+
+from .terrain import TerrainGenerator
+from .paths import PathGenerator
+from .map_utils import MapUtils
+
+from .party_manager import PartyManager
+from .quest_manager import QuestManager
+from .character_manager import CharacterManager
 
 import warnings
 warnings.filterwarnings("ignore", message=".*Triton.*")
 warnings.filterwarnings("ignore", message=".*redirects.*")
 
-# WorldGenerator creates the content (locations, NPCs, quests, factions)
-# WorldController handles the world state, terrain, and navigation
-# This maintains the original architecture where:
-# WorldController is responsible for the game world state
-# WorldGenerator is responsible for procedural content generation
-# Terrain and path generation remain with the controller that manages the world state
+"""
+ARCHITECTURAL OVERVIEW: ACTIVE RECORD PATTERN
+=============================================
 
-# from party_system import PartySystem
-# from dungeon import DungeonSystem
-# from narrative_engine import NarrativeEngine
-# from pacing_controller import PacingManager
-# from game_state import GameState
+This WorldController uses the Active Record pattern, meaning it serves as BOTH:
+1. A Controller (coordinator between systems)
+2. A Data Model (campaign state containing locations, quests, factions)
 
+This design choice was made because:
+- It simplifies the initial implementation
+- It reduces abstraction layers during prototyping  
+- It's common in game development for world-state management
+
+Key Implications:
+1. WorldAI receives this controller as its "campaign_state"
+2. The controller delegates to internal managers (WorldMap, QuestManager, etc.)
+3. Phase enforcement happens via GameEngine when it's active
+
+State Models in the System:
+- Campaign State: This controller (Active Record pattern)
+- Narrative State: AIDungeonMaster.game_state
+- Game Engine State: GameEngine (planned, partially implemented)
+- AI State: Distributed across AI systems
+
+For future refactoring: Consider separating state from controller if:
+1. Testing becomes difficult
+2. Concurrent access is needed
+3. State persistence requirements change
+"""
 
 class WorldController:
     def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
-        TERRAIN_TYPES = {
-            "ocean": {"weight": 0.25, "height": -0.5},
-            "coast": {"weight": 0.05, "height": -0.2},
-            "lake": {"weight": 0.05, "height": -0.3},
-            "river": {"weight": 0.05, "height": -0.1},
-            "plains": {"weight": 0.25, "height": 0.2},
-            "hills": {"weight": 0.15, "height": 0.4},
-            "mountains": {"weight": 0.15, "height": 0.7},
-            "snowcaps": {"weight": 0.05, "height": 0.9}
-        }
         # Initialize core components
         self.seed = seed
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
+        self.terrain_generator = TerrainGenerator(seed)
+        self.path_generator = PathGenerator(seed)
+        self.map_utils = MapUtils(seed)
         self.world_map = WorldMap()
-        self.narrative_system = NarrativeSystem(self, ai_system)
+        # We need to create dm_chat_ai FIRST, then pass it to NarrativeSystem
+        self.dm_chat_ai = DMChatAI(ai_system)  # Create this BEFORE narrative_system
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
         self.character_builder = CharacterBuilder(ai_system)
         # Register character builder tools for AI use
         if hasattr(ai_system, 'tool_registry'):
             ai_system.tool_registry.register_from_class(self.character_builder)
         self.ai_system = ai_system
-        self.seed = seed
-        self.terrain_types = TERRAIN_TYPES
+        self.terrain_types = self.terrain_generator.terrain_types
         self.fog_of_war = True
-        
+
         # Initialize state tracking
-        self.quests: Dict[str, Quest] = {}
-        self.active_quests: List[Quest] = []
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
         self.time = 0
         self.time_factor = 1
         self.game_started = False
-        
-        # Initialize character and party systems
-        self.characters: Dict[str, Character] = {}
-        self.parties: Dict[str, Dict] = {}
-        self.character_parties: Dict[str, str] = {}
-        self.active_parties: Set[str] = set()
-        self.next_quest_id = 1
         self.default_party_id = "main_party"
 
         # Initialize players
@@ -115,20 +132,48 @@ class WorldController:
             self.starting_location_id = first_location_id
             self.reveal_location(first_location_id)
             self.travel_to_location(first_location_id)
-        
-        # Initialize default party AFTER loading world data
-        self.parties[self.default_party_id] = {
-            "name": "Main Party",
-            "members": [],
-            "location": self.starting_location_id
-        }
+
+        # Initialize managers
+        self.quest_manager = QuestManager()
+        self.party_manager = PartyManager(self.starting_location_id)
+        self.character_manager = CharacterManager(self.character_builder)
+
+        # Transfer existing quests from world data to quest manager
+        for quest_id, quest in self.quest_manager.quests.items():
+            self.quest_manager.quests[quest_id] = quest
+        self.quest_manager.quests = {}  # Clear old quests dict
+
+        # Transfer existing characters to character manager
+        self.character_manager.characters = self.character_manager.characters
+        self.character_manager.characters = {}  # Clear old characters dict
+
+        # Initialize GameEngine for phase compliance
+        try:
+            self.game_engine = GameEngine(self)
+            print(f"[OK] GameEngine initialized for world {world_id}")
+            print(f"  Phase enforcement: ACTIVE")
+        except Exception as e:
+            print(f"[FAIL] Failed to initialize GameEngine: {e}")
+            print(f"  Continuing without phase enforcement")
+            self.game_engine = None
+
+        from .session_system import SessionSystem
+        self.session_system = SessionSystem()
 
         # Initialize AI systems
-        self.world_ai = WorldAI(world_state=self)
+        self.world_ai = WorldAI(campaign_state=self)
         self.dungeon_ai = None  # Will be initialized when entering dungeon
         self.session_manager = SessionManager()
-        self.dungeon_master = AIDungeonMaster(world_controller=self)
+        self.dungeon_master = AIDungeonMaster(
+            world_controller=self,
+            dm_chat_ai=self.dm_chat_ai,
+            character_builder=self.character_builder,
+            character_manager=self.character_manager,
+            players=self.players
+        )
         self.dm_chat_handler = DMChatHandler(self)
+
+        print(f"[OK] AIDungeonMaster initialized with dm_chat_ai: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
 
     def setup_world(self, world_data):
@@ -193,7 +238,7 @@ class WorldController:
             )
             
             # Store quest in global dictionary
-            self.quests[quest.id] = quest
+            self.quest_manager.quests[quest.id] = quest
             
             # Add quest reference to location
             location = self.world_map.get_location(quest.location_id)
@@ -228,11 +273,11 @@ class WorldController:
             self.world_map.factions[faction.id] = faction
         
         # 5. Generate terrain
-        self.terrain_grid = self.generate_terrain()
-        self.hexes = self.generate_hex_map(self.terrain_grid)
+        self.terrain_grid = self.terrain_generator.generate_terrain()
+        self.hexes = self.terrain_generator.generate_hex_map(self.terrain_grid)
         # location dicts not part of the object, just a temp var to simplify self.paths call
         location_dicts = [loc.to_dict() for loc in self.world_map.locations.values()]
-        self.paths = self.generate_paths(location_dicts, self.hexes)
+        self.paths = self.path_generator.generate_paths(location_dicts, self.hexes)
 
     def load_world_data(self, world_id):
         conn = Database.get_connection()
@@ -287,7 +332,7 @@ class WorldController:
                         completed=row[6],
                         dungeon_required=row[7]
                     )
-                    self.quests[quest.id] = quest
+                    self.quest_manager.quests[quest.id] = quest
                     
                     # Add to location
                     if quest.location_id in self.world_map.locations:
@@ -297,406 +342,6 @@ class WorldController:
                         location.quests.append(quest.id)
         finally:
             Database.return_connection(conn)
-
-    def reveal_location(self, location_id: str):
-        """Mark location as discovered"""
-        if location_id in self.world_map.locations:
-            self.world_map.locations[location_id].discovered = True
-            location = self.world_map.locations[location_id]
-            location.discovered = True
-            
-            # First discovery triggers events
-            if not hasattr(location, 'discovered_count'):
-                location.discovered_count = 0
-            location.discovered_count += 1
-
-            # Call narrative system for pacing
-            if hasattr(self, 'narrative_system'):
-                self.narrative_system.on_location_discovered(location_id)
-            
-            # Safely add to session log if it exists
-            if hasattr(self, 'session_log'):
-                self.session_log.append(f"Discovered {location.name}")
-
-    def travel_to_location(self, location_id: str) -> bool:
-        if self.world_map.travel_to(location_id):
-            location = self.world_map.get_location(location_id)
-            self.current_location = location
-            
-            # Reveal location when traveled to
-            self.reveal_location(location_id)
-            
-            # First discovery triggers events
-            if not hasattr(location, 'visited') or not location.visited:
-                location.visited = True
-                print(f"Discovered new location: {location.name}")
-                # Add narrative event
-                # Safely log if session_log exists
-                if hasattr(self, 'session_log'):
-                    self.session_log.append(f"First visit to {location.name}")
-            self.set_current_scene(location_id)  # Update narrative scene
-            return True
-        return False
-
-    def set_current_scene(self, location_id: str):
-        """Set narrative scene when arriving at a location"""
-        location = self.world_map.get_location(location_id)
-        scene_desc = f"{location.name}: {location.description}"
-        self.narrative_system.set_current_scene(scene_desc)
-
-    def generate_terrain(self, width=1000, height=800):
-        heightmap = self._generate_heightmap(width, height)
-        terrain_grid = []
-        
-        tolerance = 1e-5
-
-        for y in range(height):
-            row = []
-            for x in range(width):
-                height_val = heightmap[y][x]
-                
-                # Adjusted thresholds for better distribution
-                if height_val < 0.2 + tolerance:  # Increased ocean range
-                    terrain = "ocean"
-                elif height_val < 0.25 + tolerance:
-                    terrain = "coast"
-                elif height_val < 0.35 + tolerance:  # Added lake range
-                    terrain = "lake"
-                elif height_val < 0.45 + tolerance:  # Added river range
-                    terrain = "river"
-                elif height_val < 0.6 + tolerance:
-                    terrain = "plains"
-                elif height_val < 0.75 + tolerance:  # Reduced hill range
-                    terrain = "hills"
-                elif height_val < 0.9 + tolerance:
-                    terrain = "mountains"
-                else:
-                    terrain = "snowcaps"  # Only highest peaks
-                    
-                row.append(terrain)
-            terrain_grid.append(row)
-        
-        return terrain_grid
-
-    def _generate_heightmap(self, width, height, octaves=4):
-        # Replace all random calls with deterministic versions:
-        # Instead of np.random.rand()
-        # Create coherent noise with multiple frequencies
-
-        heightmap = np.zeros((height, width))
-        scale = 0.01
-        persistence = 0.5
-        
-        for octave in range(octaves):
-            freq = 2 ** octave
-            amplitude = persistence ** octave
-            
-            # Generate noise layer
-            layer = self.np_rng.random((height, width)) * amplitude # (()) make it a tuple
-   
-            # Stretch and scale
-            y_coords = np.linspace(0, scale*freq, height)
-            x_coords = np.linspace(0, scale*freq, width)
-            y_indices = np.floor(y_coords).astype(int) % height
-            x_indices = np.floor(x_coords).astype(int) % width
-            
-            layer = layer[y_indices][:, x_indices]
-            
-            # Apply Gaussian blur for smoothness
-            layer = gaussian_filter(layer, sigma=1 + octave)
-            
-            heightmap += layer
-        
-        # Create continent shapes - BEFORE normalization
-        center_x, center_y = width//2, height//2
-        max_distance = math.sqrt((width/2)**2 + (height/2)**2)
-        
-        for y in range(height):
-            for x in range(width):
-                # Create radial gradient (continents surrounded by ocean)
-                distance = math.sqrt((x - center_x)**2 + (y - center_y)**2)
-                distance_factor = distance / max_distance  # 0-1 range
-                
-                # Subtract more at edges to create oceans
-                heightmap[y][x] -= distance_factor * 0.7  # Increased from 0.5
-                
-                # Add mountain ranges more conservatively
-                if 0.3 < heightmap[y][x] < 0.7 and self.rng.random() < 0.03:  # Reduced frequency
-                    heightmap[y][x] += 0.15  # Reduced from 0.3
-        
-        # Add water bodies
-        for _ in range(3):  # Create 3 lakes
-            lake_x = self.np_rng.integers(100, width-100)
-            lake_y = self.np_rng.integers(100, height-100)
-            lake_size = self.np_rng.integers(30, 80)
-            for dy in range(-lake_size, lake_size):
-                for dx in range(-lake_size, lake_size):
-                    nx, ny = lake_x + dx, lake_y + dy
-                    if 0 <= nx < width and 0 <= ny < height:
-                        distance = math.sqrt(dx**2 + dy**2) / lake_size
-                        if distance < 1:
-                            # Create lake depression
-                            heightmap[ny][nx] -= (1 - distance) * 0.4
-
-        # Add rivers
-        for _ in range(2):  # Create 2 rivers
-            start_x, start_y = self.np_rng.integers(0, width-1), self.np_rng.integers(0, height-1)
-            for _ in range(200):  # River length
-                heightmap[start_y][start_x] -= 0.2  # Dig deeper riverbed
-                # Flow downhill
-                start_x = (start_x + self.np_rng.choice([-1, 0, 1])) % width
-                start_y = (start_y + 1) % height  # Generally flow south
-        
-        # Normalize to 0-1 range AFTER all modifications
-        min_val = heightmap.min()
-        max_val = heightmap.max()
-        if max_val - min_val > 0:
-            heightmap = (heightmap - min_val) / (max_val - min_val)
-        else:
-            heightmap = np.zeros((height, width))
-        
-        return heightmap    
-
-    def generate_hex_map(self, terrain_grid, hex_size=60):
-        hexes = []
-        width = len(terrain_grid[0])
-        height = len(terrain_grid)
-        
-        # Distance between hex centers
-        x_step = int(hex_size * 1.5)
-        y_step = int(hex_size * math.sqrt(3))
-        
-        # Create hex grid that follows terrain
-        for x in range(0, width, x_step):
-            for y in range(0, height, y_step):
-                # Offset every other column for hex pattern
-                y_offset = (hex_size * math.sqrt(3)/2) if (x//x_step) % 2 else 0
-                py = y + y_offset
-                
-                # Skip hexes outside boundaries
-                if x >= width or py >= height:
-                    continue
-                
-                # Get terrain at center point
-                terrain = terrain_grid[min(height-1, int(py))][min(width-1, int(x))]
-                
-                # Calculate hex points
-                points = []
-                for i in range(6):
-                    angle = math.pi/3 * i
-                    px = x + hex_size * math.cos(angle)
-                    py = y + hex_size * math.sin(angle) + y_offset
-                    points.append(f"{px},{py}")
-                
-                # Add imperfections
-                jitter = 0.2  # 20% position variation
-                jittered_points = [
-                    f"{float(p.split(',')[0]) + self.rng.uniform(-hex_size*jitter, hex_size*jitter)},"
-                    f"{float(p.split(',')[1]) + self.rng.uniform(-hex_size*jitter, hex_size*jitter)}"
-                    for p in points
-                ]
-                
-                hexes.append({
-                    "x": x,
-                    "y": y + y_offset,
-                    "terrain": terrain,
-                    "points": " ".join(points), #(jittered_points)
-                    "height": self.terrain_types[terrain]["height"]
-                })
-        
-        return hexes
-
-    def generate_paths(self, locations, hexes):
-        """Generate logical, non-crossing paths with regional hierarchy"""
-        paths = []
-        connected_pairs = set()
-        
-        # Step 1: Group locations into regions
-        regions = self._cluster_locations(locations, hexes)
-        
-        # Step 2: Create intra-region connections
-        for region in regions:
-            if len(region) > 1:
-                region_paths = self._create_minimum_spanning_tree(region, hexes)
-                for path in region_paths:
-                    pair_id = frozenset([path['start'], path['end']])
-                    paths.append(path)
-                    connected_pairs.add(pair_id)
-        
-        # Step 3: Connect regions
-        region_centroids = self._calculate_region_centroids(regions)
-        region_connections = self._connect_regions(region_centroids, regions, hexes)
-        paths.extend(region_connections)
-        
-        # Step 4: Ensure water locations are connected
-        water_paths = self._connect_water_locations(locations, hexes, connected_pairs)
-        paths.extend(water_paths)
-        
-        return paths
-
-    def _cluster_locations(self, locations, hexes, max_distance=250):
-        """Group locations into regions based on proximity"""
-        regions = []
-        unassigned = locations.copy()
-        
-        while unassigned:
-            # Start new region with first unassigned location
-            region = [unassigned.pop(0)]
-            base_x, base_y = region[0]['x'], region[0]['y']
-            
-            # Find nearby locations
-            i = 0
-            while i < len(region):
-                current = region[i]
-                j = 0
-                while j < len(unassigned):
-                    other = unassigned[j]
-                    distance = math.sqrt((current['x']-other['x'])**2 + 
-                                         (current['y']-other['y'])**2)
-                    if distance < max_distance:
-                        region.append(unassigned.pop(j))
-                    else:
-                        j += 1
-                i += 1
-            
-            regions.append(region)
-        
-        return regions
-
-    def _create_minimum_spanning_tree(self, locations, hexes):
-        """Create efficient network using Kruskal's algorithm"""
-        paths = []
-        connections = []
-        
-        # Create all possible connections
-        for i in range(len(locations)):
-            for j in range(i+1, len(locations)):
-                start = locations[i]
-                end = locations[j]
-                distance = math.sqrt((start['x']-end['x'])**2 + (start['y']-end['y'])**2)
-                connections.append((distance, start, end))
-        
-        # Sort by distance
-        connections.sort(key=lambda x: x[0])
-        
-        # Union-Find data structure
-        parent = {loc['id']: loc['id'] for loc in locations}
-        
-        def find(loc_id):
-            if parent[loc_id] != loc_id:
-                parent[loc_id] = find(parent[loc_id])
-            return parent[loc_id]
-        
-        def union(loc1_id, loc2_id):
-            root1 = find(loc1_id)
-            root2 = find(loc2_id)
-            if root1 != root2:
-                parent[root2] = root1
-                return True
-            return False
-        
-        # Build MST
-        for dist, start, end in connections:
-            if union(start['id'], end['id']):
-                path_points = self._create_organic_path(start, end, hexes)
-                path_type = self._get_path_type(
-                    self._get_terrain_for_location(start, hexes),
-                    self._get_terrain_for_location(end, hexes)
-                )
-                paths.append({
-                    "points": path_points,
-                    "type": path_type,
-                    "start": start['id'],
-                    "end": end['id']
-                })
-        
-        return paths
-
-    def _create_organic_path(self, start, end, hexes):
-        """Create a winding path that follows terrain contours"""
-        points = [f"{start['x']},{start['y']}"]
-        
-        # Calculate direct vector
-        dx = end["x"] - start["x"]
-        dy = end["y"] - start["y"]
-        distance = math.sqrt(dx*dx + dy*dy)
-        
-        # Number of segments based on distance
-        segments = max(3, int(distance / 50))
-        
-        # Create winding path with terrain avoidance
-        for i in range(1, segments):
-            t = i / segments
-            # Base position (linear interpolation)
-            x = start["x"] + dx * t
-            y = start["y"] + dy * t
-            
-            # Apply terrain-based offset
-            terrain_height = self._get_terrain_height_at(x, y, hexes)
-            if terrain_height > 0.6:  # Avoid high mountains
-                # Create switchbacks
-                offset_dir = 1 if i % 2 == 0 else -1
-                x += math.sin(t * math.pi * 4) * 20 * offset_dir
-                y += math.cos(t * math.pi * 4) * 15 * offset_dir
-            elif terrain_height < 0:  # Avoid ocean
-                # Coast-hugging path
-                x += math.sin(t * math.pi * 8) * 15
-                y += math.cos(t * math.pi * 8) * 10
-            
-            # Add some random winding for organic feel
-            x += self.rng.gauss(0, 5)
-            y += self.rng.gauss(0, 5)
-            
-            points.append(f"{x},{y}")
-        
-        points.append(f"{end['x']},{end['y']}")
-        return " ".join(points)
-
-    def _get_terrain_height_at(self, x, y, hexes, radius=100):
-        """Get interpolated terrain height at coordinates"""
-        if not hexes:
-            return 0.0
-        
-        total_weight = 0.0
-        weighted_height = 0.0
-        
-        for hex in hexes:
-            distance = math.sqrt((x - hex['x'])**2 + (y - hex['y'])**2)
-            if distance < radius:
-                # Inverse distance weighting
-                weight = 1.0 / (distance + 1)  # +1 to avoid division by zero
-                total_weight += weight
-                weighted_height += hex.get('height', 0.0) * weight
-        
-        if total_weight > 0:
-            return weighted_height / total_weight
-        return 0.0
-
-    def _get_path_type(self, start_terrain, end_terrain):
-        """Determine path type based on endpoints"""
-        # Create a set of both terrains
-        terrains = {start_terrain, end_terrain}
-        
-        # Check for water types
-        water_types = {"ocean", "coast", "lake", "river"}
-        if terrains & water_types:  # If there's any intersection
-            if "ocean" in terrains:
-                return "sea_route"
-            if "lake" in terrains:
-                return "lake_route"
-            if "river" in terrains:
-                return "river_path"
-            return "coastal_route"
-        
-        # Check for mountain types
-        mountain_types = {"mountains", "snowcaps"}
-        if terrains & mountain_types:
-            return "mountain_pass"
-        
-        if "hills" in terrains:
-            return "hiking_trail"
-        
-        return "road"
 
     def _get_terrain_for_location(self, location, hexes):
         """Determine terrain type for a location based on nearby hexes"""
@@ -716,19 +361,6 @@ class WorldController:
         
         # Return the terrain of the closest hex
         return closest_hex.get("terrain", "plains")  # Added .get() for safety
-
-    def _calculate_region_centroids(self, regions):
-        """Calculate center points of each region"""
-        centroids = []
-        for region in regions:
-            x_sum = sum(loc['x'] for loc in region)
-            y_sum = sum(loc['y'] for loc in region)
-            centroids.append({
-                'x': x_sum / len(region),
-                'y': y_sum / len(region),
-                'region': region
-            })
-        return centroids
 
     def _connect_regions(self, centroids, regions, hexes):
         """Connect regions using direct paths between closest points"""
@@ -822,25 +454,16 @@ class WorldController:
 
         # Ensure we have a valid seed
         seed = getattr(self, 'seed', 42)  # Use 42 as fallback if seed doesn't exist
-        
+        connections = self.map_utils.get_connections(self.world_map)
         # Return generation parameters instead of terrain data
         return {
             "width": 1000,
             "height": 800,
-            "connections": self.get_connections(),
+            "connections": connections,
             "locations": locations,
             "currentLocation": self.world_map.current_location_id,
             "paths": self.paths,
-            "terrainColors": {
-                "ocean": "#4d6fb8",
-                "coast": "#a2c4c9",
-                "lake": "#4d6fb8",
-                "river": "#4d6fb8",
-                "plains": "#689f38",
-                "hills": "#8d9946",
-                "mountains": "#8d99ae",
-                "snowcaps": "#ffffff"
-            },
+            "terrainColors": self.terrain_generator.get_terrain_colors(),
             "generation": {
                 "seed": seed,
                 "width": 1000,
@@ -851,161 +474,17 @@ class WorldController:
             "seed": seed
         }
 
-    def get_connections(self):
-        """Generate logical connections based on location types"""
-        locations = list(self.world_map.locations.values())
-        
-        # Group locations by type
-        location_groups = defaultdict(list)
-        for loc in locations:
-            location_groups[loc.type].append(loc)
-        
-        connections = []
-        
-        # 1. Connect within groups using proximity
-        for group_type, group_locs in location_groups.items():
-            if len(group_locs) > 1:
-                # Connect each location to its 2 nearest neighbors
-                for loc in group_locs:
-                    distances = []
-                    for other in group_locs:
-                        if loc != other:
-                            dx = loc.x - other.x
-                            dy = loc.y - other.y
-                            dist = (dx*dx + dy*dy)**0.5
-                            distances.append((dist, other))
-                    
-                    distances.sort(key=lambda x: x[0])
-                    for _, neighbor in distances[:2]:
-                        connections.append({
-                            "x1": loc.x, "y1": loc.y,
-                            "x2": neighbor.x, "y2": neighbor.y
-                        })
-        
-        # 2. Connect groups using minimum spanning tree
-        group_centers = []
-        for group_type, group_locs in location_groups.items():
-            if group_locs:
-                center_x = sum(loc.x for loc in group_locs) / len(group_locs)
-                center_y = sum(loc.y for loc in group_locs) / len(group_locs)
-                group_centers.append({"x": center_x, "y": center_y, "type": group_type})
-        
-        if len(group_centers) > 1:
-            # Create MST between group centers
-            dist_matrix = []
-            for i, center1 in enumerate(group_centers):
-                for j, center2 in enumerate(group_centers):
-                    if i < j:
-                        dx = center1["x"] - center2["x"]
-                        dy = center1["y"] - center2["y"]
-                        dist = (dx*dx + dy*dy)**0.5
-                        dist_matrix.append((dist, i, j))
-            
-            dist_matrix.sort(key=lambda x: x[0])
-            
-            # Simple MST implementation
-            groups_connected = set()
-            for dist, i, j in dist_matrix:
-                if i not in groups_connected or j not in groups_connected:
-                    connections.append({
-                        "x1": group_centers[i]["x"], "y1": group_centers[i]["y"],
-                        "x2": group_centers[j]["x"], "y2": group_centers[j]["y"],
-                        "inter_region": True
-                    })
-                    groups_connected.add(i)
-                    groups_connected.add(j)
-        
-        return connections
-
     def get_current_location_data(self) -> dict:
         if not self.current_location:
             return {}
         return self.current_location.to_dict()
 
-    def get_active_parties(self):
-        """Get all active parties"""
-        return [party for party in self.parties.values() if party["members"]]
-
     def move_character(self, char_id, new_position):
-        char = self.characters.get(char_id)
+        char = self.character_manager.characters.get(char_id)
         if char:
             char.position = new_position
             # Update world map representation
             self.world_map.update_character_position(char_id, new_position)
-
-    def create_character(self, player_id, char_data):
-        """Create a new character and save to database"""
-        character = self.character_builder.create_character(player_id, char_data)
-        self.characters[character.id] = character
-        
-        # Save to database
-        self._save_character_to_db(character)
-        
-        return character
-
-    def _save_character_to_db(self, character):
-        """Save character to database"""
-        conn = Database.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO characters (id, player_id, name, race, class, level, attributes, inventory, avatar_url) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (id) DO UPDATE SET "
-                    "name = EXCLUDED.name, race = EXCLUDED.race, class = EXCLUDED.class, "
-                    "level = EXCLUDED.level, attributes = EXCLUDED.attributes, "
-                    "inventory = EXCLUDED.inventory, avatar_url = EXCLUDED.avatar_url, "
-                    "updated_at = CURRENT_TIMESTAMP",
-                    (
-                        character.id, character.owner_id, character.name, 
-                        character.race, character.classs.name if hasattr(character, 'classs') else None,
-                        character.level, json.dumps(character.attributes),
-                        json.dumps([item.to_dict() for item in character.get_full_inventory()]),
-                        character.avatar_url
-                    )
-                )
-                conn.commit()
-        except Exception as e:
-            print(f"Error saving character to DB: {e}")
-            conn.rollback()
-        finally:
-            Database.return_connection(conn)
-
-    def load_characters_for_player(self, player_id):
-        """Load all characters for a player from database"""
-        conn = Database.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, name, race, class, level, attributes, inventory, avatar_url "
-                    "FROM characters WHERE player_id = %s",
-                    (player_id,)
-                )
-                for row in cur.fetchall():
-                    character = Character(
-                        owner_id=player_id,
-                        name=row[1],
-                        race=row[2],
-                        classs=row[3],  # You might need to convert this to a Class object
-                        level=row[4]
-                    )
-                    character.id = row[0]
-                    character.attributes = row[5] or {}
-                    # Load inventory
-                    if row[6]:
-                        for item_data in row[6]:
-                            character.add_custom_item(item_data['name'], item_data.get('description', ''))
-                    character.avatar_url = row[7]
-                    
-                    self.characters[character.id] = character
-        except Exception as e:
-            print(f"Error loading characters from DB: {e}")
-        finally:
-            Database.return_connection(conn)
-
-    def update_character_avatar(self, char_id, avatar_url):
-        if char_id in self.characters:
-            self.characters[char_id].avatar_url = avatar_url
         
     def get_available_classes(self):
         """Get list of available classes"""
@@ -1033,7 +512,7 @@ class WorldController:
         prompt += f"\n- Campaign theme: {self.campaign_theme}"
         prompt += f"\n- Recent events: {self.get_recent_events()}"
         
-        inventory_description = self.ai_system.generate_text(prompt)
+        inventory_description = self.dm_chat_ai.generate_text(prompt)
         
         # Return narrative-focused inventory
         return {
@@ -1044,16 +523,6 @@ class WorldController:
             "campaign_rules": self.get_inventory_rules()
         }
 
-    def get_inventory_rules(self):
-        """Get campaign-specific inventory rules"""
-        rules = {
-            "currency": self.campaign_data.get("currency", "gold pieces"),
-            "weight_units": self.campaign_data.get("weight", "stones"),
-            "restricted": self.campaign_data.get("restricted_items", []),
-            "special": self.campaign_data.get("special_items", [])
-        }
-        return rules
-
     def add_item(self, player_id, item_description):
         """Add an item through narrative discovery"""
         # AI determines item properties
@@ -1061,7 +530,7 @@ class WorldController:
         prompt += f"Campaign restrictions: {self.get_inventory_rules()['restricted']}\n"
         prompt += "Format: JSON with name, description, type, significance"
         
-        item_data = self.ai_system.generate_structured_data(prompt, {
+        item_data = self.dm_chat_ai.generate_structured_data(prompt, {
             "name": "string",
             "description": "string",
             "type": "string",
@@ -1080,6 +549,15 @@ class WorldController:
         
         return item_data
 
+    def get_inventory_rules(self):
+        """Get campaign-specific inventory rules"""
+        rules = {
+            "currency": self.campaign_data.get("currency", "gold pieces"),
+            "weight_units": self.campaign_data.get("weight", "stones"),
+            "restricted": self.campaign_data.get("restricted_items", []),
+            "special": self.campaign_data.get("special_items", [])
+        }
+        return rules
 
     def start_game_time(self):
         self.game_start_time = datetime.now()
@@ -1094,21 +572,21 @@ class WorldController:
 
     def complete_tavern_intro(self, party_id, player_id):
         """Mark that a player has completed the initial tavern scene"""
-        if party_id not in self.parties:
+        if party_id not in self.party_manager.parties:
             return {"status": "error", "error": "Party not found"}
         
-        if player_id not in self.parties[party_id]["members"]:
+        if player_id not in self.party_manager.parties[party_id]["members"]:
             return {"status": "error", "error": "Player not in party"}
         
         # Mark player as completed tavern intro
-        if "tavern_completed" not in self.parties[party_id]:
-            self.parties[party_id]["tavern_completed"] = set()
+        if "tavern_completed" not in self.party_manager.parties[party_id]:
+            self.party_manager.parties[party_id]["tavern_completed"] = set()
         
-        self.parties[party_id]["tavern_completed"].add(player_id)
+        self.party_manager.parties[party_id]["tavern_completed"].add(player_id)
         
         # Assign quest if all party members have completed
-        party_members = self.parties[party_id]["members"]
-        completed_members = self.parties[party_id].get("tavern_completed", set())
+        party_members = self.party_manager.parties[party_id]["members"]
+        completed_members = self.party_manager.parties[party_id].get("tavern_completed", set())
         
         if set(party_members).issubset(completed_members):
             self.assign_starting_quest(party_id)
@@ -1119,10 +597,10 @@ class WorldController:
     def get_world_state(self):
         # Get active parties with their quests
         party_states = []
-        for party_id in self.active_parties:
-            party = self.parties[party_id]
-            party_quests = [self.quests[qid] for qid in party.get("quests", []) 
-                            if qid in self.quests]
+        for party_id in self.party_manager.active_parties:
+            party = self.party_manager.parties[party_id]
+            party_quests = [self.quest_manager.quests[qid] for qid in party.get("quests", []) 
+                            if qid in self.quest_manager.quests]
             
             party_states.append({
                 "id": party_id,
@@ -1166,84 +644,8 @@ class WorldController:
     def add_character(self, character_data):
         """Add a new character"""
         char_id = f"char_{uuid.uuid4().hex[:6]}"
-        self.characters[char_id] = character_data
+        self.character_manager.characters[char_id] = character_data
         return char_id
-        
-    def create_party(self, party_name, member_ids):
-        party_id = f"party_{self.next_party_id}"
-        self.next_party_id += 1
-        
-        self.parties[party_id] = {
-            "id": party_id,
-            "name": party_name,
-            "members": member_ids,
-            "quests": [],  # Initialize with no quests
-            "location": self.starting_location_id,
-            "in_tavern": True  # Start in tavern
-        }
-        self.active_parties.add(party_id)
-        return party_id
-        
-    def add_to_party(self, char_id, party_id):
-        """Add character to a party"""
-        if char_id not in self.characters:
-            return False
-        
-        # Remove from current party
-        current_party = self.character_parties.get(char_id)
-        if current_party and current_party in self.parties:
-            self.parties[current_party]["members"].remove(char_id)
-        
-        # Add to new party
-        if party_id not in self.parties:
-            self.create_party(f"Party for {self.characters[char_id]['name']}", [char_id])
-        else:
-            self.parties[party_id]["members"].append(char_id)
-            self.character_parties[char_id] = party_id
-        return True
-    
-    def remove_from_party(self, char_id):
-        """Remove character from their current party"""
-        party_id = self.character_parties.get(char_id)
-        if party_id and party_id in self.parties:
-            self.parties[party_id]["members"].remove(char_id)
-            del self.character_parties[char_id]
-        return True
-    
-    def disband_party(self, party_id):
-        """Disband a party and return members to solo status"""
-        if party_id not in self.parties or party_id == self.default_party_id:
-            return False
-        
-        for char_id in self.parties[party_id]["members"][:]:
-            self.remove_from_party(char_id)
-        del self.parties[party_id]
-        return True
-    
-    def get_character_party(self, char_id):
-        """Get party data for a character"""
-        party_id = self.character_parties.get(char_id)
-        if party_id and party_id in self.parties:
-            return self.parties[party_id]
-        return None
-    
-
-    def get_quest(self, quest_id: str) -> Optional[Quest]:
-        return self.quests.get(quest_id)
-
-    def get_quests_for_location(self, location_id: str) -> List[Quest]:
-        """Get full quest objects for a location"""
-        location = self.world_map.get_location(location_id)
-        if not location:
-            return []
-        
-        # Return actual quest objects for the location
-        return [
-            self.quests[qid] 
-            for qid in location.quests 
-            if qid in self.quests
-        ]
-
 
     def get_location_data(self):
         """Get location data for frontend"""
@@ -1273,21 +675,7 @@ class WorldController:
         
         return rumors
 
-    def debug_terrain_distribution(self, terrain_grid):
-        from collections import defaultdict
-        counts = defaultdict(int)
-        total = 0
-        
-        for row in terrain_grid:
-            for terrain in row:
-                counts[terrain] += 1
-                total += 1
-        
-        print("Terrain Distribution:")
-        for terrain, count in counts.items():
-            print(f"{terrain}: {count/total*100:.1f}%")
-        
-        return counts
+
 
     def place_locations(self, hexes, terrain_grid):
         locations = []
@@ -1460,54 +848,6 @@ class WorldController:
         
         return paths
 
-    def terrain_color(self, terrain_type):
-        """Get color for terrain type"""
-        colors = {
-            "forest": "#2d6a4f",
-            "mountains": "#8d99ae",
-            "water": "#4d6fb8",
-            "plains": "#689f38"
-        }
-        return colors.get(terrain_type, "#888888")
-
-    def complete_tavern_intro(self, party_id):
-        """Mark that a party has completed the initial tavern scene"""
-        if party_id in self.parties:
-            self.parties[party_id]["in_tavern"] = False
-            self.assign_starting_quest(party_id)
-
-    def assign_starting_quest(self, party_id):
-        """Assign the initial quest to a party"""
-        if party_id not in self.parties:
-            return
-        
-        quest_id = f"q{self.next_quest_id}"
-        self.next_quest_id += 1
-        
-        starting_quest = {
-            "id": quest_id,
-            "name": "The Ancient Artifact",
-            "description": "Recover the lost artifact from the ruins",
-            "status": "active",
-            "objectives": {
-                "find_artifact": {
-                    "description": "Locate the ancient artifact",
-                    "completed": False
-                }
-            }
-        }
-        
-        # Add to global quests registry
-        self.quests[quest_id] = starting_quest
-        
-        # Assign to party
-        self.parties[party_id]["quests"].append(quest_id)
-        
-        # Reveal starting location
-        self.reveal_location(self.starting_location_id)
-        
-        return quest_id
-
     def enter_dungeon(self) -> bool:
         """Enter dungeon at current location"""
         if not self.current_location or not self.current_location.dungeon_type:
@@ -1539,10 +879,63 @@ class WorldController:
         return True
 
     def process_command(self, command: str) -> dict:
-        """Route commands to appropriate AI system"""
+        """Process command through GameEngine for phase compliance"""
+        # Try to use GameEngine if available
+        if hasattr(self, 'game_engine') and self.game_engine:
+            try:
+                print(f"↻ Processing command via GameEngine: '{command[:50]}...'")
+                
+                # Pass through GameEngine for phase-compliant processing
+                result = self.game_engine.advance(player_input=command)
+                
+                # Extract UI data from engine result
+                ui_data = result.get("ui_data", {})
+                
+                # Check for phase violations
+                violations = result.get("violations", 0)
+                if violations > 0:
+                    print(f"⚠  Phase violations detected: {violations}")
+                    # Log violations for debugging
+                    for violation in self.game_engine.get_phase_violations().get("recent_violations", []):
+                        print(f"   - {violation}")
+                
+                # Maintain backward compatibility with existing callers
+                return {
+                    "response": ui_data.get("narration", "Command processed via GameEngine"),
+                    "map_data": ui_data.get("map", self.get_map_data()),
+                    "location_data": ui_data.get("location", self.get_current_location_data()),
+                    "engine_result": result,  # Include full result for debugging
+                    "phase_compliant": True,
+                    "violations": violations
+                }
+                
+            except Exception as e:
+                print(f"✗ GameEngine processing failed: {e}")
+                print("  Falling back to legacy AI processing")
+                # Fall through to legacy processing
+        
+        # LEGACY PROCESSING (fallback if GameEngine fails or not available)
+        print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
         if self.dungeon_ai:
             return self.dungeon_ai.process_command(command)
         return self.world_ai.process_command(command)
+
+    def get_game_engine_state(self) -> dict:
+        """Get GameEngine status and phase information"""
+        if not hasattr(self, 'game_engine') or not self.game_engine:
+            return {"status": "not_initialized"}
+        
+        try:
+            violations = self.game_engine.get_phase_violations()
+            return {
+                "status": "active",
+                "current_phase": self.game_engine.current_phase.value,
+                "phase_history": [phase.value for phase in self.game_engine.phase_history[-5:]],
+                "violations": violations["total_violations"],
+                "recent_violations": violations["recent_violations"]
+            }
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
     def complete_dungeon(self, success: bool, rewards: dict = None):
         """Handle dungeon completion"""
@@ -1679,838 +1072,51 @@ class WorldController:
         finally:
             Database.return_connection(conn)
 
-class DMChatHandler:
-    def __init__(self, world_controller):
-        self.world_controller = world_controller
-        self.dm = world_controller.dungeon_master
-        self.chat_history = []
-        # Add conversation topic tracking
-        self.conversation_topics = defaultdict(lambda: deque(maxlen=5))  # player_id -> recent topics
-
-    def _update_conversation_topics(self, player_id, message, is_dm_response=False):
-        """Extract and update recent topics from messages"""
-        if player_id not in self.conversation_topics:
-            self.conversation_topics[player_id] = deque(maxlen=5)
-        
-        # Use AI to extract the main topic from this message
-        topic = self._extract_message_topic(message)
-        if topic and topic not in self.conversation_topics[player_id]:
-            self.conversation_topics[player_id].append(topic)
-
-    def _extract_message_topic(self, message):
-        """Use AI to extract the main topic from a single message"""
-        prompt = f"""
-        Extract the primary topic or subject from this message. Return only the topic phrase, not a complete sentence.
-        
-        Message: "{message}"
-        
-        Examples:
-        - "I want to create a magic user" → "magic character creation"
-        - "Tell me about stealth classes" → "stealth classes" 
-        - "What's the best race for a wizard?" → "wizard race selection"
-        - "Can you summarize what we discussed?" → "conversation summary request"
-        
-        Topic:
-        """
-        
-        try:
-            topic = self.world_controller.world_ai.generate_text(prompt)
-            return topic.strip().lower()
-        except Exception as e:
-            print(f"AI topic extraction failed: {e}")
-            return None
-    
-    def get_recent_topics(self, player_id):
-        """Get recent topics for a player"""
-        if player_id in self.conversation_topics:
-            return list(self.conversation_topics[player_id])
-        return []
-
-    def process_message(self, session_id, message, character_id=None):
-        """Process a message from a player session, optionally for a specific character"""
-        response_data = {}
-        print("DEBUG: DMChatHandler.process_message called")
-        try:
-            # Get or create player for this session
-            player = self.world_controller.get_or_create_player(session_id)
-
-            # Check if we're in a confirmation state
-            if hasattr(player, 'awaiting_confirmation') and player.awaiting_confirmation:
-                is_confirmed, response = self._handle_confirmation(player.id, message, player.character_data)
-                player.awaiting_confirmation = False
-                
-                if is_confirmed:
-                    # Continue with character creation
-                    result = self._handle_character_creation_tools("", player.id)
-                    
-                    # If character is finally created, return it
-                    if result.get("action") == "character_created":
-                        return result
-                    else:
-                        # Still need more information
-                        return {
-                            "narrative": [Dialog("DM", result["message"], "character_creation")],
-                            "tool_result": None
-                        }
-                else:
-                    # Ask for clarification
-                    return {
-                        "narrative": [Dialog("DM", response, "clarification")],
-                        "tool_result": None
-                    }
-
-            # Get character context if specified
-            character_context = {}
-            if character_id and character_id in self.world_controller.characters:
-                character = self.world_controller.characters[character_id]
-                character_context = {
-                    'character_id': character_id,
-                    'character_name': character.name,
-                    'character_class': character.classs.name if hasattr(character, 'classs') else 'Unknown',
-                    'character_race': character.race,
-                    'character_level': character.level
-                }
-                player.set_active_character(character_id)
-
-            # Use active character if no specific character is specified
-            if not character_id and player.active_character_id:
-                character_id = player.active_character_id
-                character = self.world_controller.characters[character_id]
-                character_context = {
-                    'character_id': character_id,
-                    'character_name': character.name,
-                    'character_class': character.classs.name if hasattr(character, 'classs') else 'Unknown',
-                    'character_race': character.race,
-                    'character_level': character.level
-                }
-
-            # Use AI to classify intent (REPLACES ALL KEYWORD-BASED DETECTION)
-            intent_context = "Character creation phase" if not character_id else "In-game phase"
-            intent_result = self._classify_intent(message, intent_context)
-            print(f"AI Intent Classification: {intent_result}")
-
-            # Handle meta-requests early (REPLACES KEYWORD-BASED META DETECTION)
-            if intent_result["intent"] == "meta_dialogue" and intent_result["confidence"] > 0.6:
-                meta_response = self._handle_meta_request(message, player.id)
-                narrative_responses = [Dialog("DM", meta_response, "narration")]
-
-                # Track topic for DM response (meta-responses are still tracked)
-                self._update_conversation_topics(player.id, meta_response, is_dm_response=True)
-                
-                # Add to chat history
-                self.chat_history.extend([(player.id, message)] + [("DM", r.content) for r in narrative_responses])
-                
-                return {
-                    "narrative": narrative_responses,
-                    "tool_result": {"meta_request": True}
-                }
-            # Track topic for regular player messages (non-meta requests)
-            self._update_conversation_topics(player.id, message, is_dm_response=False)
-
-            # If in character creation mode, generate a response using AI for character creation
-            is_character_creation = not character_id and not player.active_character_id
+    def travel_to_location(self, location_id: str) -> bool:
+        if self.world_map.travel_to(location_id):
+            location = self.world_map.get_location(location_id)
+            self.current_location = location
             
-            if is_character_creation:
-                # Use AI to generate a character creation guidance response
-                creation_prompt = f"""
-                You are a Dungeon Master helping a player create their first character in a fantasy RPG.
-                The player says: "{message}"
-                
-                Provide helpful, friendly guidance about character creation options.
-                Focus on explaining the options available and how they might suit the player's stated interests.
-                Do not suggest in-game actions or locations. This is a meta conversation about creating a character.
-                
-                Response:
-                """
-                
-                try:
-                    response_text = self.world_controller.world_ai.generate_text(creation_prompt)
-                    narrative_responses = [Dialog("DM", response_text, "narration")]
-                except Exception as e:
-                    print(f"Error generating character creation response: {e}")
-                    # Fallback response if AI generation fails
-                    response_text = "I'd be happy to help you create a character! Let's start by choosing a race and class. What kind of character are you imagining?"
-                    narrative_responses = [Dialog("DM", response_text, "narration")]
-            else:
-                # Use the normal DM processing for in-game conversations
-                narrative_responses = self.dm.process_player_input(
-                    player.id,
-                    message,
-                    character_context=character_context
-                )
-                print("DEBUG: Back from dm.process_player_input")
-
-
-            # After generating narrative responses, update topics for DM responses too
-            for response in narrative_responses:
-                self._update_conversation_topics(player.id, response.content, is_dm_response=True)
-            # If tool execution is needed, process it and get follow-up narrative
-
-            tool_result = None
-            tool_followup_responses = []
-
-            # Check if tool execution is also needed, using AI classification (REPLACES KEYWORD-BASED TOOL DETECTION)
-            requires_tool = self._ai_detect_tool_intent(message, narrative_responses, character_context)
-
-            # If we have character data from tool processing, ensure it's included in response
-            if tool_result and 'character_data' in tool_result:
-                response_data['character_data'] = tool_result['character_data']
-                # Also trigger showing the character sheet
-                response_data['show_character_sheet'] = True 
-
-            if requires_tool:
-                print("DEBUG: Tool execution required")
-                tool_result = self._handle_tool_usage(message, player.id)
-                print(f"DEBUG: Tool result raw AI output: {tool_result}")
-                # Only incorporate tool result if it was not skipped and has no error
-                if tool_result and not tool_result.get("error") and not tool_result.get("skipped"):
-                    tool_followup_responses = self.dm.process_player_input(
-                        player.id,
-                        f"Tool execution result: {tool_result.get('message', 'Action completed')}"
-                    )
-                elif tool_result and tool_result.get("skipped"):
-                    # Use AI to generate a context-aware fallback
-                    fallback_prompt = f"""
-                    The player said: "{message}"
-                    The system tried to use a tool but none was available.
-                    
-                    Provide helpful character creation guidance about this topic.
-                    Focus on explaining options rather than suggesting in-game actions.
-                    
-                    Response:
-                    """
-                    
-                    try:
-                        fallback_text = self.world_controller.world_ai.generate_text(fallback_prompt)
-                        tool_followup_responses = [Dialog("DM", fallback_text, "narration")]
-                    except Exception as e:
-                        print(f"Error generating fallback response: {e}")
-                        # Basic fallback
-                        fallback_text = "Let's continue developing your character concept. What aspects would you like to explore next?"
-                        tool_followup_responses = [Dialog("DM", fallback_text, "narration")]
-
-            if tool_result and 'character_data' in tool_result:
-                response_data['character_data'] = tool_result['character_data']
-                response_data['show_character_sheet'] = True
-
-            # Combine all narrative responses
-            all_narrative_responses = narrative_responses + tool_followup_responses
-
-            # Add to chat history
-            self.chat_history.extend([(player.id, message)] +
-                                    [("DM", r.content) for r in all_narrative_responses])
-
-            # In the process_message method, before returning:
-            print(f"DEBUG: Final response_data: {response_data}")
-            print(f"DEBUG: Character data in response: {'character_data' in response_data}")
-
-            return {
-                "narrative": all_narrative_responses,
-                "tool_result": tool_result,
-                # Ensure character_data is included if it exists
-                "character_data": tool_result.get('character_data') if tool_result else None
-            }
-
-        except Exception as e:
-            print(f"DEBUG: Exception in process_message: {e}")
-            import traceback
-            traceback.print_exc()
-            error_response = [Dialog("DM", "I'm having trouble processing that right now. Could you try again?", "system")]
-            return {
-                "narrative": error_response,
-                "tool_result": {"error": str(e)}
-            }
-
-    def _classify_intent(self, message, context=None):
-        """
-        Use AI exclusively to classify message intent without any keyword fallbacks
-        """
-        prompt = f"""
-        Analyze this message and classify its primary intent. Consider both the literal meaning and contextual implications.
-        
-        MESSAGE: "{message}"
-        CONTEXT: {context or 'No specific context provided'}
-        
-        INTENT CATEGORIES:
-        1. meta_dialogue - Questions about our conversation itself (summarize, recap, what did you ask, etc.)
-        2. character_creation - Discussing character options, classes, races, backgrounds
-        3. game_mechanics - Questions about rules, dice, or how to play
-        4. world_inquiry - Questions about the game world, lore, or story
-        5. action_request - Attempting to perform an in-game action
-        6. general_question - Other types of questions not fitting above categories
-        
-        Respond with JSON: {{
-            "intent": "category_name",
-            "confidence": 0.0-1.0,
-            "explanation": "Brief reasoning for your classification"
-        }}
-        """
-        
-        try:
-            response_format = {
-                "intent": "string",
-                "confidence": "float",
-                "explanation": "string"
-            }
+            # Reveal location when traveled to
+            self.reveal_location(location_id)
             
-            result = self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-            
-            return result
-        except Exception as e:
-            print(f"AI intent classification failed: {e}")
-            return {"intent": "general_question", "confidence": 0.5, "explanation": "AI classification failed"}
-
-    def _handle_meta_request(self, message, player_id):
-        """
-        Use AI to generate appropriate responses to meta-requests about the conversation
-        """
-        # Get recent specific topics, not generic ones
-        recent_topics = self.get_recent_topics(player_id)
-        
-        prompt = f"""
-        You're a Dungeon Master handling a player's request about your conversation.
-        
-        PLAYER REQUEST: "{message}"
-        RECENT SPECIFIC TOPICS DISCUSSED: {recent_topics}
-        
-        Provide a helpful, specific response that references the actual topics we've been discussing.
-        Mention 2-3 of the most recent specific topics, not generic categories.
-        Keep your response conversational and natural.
-        
-        Example good response: "We've been talking about shadow magic, rogue classes, 
-        and your character's background as a thief from a small town. Would you like me to focus on any of these?"
-        
-        Response:
-        """
-        
-        try:
-            response = self.world_controller.world_ai.generate_text(prompt)
-            return response.strip()
-        except Exception as e:
-            print(f"AI meta-response generation failed: {e}")
-            # Fallback that uses the actual tracked topics
-            if recent_topics:
-                return f"We've recently discussed: {', '.join(recent_topics[-3:])}. Would you like to focus on any of these aspects?"
-            return "We've been discussing character creation options. What would you like to focus on?"
-
-    def _extract_conversation_context(self, player_id):
-        """
-        Use AI to extract meaningful context from the conversation history
-        """
-        # Get recent messages for this player
-        recent_messages = []
-        for i, (speaker, content) in enumerate(self.chat_history[-20:]):  # Last 20 messages
-            if speaker == player_id or speaker == "DM":
-                recent_messages.append(f"{speaker}: {content}")
-        
-        conversation_text = "\n".join(recent_messages[-10:])  # Last 10 exchanges
-        
-        prompt = f"""
-        Analyze this conversation excerpt and extract key information:
-        
-        CONVERSATION:
-        {conversation_text}
-        
-        Extract the following information as JSON:
-        - topics_discussed: List of 3-5 main topics covered
-        - last_questions: List of 1-3 recent questions asked by the DM
-        - current_focus: What the conversation is currently focused on
-        
-        Respond with JSON: {{
-            "topics_discussed": ["topic1", "topic2", ...],
-            "last_questions": ["question1", "question2", ...],
-            "current_focus": "brief description of current focus"
-        }}
-        """
-        
-        try:
-            response_format = {
-                "topics_discussed": "list",
-                "last_questions": "list",
-                "current_focus": "string"
-            }
-            
-            context = self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-            return context
-        except Exception as e:
-            print(f"AI context extraction failed: {e}")
-            return {"topics_discussed": [], "last_questions": [], "current_focus": "character creation"}
-
-    def _ai_detect_tool_intent(self, message, dm_responses, character_context=None):
-        """
-        Use AI exclusively to determine if this message requires tool execution
-        """
-        prompt = f"""
-        Determine if this player message requires executing a game mechanic/tool.
-        
-        PLAYER MESSAGE: "{message}"
-        CHARACTER CONTEXT: {character_context or 'No character context'}
-        RECENT DM RESPONSES: {[r.content for r in dm_responses] if dm_responses else 'None'}
-        
-        Consider:
-        - Character creation actions (selecting options, making choices) may need tools
-        - In-game actions (combat, exploration, social) typically need tools
-        - Questions about options or lore typically don't need tools
-        
-        Respond with JSON: {{
-            "requires_tool": true/false,
-            "reason": "Brief explanation of your decision"
-        }}
-        """
-        
-        try:
-            response_format = {
-                "requires_tool": "boolean",
-                "reason": "string"
-            }
-            
-            result = self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-            return result.get("requires_tool", False)
-        except Exception as e:
-            print(f"AI tool detection failed: {e}")
-            return False
-
-    def _handle_tool_usage(self, message, player_id):
-        """Handle tool execution for character creation and other actions"""
-        try:
-            # Get player and check if they have an active character
-            player = self.world_controller.players.get(player_id)
-            is_character_creation = not player or not player.active_character_id
-            
-            if is_character_creation:
-                # Use character builder tools for character creation
-                return self._handle_character_creation_tools(message, player_id)
-            else:
-                # Handle in-game tool usage
-                character = self.world_controller.characters[player.active_character_id]
-                
-                # Use AI to determine which tool to use based on the message
-                tool_to_use = self._determine_tool_for_message(message, "in_game")
-                
-                if tool_to_use:
-                    # Execute the appropriate tool
-                    tool_result = self.world_controller.ai_system.tool_registry.execute_tool(
-                        tool_to_use, 
-                        {"message": message, "character_id": player.active_character_id}
-                    )
-                    return {
-                        "message": f"Processed action for {character.name}: {tool_result}",
-                        "action": "in_game_tool",
-                        "tool_used": tool_to_use
-                    }
-                else:
-                    # No specific tool found, provide a generic response
-                    return {
-                        "message": f"Processed action for {character.name}: {message}",
-                        "action": "in_game_generic",
-                        "skipped": True
-                    }
-        except Exception as e:
-            print(f"Error in tool usage: {e}")
-            return {"error": str(e), "skipped": True}
-
-    def _handle_character_creation_tools(self, message, player_id):
-        """Handle tool usage during character creation phase with proper state management"""
-        player = self.world_controller.players.get(player_id)
-        
-        # Initialize character data if not present
-        if not hasattr(player, 'character_data'):
-            player.character_data = {}
-        if not hasattr(player, 'creation_state') or player.creation_state == "not_started":
-            player.update_creation_state("gathering_info")
-        
-        # Extract character information from the message
-        extracted_data = self._extract_character_data(message, player.character_data)
-        player.character_data.update(extracted_data)
-        
-        # State-based processing
-        if player.creation_state == "gathering_info":
-            # Check if we have enough info to suggest a class
-            if self._has_sufficient_data_for_class_suggestion(player.character_data):
-                # Use AI to determine appropriate class
-                class_info = self._determine_character_class(
-                    player.character_data.get('class', ''), 
-                    player.character_data
-                )
-                
-                player.character_data['suggested_class'] = class_info['primary_class']
-                player.character_data['suggested_multiclass'] = class_info['secondary_class']
-                player.character_data['class_explanation'] = class_info['explanation']
-                player.character_data['custom_traits'] = class_info['custom_traits']
-                
-                # Update state and await confirmation
-                player.update_creation_state("class_suggested")
-                player.awaiting_confirmation = True
-                
-                return {
-                    "message": f"Based on your description, I suggest {class_info['primary_class']} {('with a dip into ' + class_info['secondary_class'] + ' ') if class_info['secondary_class'] else ''}because: {class_info['explanation']}. Does this work for you?",
-                    "action": "class_suggestion",
-                    "character_data": player.character_data,
-                    "requires_confirmation": True
-                }
-        
-        elif player.creation_state == "class_suggested":
-            # We're waiting for confirmation, but got more info instead
-            # Stay in this state but update the data
-            return {
-                "message": "I'm still waiting for your confirmation on the class suggestion. Does the suggested class work for you?",
-                "action": "class_confirmation_reminder",
-                "character_data": player.character_data
-            }
-        
-        elif player.creation_state == "class_confirmed":
-            # We have a confirmed class, check if we can create the character
-            if self._has_sufficient_character_data(player.character_data):
-                # Create the character
-                character = self.world_controller.character_builder.create_character(
-                    player_id, player.character_data
-                )
-                player.active_character_id = character.id
-                self.world_controller.characters[character.id] = character
-                player.update_creation_state("completed")
-                
-                return {
-                    "message": f"Character {character.name} created successfully as a {player.character_data.get('class', 'adventurer')}!",
-                    "action": "character_created",
-                    "character_data": player.character_data,
-                    "character_id": character.id,
-                }
-        
-        # If we're still gathering info, ask for the next piece of information
-        next_question = self._determine_next_question(
-            player.character_data,
-            self._get_recent_conversation(player_id)
-        )
-        
-        return {
-            "message": next_question['question'],
-            "action": "character_creation_question",
-            "question_category": next_question['category'],
-            "character_data": player.character_data
-        }
-
-    def _extract_character_data(self, message, existing_data):
-        """Extract character data from natural language using AI"""
-        prompt = f"""
-        Extract character creation information from this message:
-        "{message}"
-        
-        Existing data: {existing_data}
-        
-        Extract: name, race, class, background, personality, fears, motivations, skills.
-        Return as JSON.
-        """
-        
-        try:
-            return self.world_controller.world_ai.generate_structured_data(
-                prompt,
-                {
-                    "name": "string",
-                    "race": "string", 
-                    "class": "string",
-                    "background": "string",
-                    "personality": "string",
-                    "fears": "string",
-                    "motivations": "string",
-                    "skills": "string"
-                }
-            )
-        except Exception as e:
-            print(f"Error extracting character data: {e}")
-            return {}
-
-    def _has_sufficient_character_data(self, char_data):
-        """Check if we have enough data to create a character"""
-        required = ["name", "race", "class"]
-        return all(field in char_data and char_data[field] for field in required)
-
-    def _get_missing_character_data(self, char_data):
-        """Return list of missing required fields"""
-        required = ["name", "race", "class"]
-        return [field for field in required if field not in char_data or not char_data[field]]
-
-    def _determine_tool_for_message(self, message, context):
-        """Use AI to determine which tool to use for a given message"""
-        prompt = f"""
-        Determine which tool to use for this message in the context of {context}.
-        
-        MESSAGE: "{message}"
-        
-        Available tools for {context}:
-        {[tool.name for tool in self.world_controller.ai_system.tool_registry.tools.values() 
-          if context in tool.name or (context == "character_creation" and "character" in tool.name)]}
-        
-        Respond with just the tool name or "none" if no tool is appropriate.
-        """
-        
-        try:
-            tool_name = self.world_controller.world_ai.generate_text(prompt).strip().lower()
-            if tool_name != "none" and tool_name in self.world_controller.ai_system.tool_registry.tools:
-                return tool_name
-            return None
-        except Exception as e:
-            print(f"Error determining tool: {e}")
-            return None
-
-    def _has_sufficient_data_for_class_suggestion(self, char_data):
-        """Check if we have enough data to make a class suggestion"""
-        # We need at least some concept of what the character does
-        has_concept = any([
-            char_data.get('class'),
-            char_data.get('skills'),
-            char_data.get('background'),
-            char_data.get('motivations')
-        ])
-        
-        # We also need basic identity info
-        has_identity = char_data.get('name') and char_data.get('race')
-        
-        return has_concept and has_identity
-
-    def _get_missing_character_data(self, char_data):
-        """Return list of missing required fields"""
-        required = ["name", "race", "class"]
-        return [field for field in required if field not in char_data or not char_data[field]]
-
-    def _determine_character_class(self, class_concept, character_data):
-        """Use AI to determine the most appropriate class for a character concept"""
-        prompt = f"""
-        Based on this character concept, determine the most appropriate D&D 5e class:
-        
-        CHARACTER CONCEPT: "{class_concept}"
-        ADDITIONAL DETAILS: {character_data}
-        
-        Consider:
-        - Combat style preferences
-        - Magic vs non-magic orientation
-        - Role in a party
-        - Alignment with character background
-        
-        Return a JSON response with:
-        - primary_class: The most appropriate standard D&D class
-        - secondary_class: An optional multiclass suggestion if appropriate
-        - explanation: Brief reasoning for the choice
-        - custom_traits: Any special traits that don't fit standard classes
-        """
-        
-        try:
-            response_format = {
-                "primary_class": "string",
-                "secondary_class": "string",
-                "explanation": "string",
-                "custom_traits": "list"
-            }
-            
-            return self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-        except Exception as e:
-            print(f"Error determining character class: {e}")
-            return {
-                "primary_class": "fighter",
-                "secondary_class": "",
-                "explanation": "Fallback class due to analysis error",
-                "custom_traits": []
-            }
-
-    def _determine_next_question(self, character_data, conversation_history):
-        """Use AI to determine the most important question to ask next"""
-        prompt = f"""
-        Based on this partial character data and conversation history, 
-        determine the single most important question to ask to move character creation forward:
-        
-        CHARACTER DATA: {character_data}
-        CONVERSATION HISTORY: {conversation_history}
-        
-        Consider:
-        - What essential information is still missing?
-        - What would provide the most clarity for class selection?
-        - What aspects need refinement?
-        - Avoid asking about things already discussed
-        
-        Return a JSON response with:
-        - question: The single most important question to ask
-        - priority: High/Medium/Low indicating how essential this question is
-        - category: race/class/background/personality/etc.
-        """
-        
-        try:
-            response_format = {
-                "question": "string",
-                "priority": "string",
-                "category": "string"
-            }
-            
-            return self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-        except Exception as e:
-            print(f"Error determining next question: {e}")
-            return {
-                "question": "What race would you like your character to be?",
-                "priority": "Medium",
-                "category": "race",
-                "action": "character_creation_question",
-                "character_data": player.character_data,  # Current state of character creation
-                "requires_response": True
-            }
-
-    def _handle_confirmation(self, player_id, message, character_data):
-        """Handle player confirmations or corrections with state transitions"""
-        # Use AI to determine if this is a confirmation or correction
-        prompt = f"""
-        Determine if this message is a confirmation or correction:
-        "{message}"
-        
-        Context: We just suggested a character class and asked for confirmation.
-        
-        Return JSON with:
-        - is_confirmation: true/false
-        - corrected_value: if it's a correction, what's the new value
-        - confidence: 0-1 confidence in the assessment
-        """
-        
-        try:
-            response_format = {
-                "is_confirmation": "boolean",
-                "corrected_value": "string",
-                "confidence": "float"
-            }
-            
-            assessment = self.world_controller.world_ai.generate_structured_data(
-                prompt, response_format
-            )
-            
-            player = self.world_controller.players.get(player_id)
-            
-            if assessment['is_confirmation'] and assessment['confidence'] > 0.7:
-                # Player confirmed the suggestion
-                player.character_data['class'] = player.character_data['suggested_class']
-                player.update_creation_state("class_confirmed")
-                
-                # Remove temporary fields
-                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
-                    if field in player.character_data:
-                        del player.character_data[field]
-                        
-                return True, "Great! Class confirmed. Let's continue with your character."
-                
-            elif assessment['corrected_value'] and assessment['confidence'] > 0.6:
-                # Player provided a correction
-                player.character_data['class'] = assessment['corrected_value']
-                player.update_creation_state("class_confirmed")
-                
-                # Clear previous suggestions
-                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
-                    if field in player.character_data:
-                        del player.character_data[field]
-                        
-                return True, f"Understood, I'll use {assessment['corrected_value']} instead. Let's continue."
-                
-            else:
-                # Unclear response, ask for clarification
-                return False, "I'm not sure if you're confirming the suggestion or suggesting something different. Could you clarify?"
-                
-        except Exception as e:
-            print(f"Error handling confirmation: {e}")
-            return False, "I had trouble understanding your response. Could you please clarify?"
-
-    def _get_recent_conversation(self, player_id, max_messages=10):
-        """Get recent conversation history for a specific player"""
-        recent_messages = []
-        
-        # Filter chat history for this player and DM responses
-        for speaker, message in reversed(self.chat_history):
-            if speaker == player_id or speaker == "DM":
-                # Format the message for context
-                formatted_msg = f"{'Player' if speaker == player_id else 'DM'}: {message}"
-                recent_messages.append(formatted_msg)
-                
-            if len(recent_messages) >= max_messages:
-                break
-        
-        # Return in chronological order (oldest first)
-        return list(reversed(recent_messages))
-
-    def _finalize_character(self, player_id, character_data):
-        """Finalize character creation and add to world state"""
-        try:
-            player = self.world_controller.players.get(player_id)
-            if not player:
-                return {"error": "Player not found"}
-            
-            # Create the character using world controller
-            character = self.world_controller.create_character(
-                player_id, 
-                player.character_data
-            )
-            
-            # Add to player's characters
-            player.character_ids.append(character.id)
-            player.active_character_id = character.id
-            
-            return {
-                "success": True,
-                "message": f"Character {character.name} created successfully!",
-                "action": "character_created",
-                "character_data": character.to_dict(),  # Complete character data
-                "character_id": character.id
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-    def _show_character_sheet(self, character_data):
-        """Signal frontend to show and update character sheet"""
-        return {
-            "action": "show_character_sheet",
-            "character_data": character_data
-        }
-
-class Player:
-    def __init__(self, id=None, name="Unknown Player", attributes=None):
-        self.id = id or str(uuid.uuid4())
-        self.name = name
-        self.attributes = attributes or {}
-        self.session_id = None
-        self.character_ids = []
-        self.active_character_id = None
-        
-        # Character creation state attributes
-        self.character_data = {}
-        self.awaiting_confirmation = False
-        self.creation_state = "not_started"  # States: not_started, gathering_info, class_suggested, class_confirmed, completed
-        
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "attributes": self.attributes,
-            "session_id": self.session_id,
-            "character_ids": self.character_ids,
-            "active_character_id": self.active_character_id,
-            "character_data": self.character_data,
-            "awaiting_confirmation": self.awaiting_confirmation,
-            "creation_state": self.creation_state
-        }
-    
-    def set_active_character(self, character_id):
-        """Set a character as active for this player"""
-        if character_id in self.character_ids:
-            self.active_character_id = character_id
-            self.attributes['active_character'] = character_id
+            # First discovery triggers events
+            if not hasattr(location, 'visited') or not location.visited:
+                location.visited = True
+                print(f"Discovered new location: {location.name}")
+                # Add narrative event
+                # Safely log if session_log exists
+                if hasattr(self, 'session_log'):
+                    self.session_log.append(f"First visit to {location.name}")
+            self.set_current_scene(location_id)  # Update narrative scene
             return True
         return False
-    
-    def update_creation_state(self, new_state):
-        """Update the character creation state with validation"""
-        valid_states = ["not_started", "gathering_info", "class_suggested", "class_confirmed", "completed"]
-        if new_state in valid_states:
-            self.creation_state = new_state
-            return True
-        return False
+
+    def reveal_location(self, location_id: str):
+        """Mark location as discovered"""
+        if location_id in self.world_map.locations:
+            self.world_map.locations[location_id].discovered = True
+            location = self.world_map.locations[location_id]
+            location.discovered = True
+            
+            # First discovery triggers events
+            if not hasattr(location, 'discovered_count'):
+                location.discovered_count = 0
+            location.discovered_count += 1
+
+            # Call narrative system for pacing
+            if hasattr(self, 'narrative_system'):
+                self.narrative_system.on_location_discovered(location_id)
+            
+            # Safely add to session log if it exists
+            if hasattr(self, 'session_log'):
+                self.session_log.append(f"Discovered {location.name}")
+
+    def set_current_scene(self, location_id: str):
+        """Set narrative scene when arriving at a location"""
+        location = self.world_map.get_location(location_id)
+        scene_desc = f"{location.name}: {location.description}"
+        self.narrative_system.set_current_scene(scene_desc)
+
+from world.dm_chat_handler import DMChatHandler
+from world.player import Player

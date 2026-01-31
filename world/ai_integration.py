@@ -11,7 +11,7 @@ from pgvector.psycopg2 import register_vector
 from .tool_system import ToolRegistry, tool
 from .dm_tools import DMTools
 from .overlay import Overlay
-from .campaign import Location, Quest, Faction, WorldState  # Imported from campaign.py
+from .campaign import Location, Quest, Faction, CampaignState  # Imported from campaign.py
 
 class BaseAI:
     def __init__(self, ollama_host="http://localhost:11434", seed=42):
@@ -106,7 +106,7 @@ class BaseAI:
         system_prompt = f"Respond ONLY with JSON matching this format:\n{json.dumps(response_format, indent=2)}"
         
         response = self.ollama.generate(
-            model="llama3.1:8b",
+            model="llama3.2:3b",
             system=system_prompt,
             prompt=prompt,
             format="json",
@@ -135,7 +135,7 @@ class BaseAI:
         for attempt in range(max_retries + 1):
             try:
                 response = self.ollama.generate(
-                    model="llama3.1:8b",
+                    model="llama3.2:3b",
                     system="You are a helpful Assistant. Provide clear, informative responses, but you do not give away secrets, plots, story arcs or anything that will majorly further the character or party. If that is what is asked for, gently nudge the player into making a decision on their own.",
                     prompt=prompt,
                     options={"temperature": temperature, "seed": self.seed}
@@ -161,7 +161,7 @@ class BaseAI:
         
         # Generate AI response
         response = self.ollama.generate(
-            model="llama3.1:8b",
+            model="llama3.2:3b",
             system=self.system_prompt,
             prompt=natural_language,
             format="json",
@@ -187,9 +187,16 @@ class BaseAI:
 class WorldAI(BaseAI):
     # TODO: When adding new tools or updating tool invocation logic, always check that the tool name provided by the AI is valid and registered.
     # If the AI does not specify a valid tool, handle the request narratively and do not attempt tool execution.
-    def __init__(self, world_state: WorldState, *args, **kwargs):
+    def __init__(self, campaign_state=None, world_controller=None, *args, **kwargs):
+        # Handle both naming conventions during transition
+        if campaign_state is not None:
+            self.campaign_state = campaign_state
+        elif world_controller is not None:
+            self.campaign_state = world_controller
+        else:
+            raise ValueError("Either campaign_state or world_controller must be provided")
+
         super().__init__(*args, **kwargs)
-        self.world_state = world_state
         self.tool_registry.register_from_class(self)
         self._register_world_tools()
         
@@ -253,7 +260,7 @@ class WorldAI(BaseAI):
             features=location_data.get("features", []),
             services=location_data.get("services", [])
         )
-        self.world_state.add_location(location)
+        self.campaign_state.add_location(location)
         
         return {"success": True, "location_id": location_id}
     
@@ -265,7 +272,7 @@ class WorldAI(BaseAI):
     )
     def create_quest(self, location_id: str, quest_type: str) -> dict:
         """Generate a new quest using AI"""
-        location = self.world_state.get_location(location_id)
+        location = self.campaign_state.get_location(location_id)
         if not location:
             return {"success": False, "message": "Location not found"}
         
@@ -287,7 +294,7 @@ class WorldAI(BaseAI):
             objectives=quest_data["objectives"],
             location_id=location_id
         )
-        self.world_state.add_quest(quest)
+        self.campaign_state.add_quest(quest)
         location.quests.append(quest_id)
         
         return {"success": True, "quest_id": quest_id}

@@ -306,13 +306,13 @@ class NarrativeSystem:
         "bard": ["Charisma", "Dexterity"]
     }
     
-    def __init__(self, world_state, ai_system):
+    def __init__(self, world_state, ai_system, dm_chat_ai=None):  # [OK] Add dm_chat_ai parameter
         self.world = world_state
         self.ai = ai_system
 
         # Initialize the AI Dungeon Master only if AI system is available
         if ai_system:
-            self.dm = AIDungeonMaster()
+            self.dm = AIDungeonMaster(dm_chat_ai=dm_chat_ai)  # [OK] Pass dm_chat_ai
         else:
             self.dm = None
 

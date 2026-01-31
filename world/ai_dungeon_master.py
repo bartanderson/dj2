@@ -129,8 +129,8 @@ class ResponseGenerator:
         return f"Your character's {detail} becomes relevant here because..."
 
 class CharacterCreationState:
-    def __init__(self, world_controller):
-        self.world_controller = world_controller
+    def __init__(self, ai_system):  # ✅ NEW - takes ai_system directly
+        self.ai_system = ai_system
         self.active = False
         self.concept_description = ""
         self.collected_info = {}
@@ -150,7 +150,7 @@ class CharacterCreationState:
         """
         
         try:
-            new_info = self.world_controller.ai_system.generate_structured_data(prompt, {
+            new_info = self._ai_generate_structured(prompt, {
                 "race": "string", "class": "string", "background": "string", 
                 "abilities": "list", "personality": "string"
             })
@@ -189,7 +189,7 @@ class CharacterCreationState:
         """
         
         try:
-            return self.world_controller.ai_system.generate_text(prompt)
+            return self._ai_generate_text(prompt)
         except:
             # Fallback summary
             parts = []
@@ -204,7 +204,25 @@ class CharacterCreationState:
 
 
 class AIDungeonMaster:
-    def __init__(self, world_controller=None):
+    def __init__(self, world_controller=None, dm_chat_ai=None, character_builder=None, 
+             character_manager=None, players=None):
+        # Store both for backward compatibility and new architecture
+        self.world_controller = world_controller
+        
+        # Use provided dm_chat_ai or try to get it from world_controller
+        if dm_chat_ai:
+            self.dm_chat_ai = dm_chat_ai
+        elif world_controller and hasattr(world_controller, 'dm_chat_ai'):
+            self.dm_chat_ai = world_controller.dm_chat_ai
+        else:
+            self.dm_chat_ai = None
+
+        # Store other dependencies
+        self.character_builder = character_builder
+        self.character_manager = character_manager
+        self.players = players
+
+        # Initialize other attributes    
         self.characters = {}
         self.game_state = GameState()
         self.consequence_tracker = ConsequenceTracker()
@@ -214,17 +232,21 @@ class AIDungeonMaster:
         self.world_id = None  # Current world ID
         self.character_contexts = {} # character_id -> context
         self.character_creation_states = {}
-        self.world_controller = world_controller
+
+        # Debug logging
+        if self.dm_chat_ai:
+            print(f"[OK] AIDungeonMaster initialized with DMChatAI")
+        else:
+            print(f"[OK] AIDungeonMaster initialized without DMChatAI (using legacy AI)")
+
 
     def set_world(self, world_id):
         self.world_id = world_id
 
     def log_context(self, world_id, player_id, context_type, content):
-        # Use the AI system to generate embedding if available
         embedding = None
-        if self.world_controller and hasattr(self.world_controller, 'ai_system'):
-            text = f"{context_type}: {json.dumps(content)}"
-            embedding = self.world_controller.ai_system.generate_embedding(text)
+        if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+            embedding = self.dm_chat_ai.generate_embedding(text)
         
         conn = Database.get_connection()
         try:
@@ -334,6 +356,30 @@ class AIDungeonMaster:
             return self._handle_general_input(player_id, message)
 
         return responses
+
+    def _ai_generate_text(self, prompt):
+        """Generate text using appropriate AI system"""
+        try:
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                return self.dm_chat_ai.generate_text(prompt)
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                return self._ai_generate_text(prompt)
+            return "Unable to generate response."
+        except Exception as e:
+            print(f"AI text generation failed: {e}")
+            return "I encountered an error."
+
+    def _ai_generate_structured(self, prompt, response_format):
+        """Generate structured data using appropriate AI system"""
+        try:
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                return self.dm_chat_ai.generate_structured_data(prompt, response_format)
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                return self._ai_generate_structured(prompt, response_format)
+            return {}
+        except Exception as e:
+            print(f"AI structured generation failed: {e}")
+            return {}
 
     def _is_action_attempt(self, message: str) -> bool:
         """Detect if player is attempting an action"""
@@ -520,30 +566,28 @@ class AIDungeonMaster:
         if "?" in player_dialog:
             return "The NPC considers your question carefully before responding..."
         return None
-    
+
     def _handle_general_input(self, player_id: str, message: str) -> List[Dialog]:
         """Handle all types of questions and general input with robust error handling"""
-        # This method remains exactly as it was before
         responses = []
         
         # Early validation to prevent exceptions
-        if not self.world_controller:
-            print("World controller not available for AI response")
+        if not self.world_controller and not self.dm_chat_ai:
+            print("No AI system available for response")
             return [Dialog("DM", "The world is still taking shape. Please try again in a moment.", "system")]
-        
-        if not hasattr(self.world_controller, 'ai_system') or not self.world_controller.ai_system:
-            print("AI system not available for response")
-            return [Dialog("DM", "My arcane knowledge is currently unavailable. Let's focus on our adventure for now.", "system")]
         
         # Get context safely
         current_location = {}
         player_character = None
         
         try:
-            if hasattr(self.world_controller, 'get_current_location_data'):
+            # Get location context if world_controller exists
+            if self.world_controller and hasattr(self.world_controller, 'get_current_location_data'):
                 current_location = self.world_controller.get_current_location_data() or {}
             
-            if (hasattr(self.world_controller, 'characters') and 
+            # Get character context if world_controller exists
+            if (self.world_controller and 
+                hasattr(self.world_controller, 'characters') and 
                 player_id in self.world_controller.characters):
                 player_character = self.world_controller.characters[player_id]
         except Exception as e:
@@ -566,8 +610,21 @@ class AIDungeonMaster:
 
         # Generate response with error handling
         try:
-            ai_response = self.world_controller.ai_system.generate_text(prompt)
-            responses.append(Dialog("DM", ai_response, "narration"))
+            # Try to use DMChatAI first if available
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                print(f"↻ Using DMChatAI for DM response to: '{message[:50]}...'")
+                ai_response = self.dm_chat_ai.generate_text(prompt)
+                print(f"✓ DMChatAI response generated ({len(ai_response)} chars)")
+                responses.append(Dialog("DM", ai_response, "narration"))
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                print(f"↻ Using legacy AI system for DM response")
+                ai_response = self._ai_generate_text(prompt)
+                responses.append(Dialog("DM", ai_response, "narration"))
+            else:
+                print(f"✗ No AI system available")
+                responses.append(Dialog("DM", "My arcane knowledge is currently unavailable. Let's focus on our adventure for now.", "system"))
+                
         except Exception as e:
             print(f"AI response generation failed: {e}")
             # Context-aware fallback without hardcoding
@@ -629,10 +686,19 @@ class AIDungeonMaster:
         """
         
         try:
-            response = self.world_controller.ai_system.generate_text(prompt)
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                response = self.dm_chat_ai.generate_text(prompt)
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                response = self._ai_generate_text(prompt)
+            else:
+                response = "Let's continue developing your character concept. What aspects would you like to explore next?"
+                
             state.conversation_history.append(f"DM: {response}")
             return [Dialog("DM", response, "narration")]
-        except:
+        except Exception as e:
+            print(f"Error generating character creation response: {e}")
             return [Dialog("DM", 
                           "That's an interesting aspect to consider for your character. " +
                           "What else would you like to explore about them?",
@@ -659,9 +725,18 @@ class AIDungeonMaster:
         """
         
         try:
-            analysis = self.world_controller.ai_system.generate_structured_data(
-                prompt, {"topic": "string", "information": "string"}
-            )
+            # Try to use DMChatAI first (note: DMChatAI has ai_system attribute)
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                analysis = self._ai_generate_structured(
+                    prompt, {"topic": "string", "information": "string"}
+                )
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                analysis = self._ai_generate_structured(
+                    prompt, {"topic": "string", "information": "string"}
+                )
+            else:
+                analysis = {"topic": "unknown", "information": message}
             
             # Store the information
             if analysis["topic"] and analysis["information"]:
@@ -679,7 +754,6 @@ class AIDungeonMaster:
             return [Dialog("DM", "Tell me more about your character concept.", "narration")]
 
     # todo cleanup lists of words with AI intent replacement like in world_controller
-
     def _is_general_question(self, message: str) -> bool:
         """Detect if this is a general question about the game"""
         question_indicators = ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'can you', 'can i', 'could you', 'could i', 'would you', 'would i', 'is there', 'are there', "?"]
@@ -699,7 +773,7 @@ class AIDungeonMaster:
         about the game. Keep your response under 2 sentences."""
         
         try:
-            answer = self.world_controller.ai_system.generate_text(prompt)
+            answer = self._ai_generate_text(prompt)
             return [Dialog("DM", answer, "narration")]
         except:
             return [Dialog("DM", "That's an interesting question! As your Dungeon Master, " 
@@ -738,11 +812,23 @@ class AIDungeonMaster:
         """
         
         try:
-            response = self.world_controller.ai_system.generate_text(prompt)
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                response = self.dm_chat_ai.generate_text(prompt)
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                response = self._ai_generate_text(prompt)
+            else:
+                character_desc = f"{state.collected_info.get('race', '')} {state.collected_info.get('class', '')}"
+                response = f"Based on our conversation, we have a great {character_desc} concept. " + \
+                          "Would you like to finalize this character? " + \
+                          "We can use different methods for ability scores."
+            
             state.ready_for_creation = True
             state.conversation_history.append(f"DM: {response}")
             return [Dialog("DM", response, "narration")]
-        except:
+        except Exception as e:
+            print(f"Error generating finalization suggestion: {e}")
             character_desc = f"{state.collected_info.get('race', '')} {state.collected_info.get('class', '')}"
             return [Dialog("DM",
                           f"Based on our conversation, we have a great {character_desc} concept. " +
@@ -771,12 +857,24 @@ class AIDungeonMaster:
         """
         
         try:
-            result = self.world_controller.ai_system.generate_structured_data(
-                prompt,
-                {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
-            )
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                result = self._ai_generate_structured(
+                    prompt,
+                    {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
+                )
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                result = self._ai_generate_structured(
+                    prompt,
+                    {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
+                )
+            else:
+                result = {"is_character_concept": False, "confidence": 0, "concept_type": "unknown"}
+                
             return result.get("is_character_concept", False) and result.get("confidence", 0) > 0.6
-        except:
+        except Exception as e:
+            print(f"Error detecting character concept: {e}")
             return False
 
     def _suggest_character_creation(self, player_id: str, message: str) -> List[Dialog]:
@@ -793,11 +891,33 @@ class AIDungeonMaster:
         """
         
         try:
-            suggestion = self.world_controller.ai_system.generate_text(prompt)
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                suggestion = self.dm_chat_ai.generate_text(prompt)
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                suggestion = self._ai_generate_text(prompt)
+            else:
+                suggestion = "That sounds like an interesting character concept! " + \
+                            "Would you like to create a character based on this idea?"
             
             # Initialize character creation state
             if player_id not in self.character_creation_states:
-                self.character_creation_states[player_id] = CharacterCreationState(self.world_controller)
+                # Get ai_system from available sources
+                ai_system = None
+                if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                    # DMChatAI has an ai_system attribute
+                    if hasattr(self.dm_chat_ai, 'ai_system'):
+                        ai_system = self.dm_chat_ai.ai_system
+                elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                    ai_system = self.world_controller.ai_system
+                
+                if ai_system:
+                    self.character_creation_states[player_id] = CharacterCreationState(ai_system)
+                else:
+                    print("Warning: No AI system available for character creation")
+                    # Create without AI system (will have limited functionality)
+                    self.character_creation_states[player_id] = CharacterCreationState(None)
             
             state = self.character_creation_states[player_id]
             state.active = True
@@ -805,7 +925,8 @@ class AIDungeonMaster:
             state.conversation_history.append(f"Player: {message}")
             
             return [Dialog("DM", suggestion, "narration")]
-        except:
+        except Exception as e:
+            print(f"Error suggesting character creation: {e}")
             return [Dialog("DM", 
                           "That sounds like an interesting character concept! " +
                           "Would you like to create a character based on this idea?",
@@ -834,7 +955,7 @@ class AIDungeonMaster:
         """
         
         try:
-            final_message = self.world_controller.ai_system.generate_text(prompt)
+            final_message = self._ai_generate_text(prompt)
             state.ready_for_creation = True
             state.conversation_history.append(f"DM: {final_message}")
             return [Dialog("DM", final_message, "narration")]
@@ -865,12 +986,29 @@ class AIDungeonMaster:
         """
         
         try:
-            result = self.world_controller.ai_system.generate_structured_data(prompt, {
-                "should_create": "boolean",
-                "method": "string",
-                "needs_more_info": "boolean",
-                "response": "string"
-            })
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                result = self._ai_generate_structured(prompt, {
+                    "should_create": "boolean",
+                    "method": "string",
+                    "needs_more_info": "boolean",
+                    "response": "string"
+                })
+            # Fallback to world_controller AI system
+            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                result = self._ai_generate_structured(prompt, {
+                    "should_create": "boolean",
+                    "method": "string",
+                    "needs_more_info": "boolean",
+                    "response": "string"
+                })
+            else:
+                result = {
+                    "should_create": False,
+                    "method": None,
+                    "needs_more_info": True,
+                    "response": "I'm not sure I understand. Would you like to create this character?"
+                }
             
             if result.get("should_create", False):
                 # Create the character
@@ -882,7 +1020,8 @@ class AIDungeonMaster:
                 # Continue conversation
                 return [Dialog("DM", result.get("response", "Tell me more about what you'd like."), "narration")]
                 
-        except:
+        except Exception as e:
+            print(f"Error handling creation confirmation: {e}")
             return [Dialog("DM", "I'm not sure I understand. Would you like to create this character?", "narration")]
 
     def _create_character(self, player_id: str, method: str) -> List[Dialog]:
@@ -901,7 +1040,18 @@ class AIDungeonMaster:
         
         # Use the existing character creation system
         try:
-            character = self.world_controller.character_builder.create_character(player_id, char_data)
+            # Try to use character_manager first
+            if hasattr(self, 'character_manager') and self.character_manager:
+                character = self.character_manager.create_character(player_id, char_data)
+            # Fallback to character_builder
+            elif hasattr(self, 'character_builder') and self.character_builder:
+                character = self.character_builder.create_character(player_id, char_data)
+            # Last resort: world_controller
+            elif self.world_controller and hasattr(self.world_controller, 'character_builder'):
+                character = self.world_controller.character_builder.create_character(player_id, char_data)
+            else:
+                raise Exception("No character creation system available")
+            
             response = f"Excellent! I've created {character.name}, a {character.race} {character.classs.name}. "
 
             # Add some flavor based on the creation method
@@ -911,7 +1061,13 @@ class AIDungeonMaster:
                 response += "Point buy allows you to tailor your character's strengths to your play style."
             elif method == "rolling":
                 response += "The traditional rolling method captures the randomness of natural talent!"
-                        
+            
+            # Add character to players if available
+            if hasattr(self, 'players') and self.players and player_id in self.players:
+                player = self.players[player_id]
+                player.character_ids.append(character.id)
+                player.active_character_id = character.id
+            
             # Clean up the creation state
             del self.character_creation_states[player_id]
             
@@ -921,6 +1077,36 @@ class AIDungeonMaster:
             return [Dialog("DM", 
                           "I encountered a problem creating your character. Let's try again.",
                           "system")]
+
+    def _use_ai_for_prompt(self, prompt, method="text", response_format=None):
+        """Use appropriate AI system for prompts"""
+        try:
+            # Try to use DMChatAI first
+            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
+                if method == "text":
+                    return self.dm_chat_ai.generate_text(prompt)
+                elif method == "structured" and response_format:
+                    return self.dm_chat_ai.generate_structured_data(prompt, response_format)
+            
+            # Fallback to world_controller AI system
+            if self.world_controller and hasattr(self.world_controller, 'ai_system'):
+                if method == "text":
+                    return self._ai_generate_text(prompt)
+                elif method == "structured" and response_format:
+                    return self._ai_generate_structured(prompt, response_format)
+            
+            # Final fallback
+            if method == "text":
+                return "I'm unable to generate a response at the moment."
+            else:
+                return {}
+                
+        except Exception as e:
+            print(f"AI generation failed: {e}")
+            if method == "text":
+                return "I encountered an error while generating a response."
+            else:
+                return {}
 
 
 # Example usage and test

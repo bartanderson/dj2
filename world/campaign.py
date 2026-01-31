@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Dict, Optional
 
-#classes defined here Location, NPC, Quest, Faction, WorldState
+#classes defined here Location, NPC, Quest, Faction, CampaignState (was WorldState)
 
 class Location:
     def __init__(self, id: str, name: str, type: str, description: str, 
@@ -102,7 +102,7 @@ class Faction:
             "activities": self.activities
         }
 
-class WorldState:
+class CampaignState:
     def __init__(self):
         self.locations: Dict[str, Location] = {}
         self.npcs: Dict[str, NPC] = {}

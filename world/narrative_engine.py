@@ -1,13 +1,13 @@
 from typing import Dict, List, Optional
-from dungeon_neo.campaign import Quest, Location, Faction, WorldState
+from dungeon_neo.campaign import Quest, Location, Faction, CampaignState
 from dungeon_neo.ai_integration import DungeonAI
 from core.session_manager import SessionManager
 
 
 class NarrativeEngine:
-    def __init__(self, ai: DungeonAI, world: WorldState, session: SessionManager):
+    def __init__(self, ai: DungeonAI, campaign: CampaignState, session: SessionManager):
         self.ai = ai
-        self.world = world
+        self.campaign = campaign
         self.session = session
         self.story_arcs: List[Dict] = []
         self.active_arc: Optional[Dict] = None
@@ -57,7 +57,7 @@ class NarrativeEngine:
     def start_quest(self, quest_id: str):
         """Start tracking a quest"""
         self.session.start_quest(quest_id)
-        quest = self.world.get_quest(quest_id)
+        quest = self.campaign.get_quest(quest_id)
         
         # Generate quest start event
         event = self.ai.generate_structured_data(
@@ -73,7 +73,7 @@ class NarrativeEngine:
     def complete_quest(self, quest_id: str):
         """Handle quest completion"""
         self.session.complete_quest(quest_id)
-        quest = self.world.get_quest(quest_id)
+        quest = self.campaign.get_quest(quest_id)
         
         # Generate quest completion event
         event = self.ai.generate_structured_data(
@@ -92,7 +92,7 @@ class NarrativeEngine:
     def fail_quest(self, quest_id: str):
         """Handle quest failure"""
         self.session.fail_quest(quest_id)
-        quest = self.world.get_quest(quest_id)
+        quest = self.campaign.get_quest(quest_id)
         
         # Generate quest failure event
         event = self.ai.process_prompt(
@@ -107,7 +107,7 @@ class NarrativeEngine:
     
     def generate_quest(self, location_id: str, context: str = "") -> Quest:
         """Generate a new quest using AI"""
-        location = self.world.get_location(location_id)
+        location = self.campaign.get_location(location_id)
         quest_data = self.ai.generate_structured_data(
             f"Generate a quest in {location.name} with context: {context}",
             response_format={
@@ -129,12 +129,12 @@ class NarrativeEngine:
     
     def on_location_discovered(self, location_id: str):
         """Handle location discovery narrative events"""
-        location = self.world.get_location(location_id)
+        location = self.campaign.get_location(location_id)
         if not location.discovered:
             location.discovered = True
             # Generate initial quest for new location
             new_quest = self.generate_quest(location_id, "First discovery")
-            self.world.add_quest(new_quest)
+            self.campaign.add_quest(new_quest)
             self.active_quests.append(new_quest.id) # Start tracking the new quest
     
     def on_quest_completed(self, quest_id: str):
@@ -146,7 +146,7 @@ class NarrativeEngine:
     
     def on_dungeon_enter(self, location_id: str):
         """Handle dungeon entrance narrative events"""
-        location = self.world.get_location(location_id)
+        location = self.campaign.get_location(location_id)
         if not location:
             # Handle missing location
             print(f"Warning: Location {location_id} not found for dungeon enter event")

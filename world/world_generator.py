@@ -1,4 +1,4 @@
-# world\world_generator.py
+# world/world_generator.py
 import json
 import uuid
 import time
@@ -7,7 +7,7 @@ from psycopg2.extras import Json
 from pathlib import Path
 from world.db import Database
 from world.world_builder import WorldBuilder
-from world.campaign import WorldState, Location, Faction, Quest, NPC
+from world.campaign import CampaignState, Location, Faction, Quest, NPC  # Changed
 from world.ai_integration import DungeonAI
 from world.t2i import TextToImage  # New image generator
 
@@ -47,28 +47,28 @@ class WorldGenerator:
         foundation = self.builder.generate("campaign_foundation", theme=theme)
         
         # Create world state
-        world = WorldState()
+        campaign_state = CampaignState()  # Changed
         
         # Generate starting location (always first)
         starting_loc = self._generate_starting_location(theme)
-        world.add_location(starting_loc)
+        campaign_state.add_location(starting_loc)  # Changed
         
         # Generate regions with thematic consistency
         regions = self._generate_regions(theme, params, foundation)
         
         # Populate each region
         for region_idx, region_data in enumerate(regions):
-            self._populate_region(world, region_data, region_idx, theme, params)
+            self._populate_region(campaign_state, region_data, region_idx, theme, params)  # Changed
         
         # Generate factions with relationships
-        self._generate_factions(world, theme, params, foundation)
+        self._generate_factions(campaign_state, theme, params, foundation)  # Changed
         
         # Generate images if enabled
         if params.get("generate_images", True):
-            self._generate_world_images(world, theme)
+            self._generate_world_images(campaign_state, theme)  # Changed
         
         # Generate world map with proper scaling
-        world_data = self._finalize_world(world, theme, params)
+        world_data = self._finalize_world(campaign_state, theme, params)  # Changed
         
         return world_data
 
@@ -141,15 +141,15 @@ class WorldGenerator:
             self.t2i = TextToImage(self.model_path)
             self.image_output_dir.mkdir(exist_ok=True, parents=True)
 
-    def _generate_world_images(self, world, theme):
+    def _generate_world_images(self, campaign_state, theme):  # Changed
         """Generate images for all locations in the world"""
-        print(f"\nGenerating images for {len(world.locations)} locations...")
+        print(f"\nGenerating images for {len(campaign_state.locations)} locations...")  # Changed
         
         image_requests = []
         locations_to_update = []
         
         # Create image requests for all locations
-        for location in world.locations.values():
+        for location in campaign_state.locations.values():  # Changed
             prompt = self._generate_location_image_prompt(location, theme)
             
             image_requests.append({
@@ -265,14 +265,14 @@ class WorldGenerator:
         
         return regions
 
-    def _populate_region(self, world, region_data, region_idx, theme, params):
+    def _populate_region(self, campaign_state, region_data, region_idx, theme, params):  # Changed
         """Populate a region with locations, quests, and NPCs"""
         # Calculate region boundaries for proper spacing
         region_width = 800 // params["region_count"]
         region_x = region_idx * region_width + region_width // 2
         
         # Track existing names to ensure uniqueness
-        existing_names = {loc.name for loc in world.locations.values()}
+        existing_names = {loc.name for loc in campaign_state.locations.values()}  # Changed
         
         for loc_idx in range(params["locations_per_region"]):
             # Determine location type based on region type
@@ -283,16 +283,16 @@ class WorldGenerator:
                 theme, location_type, region_data, region_x, loc_idx, params, existing_names
             )
             
-            world.add_location(location)
+            campaign_state.add_location(location)  # Changed
             existing_names.add(location.name)  # Add to existing names
             
             # Add quests based on density parameter
             if random.random() < params["quest_density"]:
-                self._add_quest_to_location(world, location, theme)
+                self._add_quest_to_location(campaign_state, location, theme)  # Changed
             
             # Add NPCs based on density parameter
             if random.random() < params["npc_density"]:
-                self._add_npcs_to_location(world, location, theme)
+                self._add_npcs_to_location(campaign_state, location, theme)  # Changed
 
     def _determine_location_type(self, region_data, loc_idx):
         """Determine appropriate location type based on region"""
@@ -343,7 +343,7 @@ class WorldGenerator:
             services=loc_data["services"]
         )
 
-    def _add_quest_to_location(self, world, location, theme):
+    def _add_quest_to_location(self, campaign_state, location, theme):  # Changed
         """Add a quest to a location"""
         quest_data = self.builder.generate("quest", 
                                         theme=theme, 
@@ -358,10 +358,10 @@ class WorldGenerator:
             dungeon_required=quest_data.get("dungeon_required", False)
         )
         
-        world.add_quest(quest)
+        campaign_state.add_quest(quest)  # Changed
         location.quests.append(quest.id)
 
-    def _add_npcs_to_location(self, world, location, theme):
+    def _add_npcs_to_location(self, campaign_state, location, theme):  # Changed
         """Add NPCs to a location"""
         npc_count = random.randint(1, 3)  # 1-3 NPCs per location
         
@@ -389,13 +389,13 @@ class WorldGenerator:
                 if "dialogue" in npc_data:
                     npc.dialogue = npc_data["dialogue"]
                 
-                world.add_npc(npc)
+                campaign_state.add_npc(npc)  # Changed
 
             except Exception as e:
                 print(f"Error creating NPC: {e}")
                 continue
 
-    def _generate_factions(self, world, theme, params, foundation):
+    def _generate_factions(self, campaign_state, theme, params, foundation):  # Changed
         """Generate factions with relationships based on campaign"""
         core_conflict = foundation["core_conflict"]
         major_factions = foundation.get("major_factions", [])
@@ -422,7 +422,7 @@ class WorldGenerator:
             faction.relationships = relationships.get(faction.name, {})
             faction.activities = faction_data.get("activities", [])
             
-            world.add_faction(faction)
+            campaign_state.add_faction(faction)  # Changed
 
     def _determine_faction_relationships(self, core_conflict):
         """Determine faction relationships based on campaign conflict"""
@@ -443,7 +443,7 @@ class WorldGenerator:
         
         return relationships
 
-    def _finalize_world(self, world, theme, params):
+    def _finalize_world(self, campaign_state, theme, params):  # Changed
         """Finalize world data without terrain and paths - those are handled by WorldController"""
         # Create the final world data structure
         world_data = {
@@ -451,10 +451,10 @@ class WorldGenerator:
             "seed": self.seed,
             "params": params,
             "starting_location_id": "starting_tavern",
-            "locations": [loc.to_dict() for loc in world.locations.values()],
-            "quests": [q.to_dict() for q in world.quests.values()],
-            "factions": [fac.to_dict() for fac in world.factions.values()],
-            "npcs": [npc.to_dict() for npc in world.npcs.values()]
+            "locations": [loc.to_dict() for loc in campaign_state.locations.values()],  # Changed
+            "quests": [q.to_dict() for q in campaign_state.quests.values()],  # Changed
+            "factions": [fac.to_dict() for fac in campaign_state.factions.values()],  # Changed
+            "npcs": [npc.to_dict() for npc in campaign_state.npcs.values()]  # Changed
             # terrain_grid and paths are handled by WorldController
         }
         
