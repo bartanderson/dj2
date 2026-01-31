@@ -7,1127 +7,1277 @@
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        /* Mode-based visibility */
+        body[data-mode="world"] .world-only {
+            display: block;
         }
+
+        body[data-mode="world"] .dungeon-only {
+            display: none;
+        }
+
+        body[data-mode="dungeon"] .world-only {
+            display: none;
+        }
+
+        body[data-mode="dungeon"] .dungeon-only {
+            display: block;
+        }
+
+        /* Initial state - assume world mode */
+        .world-only {
+            display: block;
+        }
+
+        .dungeon-only {
+            display: none;
+        }
+        /* fix world-map height because it doesn't inherit from parent */
+        #world-map {
+            position: absolute; /* or relative */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        body[data-mode="world"] .app-container.world-only {
+            display: grid !important;
+            grid-template-columns: 250px 1fr !important;
+            grid-template-rows: 70px 1fr !important;
+            height: 100vh !important;
+            position: relative !important;
+            width: 100vw !important;
+        }
+    </style>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+        <!-- Mode indicator -->
+        <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
+            <span>Mode: </span>
+            <span id="current-mode">world</span>
+            <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
+            <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
+        </div>
+    <script>
+function checkMode() {
+    console.log("Checking current mode...");
+    fetch('/api/engine/mode')
+        .then(r => r.json())
+        .then(data => {
+            console.log("Mode API response:", data);
+            const mode = data.current_mode || 'world';
+            console.log("Setting mode to:", mode);
+            updateUIForMode(mode);
+        })
+        .catch(error => console.error("Mode check error:", error));
+}
+
+function updateUIForMode(mode) {
+    console.log("Updating UI for mode:", mode);
+    
+    // Set body attribute for CSS
+    document.body.setAttribute('data-mode', mode);
+    
+    // Update mode text
+    document.getElementById('current-mode').textContent = mode;
+    
+    // Show/hide mode buttons
+    if (mode === 'dungeon') {
+        document.getElementById('enter-dungeon').style.display = 'none';
+        document.getElementById('return-world').style.display = 'inline-block';
+    } else {
+        document.getElementById('enter-dungeon').style.display = 'inline-block';
+        document.getElementById('return-world').style.display = 'none';
+    }
+}
+
+function updateDungeonMap() {
+    const map = document.getElementById('dungeon-map');
+    if (!map) return;
+    const now = Date.now();
+    map.src = `http://localhost:5005/dungeon-image?t=${now}`;
+}
+
+function switchToDungeon() {
+    console.log("Switching to dungeon mode...");
+    
+    // DON'T generate new ID if we already have one
+    if (!window.dungeonGameId) {
+        window.dungeonGameId = 'world_integrated_' + Date.now();
+    }
+    
+    fetch('/api/engine/mode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'dungeon'})
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log("Switch response data:", data);
+        updateUIForMode('dungeon');
         
-        body {
-            background: linear-gradient(135deg, #0d2136, #1a2a6c);
-            color: #fff;
-            height: 100vh;
-            overflow: hidden;
+        // Create new dungeon game with our ID
+        fetch('http://localhost:5005/api/new-game', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({game_id: window.dungeonGameId})
+        })
+        .then(() => {
+            // Initialize display
+            updateDungeonPosition();
+            refreshDungeonImage();
+            addToChatLog("Entered dungeon. Movement controls active.", 'system');
+        });
+    })
+    .catch(error => console.error("Switch error:", error));
+}
+
+function switchToWorld() {
+    // DON'T clear game_id: window.dungeonGameId = null;
+    
+    fetch('/api/engine/mode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({mode: 'world'})
+    })
+    .then(() => {
+        updateUIForMode('world');
+        // Fix for world map rendering error
+        if (typeof renderWorldMap === 'function' && window.worldState) {
+            setTimeout(() => renderWorldMap(window.worldState.worldMap), 100);
         }
+    });
+}
 
+// ===== DUNGEON AI FUNCTIONS =====
 
-        /* begin draggable */
-        .panel {
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid #4ecca3;
-            border-radius: 8px;
-            color: white;
-            z-index: 1000;
-            min-width: 200px;
-            min-height: 150px;
-            resize: both;
-            overflow: auto;
+let dungeonDebugMode = false;
+// Global game ID for dungeon session
+window.dungeonGameId = null;
+
+function toggleDebug() {
+    dungeonDebugMode = !dungeonDebugMode;
+    const img = document.getElementById('dungeon-map');
+    if (img) {
+        img.src = `http://localhost:5005/dungeon-image?debug=${dungeonDebugMode}&t=${Date.now()}`;
+    }
+    addToChatLog(`Debug mode ${dungeonDebugMode ? 'enabled' : 'disabled'}`, 'system');
+}
+
+function addToChatLog(text, sender = 'system') {
+    const chat = document.getElementById('dungeon-chat');
+    if (!chat) return;
+    
+    const div = document.createElement('div');
+    div.style.marginBottom = '5px';
+    div.style.padding = '5px';
+    div.style.borderRadius = '3px';
+    div.style.backgroundColor = 
+        sender === 'user' ? 'rgba(78, 204, 163, 0.2)' :
+        sender === 'ai' ? 'rgba(15, 52, 96, 0.3)' :
+        'rgba(0,0,0,0.3)';
+    
+    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function resetDungeon() {
+    if (!window.dungeonGameId) return;
+    
+    fetch('http://localhost:5005/reset', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({game_id: window.dungeonGameId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        addToChatLog(data.message || 'Dungeon reset', 'system');
+        refreshDungeonImage();
+        updateDungeonPosition();
+    })
+    .catch(err => {
+        addToChatLog(`Error resetting dungeon: ${err}`, 'error');
+    });
+}
+
+function updateDungeonPosition() {
+    if (!window.dungeonGameId) return;
+    
+    fetch(`http://localhost:5005/position?game_id=${window.dungeonGameId}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.position) {
+            const [x, y] = data.position;
+            document.getElementById('dungeon-position').textContent = `(${x}, ${y})`;
+        } else if (data.error) {
+            console.log("Position error:", data.error);
+            document.getElementById('dungeon-position').textContent = `(?, ?)`;
         }
+    })
+    .catch(err => {
+        console.log("Could not get position:", err);
+        document.getElementById('dungeon-position').textContent = `(?, ?)`;
+    });
+}
 
-        .panel-header {
-            background: #4ecca3;
-            color: #232931;
-            padding: 10px;
-            cursor: move;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+function sendAICommand() {
+    if (!window.dungeonGameId) return;
+    
+    const input = document.getElementById('dungeon-ai-command');
+    const command = input.value.trim();
+    if (!command) return;
+    
+    addToChatLog(`> ${command}`, 'user');
+    input.value = '';
+    
+    fetch('http://localhost:5005/ai-command', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            command: command,
+            game_id: window.dungeonGameId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            addToChatLog(`AI: ${data.message}`, 'ai');
+            refreshDungeonImage();
+            updateDungeonPosition();
         }
+    });
+}
 
-        .panel-header h3 {
-            margin: 0;
+function addDungeonChat(text, sender = 'system') {
+    const chat = document.getElementById('dungeon-chat');
+    if (!chat) return;
+    
+    const div = document.createElement('div');
+    div.style.marginBottom = '8px';
+    div.style.padding = '6px';
+    div.style.borderRadius = '4px';
+    div.style.backgroundColor = 
+        sender === 'user' ? 'rgba(78, 204, 163, 0.2)' :
+        sender === 'ai' ? 'rgba(31, 31, 61, 0.8)' :
+        sender === 'error' ? 'rgba(74, 26, 26, 0.8)' :
+        'rgba(15, 52, 96, 0.4)';
+    div.style.color = 
+        sender === 'error' ? '#ff9999' :
+        sender === 'user' ? '#4ecca3' :
+        sender === 'ai' ? '#e6e6e6' :
+        '#cccccc';
+    
+    div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function refreshDungeonImage() {
+    const img = document.getElementById('dungeon-map');
+    if (img && window.dungeonGameId) {
+        const debug = dungeonDebugMode ? 'true' : 'false';
+        img.src = `http://localhost:5005/dungeon-image?game_id=${window.dungeonGameId}&debug=${debug}&t=${Date.now()}`;
+    }
+}
+
+function moveDungeon(direction) {
+    if (!window.dungeonGameId) return;
+    
+    addToChatLog(`Moving ${direction}...`, 'user');
+    
+    fetch('http://localhost:5005/move', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            direction: direction, 
+            steps: 1,
+            game_id: window.dungeonGameId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        addToChatLog(data.message || `Moved ${direction}`, 'system');
+        refreshDungeonImage();
+        updateDungeonPosition();
+    });
+}
+
+function dungeonWait() {
+    addDungeonOutput("You wait and observe...");
+}
+
+function sendDungeonCommand(text) {
+    const command = text || document.getElementById('dungeon-command').value;
+    if (!command) return;
+    
+    addDungeonOutput(`> ${command}`);
+    document.getElementById('dungeon-command').value = '';
+    
+    fetch('/api/dungeon/command', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({command: command})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.result) {
+            if (data.result.message) {
+                addDungeonOutput(data.result.message);
+            }
+            if (data.result.position) {
+                addDungeonOutput(`Position: (${data.result.position[0]}, ${data.result.position[1]})`);
+            }
+            
+            // Add this: Refresh dungeon image after successful command
+            const dungeonMap = document.getElementById('dungeon-map');
+            if (dungeonMap) {
+                dungeonMap.src = `http://localhost:5005/dungeon-image?t=${Date.now()}`;
+            }
         }
+    });
+}
 
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: #232931;
+function addDungeonOutput(text) {
+    const output = document.getElementById('dungeon-output');
+    const div = document.createElement('div');
+    div.textContent = text;
+    output.appendChild(div);
+    output.scrollTop = output.scrollHeight;
+}
+
+// Check mode on page load
+document.addEventListener('DOMContentLoaded', checkMode);
+    </script>
+    <style>
+        /* ===== BASE RESET ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: linear-gradient(135deg, #0d2136, #1a2a6c); color: #fff; height: 100vh; overflow: hidden; }
+        
+        /* ===== MODAL SYSTEM ===== */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); z-index: 9998;
+            display: none; opacity: 0; transition: opacity 0.3s ease;
         }
-
-        .panel-content {
-            padding: 15px;
+        .modal-overlay.active { display: block; opacity: 1; }
+        
+        .modal-content {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95); border: 2px solid #4ecca3; border-radius: 10px;
+            width: 90%; max-width: 600px; max-height: 85vh; z-index: 9999;
+            display: flex; flex-direction: column;
         }
-
-        /* Make sure your existing containers are panels */
-        .map-container, .location-container, .quests-container, .chat-container {
+        .modal-header {
+            padding: 20px; background: #4ecca3; color: #232931;
+            border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h2 { margin: 0; font-size: 1.5rem; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #232931; }
+        .modal-body { padding: 25px; overflow-y: auto; flex-grow: 1; }
+        .modal-actions { padding: 20px; border-top: 1px solid #333; display: flex; justify-content: flex-end; gap: 10px; }
+        
+        /* ===== LAYOUT ===== */
+        #dungeon-ui {
             position: absolute;
-            width: 400px;
-            height: 300px;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            /*display: none;  Initially hidden, will be shown by CSS based on data-mode */
         }
 
-        /* end draggable */
+        /* This rule is now separate - no .app-container here */
+/*        .app-container { 
+            display: grid !important; 
+            grid-template-columns: 250px 1fr !important; 
+            grid-template-rows: 70px 1fr !important; 
+            height: 100vh !important; 
+            position: relative !important; /* Not absolute! */
+        }*/
 
-        /* Main layout */
-        .app-container {
+        /* Make .app-container use grid when visible */
+        .world-only.app-container {
             display: grid;
             grid-template-columns: 250px 1fr;
             grid-template-rows: 70px 1fr;
-            grid-template-areas:
-                "header header"
-                "sidebar main";
             height: 100vh;
+            position: relative;
         }
-        
-        /* Header */
+
+        /* ===== HEADER ===== */
         .app-header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            background: rgba(0, 0, 0, 0.85);
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            min-height: 56px;
-            padding: 0 18px;
-            border-bottom: 2px solid #4ecca3;
-            z-index: 9999;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            grid-column: 1 / -1; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: space-between;
+            align-items: center; padding: 0 20px; border-bottom: 2px solid #4ecca3; z-index: 100;
         }
+        .logo { font-size: 1.8rem; font-weight: bold; color: #4ecca3; }
+        .header-controls { display: flex; gap: 15px; align-items: center; }
+        .quick-actions { display: flex; gap: 8px; }
         
-        .logo {
-            font-size: 1.8rem;
-            font-weight: bold;
-            color: #4ecca3;
-            text-shadow: 0 0 5px rgba(78, 204, 163, 0.5);
-        }
-        
-        .header-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: center;
-            width: auto;
-        }
-        .quick-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-            margin-left: 12px;
-        }
-        .action-btn {
-            min-width: 80px;
-            max-width: 120px;
-            font-size: 0.95rem;
-            padding: 7px 10px;
-        }
-        @media (max-width: 600px) {
-            .app-header {
-                flex-direction: column;
-                align-items: flex-start;
-                min-height: 70px;
-                padding: 0 8px;
-            }
-            .header-controls {
-                width: 100%;
-                justify-content: flex-start;
-            }
-            .quick-actions {
-                width: 100%;
-                justify-content: flex-start;
-                margin-left: 0;
-            }
-        }
-        
-        /* Sidebar */
+        /* ===== SIDEBAR (Tabs) ===== */
         .app-sidebar {
-            grid-area: sidebar;
-            background: rgba(0, 0, 0, 0.85);
-            display: flex;
-            flex-direction: column;
-            padding: 20px 0;
-            gap: 5px;
-            z-index: 90;
-            border-right: 2px solid #4ecca3;
-            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.85); border-right: 2px solid #4ecca3;
+            display: flex; flex-direction: column; padding: 20px 0; overflow-y: auto;
         }
-        
-        .menu-section {
-            margin-bottom: 20px;
-        }
-        
-        .menu-header {
-            padding: 10px 20px;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #4ecca3;
-            border-bottom: 1px solid #2c5d51;
-            margin-bottom: 10px;
-        }
-        
-        .menu-item {
-            padding: 12px 20px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            cursor: pointer;
+        .menu-section { margin-bottom: 20px; }
+        .menu-header { padding: 10px 20px; color: #4ecca3; border-bottom: 1px solid #2c5d51; margin-bottom: 10px; }
+        .tab-btn {
+            padding: 12px 20px; display: flex; align-items: center; gap: 15px; cursor: pointer;
+            color: #e0e0e0; background: none; border: none; width: 100%; text-align: left;
             transition: all 0.3s ease;
-            color: #e0e0e0;
         }
+        .tab-btn:hover { background: rgba(78, 204, 163, 0.15); color: #4ecca3; }
+        .tab-btn.active { background: rgba(78, 204, 163, 0.25); color: #4ecca3; border-right: 3px solid #4ecca3; }
+        .tab-icon { width: 24px; text-align: center; }
         
-        .menu-item:hover {
-            background: rgba(78, 204, 163, 0.15);
-            color: #4ecca3;
-        }
+        /* ===== MAIN CONTENT ===== */
+        .app-main { background: rgba(0, 0, 0, 0.2); overflow: hidden; position: relative; }
         
-        .menu-item.active {
-            background: rgba(78, 204, 163, 0.25);
-            color: #4ecca3;
-            border-right: 3px solid #4ecca3;
-        }
+        /* ===== TAB CONTENT ===== */
+        .tab-content { width: 100%; height: 100%; display: none; padding: 20px; overflow-y: auto; }
+        .tab-content.active { display: block; }
         
-        .menu-icon {
-            width: 24px;
-            text-align: center;
-        }
+        /* ===== MAP TAB ===== */
+        .map-container { width: 100%; height: 100%; background: #0a1729; position: relative; overflow: hidden; min-height: 600px;}
+        #world-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #terrain-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; cursor: grab; }
+        #terrain-canvas:active { cursor: grabbing; }
         
-        /* Main content area */
-        .app-main {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            background: rgba(0, 0, 0, 0.2);
-            padding-top: 70px;
+        .map-controls {
+            position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10;
         }
-   
-        /* World map */
-        .map-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #0a1729;
-            border-radius: 0;
-            overflow: hidden;
-            box-shadow: none;
-            border: none;
-            z-index: 10;
+        .map-btn {
+            width: 45px; height: 45px; border-radius: 50%; background: rgba(0, 0, 0, 0.7);
+            color: white; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border: 1px solid #4ecca3; transition: all 0.3s ease; font-size: 1.2rem;
         }
+        .map-btn:hover { background: rgba(78, 204, 163, 0.3); transform: scale(1.1); }
         
-        #world-map {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        #terrain-canvas {
-            position: absolute;
-            left: 0;
-            top: 0;
-            transform-origin: 0 0;
-            cursor: default;
-        }
-
-        .location-preview {
-            position: fixed;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 100;
-            pointer-events: none;
-        }
+        /* ===== OTHER TABS ===== */
+        .tab-panel { background: rgba(0, 0, 0, 0.4); border-radius: 8px; padding: 20px; height: 100%; border: 1px solid #3a5f85; }
         
-        /* Location panel */
-        .location-container {
-            grid-area: location;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            border: 1px solid #3a5f85;
-        }
-        
-        .location-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #3a5f85;
-        }
-        
-        .location-image {
-            height: 150px;
-            background: #1a2530;
-            margin-bottom: 15px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-        
-        .location-image-placeholder {
-            color: #3a5f85;
-            text-align: center;
-            padding: 20px;
-        }
-        
-        .location-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
-        /* Quests panel */
-        .quests-container {
-            grid-area: quests;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            border: 1px solid #3a5f85;
-            overflow-y: auto;
-        }
-        
-        .quest-item {
-            background: rgba(78, 204, 163, 0.1);
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 10px;
-            border-left: 3px solid #4ecca3;
-        }
-        
-        .quest-item h4 {
-            color: #4ecca3;
-            margin-bottom: 5px;
-        }
-        
-        /* Buttons */
+        /* ===== BUTTONS ===== */
         .btn {
-            padding: 10px 15px;
-            background: #4ecca3;
-            color: #1a2a6c;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+            padding: 10px 20px; background: #4ecca3; color: #1a2a6c; border: none; border-radius: 4px;
+            font-weight: bold; cursor: pointer; transition: all 0.3s ease; display: inline-flex;
+            align-items: center; justify-content: center; gap: 8px;
         }
+        .btn:hover { background: #3bb998; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .btn.secondary { background: #6c757d; }
+        .btn.secondary:hover { background: #5a6268; }
         
-        .btn:hover {
-            background: #3bb998;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        .action-btn {
+            display: flex; flex-direction: column; align-items: center; padding: 10px;
+            background: rgba(78, 204, 163, 0.2); border: 1px solid #4ecca3; border-radius: 6px;
+            color: white; cursor: pointer; transition: all 0.3s ease; min-width: 80px;
         }
+        .action-btn:hover { background: rgba(78, 204, 163, 0.4); transform: translateY(-2px); }
+        .action-btn.active { background: rgba(78, 204, 163, 0.6); border-color: #fff; }
         
-        .btn i {
-            font-size: 1rem;
+        /* ===== LOADING ===== */
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); color: white; display: none;
+            justify-content: center; align-items: center; z-index: 9999;
         }
-        
-        /* Notification system */
-        .notification-container {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            z-index: 1000;
+        .spinner {
+            border: 4px solid #f3f3f3; border-top: 4px solid #4ecca3; border-radius: 50%;
+            width: 40px; height: 40px; animation: spin 2s linear infinite; margin-bottom: 15px;
         }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
+        /* ===== NOTIFICATIONS ===== */
+        .notification-container { position: fixed; top: 80px; right: 20px; z-index: 1000; }
         .notification {
-            background: rgba(0, 0, 0, 0.9);
-            border-left: 4px solid #4ecca3;
-            padding: 12px 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            max-width: 300px;
-            animation: slideIn 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            background: rgba(0,0,0,0.9); border-left: 4px solid #4ecca3; padding: 12px 15px;
+            margin-bottom: 10px; border-radius: 4px; max-width: 300px; animation: slideIn 0.3s ease;
         }
-        
-        .notification.error {
-            border-left-color: #f44336;
-        }
-        
-        .notification.success {
-            border-left-color: #4CAF50;
-        }
-        
+        .notification.error { border-left-color: #f44336; }
+        .notification.success { border-left-color: #4CAF50; }
         @keyframes slideIn {
             from { transform: translateX(100px); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
         
-        /* Connection status */
+        /* ===== CONNECTION STATUS ===== */
         #connection-status {
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            font-weight: bold;
+            padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; font-weight: bold;
+            background: #4CAF50; color: white;
         }
         
-        .status-connected { background-color: #4CAF50; }
-        .status-disconnected { background-color: #f44336; }
-        .status-connecting { background-color: #FF9800; }
-        
-        /* Map elements */
-        .map-controls {
-            position: absolute;
-            bottom: 15px;
-            left: 15px;
-            right: auto;
-            top: auto;
-            display: flex;
-            gap: 10px;
-            z-index: 10;
-        }
-        
-        .map-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            border: 1px solid #4ecca3;
-            transition: all 0.3s ease;
-        }
-        
-        .map-btn:hover {
-            background: rgba(78, 204, 163, 0.3);
-            transform: scale(1.1);
-        }
-
-        .location-marker:hover {
-            transform: scale(1.2);
-        }
-
-        .actions-panel {
-            grid-area: actions;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            border: 1px solid #3a5f85;
-        }
-
-        .actions-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-        }
-
-        .action-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 10px;
-            background: rgba(78, 204, 163, 0.2);
-            border: 1px solid #4ecca3;
-            border-radius: 6px;
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .action-btn:hover {
-            background: rgba(78, 204, 163, 0.4);
-            transform: translateY(-2px);
-        }
-
-        .action-btn i {
-            font-size: 1.5rem;
-            margin-bottom: 5px;
-        }
-
-        .action-btn span {
-            font-size: 0.9rem;
-        }
-
-        
-        /* Path styling */
-        .path {
-            stroke: #8d6e63;
-            stroke-width: 2;
-            fill: none;
-        }
-
-        .chat-container {
-            grid-area: chat;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            height: 300px;
-            border: 1px solid #3a5f85;
-        }
-
-        .chat-header {
-            padding-bottom: 10px;
-            margin-bottom: 10px;
-            border-bottom: 1px solid #3a5f85;
-        }
-
-        .chat-header h3 {
-            color: #4ecca3;
-            margin: 0;
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 10px;
-            padding: 10px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-        }
-
-        .chat-input-container {
-            display: flex;
-            gap: 10px;
-        }
-
-        #dm-chat-input {
-            flex: 1;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid #3a5f85;
-            border-radius: 4px;
-            color: white;
-        }
-
-        #dm-chat-input:focus {
-            outline: none;
-            border-color: #4ecca3;
-        }
-
-        /* Message styling */
-        .message {
-            margin-bottom: 8px;
-            padding: 8px;
-            border-radius: 4px;
-        }
-
-        .message.player {
-            background: rgba(78, 204, 163, 0.2);
-            text-align: right;
-        }
-
-        .message.dm {
-            background: rgba(59, 130, 246, 0.2);
-        }
-
-        .message.system {
-            background: rgba(107, 114, 128, 0.2);
-            font-style: italic;
-        }
-
-        .message.error {
-            background: rgba(239, 68, 68, 0.2);
-            color: #f87171;
-        }
-
-
-        #travel-panel {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80%;
-            max-width: 500px;
-            max-height: 80vh;
-            background: rgba(0, 0, 0, 0.9);
-            border: 2px solid #4ecca3;
-            border-radius: 8px;
-            color: white;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #travel-panel.hidden {
-            display: none;
-        }
-
-        .panel-header {
-            padding: 15px 20px;
-            background: #4ecca3;
-            color: #232931;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .panel-header h2 {
-            margin: 0;
-            font-size: 1.5rem;
-        }
-
-        .close-panel {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: #232931;
-        }
-
-        .panel-content {
-            padding: 20px;
-            overflow-y: auto;
-            flex-grow: 1;
-        }
-
-        .travel-description {
-            margin-bottom: 20px;
-        }
-
-        .travel-locations-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
+        /* ===== TRAVEL LOCATIONS ===== */
+        .travel-locations-list { margin: 15px 0; }
         .travel-location-btn {
-            background: #2d6a4f;
-            border: 1px solid #4ecca3;
-            border-radius: 4px;
-            padding: 12px 15px;
-            color: white;
-            text-align: left;
-            cursor: pointer;
-            transition: background-color 0.2s;
+            display: block; width: 100%; padding: 15px; margin-bottom: 10px;
+            background: #2d6a4f; border: 1px solid #4ecca3; border-radius: 5px;
+            color: white; text-align: left; cursor: pointer; transition: all 0.3s;
         }
-
-        .travel-location-btn:hover {
-            background: #40916c;
-        }
-
-        .travel-location-name {
-            font-weight: bold;
-            font-size: 1.1rem;
-        }
-
-        .travel-location-type {
-            font-style: italic;
-            color: #cccccc;
-            font-size: 0.9rem;
-        }
-
-        .no-locations-message {
-            text-align: center;
-            padding: 20px;
-            color: #cccccc;
-        }
-
-        .travel-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .secondary-button {
-            background: #6c757d;
-            border: none;
-            border-radius: 4px;
-            padding: 10px 20px;
-            color: white;
-            cursor: pointer;
-        }
-
-        .secondary-button:hover {
-            background: #5a6268;
-        }
-
-        
-        /* Responsive adjustments */
-        @media (max-width: 1200px) {
-            .app-main {
-                grid-template-columns: 1fr;
-                grid-template-rows: 1fr 1fr 1fr;
-                grid-template-areas:
-                    "map"
-                    "location"
-                    "quests";
-            }
-            
-            .map-container {
-                min-height: 400px;
-            }
-        }
-
-        .character-sheet {
-            border: 1px solid #8a6d3b;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 10px 0;
-            background-color: #fcf8e3;
-            color: #8a6d3b;
-        }
-
-        .character-sheet h3 {
-            margin-top: 0;
-            color: #8a6d3b;
-            border-bottom: 1px solid #8a6d3b;
-            padding-bottom: 5px;
-        }
-
-        .character-details p {
-            margin: 5px 0;
-        }
-
-        #finalize-character {
-            background-color: #5cb85c;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        #finalize-character:hover {
-            background-color: #4cae4c;
-        }
-                
-        @media (max-width: 768px) {
-            .app-container {
-                grid-template-columns: 1fr;
-                grid-template-rows: 70px auto 1fr;
-                grid-template-areas:
-                    "header"
-                    "sidebar"
-                    "main";
-            }
-            
-            .app-sidebar {
-                flex-direction: row;
-                overflow-x: auto;
-                padding: 10px;
-                height: auto;
-            }
-            
-            .menu-section {
-                display: flex;
-                margin-bottom: 0;
-            }
-            
-            .menu-header {
-                display: none;
-            }
-            
-            .menu-item {
-                padding: 10px 15px;
-                flex-direction: column;
-                text-align: center;
-                font-size: 0.8rem;
-                gap: 5px;
-            }
-            
-            .menu-item span {
-                display: none;
-            }
-        }
+        .travel-location-btn:hover { background: #40916c; transform: translateY(-2px); }
     </style>
 </head>
-<body>
-    <div class="app-container">
-        <!-- Header -->
+<body data-mode="world">
+    <div class="app-container world-only">
+        <!-- HEADER -->
         <header class="app-header">
             <div class="logo">Dungeon World</div>
             <div class="header-controls">
-                <div id="connection-status" class="status-connected">Connected</div>
-                <!-- TODO: Hook up settings functionality here (user preferences, audio, display, controls, etc.) -->
-                <button class="btn"><i class="fas fa-cog"></i> Settings</button>
+                <div id="connection-status">Connected</div>
                 <div class="quick-actions">
-                    <button class="action-btn" id="travel-btn"><i class="fas fa-walking"></i><span>Travel</span></button>
-                    <button class="action-btn" id="inventory-btn"><i class="fas fa-backpack"></i><i class="fas fa-box-open" style="margin-left:4px;"></i><span>Inventory</span></button>
-                    <button class="action-btn" id="quests-btn"><i class="fas fa-scroll"></i><span>Quests</span></button>
-                    <button class="action-btn" id="party-btn"><i class="fas fa-users"></i><span>Party</span></button>
-                    <button class="action-btn" id="status-btn"><i class="fas fa-info-circle"></i><span>Status</span></button>
+                    <button class="action-btn" id="travel-btn">
+                        <i class="fas fa-walking"></i>
+                        <span>Travel</span>
+                    </button>
+                    <button class="action-btn" id="inventory-btn">
+                        <i class="fas fa-backpack"></i>
+                        <span>Inventory</span>
+                    </button>
+                    <button class="action-btn" id="quests-btn">
+                        <i class="fas fa-scroll"></i>
+                        <span>Quests</span>
+                    </button>
+                    <button class="action-btn" id="party-btn">
+                        <i class="fas fa-users"></i>
+                        <span>Party</span>
+                    </button>
+                    <button class="action-btn" id="status-btn">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Status</span>
+                    </button>
+                    <button class="action-btn" id="chat-btn">
+                        <i class="fas fa-comments"></i>
+                        <span>Chat</span>
+                    </button>
                 </div>
+                <button class="btn" id="settings-btn"><i class="fas fa-cog"></i> Settings</button>
             </div>
         </header>
         
-        <!-- Tab Navigation -->
-        <nav class="tab-bar">
-            <button class="tab-btn active" data-panel="map-panel"><i class="fas fa-map-marked-alt"></i><span>Map</span></button>
-            <button class="tab-btn" data-panel="character-panel"><i class="fas fa-user"></i><span>Character</span></button>
-            <button class="tab-btn" data-panel="party-panel"><i class="fas fa-users"></i><span>Party</span></button>
-            <button class="tab-btn" data-panel="inventory-panel"><i class="fas fa-backpack"></i><span>Inventory</span></button>
-            <button class="tab-btn" data-panel="quests-panel"><i class="fas fa-scroll"></i><span>Quests</span></button>
-            <button class="tab-btn" data-panel="status-panel" id="status-tab"><i class="fas fa-info-circle"></i><span>Status</span></button>
+        <!-- SIDEBAR TABS -->
+        <nav class="app-sidebar">
+            <div class="menu-section">
+                <div class="menu-header">Navigation</div>
+                <button class="tab-btn active" data-tab="map-tab">
+                    <div class="tab-icon"><i class="fas fa-map-marked-alt"></i></div>
+                    <span>World Map</span>
+                </button>
+                <button class="tab-btn" data-tab="character-tab">
+                    <div class="tab-icon"><i class="fas fa-user"></i></div>
+                    <span>Character</span>
+                </button>
+                <button class="tab-btn" data-tab="party-tab">
+                    <div class="tab-icon"><i class="fas fa-users"></i></div>
+                    <span>Party</span>
+                </button>
+                <button class="tab-btn" data-tab="inventory-tab">
+                    <div class="tab-icon"><i class="fas fa-backpack"></i></div>
+                    <span>Inventory</span>
+                </button>
+                <button class="tab-btn" data-tab="quests-tab">
+                    <div class="tab-icon"><i class="fas fa-scroll"></i></div>
+                    <span>Quests</span>
+                </button>
+            </div>
         </nav>
-    <!-- Removed old sidebar -->
-    <!-- Removed old quick actions panel -->
         
-        <!-- Main Content Area -->
+        <!-- MAIN CONTENT -->
         <main class="app-main">
-            <!-- Status Panel (right half overlay) -->
-            <div id="status-panel" class="panel tab-content" style="display:none; position: absolute; top: 80px; right: 0; width: 400px; max-width: 45vw; height: calc(100vh - 80px); z-index: 1001;">
-                <div class="panel-header"><h3>Status & Next Steps</h3><button class="close-btn" id="close-status">×</button></div>
-                <div class="panel-content" id="status-content">
-                    <!-- Status info will be populated by JS -->
-                </div>
-            </div>
-            <!-- Chat Panel (right half overlay) -->
-            <div id="chat-panel" class="panel tab-content" style="display:none; position: absolute; top: 80px; right: 0; width: 400px; max-width: 45vw; height: calc(100vh - 80px); z-index: 1001;">
-                <div class="panel-header"><h3>DM Chat</h3><button class="close-btn" id="close-chat">×</button></div>
-                <div class="panel-content" id="chat-content">
-                    <div id="chat-messages" style="height: calc(100% - 60px); overflow-y: auto; margin-bottom: 10px;"></div>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="text" id="chat-input" placeholder="Type your message..." style="flex:1; padding:8px; border-radius:4px; border:1px solid #4ecca3;">
-                        <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i></button>
-                    </div>
-                </div>
-            </div>
-            <!-- Removed duplicate map container -->
-            <!-- Travel panel -->
-            <div id="travel-panel" class="panel hidden">
-                <div class="panel-header">
-                    <h2>Travel to New Location</h2>
-                    <button class="close-panel" data-panel="travel-panel">×</button>
-                </div>
-                
-                <div class="panel-content">
-                    <div class="travel-description">
-                        <p>Choose a destination from your discovered locations:</p>
-                    </div>
-                    
-                    <div id="travel-locations" class="travel-locations-list">
-                        <!-- This will be populated dynamically with JavaScript -->
-                        <div class="no-locations-message">
-                            <p>You haven't discovered any locations yet.</p>
-                            <p>Explore the world to find new places!</p>
+            <!-- Map Tab (Default) -->
+            <div id="map-tab" class="tab-content active">
+                <div class="map-container">
+                    <div id="world-map">
+                        <canvas id="terrain-canvas"></canvas>
+                        <div class="map-controls">
+                            <button class="map-btn" id="zoom-in" title="Zoom In"><i class="fas fa-plus"></i></button>
+                            <button class="map-btn" id="zoom-out" title="Zoom Out"><i class="fas fa-minus"></i></button>
+                            <button class="map-btn" id="center-map" title="Center"><i class="fas fa-crosshairs"></i></button>
+                            <button class="map-btn" id="reset-view" title="Reset"><i class="fas fa-home"></i></button>
                         </div>
-                    </div>
-                    
-                    <div class="travel-actions">
-                        <button id="cancel-travel" class="secondary-button">Cancel</button>
-                    </div>
-                </div>
-            </div>
-            <div id="inventory-panel" class="modal-panel hidden">
-                <div class="panel-header">
-                    <h2>Inventory</h2>
-                    <button class="close-panel" data-panel="inventory-panel">×</button>
-                </div>
-                
-                <div class="panel-content">
-                    <div class="inventory-description">
-                        <p>Your carried items and equipment:</p>
-                    </div>
-                    
-                    <div id="inventory-items" class="inventory-items-grid">
-                        <!-- This will be populated dynamically with JavaScript -->
-                        <div class="no-items-message">
-                            <p>Your inventory is empty.</p>
-                        </div>
-                    </div>
-                    
-                    <div class="inventory-stats">
-                        <div class="weight-info">
-                            <span>Carried: </span>
-                            <span id="current-weight">0</span>
-                            <span> / </span>
-                            <span id="max-weight">100</span>
-                            <main class="app-main">
-                                <!-- Map Panel -->
-                                <div id="map-panel" class="map-container tab-content active">
-                                    <div id="world-map" style="position: relative; width: 100vw; height: 100vh; overflow: hidden;">
-                                        <canvas id="terrain-canvas" style="position: absolute; z-index: 0; left: 0; top: 0; width: 100vw; height: 100vh;"></canvas>
-                                        <div class="location-image-placeholder">
-                                            <i class="fas fa-map-marked-alt" style="font-size: 3rem; margin-bottom: 15px;"></i>
-                                            <p>World map will be rendered here</p>
-                                        </div>
-                                        <div class="map-controls" style="position: absolute; bottom: 15px; left: 15px; right: auto; top: auto; display: flex; gap: 10px; z-index: 10;">
-                                            <div class="map-btn" id="zoom-in"><i class="fas fa-plus"></i></div>
-                                            <div class="map-btn" id="zoom-out"><i class="fas fa-minus"></i></div>
-                                            <div class="map-btn" id="map-center"><i class="fas fa-crosshairs"></i></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Character Panel -->
-                                <div id="character-panel" class="panel tab-content" style="display:none;">
-                                    <div class="panel-header"><h3>Character</h3></div>
-                                    <div class="panel-content">
-                                        <div id="character-sheet" class="character-sheet" style="display: none;">
-                                            <h3>Character Sheet (Work in Progress)</h3>
-                                            <div class="character-details">
-                                                <p><strong>Name:</strong> <span id="char-name">Not set</span></p>
-                                                <p><strong>Race:</strong> <span id="char-race">Not set</span></p>
-                                                <p><strong>Class:</strong> <span id="char-class">Not set</span></p>
-                                                <p><strong>Background:</strong> <span id="char-background">Not set</span></p>
-                                                <p><strong>Personality:</strong> <span id="char-personality">Not set</span></p>
-                                                <p><strong>Fears:</strong> <span id="char-flaws">Not set</span></p>
-                                                <p><strong>Motivations:</strong> <span id="char-ideals">Not set</span></p>
-                                                <p><strong>Skills:</strong> <span id="char-skills">Not set</span></p>
-                                            </div>
-                                            <button id="finalize-character" style="display: none;">Finalize Character</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Party Panel -->
-                                <div id="party-panel" class="panel tab-content" style="display:none;">
-                                    <div class="panel-header"><h3>Party</h3></div>
-                                    <div class="panel-content">
-                                        <p>Party controls and member list go here.</p>
-                                    </div>
-                                </div>
-                                <!-- Inventory Panel -->
-                                <div id="inventory-panel" class="panel tab-content" style="display:none;">
-                                    <div class="panel-header"><h3>Inventory</h3></div>
-                                    <div class="panel-content">
-                                        <p>Inventory items and equipment go here.</p>
-                                    </div>
-                                </div>
-                                <!-- Quests Panel -->
-                                <div id="quests-panel" class="panel tab-content" style="display:none;">
-                                    <div class="panel-header"><h3>Quests</h3></div>
-                                    <div class="panel-content">
-                                        <p>Quest log and details go here.</p>
-                                    </div>
-                                </div>
-                            </main>
-                        <button class="btn"><i class="fas fa-search"></i> Explore</button>
-                        <button class="btn"><i class="fas fa-bed"></i> Rest</button>
                     </div>
                 </div>
             </div>
             
-            <!-- Quests panel -->
-            <div class="quests-container panel resizable-panel">
-                <div class="panel-header">
-                    <h3>Quests</h3>
-                    <button class="close-btn">&times;</button>
-                </div>
-                <div class="panel-content">
-                    <div class="location-header">
-                        <h2>Active Quests</h2>
+            <!-- Character Tab -->
+            <div id="character-tab" class="tab-content">
+                <div class="tab-panel">
+                    <h2>Character Sheet</h2>
+                    <div id="character-sheet" style="display: none;">
+                        <div class="character-details">
+                            <p><strong>Name:</strong> <span id="char-name">Not set</span></p>
+                            <p><strong>Race:</strong> <span id="char-race">Not set</span></p>
+                            <p><strong>Class:</strong> <span id="char-class">Not set</span></p>
+                            <p><strong>Background:</strong> <span id="char-background">Not set</span></p>
+                            <p><strong>Personality:</strong> <span id="char-personality">Not set</span></p>
+                        </div>
+                        <button id="finalize-character" class="btn" style="display: none; margin-top: 15px;">Finalize Character</button>
                     </div>
-                    
-                    <div class="quests-list">
-                        <p>Quest log will be populated by the application</p>
+                    <p id="no-character-message">Use the Chat button to create a character!</p>
+                </div>
+            </div>
+            
+            <!-- Party Tab -->
+            <div id="party-tab" class="tab-content">
+                <div class="tab-panel">
+                    <h2>Party Management</h2>
+                    <div id="party-list">
+                        <p>No active party. Create or join a party to begin your adventure.</p>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button id="create-party-btn" class="btn">Create Party</button>
+                        <button id="join-party-btn" class="btn secondary">Join Party</button>
                     </div>
                 </div>
             </div>
+            
+            <!-- Inventory Tab -->
+            <div id="inventory-tab" class="tab-content">
+                <div class="tab-panel">
+                    <h2>Inventory</h2>
+                    <p>Your carried items and equipment:</p>
+                    <div id="inventory-items" style="margin: 15px 0;">
+                        <p>Your inventory is empty.</p>
+                    </div>
+                    <div class="inventory-stats">
+                        <div class="weight-info">
+                            <span>Carried: </span><span id="current-weight">0</span>
+                            <span> / </span><span id="max-weight">100</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quests Tab -->
+            <div id="quests-tab" class="tab-content">
+                <div class="tab-panel">
+                    <h2>Quest Log</h2>
+                    <div id="quest-log">
+                        <p>No active quests. Accept a quest to begin your adventure!</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 
-            </main>
+    <!-- Dungeon UI -->
+    <div id="dungeon-ui" class="dungeon-only">
+        <div style="display: grid; grid-template-columns: minmax(400px, 3fr) minmax(300px, 1fr); height: 100vh; margin: 0; padding: 0; overflow: hidden; gap: 0;">
+            <!-- LEFT COLUMN: Dungeon Map (resizes automatically) -->
+            <div style="background: #0a0a1a; padding: 10px; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+                    <h2 style="color: #4ecca3; margin: 0;">Dungeon Map</h2>
+                    <button onclick="switchToWorld()" style="padding: 8px 15px; background: #4ecca3; color: #232931; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Return to World</button>
+                </div>
+                <div style="flex: 1; min-height: 0; display: flex; align-items: stretch; justify-content: stretch; overflow: hidden; border: 2px solid #4ecca3; border-radius: 4px; background: black;">
+                    <img id="dungeon-map" src="http://localhost:5005/dungeon-image" 
+                         style="width: 100%; height: 100%; object-fit: contain; display: block; min-width: 0; min-height: 0;">
+                </div>
+            </div>
+            
+            <!-- RIGHT COLUMN: Resizable AI Controls -->
+            <div id="dungeon-chat-panel" 
+                 style="background: linear-gradient(135deg, #1a1a2e, #16213e); 
+                        padding: 10px; 
+                        display: flex; 
+                        flex-direction: column; 
+                        overflow: hidden;
+                        resize: horizontal;
+                        min-width: 300px;
+                        max-width: 600px;
+                        border-left: 2px solid #4ecca3;">
+                
+                <h2 style="color: #4ecca3; margin-bottom: 15px; text-align: center;">AI Dungeon Master</h2>
+                
+                <!-- Debug controls and position -->
+                <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <button onclick="toggleDebug()" style="padding: 6px 12px; margin-right: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Toggle Debug</button>
+                            <button onclick="resetDungeon()" style="padding: 6px 12px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">New Dungeon</button>
+                        </div>
+                        <span style="font-family: monospace; font-size: 13px; color: #cccccc;">
+                            Position: <span id="dungeon-position">(?, ?)</span>
+                        </span>
+                    </div>
+                    
+                    <!-- Movement grid -->
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Movement Controls:</div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                            <button onclick="moveDungeon('northwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↖ NW</button>
+                            <button onclick="moveDungeon('north')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↑ North</button>
+                            <button onclick="moveDungeon('northeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↗ NE</button>
+                            <button onclick="moveDungeon('west')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">← West</button>
+                            <button onclick="dungeonWait()" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Wait</button>
+                            <button onclick="moveDungeon('east')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">→ East</button>
+                            <button onclick="moveDungeon('southwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↙ SW</button>
+                            <button onclick="moveDungeon('south')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↓ South</button>
+                            <button onclick="moveDungeon('southeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↘ SE</button>
+                        </div>
+                        <div style="font-size: 11px; color: #888; text-align: center; margin-top: 3px;">Keyboard: Q W E / A S D / Z X C</div>
+                    </div>
+                </div>
+                
+                <!-- Chat log -->
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 200px;">
+                    <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Chat Log:</div>
+                    <div id="dungeon-chat" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; font-size: 12px; line-height: 1.3; margin-bottom: 10px;">
+                        <div style="color: #cccccc; font-style: italic;">AI Dungeon Master ready. Use movement buttons or type commands.</div>
+                    </div>
+                    
+                    <!-- AI Command input -->
+                    <div>
+                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Send AI Command:</div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="dungeon-ai-command" placeholder="Type command..." 
+                                   style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px; font-size: 13px;">
+                            <button onclick="sendAICommand()" style="padding: 8px 15px; background: #4ecca3; color: #232931; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ===== MODALS ===== -->
+    
+    <!-- Travel Modal -->
+    <div id="travel-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Travel to New Location</h2>
+                <button class="modal-close" id="close-travel">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="travel-description">
+                    <p>Choose a destination from your discovered locations:</p>
+                </div>
+                <div id="travel-locations" class="travel-locations-list">
+                    <!-- Dynamic content will be added here -->
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="cancel-travel" class="btn secondary">Cancel</button>
+            </div>
+        </div>
     </div>
     
-    <!-- Notification Container -->
-    <div class="notification-container">
-        <!-- Notifications will be added here dynamically -->
+    <!-- Status Modal -->
+    <div id="status-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Game Status</h2>
+                <button class="modal-close" id="close-status">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="status-content">
+                    <p>Loading game status...</p>
+                </div>
+            </div>
+        </div>
     </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Chat/status toggle logic
-            // statusBtn already declared above, do not redeclare
-            const chatBtn = document.createElement('button');
-            chatBtn.className = 'action-btn';
-            chatBtn.id = 'chat-btn';
-            chatBtn.innerHTML = '<i class="fas fa-comments"></i><span>Chat</span>';
-            document.querySelector('.quick-actions').appendChild(chatBtn);
-
-            function showPanel(panelId) {
-                document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
-                const panel = document.getElementById(panelId);
-                if (panel) panel.style.display = '';
-            }
-
-            // Helper to check requirements and set button color/tooltip
-            function updateQuickActions() {
-                const ws = window.worldState || {};
-                const actions = [
-                    {id: 'chat-btn', req: true, info: ''},
-                    {id: 'quests-btn', req: true, info: ''},
-                    {id: 'party-btn', req: ws.characters && Object.keys(ws.characters).length > 0, info: 'Create a character to join a party.'},
-                    {id: 'inventory-btn', req: ws.characters && Object.keys(ws.characters).length > 0, info: 'Create a character to view inventory.'},
-                    {id: 'travel-btn', req: ws.currentLocation, info: 'Select a location to travel.'},
-                    {id: 'status-btn', req: true, info: ''}
-                ];
-                actions.forEach(a => {
-                    const btn = document.getElementById(a.id);
-                    if (btn) {
-                        if (!a.req) {
-                            btn.style.background = '#a94442';
-                            btn.title = a.info;
-                        } else {
-                            btn.style.background = '';
-                            btn.title = '';
-                        }
-                    }
-                });
-            }
-            // Call on load and after world state updates
-            updateQuickActions();
-            window.updateQuickActions = updateQuickActions;
-            const statusBtn = document.getElementById('status-btn');
-            if (statusBtn) {
-                statusBtn.onclick = function() {
-                    showPanel('status-panel');
-                    updateStatusPanel();
-                };
-            }
-            if (chatBtn) {
-                chatBtn.onclick = function() {
-                    showPanel('chat-panel');
-                };
-            }
-            document.getElementById('close-status').addEventListener('click', function() {
-                document.getElementById('status-panel').style.display = 'none';
-            });
-            document.getElementById('close-chat').addEventListener('click', function() {
-                document.getElementById('chat-panel').style.display = 'none';
-            });
-            // Other quick actions
-            document.getElementById('quests-btn').addEventListener('click', function() {
-                showPanel('quests-panel');
-            });
-            document.getElementById('party-btn').addEventListener('click', function() {
-                showPanel('party-panel');
-            });
-            document.getElementById('inventory-btn').addEventListener('click', function() {
-                showPanel('inventory-panel');
-            });
-            document.getElementById('travel-btn').addEventListener('click', function() {
-                showPanel('travel-panel');
-            });
-
-            // Basic chat logic (placeholder)
-            document.getElementById('send-chat').addEventListener('click', function() {
-                const input = document.getElementById('chat-input');
-                const messages = document.getElementById('chat-messages');
-                if (input.value.trim()) {
-                    const msgDiv = document.createElement('div');
-                    msgDiv.textContent = input.value;
-                    msgDiv.style.padding = '6px';
-                    msgDiv.style.borderBottom = '1px solid #333';
-                    messages.appendChild(msgDiv);
-                    input.value = '';
-                    messages.scrollTop = messages.scrollHeight;
-                }
-            });
-            // Duplicate statusBtn declaration and event listener removed
-            // Tab navigation logic
-            const tabBtns = document.querySelectorAll('.tab-btn');
-            const tabContents = document.querySelectorAll('.tab-content');
-            tabBtns.forEach(btn => {
-                btn.addEventListener('click', function() {
-                    tabBtns.forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    tabContents.forEach(tc => tc.style.display = 'none');
-                    const panelId = this.getAttribute('data-panel');
-                    document.getElementById(panelId).style.display = '';
-                    // If switching to map panel, re-render the map
-                    if (panelId === 'map-panel' && window.worldState && window.worldState.worldMap && typeof renderWorldMap === 'function') {
-                        setTimeout(() => {
-                            renderWorldMap(window.worldState.worldMap);
-                        }, 50);
-                    }
-                    // If switching to status panel, update status info
-                    if (panelId === 'status-panel') {
-                        updateStatusPanel();
-                    }
-                });
-            });
-            // Simulate connection status change
-            setTimeout(() => {
-                document.getElementById('connection-status').textContent = 'Connected';
-                document.getElementById('connection-status').className = 'status-connected';
-            }, 1500);
-        });
-
-        // Status panel logic
-        function updateStatusPanel() {
-            const statusContent = document.getElementById('status-content');
-            if (!statusContent) return;
-            let html = '';
-            const ws = window.worldState || {};
-            // Check for character
-            if (!ws.characters || Object.keys(ws.characters).length === 0) {
-                html += '<div><strong>Character:</strong> <span style="color:red">Missing</span> - Create your character to begin.</div>';
-            } else {
-                html += '<div><strong>Character:</strong> <span style="color:green">Ready</span></div>';
-            }
-            // Check for party
-            if (!ws.parties || ws.parties.length === 0) {
-                html += '<div><strong>Party:</strong> <span style="color:red">Missing</span> - Join or create a party.</div>';
-            } else {
-                html += '<div><strong>Party:</strong> <span style="color:green">Ready</span></div>';
-            }
-            // Check for location
-            if (!ws.currentLocation) {
-                html += '<div><strong>Location:</strong> <span style="color:red">Unknown</span> - Select a starting location.</div>';
-            } else {
-                html += `<div><strong>Location:</strong> <span style="color:green">${ws.currentLocation.name || 'Ready'}</span></div>`;
-            }
-            // Check for quests
-            if (!ws.parties || ws.parties.length === 0 || !ws.parties[0].quests || ws.parties[0].quests.length === 0) {
-                html += '<div><strong>Quests:</strong> <span style="color:orange">None</span> - Accept a quest to begin your adventure.</div>';
-            } else {
-                html += `<div><strong>Quests:</strong> <span style="color:green">${ws.parties[0].quests.length} active</span></div>`;
-            }
-            // Next steps
-            html += '<hr><div><strong>Next Step:</strong> ';
-            if (!ws.characters || Object.keys(ws.characters).length === 0) {
-                html += 'Create your character.';
-            } else if (!ws.parties || ws.parties.length === 0) {
-                html += 'Join or create a party.';
-            } else if (!ws.currentLocation) {
-                html += 'Select a starting location.';
-            } else if (!ws.parties[0].quests || ws.parties[0].quests.length === 0) {
-                html += 'Accept a quest.';
-            } else {
-                html += 'Explore the world!';
-            }
-            html += '</div>';
-            statusContent.innerHTML = html;
-        }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
-    <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/world.js') }}"></script>
-    <div id="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); color: white; display: flex; justify-content: center; align-items: center; z-index: 9999; display: none;">
+    
+    <!-- Chat Modal -->
+    <div id="chat-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>DM Chat</h2>
+                <button class="modal-close" id="close-chat">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="chat-messages" style="height: 300px; overflow-y: auto; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                    <!-- Chat messages will appear here -->
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="chat-input" placeholder="Type your message..." style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; border-radius: 4px; color: white;">
+                    <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" id="close-settings">×</button>
+            </div>
+            <div class="modal-body">
+                <h3>Game Settings</h3>
+                <div style="margin: 15px 0;">
+                    <label style="display: block; margin-bottom: 10px;">
+                        <input type="checkbox" id="sound-toggle" checked> Enable Sound
+                    </label>
+                    <label style="display: block; margin-bottom: 10px;">
+                        <input type="checkbox" id="notifications-toggle" checked> Enable Notifications
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button id="save-settings" class="btn">Save Settings</button>
+                    <button id="cancel-settings" class="btn secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
         <div style="text-align: center;">
-            <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #4ecca3; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 0 auto 15px;"></div>
+            <div class="spinner"></div>
             <p>Loading world data...</p>
         </div>
     </div>
-
-    <style>
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+    
+    <!-- Notification Container -->
+    <div class="notification-container"></div>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
+    <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/world.js') }}"></script>
+    
+    <!-- Unified UI System -->
+    <script>
+    // ===== GLOBAL STATE =====
+    let activeModal = null;
+    let activeButton = null;
+    
+    // ===== MODAL FUNCTIONS =====
+    function openModal(modalId, buttonId = null) {
+        // Close any open modal first
+        if (activeModal) {
+            closeModal(activeModal);
+        }
+        
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.add('active');
+            activeModal = modalId;
+            
+            // Mark button as active
+            if (buttonId) {
+                const btn = document.getElementById(buttonId);
+                if (btn) {
+                    if (activeButton) activeButton.classList.remove('active');
+                    btn.classList.add('active');
+                    activeButton = btn;
+                }
+            }
+            
+            // Disable body scroll
+            document.body.style.overflow = 'hidden';
+            
+            // Populate modal content based on type
+            if (modalId === 'travel-modal') {
+                populateTravelModal();
+            } else if (modalId === 'status-modal') {
+                populateStatusModal();
+            } else if (modalId === 'chat-modal') {
+                document.getElementById('chat-input').focus();
+            }
+        }
     }
-    </style>
+    
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('active');
+            
+            // Clear active button
+            if (activeButton) {
+                activeButton.classList.remove('active');
+                activeButton = null;
+            }
+            
+            // Clear active modal
+            if (activeModal === modalId) {
+                activeModal = null;
+            }
+            
+            // Re-enable body scroll if no modals open
+            if (!document.querySelector('.modal-overlay.active')) {
+                document.body.style.overflow = 'auto';
+            }
+        }
+    }
+    
+    function closeAllModals() {
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.classList.remove('active');
+        });
+        if (activeButton) {
+            activeButton.classList.remove('active');
+            activeButton = null;
+        }
+        activeModal = null;
+        document.body.style.overflow = 'auto';
+    }
+    
+    // ===== MODAL CONTENT FUNCTIONS =====
+    function populateTravelModal() {
+        const container = document.getElementById('travel-locations');
+        if (!container) return;
+        
+        container.innerHTML = '';
+        
+        // Check if world state is available
+        if (!window.worldState || !window.worldState.worldMap || !window.worldState.worldMap.locations) {
+            container.innerHTML = '<p>Loading travel destinations...</p>';
+            return;
+        }
+        
+        const currentLocationId = window.worldState.currentLocation ? 
+            window.worldState.currentLocation.id : null;
+        
+        const availableLocations = window.worldState.worldMap.locations.filter(loc => 
+            loc.discovered && loc.id !== currentLocationId);
+        
+        if (availableLocations.length === 0) {
+            container.innerHTML = '<p>No travel destinations available. Explore more locations!</p>';
+            return;
+        }
+        
+        availableLocations.forEach(location => {
+            const btn = document.createElement('button');
+            btn.className = 'travel-location-btn';
+            btn.innerHTML = `
+                <div style="font-weight: bold; font-size: 1.1rem;">${location.name}</div>
+                <div style="font-size: 0.9rem; color: #cccccc; margin-top: 5px;">${location.type}</div>
+                ${location.description ? `<div style="font-size: 0.85rem; margin-top: 5px; font-style: italic;">${location.description.substring(0, 100)}...</div>` : ''}
+            `;
+            
+            btn.addEventListener('click', () => {
+                if (typeof travelToLocation === 'function') {
+                    travelToLocation(location.id);
+                    closeModal('travel-modal');
+                    showNotification(`Traveling to ${location.name}...`, 'success');
+                }
+            });
+            
+            container.appendChild(btn);
+        });
+    }
+    
+    function populateStatusModal() {
+        const container = document.getElementById('status-content');
+        if (!container) return;
+        
+        let html = '<div style="line-height: 1.6;">';
+        
+        // Get world state or use defaults
+        const ws = window.worldState || {};
+        
+        // Character status
+        if (ws.characters && Object.keys(ws.characters).length > 0) {
+            const charId = Object.keys(ws.characters)[0];
+            const char = ws.characters[charId];
+            html += `<p><strong>Character:</strong> ${char.name || 'Unnamed'} (Level ${char.level || 1})</p>`;
+        } else {
+            html += '<p><strong>Character:</strong> <span style="color: #ff6b6b;">Not created</span></p>';
+        }
+        
+        // Location status
+        if (ws.currentLocation) {
+            html += `<p><strong>Location:</strong> ${ws.currentLocation.name}</p>`;
+            if (ws.currentLocation.description) {
+                html += `<p style="margin-left: 20px; font-style: italic;">${ws.currentLocation.description}</p>`;
+            }
+        } else {
+            html += '<p><strong>Location:</strong> <span style="color: #ff6b6b;">Unknown</span></p>';
+        }
+        
+        // Party status
+        if (ws.parties && ws.parties.length > 0) {
+            html += `<p><strong>Party:</strong> ${ws.parties[0].name || 'Adventurers'} (${ws.parties[0].members?.length || 0} members)</p>`;
+        } else {
+            html += '<p><strong>Party:</strong> <span style="color: #ff6b6b;">None</span></p>';
+        }
+        
+        // Quests status
+        if (ws.parties && ws.parties[0] && ws.parties[0].quests && ws.parties[0].quests.length > 0) {
+            html += `<p><strong>Active Quests:</strong> ${ws.parties[0].quests.length}</p>`;
+        } else {
+            html += '<p><strong>Active Quests:</strong> <span style="color: #ff6b6b;">None</span></p>';
+        }
+        
+        // Game time (placeholder)
+        html += '<p><strong>Game Time:</strong> Day 1, Morning</p>';
+        
+        // Next steps
+        html += '<hr style="margin: 15px 0; border-color: #444;">';
+        html += '<h3>Next Steps:</h3><ul style="padding-left: 20px; margin-top: 10px;">';
+        
+        if (!ws.characters || Object.keys(ws.characters).length === 0) {
+            html += '<li>Use the Chat button to create your character</li>';
+        } else if (!ws.currentLocation) {
+            html += '<li>Travel to a location to start exploring</li>';
+        } else if (!ws.parties || ws.parties.length === 0) {
+            html += '<li>Create or join a party for better adventures</li>';
+        } else if (!ws.parties[0].quests || ws.parties[0].quests.length === 0) {
+            html += '<li>Accept a quest from the local notice board</li>';
+        } else {
+            html += '<li>Continue your current quests or explore new areas</li>';
+        }
+        
+        html += '</ul></div>';
+        container.innerHTML = html;
+    }
+    
+    // ===== CHAT FUNCTIONALITY =====
+    function setupChat() {
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+        const sendChatBtn = document.getElementById('send-chat');
+        
+        function addMessage(text, sender = 'player') {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `chat-message ${sender}`;
+            msgDiv.innerHTML = `
+                <div style="font-weight: bold; color: ${sender === 'player' ? '#4ecca3' : '#ff9800'}">
+                    ${sender === 'player' ? 'You' : 'DM'}:
+                </div>
+                <div style="margin-left: 10px;">${text}</div>
+            `;
+            msgDiv.style.marginBottom = '10px';
+            msgDiv.style.padding = '8px';
+            msgDiv.style.background = 'rgba(0,0,0,0.3)';
+            msgDiv.style.borderRadius = '4px';
+            
+            chatMessages.appendChild(msgDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                addMessage(message, 'player');
+                chatInput.value = '';
+                
+                // Simulate DM response (placeholder)
+                setTimeout(() => {
+                    const responses = [
+                        "Interesting choice, adventurer. How shall we proceed?",
+                        "The dungeon awaits. Are you prepared?",
+                        "Your words echo in the ancient halls...",
+                        "What would you like to do next?",
+                        "The journey continues. Tell me more."
+                    ];
+                    const response = responses[Math.floor(Math.random() * responses.length)];
+                    addMessage(response, 'dm');
+                }, 1000);
+            }
+        }
+        
+        sendChatBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendChatMessage();
+        });
+        
+        // Add welcome message
+        addMessage("Welcome to Dungeon World! How can I help you create your character?", 'dm');
+    }
+    
+    // ===== SETTINGS FUNCTIONALITY =====
+    function setupSettings() {
+        const saveBtn = document.getElementById('save-settings');
+        const cancelBtn = document.getElementById('cancel-settings');
+        
+        saveBtn.addEventListener('click', () => {
+            const soundEnabled = document.getElementById('sound-toggle').checked;
+            const notificationsEnabled = document.getElementById('notifications-toggle').checked;
+            
+            // Save to localStorage
+            localStorage.setItem('gameSettings', JSON.stringify({
+                sound: soundEnabled,
+                notifications: notificationsEnabled
+            }));
+            
+            showNotification('Settings saved!', 'success');
+            closeModal('settings-modal');
+        });
+        
+        cancelBtn.addEventListener('click', () => {
+            closeModal('settings-modal');
+        });
+        
+        // Load saved settings
+        const savedSettings = localStorage.getItem('gameSettings');
+        if (savedSettings) {
+            try {
+                const settings = JSON.parse(savedSettings);
+                document.getElementById('sound-toggle').checked = settings.sound !== false;
+                document.getElementById('notifications-toggle').checked = settings.notifications !== false;
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+        }
+    }
+    
+    // ===== HELPER FUNCTIONS =====
+    function showNotification(message, type = 'info') {
+        const container = document.querySelector('.notification-container');
+        if (!container) return;
+        
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.animation = 'slideIn 0.3s ease';
+        
+        container.appendChild(notification);
+        
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, 3000);
+    }
+    
+    function showLoading(show) {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) overlay.style.display = show ? 'flex' : 'none';
+    }
+    
+    // ===== INITIALIZATION =====
+    document.addEventListener('DOMContentLoaded', function() {
+        // ===== TAB SYSTEM =====
+        const tabButtons = document.querySelectorAll('[data-tab]');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        tabButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const tabId = this.dataset.tab;
+                
+                // Update active button
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Show selected tab
+                tabContents.forEach(content => content.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+                
+                // Refresh map if switching to map tab
+                if (tabId === 'map-tab' && window.worldState && window.worldState.worldMap) {
+                    setTimeout(() => {
+                        if (typeof renderWorldMap === 'function') {
+                            renderWorldMap(window.worldState.worldMap);
+                        }
+                    }, 100);
+                }
+                
+                // Populate tab content
+                if (tabId === 'inventory-tab' && typeof populateInventoryPanel === 'function') {
+                    populateInventoryPanel();
+                }
+                if (tabId === 'quests-tab' && typeof updateQuestLog === 'function') {
+                    updateQuestLog(window.worldState?.parties || []);
+                }
+                if (tabId === 'party-tab' && typeof updatePartyDisplay === 'function') {
+                    updatePartyDisplay(window.worldState?.parties || [], window.worldState?.characters || {});
+                }
+            });
+        });
+        
+        // ===== MODAL EVENT HANDLERS =====
+        // Travel modal
+        document.getElementById('travel-btn').addEventListener('click', () => {
+            openModal('travel-modal', 'travel-btn');
+        });
+        document.getElementById('close-travel').addEventListener('click', () => closeModal('travel-modal'));
+        document.getElementById('cancel-travel').addEventListener('click', () => closeModal('travel-modal'));
+        document.getElementById('travel-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal('travel-modal');
+        });
+        
+        // Status modal
+        document.getElementById('status-btn').addEventListener('click', () => {
+            openModal('status-modal', 'status-btn');
+        });
+        document.getElementById('close-status').addEventListener('click', () => closeModal('status-modal'));
+        document.getElementById('status-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal('status-modal');
+        });
+        
+        // Chat modal
+        document.getElementById('chat-btn').addEventListener('click', () => {
+            openModal('chat-modal', 'chat-btn');
+        });
+        document.getElementById('close-chat').addEventListener('click', () => closeModal('chat-modal'));
+        document.getElementById('chat-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal('chat-modal');
+        });
+        setupChat(); // Initialize chat functionality
+        
+        // Settings modal
+        document.getElementById('settings-btn').addEventListener('click', () => {
+            openModal('settings-modal', 'settings-btn');
+        });
+        document.getElementById('close-settings').addEventListener('click', () => closeModal('settings-modal'));
+        document.getElementById('settings-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal('settings-modal');
+        });
+        setupSettings(); // Initialize settings functionality
+        
+        // ===== TAB BUTTON HANDLERS =====
+        // These now just switch to the tab (same as sidebar)
+        document.getElementById('inventory-btn').addEventListener('click', () => {
+            document.querySelector('[data-tab="inventory-tab"]').click();
+        });
+        document.getElementById('quests-btn').addEventListener('click', () => {
+            document.querySelector('[data-tab="quests-tab"]').click();
+        });
+        document.getElementById('party-btn').addEventListener('click', () => {
+            document.querySelector('[data-tab="party-tab"]').click();
+        });
+        
+        // ===== ESCAPE KEY TO CLOSE MODALS =====
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAllModals();
+            }
+        });
+        
+        // ===== INITIALIZE WORLD =====
+        if (typeof loadWorldDataWithRetry === 'function') {
+            loadWorldDataWithRetry();
+        }
+        
+        // Update connection status
+        function updateConnectionStatus(status) {
+            const el = document.getElementById('connection-status');
+            if (el) {
+                el.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+                el.style.background = 
+                    status === 'connected' ? '#4CAF50' :
+                    status === 'disconnected' ? '#f44336' : '#FF9800';
+            }
+        }
+        updateConnectionStatus('connected');
+        
+        // ===== COMPATIBILITY =====
+        // Make functions available globally
+        window.showNotification = showNotification;
+        window.showLoading = showLoading;
+        window.populateTravelModal = populateTravelModal;
+        window.populateStatusModal = populateStatusModal;
+        
+        // Compatibility for old showPanel function
+        window.showPanel = function(panelId) {
+            if (panelId === 'travel-panel') {
+                openModal('travel-modal', 'travel-btn');
+            } else if (panelId === 'status-panel') {
+                openModal('status-modal', 'status-btn');
+            } else if (panelId === 'chat-panel') {
+                openModal('chat-modal', 'chat-btn');
+            } else if (panelId === 'inventory-panel') {
+                document.querySelector('[data-tab="inventory-tab"]').click();
+            } else if (panelId === 'quests-panel') {
+                document.querySelector('[data-tab="quests-tab"]').click();
+            } else if (panelId === 'party-panel') {
+                document.querySelector('[data-tab="party-tab"]').click();
+            }
+        };
+    });
+    </script>
 </body>
 </html>

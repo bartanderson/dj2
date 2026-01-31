@@ -4,6 +4,12 @@ Scripts
 *.py[codz]
 *$py.class
 
+#local ignore for my project
+.archive_index/
+.whoosh_index/
+archive/
+test.py
+
 # C extensions
 *.so
 

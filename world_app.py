@@ -16,6 +16,11 @@ from world.t2i import TextToImage  # Import the image generator
 from world.persistence import WorldManager
 from world.ai_integration import BaseAI, WorldAI
 
+# Add GameEngine imports
+from engine.game_engine import GameEngine, GamePhase, GameContext
+
+# Add to world_app.py, near other imports
+import requests
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -32,6 +37,511 @@ socketio = SocketIO(app,
                    async_mode='threading',
                    logger=True,
                    engineio_logger=True)
+
+# Add this class to world_app.py or a separate test file
+class DungeonConnectionHelper:
+    @staticmethod
+    def check_all_endpoints():
+        """Check all critical endpoints"""
+        endpoints = [
+            ("GET", "http://localhost:5000/api/engine/status", None),
+            ("GET", "http://localhost:5000/api/dungeon/status", None),
+            ("GET", "http://localhost:5005/", None),
+            ("POST", "http://localhost:5000/api/engine/mode", {"mode": "dungeon"}),
+            ("GET", "http://localhost:5000/api/engine/mode", None),
+            ("POST", "http://localhost:5000/api/engine/mode", {"mode": "world"}),
+        ]
+        
+        results = []
+        for method, url, data in endpoints:
+            try:
+                if method == "GET":
+                    response = requests.get(url, timeout=2)
+                else:
+                    response = requests.post(url, json=data, timeout=2)
+                
+                results.append({
+                    "method": method,
+                    "url": url,
+                    "status": response.status_code,
+                    "success": response.status_code < 400
+                })
+            except Exception as e:
+                results.append({
+                    "method": method,
+                    "url": url,
+                    "status": "error",
+                    "error": str(e),
+                    "success": False
+                })
+        
+        return results
+
+# Add a debug endpoint to use this helper
+@app.route('/api/debug/connectivity', methods=['GET'])
+def debug_connectivity():
+    """Debug endpoint to test all connections"""
+    results = DungeonConnectionHelper.check_all_endpoints()
+    
+    # Count successes
+    successful = sum(1 for r in results if r.get("success", False))
+    total = len(results)
+    
+    return jsonify({
+        "overall_status": f"{successful}/{total} endpoints successful",
+        "results": results,
+        "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
+    })
+    
+class DungeonHTTPClient:
+    def __init__(self, base_url="http://localhost:5005"):
+        self.base_url = base_url
+        self.session = requests.Session()
+        self.connected = self.test_connection()
+    
+    def test_connection(self):
+        try:
+            # Try multiple endpoints to see what's available
+            endpoints_to_try = ["/", "/ai-command", "/dungeon-state"]
+            
+            for endpoint in endpoints_to_try:
+                try:
+                    response = self.session.get(
+                        f"{self.base_url}{endpoint}", 
+                        timeout=3
+                    )
+                    if response.status_code < 500:
+                        print(f"  [OK] Dungeon endpoint {endpoint}: HTTP {response.status_code}")
+                        return True
+                except:
+                    continue
+            
+            print(f"[ERROR] No responsive dungeon endpoints at {self.base_url}")
+            return False
+            
+        except Exception as e:
+            print(f"[ERROR] Dungeon connection test failed: {e}")
+            return False
+
+    def send_ai_command(self, command):
+        """Send AI command to dungeon server with position handling"""
+        try:
+            response = self.session.post(
+                f"{self.base_url}/ai-command",
+                json={"command": command},
+                timeout=30  # Longer timeout for AI processing
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Fix: If the AI wants to inspect_cell without coordinates, add them
+                if (result.get("ai_response") and "inspect_cell" in result.get("ai_response", "") 
+                    and "arguments" in result.get("ai_response", "") and "{}" in result.get("ai_response", "")):
+                    
+                    # Get current position
+                    pos_x, pos_y = self.get_party_position()
+                    
+                    # Update the AI response with coordinates
+                    import json
+                    try:
+                        ai_data = json.loads(result["ai_response"])
+                        if "arguments" in ai_data and not ai_data["arguments"]:
+                            ai_data["arguments"] = {"x": pos_x, "y": pos_y}
+                            result["ai_response"] = json.dumps(ai_data, indent=2)
+                    except:
+                        pass
+                
+                return result
+            else:
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_dungeon_state(self):
+        """Get current dungeon state"""
+        try:
+            # First try the ai-command endpoint
+            response = self.session.post(
+                f"{self.base_url}/ai-command",
+                json={"command": "where am i?"},
+                timeout=3
+            )
+            if response.status_code == 200:
+                result = response.json()
+                return {
+                    "party_position": "unknown",  # Would need parsing from response
+                    "visible_cells": [],
+                    "dungeon_available": True,
+                    "last_response": result
+                }
+        except:
+            pass
+        
+        return {
+            "party_position": "unknown",
+            "visible_cells": [],
+            "dungeon_available": True
+        }
+
+    def get_party_position(self):
+        """Get current party position from dungeon server"""
+        try:
+            # Try to get position through AI command
+            response = self.session.post(
+                f"{self.base_url}/ai-command",
+                json={"command": "what is my current position"},
+                timeout=10
+            )
+            if response.status_code == 200:
+                result = response.json()
+                # Try to parse position from response
+                if result.get("success") and "position" in str(result):
+                    # Extract position from response
+                    import re
+                    text = str(result)
+                    match = re.search(r'\((\d+),\s*(\d+)\)', text)
+                    if match:
+                        return (int(match.group(1)), int(match.group(2)))
+            return (0, 0)  # Default fallback
+        except:
+            return (0, 0)
+
+    def move(self, direction, steps=1):
+        """Send movement command to dungeon server with stair handling"""
+        try:
+            response = self.session.post(
+                f"{self.base_url}/move",
+                json={"direction": direction, "steps": steps},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Handle stairs confirmation
+                if result.get("success") == False and "stairs" in result.get("message", "").lower():
+                    # Auto-confirm stairs (for testing)
+                    confirm_response = self.session.post(
+                        f"{self.base_url}/ai-command",
+                        json={"command": "yes, take the stairs"},
+                        timeout=10
+                    )
+                    if confirm_response.status_code == 200:
+                        return confirm_response.json()
+                
+                return result
+            else:
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+@app.route('/api/test-dungeon-connection', methods=['GET'])
+def test_dungeon_connection():
+    """Test direct connection to dungeon server"""
+    try:
+        response = requests.get("http://localhost:5005/", timeout=2)
+        return jsonify({
+            "dungeon_server_status": response.status_code,
+            "dungeon_server_response": response.text[:100] if response.text else "No content"
+        })
+    except Exception as e:
+        return jsonify({
+            "dungeon_server_status": "error",
+            "error": str(e)
+        })
+
+class DungeonInputSystem:
+    """Dungeon Input Phase - receives player input"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_input_phase(self, player_input, context):
+        """GameEngine calls this during INPUT phase"""
+        return {
+            "type": "dungeon_command",
+            "text": str(player_input),
+            "session_id": context.get("session_id", "default"),
+            "timestamp": datetime.now().isoformat()
+        }
+
+class DungeonInterpretationSystem:
+    """Dungeon Interpretation Phase - uses dungeon AI via HTTP"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_interpretation_phase(self, input_data, context):
+        """GameEngine calls this during INTERPRETATION phase"""
+        command = input_data.get("text", "")
+        
+        # Send to dungeon AI
+        result = self.client.send_ai_command(command)
+        
+        if result.get("success"):
+            # Parse AI response
+            import json
+            try:
+                ai_data = json.loads(result.get("ai_response", "{}"))
+                return {
+                    "intent": ai_data.get("tool", "explore"),
+                    "action": ai_data.get("tool", "move"),
+                    "arguments": ai_data.get("arguments", {}),
+                    "confidence": 0.9,
+                    "raw_text": command,
+                    "dungeon_result": result
+                }
+            except:
+                return {
+                    "intent": "dungeon_action",
+                    "action": "process_command",
+                    "raw_text": command,
+                    "dungeon_result": result
+                }
+        else:
+            return {
+                "intent": "error",
+                "action": "handle_error",
+                "error": result.get("error"),
+                "raw_text": command
+            }
+
+class DungeonAuthoritySystem:
+    """Dungeon Authority Phase - validates via HTTP"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_authority_phase(self, action, context):
+        """GameEngine calls this during AUTHORITY phase"""
+        # For dungeon, validation happens on the server side
+        # We trust the dungeon AI's interpretation
+        return {
+            "valid": True,
+            "action": action.get("action", "unknown"),
+            "requires_dice": False,
+            "message": "Dungeon action validated"
+        }
+
+class DungeonMutationSystem:
+    """Dungeon Mutation Phase - executes via HTTP"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_mutation_phase(self, ruling, context):
+        """GameEngine calls this during MUTATION phase"""
+        action = ruling.get("action", "")
+        
+        # Handle different action types
+        if "move" in action.lower():
+            # Extract direction from action or arguments
+            action_data = context.get_phase_data(GamePhase.INTERPRETATION, "action_data", {})
+            args = action_data.get("arguments", {})
+            
+            direction = args.get("direction", "north")
+            steps = args.get("steps", 1)
+            
+            result = self.client.move(direction, steps)
+            return {
+                "applied": result.get("success", False),
+                "result": result,
+                "action": "move"
+            }
+        else:
+            # Generic command execution
+            input_data = context.get_phase_data(GamePhase.INPUT, "raw_input", {})
+            command = input_data.get("text", "")
+            result = self.client.send_ai_command(command)
+            return {
+                "applied": result.get("success", False),
+                "result": result,
+                "action": "command"
+            }
+
+class DungeonConsequenceSystem:
+    """Dungeon Consequence Phase - generates narration"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_consequence_phase(self, mutation_result, context):
+        """GameEngine calls this during CONSEQUENCE phase"""
+        result = mutation_result.get("result", {})
+        ai_response = result.get("ai_response", "")
+        
+        # Parse AI response for narration
+        import json
+        try:
+            ai_data = json.loads(ai_response)
+            narration = ai_data.get("thoughts", "The dungeon responds...")
+        except:
+            narration = ai_response if ai_response else "Something happens in the dungeon..."
+        
+        # Get updated dungeon state
+        dungeon_state = self.client.get_dungeon_state()
+        
+        return {
+            "narration": narration,
+            "dungeon_state": dungeon_state,
+            "encounters": [],
+            "phase_transitions": None
+        }
+
+class DungeonViewSystem:
+    """Dungeon View Phase - renders dungeon state"""
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_view_phase(self, consequences, context):
+        """GameEngine calls this during VIEW phase"""
+        dungeon_state = self.client.get_dungeon_state()
+        
+        return {
+            "dungeon_map": dungeon_state,
+            "narration": consequences.get("narration", ""),
+            "player_position": dungeon_state.get("party_position", (0, 0)),
+            "visible_cells": dungeon_state.get("visible_cells", []),
+            "mode": "dungeon",
+            "phase_info": {
+                "current_phase": "view",
+                "violations": len(context.errors) if hasattr(context, 'errors') else 0,
+                "warnings": len(context.warnings) if hasattr(context, 'warnings') else 0
+            }
+        }
+
+class DungeonPersistenceSystem:
+    """Dungeon Persistence Phase - saves dungeon state via HTTP"""
+    
+    def __init__(self, http_client):
+        self.client = http_client
+    
+    def execute_persistence_phase(self, consequences, context):
+        """GameEngine calls this during PERSISTENCE phase"""
+        try:
+            # Log the dungeon action
+            from datetime import datetime
+            import json
+            
+            # Get input data from context
+            input_data = {}
+            try:
+                # Try to get from GameContext
+                input_data = context.get_phase_data(GamePhase.INPUT, "raw_input", {})
+            except:
+                # Fallback
+                pass
+            
+            command = input_data.get("text", "unknown command")
+            
+            # Create log entry
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "mode": "dungeon",
+                "command": command,
+                "narration": consequences.get("narration", ""),
+                "dungeon_state_updated": True
+            }
+            
+            # In a real implementation, we would save to the dungeon server
+            # For now, just log it locally
+            print(f"[Dungeon Persistence] {json.dumps(log_entry, indent=2)}")
+            
+            # Try to save dungeon state to server if it has persistence endpoint
+            try:
+                # Check if dungeon server has save endpoint
+                response = self.client.session.post(
+                    f"{self.client.base_url}/save",
+                    json={"state": log_entry},
+                    timeout=3
+                )
+                if response.status_code == 200:
+                    return {"saved": True, "message": "Dungeon state saved"}
+            except:
+                # If no save endpoint, that's okay
+                pass
+            
+            return {"saved": True, "message": "Dungeon action logged"}
+            
+        except Exception as e:
+            print(f"[Dungeon Persistence Error] {e}")
+            return {"saved": False, "error": str(e)}
+
+#====+ outside of classes =====
+
+def get_active_parties_helper():
+    """Helper function to get active parties when WorldController doesn't have the method"""
+    try:
+        # Try to get parties from session_manager if available
+        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'session_manager'):
+            session_manager = app.world_controller.session_manager
+            if hasattr(session_manager, 'party_views'):
+                parties = []
+                for party_id, members in session_manager.party_views.items():
+                    parties.append({
+                        'id': party_id,
+                        'name': f'Party {party_id}',
+                        'members': list(members) if members else [],
+                        'location': 'unknown'
+                    })
+                return parties
+        
+        # Fallback to default party
+        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'default_party_id'):
+            return [{
+                'id': app.world_controller.default_party_id,
+                'name': 'Default Party',
+                'members': [],
+                'location': getattr(app.world_controller, 'starting_location_id', 'unknown')
+            }]
+        
+        # Empty fallback
+        return []
+        
+    except Exception as e:
+        print(f"Error in get_active_parties_helper: {e}")
+        return []
+
+def initialize_dungeon_systems():
+    """Initialize complete HTTP-based dungeon system with all phase systems"""
+    print("\n" + "="*50)
+    print("INITIALIZING COMPLETE DUNGEON SYSTEMS")
+    print("="*50)
+    
+    try:
+        # Create HTTP client
+        dungeon_client = DungeonHTTPClient("http://localhost:5005")
+        
+        if not hasattr(dungeon_client, 'connected') or not dungeon_client.connected:
+            print("[ERROR] Dungeon server not available at http://localhost:5005")
+            print("   Start dungeon_neo_web_app.py first!")
+            return None
+        
+        # Create all dungeon phase systems
+        dungeon_systems = {
+            GamePhase.INPUT: DungeonInputSystem(dungeon_client),
+            GamePhase.INTERPRETATION: DungeonInterpretationSystem(dungeon_client),
+            GamePhase.AUTHORITY: DungeonAuthoritySystem(dungeon_client),
+            GamePhase.MUTATION: DungeonMutationSystem(dungeon_client),
+            GamePhase.CONSEQUENCE: DungeonConsequenceSystem(dungeon_client),
+            GamePhase.PERSISTENCE: DungeonPersistenceSystem(dungeon_client),
+            GamePhase.VIEW: DungeonViewSystem(dungeon_client)
+        }
+        
+        print("[OK] Created dungeon phase systems:")
+        for phase, system in dungeon_systems.items():
+            if system:
+                print(f"  - {phase.value}: {type(system).__name__}")
+        
+        print("="*50)
+        
+        return {
+            "systems": dungeon_systems,
+            "client": dungeon_client,
+            "available": True
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize dungeon systems: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"available": False, "error": str(e)}
 
 @app.route('/api/test2', methods=['GET'])
 def test_endpoint2():
@@ -70,6 +580,39 @@ def get_world_controller():
         print("World controller not available")
         return None
 
+def get_active_parties_helper():
+    """Helper function to get active parties when WorldController doesn't have the method"""
+    try:
+        # Try to get parties from session_manager if available
+        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'session_manager'):
+            session_manager = app.world_controller.session_manager
+            if hasattr(session_manager, 'party_views'):
+                parties = []
+                for party_id, members in session_manager.party_views.items():
+                    parties.append({
+                        'id': party_id,
+                        'name': f'Party {party_id}',
+                        'members': list(members) if members else [],
+                        'location': 'unknown'
+                    })
+                return parties
+        
+        # Fallback to default party
+        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'default_party_id'):
+            return [{
+                'id': app.world_controller.default_party_id,
+                'name': 'Default Party',
+                'members': [],
+                'location': getattr(app.world_controller, 'starting_location_id', 'unknown')
+            }]
+        
+        # Empty fallback
+        return []
+        
+    except Exception as e:
+        print(f"Error in get_active_parties_helper: {e}")
+        return []
+
 @app.route('/api/test', methods=['GET'])
 def test_endpoint():
     return jsonify({'status': 'ok', 'message': 'Server is running'})
@@ -106,7 +649,7 @@ def setup_world_system():
     try:
         # 1. Initialize base AI system
         base_ai = BaseAI(ollama_host="http://localhost:11434", seed=42)
-        print("✓ Base AI system initialized")
+        print("[OK] Base AI system initialized")
         
         # 2. Set up image generation paths
         model_path = Path.home() / ".sdkit" / "models" / "stable-diffusion" / "realisticVisionV60B1_v51VAE.safetensors"
@@ -115,7 +658,7 @@ def setup_world_system():
 
         # 3. Create world manager with image capabilities
         world_manager = WorldManager(ai_system=base_ai)
-        print("✓ World manager initialized")
+        print("[OK] World manager initialized")
         
         # 4. Check for existing worlds with proper error handling
         try:
@@ -125,7 +668,7 @@ def setup_world_system():
             if isinstance(existing_worlds, list) and len(existing_worlds) > 0:
                 # Load first existing world
                 world_id = existing_worlds[0].get('id') if isinstance(existing_worlds[0], dict) else existing_worlds[0]
-                print(f"✓ Loading existing world: {world_id}")
+                print(f"[OK] Loading existing world: {world_id}")
                 world_data = world_manager.load_from_db(world_id)
             else:
                 raise ValueError("No existing worlds found")
@@ -148,7 +691,7 @@ def setup_world_system():
                 image_output_dir=image_output_dir,
                 seed=42
             )
-            print(f"✓ Created new world with ID: {world_id}")
+            print(f"[OK] Created new world with ID: {world_id}")
             world_data = world_manager.load_from_db(world_id)
         
         # 5. Initialize world controller
@@ -157,47 +700,59 @@ def setup_world_system():
             ai_system=base_ai,
             seed=42
         )
-        print("✓ World controller initialized")
+        print("[OK] World controller initialized")
         
         # 6. Initialize AI systems with proper state
-        world_controller.world_ai = WorldAI(world_state=world_controller)
+
+
+        try:
+            # Try the new way first
+            world_controller.world_ai = WorldAI(world_controller=world_controller)
+        except TypeError as e:
+            # Fallback for backward compatibility
+            print(f"Note: Using legacy parameter name: {e}")
+            world_controller.world_ai = WorldAI(campaign_state=world_controller)
+
         world_controller.dungeon_ai = None  # Will be set when entering dungeon
-        print("✓ AI systems initialized")
+        print("[OK] AI systems initialized")
         
         # 7. Verify everything is working
-        print(f"✓ World loaded with {len(world_controller.world_map.locations)} locations")
-        print(f"✓ Starting at: {world_controller.starting_location_id}")
+        print(f"[OK] World loaded with {len(world_controller.world_map.locations)} locations")
+        print(f"[OK] Starting at: {world_controller.starting_location_id}")
         
         return world_controller, world_id
         
     except Exception as e:
-        print(f"❌ Error initializing world system: {e}")
+        print(f"[ERROR] Error initializing world system: {e}")
         import traceback
         traceback.print_exc()
         raise
 
-
 def main():
-    """Main entry point for the world application"""
+    """Main entry point for the world application with GameEngine integration"""
     try:
         world_controller, world_id = setup_world_system()
-        print(f"\n🎉 World system ready! World ID: {world_id}")
+        print(f"\n[CELEBRATE] World system ready! World ID: {world_id}")
         
-        # # This was a nice idea, but was not completed. There is no tool World Map.
-        # # Test command processing
-        # test_command = "describe the starting location"
-        # result = controller.process_command(test_command)
-        # print(f"\nTest command result: {result}")
-
-        # Attach the world_controller to the Flask app
+        # Initialize GameEngine with the world controller
+        game_engine = GameEngine(world_controller)
+        print(f"[OK] GameEngine initialized with {len(game_engine.systems)} phase systems")
+        
+        # Test the GameEngine
+        test_result = game_engine.advance("test input")
+        print(f"[OK] GameEngine test complete: {test_result.get('violations', 0)} violations")
+        
+        # Attach both to the Flask app
         app.world_controller = world_controller
+        app.game_engine = game_engine
         
-        return world_controller
+        return world_controller, game_engine
         
     except Exception as e:
-        print(f"❌ Failed to initialize world system: {e}")
-        return None
-
+        print(f"[ERROR] Failed to initialize world system: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
 
 # World loading endpoint
 @app.route('/api/load-world/<int:world_id>', methods=['POST'])
@@ -385,7 +940,267 @@ def generate_personal_item():
     char_concept = data.get('concept', '')
     item = world_controller.character_builder.generate_personal_item(char_concept)
     return jsonify(item)
+# ===== Engine Endpoints =====
+
+@app.route('/api/engine/status', methods=['GET'])
+def engine_status():
+    """Get GameEngine status and phase compliance information"""
+    try:
+        if not hasattr(app, 'game_engine') or app.game_engine is None:
+            return jsonify({
+                "status": "not_initialized",
+                "message": "GameEngine not initialized"
+            }), 503
+        
+        engine = app.game_engine
+        
+        # Get violations
+        violations_info = engine.get_phase_violations()
+        
+        # Get current phase info
+        current_phase = engine.current_phase.value if engine.current_phase else "unknown"
+        
+        # Count phase systems
+        system_status = {}
+        for phase, system in engine.systems.items():
+            system_status[phase.value] = {
+                "has_system": system is not None,
+                "system_type": type(system).__name__ if system else "None"
+            }
+        
+        return jsonify({
+            "status": "active",
+            "current_phase": current_phase,
+            "phase_history": [phase.value for phase in engine.phase_history[-10:]],
+            "system_status": system_status,
+            "violations": violations_info,
+            "mode": "world"  # Default mode for now
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/api/engine-test', methods=['POST'])
+def engine_test():
+    """Test GameEngine with various inputs"""
+    try:
+        data = request.get_json()
+        test_input = data.get('input', 'test')
+        
+        if not hasattr(app, 'game_engine'):
+            return jsonify({'error': 'GameEngine not initialized'})
+        
+        # Create context
+        context = GameContext()
+        
+        # Run through GameEngine
+        result = app.game_engine.advance(player_input=test_input, context=context)
+        
+        # Convert result to be JSON serializable
+        serializable_result = {
+            'success': True,
+            'input': test_input,
+            'ui_data': result.get('ui_data'),
+            'current_phase': result.get('current_phase'),
+            'violations': result.get('violations'),
+            'warnings': result.get('warnings'),
+            'context_data': {
+                'errors': [str(e) for e in context.errors],
+                'warnings': [str(w) for w in context.warnings]
+            }
+        }
+        
+        return jsonify(serializable_result)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/engine/mode', methods=['GET', 'POST'])
+def engine_mode():
+    """Get or set GameEngine mode"""
+    if not hasattr(app, 'game_engine'):
+        return jsonify({"error": "GameEngine not initialized"}), 503
     
+    if request.method == 'GET':
+        # Return current mode status
+        status = app.game_engine.get_mode_status()
+        return jsonify(status)
+    
+    else:  # POST
+        # DEBUG: Print raw request data
+        print(f"DEBUG: Raw request data: {request.data}")
+        print(f"DEBUG: Request headers: {dict(request.headers)}")
+        
+        try:
+            data = request.get_json()
+            print(f"DEBUG: Parsed JSON: {data}")
+        except Exception as e:
+            print(f"DEBUG: JSON parse error: {e}")
+            return jsonify({"error": f"JSON parse error: {str(e)}"}), 400
+        
+        new_mode = data.get('mode')
+        
+        if new_mode not in ["world", "dungeon"]:
+            return jsonify({"error": "Invalid mode. Must be 'world' or 'dungeon'"}), 400
+        
+        try:
+            app.game_engine.set_mode(new_mode)
+            return jsonify({
+                "success": True,
+                "message": f"Switched to {new_mode} mode",
+                "current_mode": app.game_engine.current_mode
+            })
+        except Exception as e:
+            print(f"DEBUG: set_mode error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dungeon/status', methods=['GET'])
+def dungeon_status():
+    """Check dungeon system connectivity"""
+    try:
+        # Check if dungeon server is running
+        dungeon_running = False
+        try:
+            response = requests.get("http://localhost:5005/", timeout=2)
+            dungeon_running = response.status_code == 200
+        except:
+            dungeon_running = False
+        
+        return jsonify({
+            "dungeon_server": {
+                "url": "http://localhost:5005",
+                "running": dungeon_running,
+                "status": "connected" if dungeon_running else "disconnected"
+            },
+            "world_app": {
+                "mode": app.game_engine.current_mode if hasattr(app, 'game_engine') else "unknown",
+                "has_dungeon_systems": hasattr(app, 'dungeon_systems')
+            },
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dungeon/command', methods=['POST'])
+def dungeon_command():
+    """Send a command to the dungeon system through HTTP bridge"""
+    try:
+        if not hasattr(app, 'dungeon_systems') or not app.dungeon_systems:
+            return jsonify({
+                "success": False,
+                "error": "Dungeon systems not initialized"
+            })
+        
+        data = request.get_json()
+        command = data.get('command', '')
+        
+        if not command:
+            return jsonify({"success": False, "error": "No command provided"})
+        
+        # Get the HTTP client
+        dungeon_client = app.dungeon_systems.get('client')
+        if not dungeon_client or not dungeon_client.connected:
+            return jsonify({
+                "success": False,
+                "error": "Dungeon client not connected",
+                "dungeon_server": "http://localhost:5005"
+            })
+        
+        # Send command directly to dungeon server
+        result = dungeon_client.send_ai_command(command)
+        
+        return jsonify({
+            "success": True,
+            "command": command,
+            "result": result,
+            "mode": app.game_engine.current_mode if hasattr(app, 'game_engine') else "unknown"
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/debug/dungeon-structure', methods=['GET'])
+def debug_dungeon_structure():
+    """Debug endpoint to see what dungeon_neo files exist"""
+    try:
+        dungeon_path = None
+        
+        # Check multiple possible locations
+        possible_paths = [
+            "dungeon_neo",
+            "../dungeon_neo", 
+            "./dungeon_neo",
+            os.path.join(os.path.dirname(__file__), "dungeon_neo")
+        ]
+        
+        found_files = {}
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                dungeon_path = path
+                # List files
+                files = []
+                for root, dirs, filenames in os.walk(path):
+                    for filename in filenames:
+                        if filename.endswith('.py'):
+                            rel_path = os.path.relpath(os.path.join(root, filename), path)
+                            files.append(rel_path)
+                found_files[path] = files
+                
+        if not found_files:
+            return jsonify({
+                "status": "not_found",
+                "message": "dungeon_neo directory not found in any expected location",
+                "current_directory": os.getcwd()
+            })
+            
+        return jsonify({
+            "status": "found",
+            "paths_found": list(found_files.keys()),
+            "files": found_files,
+            "current_directory": os.getcwd()
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/check-dungeon-endpoints', methods=['GET'])
+def check_dungeon_endpoints():
+    """Check what endpoints the dungeon web app (port 5005) exposes"""
+    try:
+        # Try to get the root endpoint to see what's available
+        response = requests.get("http://localhost:5005/", timeout=2)
+        endpoints = {
+            "root": response.status_code
+        }
+        
+        # Try common endpoints
+        common_endpoints = [
+            "/ai-command",
+            "/move",
+            "/dungeon-state",
+            "/dungeon",
+            "/api/status"
+        ]
+        
+        for endpoint in common_endpoints:
+            try:
+                resp = requests.get(f"http://localhost:5005{endpoint}", timeout=1)
+                endpoints[endpoint] = resp.status_code
+            except:
+                endpoints[endpoint] = "timeout or error"
+        
+        return jsonify({
+            "dungeon_endpoints": endpoints,
+            "note": "Status 200 means endpoint exists (GET), others may need POST"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)})
+        
 # ===== World Navigation Endpoints =====
 @app.route('/api/travel/<location_id>', methods=['POST'])
 def travel_to(location_id):
@@ -427,8 +1242,9 @@ def move_character():
 @app.route('/api/parties')
 def get_parties():
     return jsonify({
-        "parties": app.world_controller.get_active_parties(),
-        "default_party": app.world_controller.default_party_id
+        "parties": get_active_parties_helper(), #app.world_controller.get_active_parties(),
+        #"default_party": app.world_controller.default_party_id
+        "default_party": getattr(app.world_controller, 'default_party_id', 'default')
     })
 
 @app.route('/api/disband-party/<party_id>', methods=['POST'])
@@ -458,7 +1274,7 @@ def world_state():
         return jsonify({
             "worldMap": app.world_controller.get_map_data(),
             "currentLocation": app.world_controller.get_current_location_data(),
-            "parties": app.world_controller.get_active_parties(),
+            "parties": get_active_parties_helper(), #app.world_controller.get_active_parties(),
             "characters": characters_dict
         })
     except Exception as e:
@@ -513,47 +1329,113 @@ def all_locations():
 
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
+    """Process DM chat with GameEngine phase compliance"""
     try:
-        print("DEBUG: dm-response endpoint called")
+        print("DEBUG: dm-response endpoint called with GameEngine")
         
-        # Check if world_controller is available
-        if not hasattr(app, 'world_controller') or app.world_controller is None:
-            print("DEBUG: world_controller is not available")
-            return jsonify({'error': 'World controller not initialized'}), 500
-            
-        # Check if dm_chat_handler is available
-        if not hasattr(app.world_controller, 'dm_chat_handler'):
-            print("DEBUG: dm_chat_handler is not available")
-            return jsonify({'error': 'DM chat handler not initialized'}), 500
-            
+        # Check if GameEngine is available
+        if not hasattr(app, 'game_engine') or app.game_engine is None:
+            print("DEBUG: GameEngine not available, using legacy processing")
+            return legacy_dm_response()  # Fallback to original implementation
+        
         data = request.get_json()
-        
         message = data.get('message')
-        character_id = data.get('character_id')  # Allow specifying which character is speaking
+        character_id = data.get('character_id')
         
-        # Get session ID from cookie or generate a new one
+        # Get session ID
         session_id = request.cookies.get('session_id')
         is_new_session = False
         
         if not session_id:
             session_id = str(uuid.uuid4())
             is_new_session = True
-            print(f"DEBUG: Generated new session ID: {session_id}")
         
-        # Get or create player for this session
-        print("DEBUG: About to call get_or_create_player")
+        # Get or create player
         player = app.world_controller.get_or_create_player(session_id)
-        print(f"DEBUG: Got player: {player.id if player else 'None'}")
         
-        # If character_id is specified, validate it belongs to the player
-        if character_id:
-            if character_id not in player.character_ids:
-                return jsonify({'error': 'Character does not belong to player'}), 400
-            # Set this as the active character
-            player.set_active_character(character_id)
+        # If character_id is specified, validate
+        if character_id and character_id not in player.character_ids:
+            return jsonify({'error': 'Character does not belong to player'}), 400
         
-        # Use active character if no specific character is specified
+        # Set active character
         active_character_id = character_id or player.active_character_id
+        if active_character_id:
+            player.set_active_character(active_character_id)
+        
+        # Create GameContext for this interaction
+        context = GameContext()
+        context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
+        context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
+        context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
+        
+        # Process through GameEngine
+        engine_result = app.game_engine.advance(player_input=message, context=context)
+        
+        # Extract UI data and narration
+        ui_data = engine_result.get('ui_data', {})
+        narration = ui_data.get('narration', '')
+        
+        # Get any tool results from context
+        tool_result = context.get_phase_data(GamePhase.AUTHORITY, "tool_result")
+        
+        # Build response
+        response_data = {
+            'responses': [{
+                'speaker': 'DM',
+                'content': narration or "The DM considers your words...",
+                'type': 'narration'
+            }],
+            'tool_result': tool_result,
+            'session_id': session_id,
+            'character_id': active_character_id,
+            'player_id': player.id,
+            'phase_info': {
+                'current_phase': engine_result.get('current_phase'),
+                'violations': engine_result.get('violations', 0),
+                'warnings': engine_result.get('warnings', 0)
+            }
+        }
+        
+        # Create response and set cookie if needed
+        response = jsonify(response_data)
+        if is_new_session:
+            response.set_cookie(
+                'session_id', 
+                session_id, 
+                max_age=60*60*24*7,
+                path='/',
+                secure=False,
+                httponly=True,
+                samesite='Lax'
+            )
+            
+        return response
+        
+    except Exception as e:
+        print(f"Error in dm-response: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+def legacy_dm_response():
+    """Fallback to original dm-response logic"""
+    try:
+        data = request.get_json()
+        message = data.get('message')
+        character_id = data.get('character_id')
+        
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
+        player = app.world_controller.get_or_create_player(session_id)
+        
+        if character_id and character_id not in player.character_ids:
+            return jsonify({'error': 'Character does not belong to player'}), 400
+        
+        active_character_id = character_id or player.active_character_id
+        if active_character_id:
+            player.set_active_character(active_character_id)
         
         result = app.world_controller.dm_chat_handler.process_message(
             session_id, 
@@ -570,28 +1452,23 @@ def dm_response():
             'tool_result': result['tool_result'].get('message') if result['tool_result'] else None,
             'session_id': session_id,
             'character_id': active_character_id,
-            'player_id': player.id  # Include player ID for reference
+            'player_id': player.id
         }
         
-        # Create response and set cookie if it's a new session
         response = jsonify(response_data)
-        if is_new_session:
-            response.set_cookie(
-                'session_id', 
-                session_id, 
-                max_age=60*60*24*7,  # 1 week
-                path='/',
-                secure=False,  # Set to True in production with HTTPS
-                httponly=True,
-                samesite='Lax'
-            )
-            
+        response.set_cookie(
+            'session_id', 
+            session_id, 
+            max_age=60*60*24*7,
+            path='/',
+            secure=False,
+            httponly=True,
+            samesite='Lax'
+        )
+        
         return response
         
     except Exception as e:
-        print(f"Error in dm-response: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def recognize_player(self, session_id, player_data):
@@ -848,7 +1725,7 @@ def handle_request_world_state():
     session_id = request.sid
     emit('world_state', {
         'characters': {cid: char.to_dict() for cid, char in app.world_controller.characters.items()},
-        'parties': app.world_controller.get_active_parties(),
+        'parties': get_active_parties_helper(), #app.world_controller.get_active_parties(),
         'locations': [loc.to_dict() for loc in app.world_controller.world_map.locations.values()]
     })
 #######end of socketio stuff###########
@@ -891,31 +1768,48 @@ def get_zerotier_ip():
 
 
 def initialize_app():
-    """Initialize the Flask application with world controller"""
+    """Initialize the Flask application with world controller and GameEngine"""
     try:
-        world_controller = main()
+        world_controller, game_engine = main()
         
-        if world_controller is not None:
+        if world_controller is not None and game_engine is not None:
             # Attach to app
             app.world_controller = world_controller
+            app.game_engine = game_engine
+            
+            # Try to initialize dungeon systems
+            dungeon_systems = initialize_dungeon_systems()
+            if dungeon_systems:
+                print("[OK] Dungeon systems initialized")
+                # Connect dungeon delegates to GameEngine
+                success = game_engine.set_dungeon_delegates(dungeon_systems)
+                if success:
+                    print("[OK] Dungeon delegates connected to GameEngine")
+                    # Store dungeon systems in app context
+                    app.dungeon_systems = dungeon_systems
+                else:
+                    print("[WARNING] Failed to connect dungeon delegates")
+            else:
+                print("[WARNING] Dungeon systems not available (mode switching will fail)")
             
             # Display connection information
-            print("🌍 DUNGEON WORLD SERVER")
+            print("[WORLD] DUNGEON WORLD SERVER WITH GAMEENGINE")
             print("Server running on:")
             print(f"Local URL: http://localhost:5000")
             print(f"Network URL: http://{get_ip_address()}:5000")
-            print(f"ZeroTier URL: http://{get_zerotier_ip()}:5000")
-            print("Server starting... (Press Ctrl+C to stop)")
             
-            return world_controller
+            print(f"[OK] GameEngine active with {len(game_engine.systems)} phase systems")
+            print(f"[OK] Current mode: {game_engine.current_mode}")
+            
+            return world_controller, game_engine
         else:
-            print("❌ Failed to initialize world controller")
-            return None
+            print("[ERROR] Failed to initialize world controller or GameEngine")
+            return None, None
     except Exception as e:
-        print(f"❌ Error initializing app: {e}")
+        print(f"[ERROR] Error initializing app: {e}")
         import traceback
         traceback.print_exc()
-        return None
+        return None, None
 
 if __name__ == '__main__':
     # Only initialize when not in reloader
