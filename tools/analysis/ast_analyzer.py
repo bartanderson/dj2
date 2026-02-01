@@ -400,7 +400,7 @@ def main():
                 print(f"   Message: {violation.get('message', 'No message')}")
                 print(f"   Line text: {violation.get('text', 'N/A')}")
         else:
-            print("\n✅ No phase violations found!")
+            print("\n[OK] No phase violations found!")
             
     elif args.mode == 'todos':
         # Extract all TODOs
@@ -418,11 +418,11 @@ def main():
     try:
         with open(args.output, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
-        print(f"\n✅ Project analysis saved to {args.output}")
+        print(f"\n[OK] Project analysis saved to {args.output}")
         print(f"   Items written: {len(output_data) if isinstance(output_data, list) else 'dict'}")
         
     except Exception as e:
-        print(f"❌ Error writing {args.output}: {e}")
+        print(f"[FAIL] Error writing {args.output}: {e}")
         with open(args.output, 'w', encoding='utf-8') as f:
             json.dump({"error": str(e), "files_processed": len(project_data)}, f, indent=2)
 

@@ -15,10 +15,10 @@
 | "move north" → MoveIntent | + "is trap triggered?" check       | + "player seems to want to flee"   |
 
 ### AUTHORITY Phase (Validation)
-| Mechanics             | Events                                 | Narrative                                             |
-|-----------------------|----------------------------------------|-------------------------------------------------------|
-| "Can move to 5,3?" collision check | + "Can trigger quest X?" prerequisites | + "Is AI suggestion valid?" sanity check |
-| Dice rolls for success | + Event probability evaluation | + Confidence threshold validation |
+| Mechanics                        | Events                                 | Narrative 
+|----------------------------------|----------------------------------------|---------------------------------------|
+|"Can move to 5,3?" collision check| + "Can trigger quest X?" prerequisites |+"Is AI suggestion valid?" sanity check|
+| Dice rolls for success           | + Event probability evaluation         | + Confidence threshold validation     |
 
 ### MUTATION Phase (State Changes)
 | Mechanics              | Events                                 | Narrative                                    |

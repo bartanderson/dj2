@@ -1,0 +1,118 @@
+{
+  "extraction": {
+    "context_manager": {
+      "description": "Unified context extraction for AI sessions",
+      "input": {
+        "query": "string",
+        "target": "deepseek|ollama|json",
+        "max_tokens": "number?"
+      },
+      "output": "Formatted context package",
+      "tested": true,
+      "phase_safe": true,
+      "windows_cmd": "python scripts\\context_manager.py --query \"topic\" --target deepseek",
+      "location": "scripts/context_manager.py",
+      "example": "python scripts\\context_manager.py --query \"WorldState refactor\" --target deepseek"
+    }
+  },
+  "analysis": {
+    "four_layer": {
+      "description": "Structured 4-layer technical analysis (code, design, history, synthesis)",
+      "input": {
+        "topic": "string",
+        "format": "string?"
+      },
+      "output": "JSON or formatted report",
+      "tested": true,
+      "phase_safe": true,
+      "windows_cmd": "python tools\\ai_assistant\\four_layer.py \"topic\"",
+      "example": "python tools\\ai_assistant\\four_layer.py \"DMChatHandler phase compliance\""
+    },
+    "violations": {
+      "description": "Scan for phase boundary violations in codebase",
+      "input": {
+        "path": "string"
+      },
+      "output": "List of violations with file:line locations",
+      "tested": true,
+      "phase_safe": true,
+      "windows_cmd": "python ai.py violations .",
+      "note": "Returns 0 for clean code (markers removed)"
+    },
+    "todos": {
+      "description": "Extract TODO/FIXME markers across codebase",
+      "input": {
+        "path": "string"
+      },
+      "output": "JSON array of technical debt items",
+      "tested": true,
+      "phase_safe": true,
+      "windows_cmd": "python ai.py todos . > todos.json"
+    },
+    "analyze_deep": {
+      "description": "AI-powered architectural analysis via Ollama",
+      "input": {
+        "topic": "string",
+        "component": "string?"
+      },
+      "output": "Phase violation counts, architectural issues",
+      "tested": true,
+      "phase_safe": true,
+      "windows_cmd": "python ai.py analyze \"topic\" --deep"
+    }
+  },
+  "search": {
+    "code_search": {
+      "description": "Whoosh-based codebase search with relevance boosting",
+      "input": {
+        "query": "string",
+        "limit": "number",
+        "path": "string?"
+      },
+      "output": "Ranked file list with snippets",
+      "tested": true,
+      "windows_cmd": "python ai.py search \"query\" --limit 5"
+    },
+    "archive_search": {
+      "description": "Search historical patterns in archive/Docs-old/",
+      "input": {
+        "query": "string",
+        "limit": "number"
+      },
+      "output": "Historical implementations from 152+ archived files",
+      "tested": true,
+      "windows_cmd": "python ai.py archive-search \"pattern\" --limit 10"
+    }
+  },
+  "workflow": {
+    "session_start": {
+      "description": "Start tracked analysis session",
+      "input": {
+        "topic": "string"
+      },
+      "output": "current_session.json, context_for_ai.txt",
+      "tested": true,
+      "windows_cmd": "python scripts\\ai_workflow.py start --topic \"topic\""
+    },
+    "validate_response": {
+      "description": "Analyze AI response against project constraints",
+      "input": {
+        "response_file": "path"
+      },
+      "output": "Validation report with phase mentions",
+      "tested": true,
+      "windows_cmd": "python scripts\\ai_workflow.py analyze --response-file response.txt"
+    }
+  },
+  "utility": {
+    "tool_discovery": {
+      "description": "Quick tool lookup and help",
+      "input": {
+        "query": "string?"
+      },
+      "output": "Tool list or detailed help",
+      "tested": true,
+      "windows_cmd": "python scripts\\tool_discovery.py [search-term]"
+    }
+  }
+}

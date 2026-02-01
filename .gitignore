@@ -8,7 +8,6 @@ Scripts
 .archive_index/
 .whoosh_index/
 archive/
-test.py
 
 # C extensions
 *.so

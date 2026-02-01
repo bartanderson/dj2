@@ -1,0 +1,584 @@
+================================================================================
+DUNGEON JOURNEY 2 - CONTEXT PACKAGE
+Generated: 2026-01-31 20:18
+Query: WorldState refactor
+================================================================================
+
+[CORE CONSTRAINTS]
+# AI Contract - Dungeon Journey 2
+
+## Absolute Constraints
+- **AI NEVER owns state** - Read-only access to SessionSystem
+- **AI NEVER mutates state directly** - All changes via GameEngine
+- **AI ONLY requests actions via interfaces** - Tool calls return proposals, not execution
+- **Windows Reality**: Use backslashes in CMD (`python tools\script.py`), CRLF endings, NO `python -c` for multiline
+
+## The 7 Runtime Phases (The Conveyor Belt)
+Every command cycles through:
+1. **INPUT**: Raw signals (clicks, keys, network)
+2. **INTERPRETATION**: Intent classification (AI-assisted in Narrative stage)
+3. **AUTHORITY**: Validation (dice, rules, permissions)
+4. **STATE MUTATION**: Apply changes (SessionSystem only)
+5. **CONSEQUENCE**: Effects, narration (AI assists here)
+6. **PERSISTENCE**: Save, logs, snapshots
+7. **VIEW PROJECTION**: Render, UI update
+
+Rule: Never skip, never reverse, never combine adjacent phases.
+
+## The 4-Bucket Authority Hierarchy
+- **Bucket 1 (Core)**: Game rules, validation, persistence - Deterministic, testable, AI treats as oracle
+- **Bucket 2 (Adapter)**: Tool registries, HTTP bridges, serialization - No business logic
+- **Bucket 3 (AI-Facing)**: Prompt construction, narrative selection - Non-authoritative, suggestions only
+- **Bucket 4 (Sketch)**: Prototypes, experiments - Never imported by Bucket 1
+
+## Dependency Direction (Invariant)
+Core (Bucket 1) -> Interfaces (Bucket 2) -> AI Systems (Bucket 3)
+Never reverse. Bidirectional arrows indicate violation.
+
+## The Ownership Rule
+If a system VALIDATES rules -> it MUST OWN the state it validates.
+No "advisory authority" - control it or don't touch it.
+
+## Stage Definitions (Capability Maturity)
+- **Mechanics**: Deterministic simulation (movement, combat, saves)
+- **Events**: Reactive system (triggers, quests, consequences)
+- **Narrative**: AI integration (interpretation, dynamic narration, memory)
+
+Progression: Mechanics solid -> Events added -> Narrative layered on top.
+
+[DEVELOPMENT PLAYBOOK]
+# Development Playbook
+
+## The Phase ? Stage Matrix
+
+### INPUT Phase (Receiving Signals)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Keyboard/mouse parsed | + Event trigger detection (enter room) | + Natural language command parsing |
+| Hardcoded command map | + Hotkey context switching             | + Voice-to-intent processing       |
+
+### INTERPRETATION Phase (Understanding Intent)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Command -> Intent dict lookup | + Event condition evaluation    | + AI intent classification         |
+| "move north" -> MoveIntent | + "is trap triggered?" check       | + "player seems to want to flee"   |
+
+### AUTHORITY Phase (Validation)
+| Mechanics             | Events                                 | Narrative                                             |
+|-----------------------|----------------------------------------|-------------------------------------------------------|
+| "Can move to 5,3?" collision check | + "Can trigger quest X?" prerequisites | + "Is AI suggestion valid?" sanity check |
+| Dice rolls for success | + Event probability evaluation | + Confidence threshold validation |
+
+### MUTATION Phase (State Changes)
+| Mechanics              | Events                                 | Narrative                                    |
+|------------------------|----------------------------------------|----------------------------------------------|
+| Direct position update | + Event state changes (quest active)   | + AI-proposed state changes (emotional state)|
+| `party.x = 5`          | `quest.status = STARTED`               | `npc.mood = SUSPICIOUS` (via GameEngine)     |
+
+### CONSEQUENCE Phase (Results)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Silent/null response  | + Event effects (damage applied)       | + AI-generated descriptions        |
+| Position updates      | + Unlock door, spawn enemy             | + "The floor trembles as..."       |
+
+### PERSISTENCE Phase (Memory)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| SQLite save           | + Event log append (history)           | + AI memory embedding (context)    |
+| Raw state snapshot    | + "Player killed dragon" journal       | + Semantic search index            |
+
+### VIEW Phase (Display)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| ASCII map render      | + Event notification popup             | + Dynamic AI descriptions          |
+| Grid display          | + "Quest Complete!" banner             | + Context-aware atmospheric text   |
+
+## The 7-Step Analysis Framework
+
+### Step 1: Declare Responsibility
+
+# File: world_controller.py
+RESPONSIBILITY:
+- Owns: Party position, current location state
+- Does NOT own: Campaign content (maps, NPCs), AI decisions
+- Delegates to: SessionSystem (save), DMChatAI (narration), AuthoritySystem (validation)
+Step 2: Classify Authority (4 Buckets)
+Ask: "Which bucket?"
+Bucket 1 (Core): Must be deterministic. If AI can influence it, it's wrong.
+Bucket 2 (Adapter): Glue code. If it has "if quest_active" logic, it's wrong.
+Bucket 3 (AI-Facing): Can be probabilistic. If it validates dice rolls, it's wrong.
+Bucket 4 (Sketch): Marked # EXPERIMENTAL. If imported by production code, it's wrong.
+Step 3: Extract Implicit Contracts
+For each public method:
+
+Method: move_party(direction)
+INPUTS: direction (enum), party_id (str)
+OUTPUTS: success (bool), new_position (tuple), events_triggered (list)
+INVARIANTS: Party must exist, direction must be cardinal, position must be valid
+ERRORS: InvalidDirection, PartyNotFound, MovementBlocked (with reason)
+Step 4: Audit Dependency Direction
+Draw arrows:
+
+WorldController (Bucket 1/2) -> SessionSystem (Bucket 1) [OK]
+WorldController -> DMChatAI (Bucket 3) [OK]
+DMChatAI -> WorldController (direct mutation) ? VIOLATION
+Arrows must flow 1->2->3 only.
+Step 5: Check Phase Compliance
+Place code in the matrix:
+Is this Interpretation logic doing Mutation work?
+Is this Mechanics code trying to do Narrative generation?
+Violation Pattern: DMChatHandler._extract_conversation_context() does Interpretation + State Query (mixing phases)
+Step 6: Identify Architectural Patterns
+Active Record (What you have):
+State + Behavior in one class (WorldController)
+Good for: Rapid
+...[truncated]
+
+[TOOLS]
+extraction/context_manager [OK]
+analysis/four_layer [OK]
+analysis/violations [OK]
+analysis/todos [OK]
+analysis/analyze_deep [OK]
+search/code_search [OK]
+search/archive_search [OK]
+workflow/session_start [OK]
+workflow/validate_response [OK]
+utility/tool_discovery [OK]
+
+[STATUS]
+tool_calibration: in_progress -> Calibrate AST analyzer to detect actual violations vs markers
+
+[SOURCE FILES]
+
+--- world/world_controller.py ---
+# world_controller.py
+"""
+WorldController Module
+=====================
+
+Active Record pattern combining world state management with system coordination.
+See class docstring for architectural details.
+"""
+import json
+import math
+import random
+import uuid
+import numpy as np
+from typing import Dict, List, Optional, Set, Any
+
+from dnd_character import CLASSES
+from world.db import Database
+from world.utils import convex_hull, cross
+from world.world_map import WorldMap
+from world.campaign import Location, Quest, Faction, CampaignState
+from world.narrative_system import NarrativeSystem
+from world.character_builder import CharacterBuilder
+from world.character import Character
+from world.persistence import WorldManager
+from world.dm_chat_ai import DMChatAI
+from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
+from world.world_session import SessionManager
+from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
+# this is new integration
+from engine.game_engine import GameEngine, GamePhase
+
+from .terrain import TerrainGenerator
+from .paths import PathGenerator
+from .map_utils import MapUtils
+
+from .party_manager import PartyManager
+from .quest_manager import QuestManager
+from .character_manager import CharacterManager
+
+import warnings
+warnings.filterwarnings("ignore", message=".*Triton.*")
+warnings.filterwarnings("ignore", message=".*redirects.*")
+
+"""
+ARCHITECTURAL OVERVIEW: ACTIVE RECORD PATTERN
+=============================================
+
+This WorldController uses the Active Record pattern, meaning it serves as BOTH:
+1. A Controller (coordinator between systems)
+2. A Data Model (campaign state containing locations, quests, factions)
+
+This design choice was made because:
+- It simplifies the initial implementation
+- It reduces abstraction layers during prototyping  
+- It's common in game development for world-state management
+
+Key Implications:
+1. WorldAI receives this controller as its "campaign_state"
+2. The controller delegates to internal managers (WorldMap, QuestManager, etc.)
+3. Phase enforcement happens via GameEngine when it's active
+
+State Models in the System:
+- Campaign State: This controller (Active Record pattern)
+- Narrative State: AIDungeonMaster.game_state
+- Game Engine State: GameEngine (planned, partially implemented)
+- AI State: Distributed across AI systems
+
+For future refactoring: Consider separating state from controller if:
+1. Testing becomes difficult
+2. Concurrent access is needed
+3. State persistence requirements change
+"""
+
+class WorldController:
+    def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
+        # Initialize core components
+        self.seed = seed
+        self.rng = random.Random(self.seed)
+        self.np_rng = np.random.default_rng(self.seed)
+        self.terrain_generator = TerrainGenerator(seed)
+        self.path_generator = PathGenerator(seed)
+        self.map_utils = MapUtils(seed)
+        self.world_map = WorldMap()
+        # We need to create dm_chat_ai FIRST, then pass it to NarrativeSystem
+        self.dm_chat_ai = DMChatAI(ai_system)  # Create this BEFORE narrative_system
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.character_builder = CharacterBuilder(ai_system)
+        # Register character builder tools for AI use
+        if hasattr(ai_system, 'tool_registry'):
+            ai_system.tool_registry.register_from_class(self.character_builder)
+        self.ai_system = ai_system
+        self.terrain_types = self.terrain_generator.terrain_types
+        self.fog_of_war = True
+
+        # Initialize state tracking
+        self.session_log: List[str] = []
+        self.current_location: Optional[Location] = None
+        self.time = 0
+        self.time_factor = 1
+        self.game_started = False
+        self.default_party_id = "main_party"
+
+        # Initialize players
+        self.players: Dict[str, Player] = {}
+        self.players: Dict[str, Player] = {}  # Add this for player management
+        self.session_players: Dict[str, str] = {}  # session_id -> player_id
+        
+        # Initialize world manager and load world data
+        self.world_manager = WorldManager(ai_system)
+        self.world_data = self.world_manager.load_from_db(world_id)
+        
+        # Set up the world
+        self.setup_world(self.world_data)
+        
+        # Set starting location
+        #starting_id = self.world_data.get("starting_location_id", "starting_tavern")
+
+        starting_location = None
+        for location in self.world_map.locations.values():
+            if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
+                starting_location = location
+                break
+        
+        if starting_location:
+            print("Found starting location")
+            self.starting_location_id = starting_location.id
+            self.reveal_location(starting_location.id)
+            self.travel_to_location(starting_location.id)
+        else:
+            # Fallback to first location if no tavern found
+            first_location_id = list(self.world_map.locations.keys())[0]
+            self.starting_location_id = first_location_id
+            self.reveal_location(first_location_id)
+            self.travel_to_location(first_location_id)
+
+        # Initialize managers
+        self.quest_manager = QuestManager()
+        self.party_manager = PartyManager(self.starting_location_id)
+        self.character_manager = CharacterManager(self.character_builder)
+
+        # Transfer existing quests from world data to quest manager
+        for quest_id, quest in self.quest_manager.quests.items():
+            self.quest_manager.quests[quest_id] = quest
+        self.quest_manager.quests = {}  # Clear old quests dict
+
+        # Transfer existing characters to character manager
+        self.character_manager.characters = self.character_manager.char
+...[truncated]
+
+--- engine/game_engine.py ---
+# game_engine.py
+import json
+from enum import Enum
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+class GamePhase(Enum):
+    """Canonical game phases as defined in ENGINE_LOOP.md"""
+    INPUT = "input"
+    INTERPRETATION = "interpretation"
+    AUTHORITY = "authority"
+    MUTATION = "mutation"
+    CONSEQUENCE = "consequence"
+    PERSISTENCE = "persistence"
+    VIEW = "view"
+
+class GameContext:
+    """Context object passed between phases to maintain isolation"""
+    def __init__(self):
+        self.phase_data = {
+            GamePhase.INPUT: {},
+            GamePhase.INTERPRETATION: {},
+            GamePhase.AUTHORITY: {},
+            GamePhase.MUTATION: {},
+            GamePhase.CONSEQUENCE: {},
+            GamePhase.PERSISTENCE: {},
+            GamePhase.VIEW: {},
+        }
+        self.errors = []
+        self.warnings = []
+        
+    def set_phase_data(self, phase: GamePhase, key: str, value: Any):
+        """Store data for a specific phase"""
+        self.phase_data[phase][key] = value
+        
+    def get_phase_data(self, phase: GamePhase, key: str, default=None):
+        """Retrieve data from a specific phase"""
+        return self.phase_data[phase].get(key, default)
+        
+    def clear_phase_data(self, phase: GamePhase):
+        """Clear all data for a phase (for isolation)"""
+        self.phase_data[phase] = {}
+        
+    def add_error(self, message: str, phase: GamePhase):
+        """Log a phase violation error"""
+        self.errors.append({
+            "phase": phase,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    def add_warning(self, message: str, phase: GamePhase):
+        """Log a phase warning"""
+        self.warnings.append({
+            "phase": phase,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+
+class GameEngine:
+    def __init__(self, world_controller):
+        # Temporary: wrap existing controller
+        self.world = world_controller
+        self.current_phase = GamePhase.INPUT
+        self.phase_history = []
+        
+        # Phase violation tracking
+        self.violations = []
+        
+        # Will be populated with phase-specific systems as we extract them
+        self.systems = {
+            GamePhase.INPUT: None,
+            GamePhase.INTERPRETATION: None,
+            GamePhase.AUTHORITY: None,
+            GamePhase.MUTATION: None,
+            GamePhase.CONSEQUENCE: None,
+            GamePhase.PERSISTENCE: None,
+            GamePhase.VIEW: None,
+        }
+        
+        # Initialize phase delegates from world_controller
+        self._initialize_delegates()
+        
+        # Add mode switching support
+        self.current_mode = "world"  # "world" or "dungeon"
+        self.mode_delegates = {
+            "world": {},
+            "dungeon": {}
+        }
+        self._initialize_mode_delegates()
+        
+    def _initialize_delegates(self):
+        """Temporary initialization of phase delegates from world_controller"""
+        # For now, we'll use the world_controller for everything
+        # As we extract systems, we'll replace these
+        
+        # Input phase: Use world_controller's command processing
+        self.systems[GamePhase.INPUT] = self.world
+        
+        # Interpretation phase: Use DMChatHandler for now (will extract)
+        if hasattr(self.world, 'dm_chat_handler'):
+            self.systems[GamePhase.INTERPRETATION] = self.world.dm_chat_handler
+            
+        # Authority phase: Use world_controller's validation (will extract to dm_tools)
+        self.systems[GamePhase.AUTHORITY] = self.world
+        
+        # Mutation phase: Use world_controller's state changes
+        self.systems[GamePhase.MUTATION] = self.world
+        
+        # Consequence phase: Use narrative system
+        if hasattr(self.world, 'narrative_system'):
+            self.systems[GamePhase.CONSEQUENCE] = self.world.narrative_system
+            
+        # Persistence phase: Use world_controller's save methods
+        self.systems[GamePhase.PERSISTENCE] = self.world
+        
+        # View phase: Use world_controller's get_map_data, etc.
+        self.systems[GamePhase.VIEW] = self.world
+        
+    def _initialize_mode_delegates(self):
+        """Initialize mode delegates from current systems"""
+        # World delegates are the current systems
+        for phase, system in self.systems.items():
+            self.mode_delegates["world"][phase] = system
+            # Dungeon delegates are None for now
+            self.mode_delegates["dungeon"][phase] = None
+    
+    def set_mode(self, mode: str):
+        """Switch between world and dungeon modes"""
+        if mode not in ["world", "dungeon"]:
+            raise ValueError(f"Invalid mode: {mode}. Must be 'world' or 'dungeon'")
+        
+        if mode == self.current_mode:
+            return  # Already in this mode
+        
+        print(f"GameEngine switching from {self.current_mode} to {mode} mode")
+        
+        # Save current context if needed
+        # (we'll implement context preservation later)
+        
+        # Switch systems
+        for phase in self.systems:
+            self.systems[phase] = self.mode_delegates[mode][phase]
+        
+        self.current_mode = mode
+        print(f"[OK] Now in {self.current_mode} mode")
+    
+    def set_dungeon_delegates(self, dungeon_systems):
+        """Set dungeon mode delegates from provided systems"""
+        if not dungeon_systems or "systems" not in dungeon_systems:
+            print("[FAIL] No dungeon systems provided")
+            return False
+        
+        systems = dungeon_systems["systems"]
+        
+        print(f"\nSetting dungeon mode delegates:")
+        for phase, system in systems.items():
+            if phase in self.mode_delegates["dungeon"]:
+                self.mode_delegates["dungeon"][phase] = system
+                if system:
+                    print(f"  [OK] {phase.value}: {type(system).__name__}")
+     
+...[truncated]
+
+--- world/session_system.py ---
+# world/session_system.py
+"""
+Session management system - tracks player conversation state
+Phase: State Mutation (for state updates), but provides context to other phases
+"""
+from collections import defaultdict, deque
+import uuid
+import json
+from typing import Dict, List, Optional, Any, Deque
+
+class SessionState:
+    """State for a single player session"""
+    
+    def __init__(self, session_id: str, player_id: Optional[str] = None):
+        self.session_id = session_id
+        self.player_id = player_id
+        self.conversation_topics: Deque[str] = deque(maxlen=5)  # Recent topics
+        self.chat_history: List[Dict[str, str]] = []  # Format: {"speaker": "DM/Player", "content": str}
+        self.character_data: Dict[str, Any] = {}  # Character creation progress
+        self.awaiting_confirmation = False
+        self.creation_state = "not_started"  # not_started, gathering_info, class_suggested, class_confirmed, completed
+        self.last_interaction_time = 0
+        
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "player_id": self.player_id,
+            "conversation_topics": list(self.conversation_topics),
+            "chat_history": self.chat_history[-10:],  # Last 10 messages
+            "character_data": self.character_data,
+            "awaiting_confirmation": self.awaiting_confirmation,
+            "creation_state": self.creation_state
+        }
+
+class SessionSystem:
+    """Manages player session state across the game"""
+    
+    def __init__(self):
+        self.sessions: Dict[str, SessionState] = {}
+        
+    def get_or_create_session(self, session_id: str, player_id: Optional[str] = None) -> SessionState:
+        """Get existing session or create new one"""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = SessionState(session_id, player_id)
+        elif player_id and not self.sessions[session_id].player_id:
+            self.sessions[session_id].player_id = player_id
+            
+        return self.sessions[session_id]
+    
+    def get_session(self, session_id: str) -> Optional[SessionState]:
+        """Get session by ID"""
+        return self.sessions.get(session_id)
+    
+    def add_message(self, session_id: str, speaker: str, content: str):
+        """Add a message to chat history"""
+        session = self.get_session(session_id)
+        if session:
+            session.chat_history.append({
+                "speaker": speaker,
+                "content": content,
+                "timestamp": self._get_timestamp()
+            })
+    
+    def add_topic(self, session_id: str, topic: str):
+        """Add topic to conversation topics"""
+        session = self.get_session(session_id)
+        if session and topic and topic not in session.conversation_topics:
+            session.conversation_topics.append(topic)
+    
+    def get_recent_topics(self, session_id: str, limit: int = 3) -> List[str]:
+        """Get most recent conversation topics"""
+        session = self.get_session(session_id)
+        if session:
+            return list(session.conversation_topics)[-limit:]
+        return []
+    
+    def update_character_data(self, session_id: str, updates: Dict[str, Any]):
+        """Update character creation data"""
+        session = self.get_session(session_id)
+        if session:
+            session.character_data.update(updates)
+    
+    def set_creation_state(self, session_id: str, state: str):
+        """Update character creation state"""
+        valid_states = ["not_started", "gathering_info", "class_suggested", "class_confirmed", "completed"]
+        session = self.get_session(session_id)
+        if session and state in valid_states:
+            session.creation_state = state
+            return True
+        return False
+    
+    def set_awaiting_confirmation(self, session_id: str, awaiting: bool):
+        """Set confirmation waiting state"""
+        session = self.get_session(session_id)
+        if session:
+            session.awaiting_confirmation = awaiting
+    
+    def get_conversation_context(self, session_id: str, message_count: int = 10) -> str:
+        """Get recent conversation for AI context"""
+        session = self.get_session(session_id)
+        if not session:
+            return ""
+        
+        recent_messages = session.chat_history[-message_count:]
+        return "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in recent_messages])
+    
+    def _get_timestamp(self) -> str:
+        """Simple timestamp for chat history"""
+        import time
+        return time.strftime("%H:%M:%S")
+
+================================================================================
+Analyze: WorldState refactor
+Reference sections above. Suggest tools from [TOOLS] section.
+================================================================================

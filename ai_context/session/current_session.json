@@ -1,0 +1,10 @@
+{
+  "topic": "Test workflow",
+  "started": "2026-01-31T14:45:56.381144",
+  "context_summary": {
+    "token_estimate": 373,
+    "files_found": 0,
+    "violations": "Scanning project in: .\nIgnoring directories: __pycache__, venv, .git, Lib, core, archive, node_modules, .idea, .vscode, docs, DOCS, documentation\nMode: violations\nScanned 103 Python files\n\n==========="
+  },
+  "last_action": "session_started"
+}

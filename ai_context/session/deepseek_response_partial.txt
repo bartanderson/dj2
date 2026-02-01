@@ -1,0 +1,190 @@
+???????????
+WorldController
+???????????????????????????????????????????
+??????
+??????????
+?????
+session_log
+,
+current_location
+,
+time
+,
+players
+??
+?????
+game_started
+,
+fog_of_war
+??
+??????? generator ? system?
+?????????
+???????
+????? AI ??????? AI ???
+WorldController
+??????????
+????
+??1?????????
+WorldState
+?
+python
+Copy
+Download
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any
+import random
+import numpy as np
+
+@dataclass
+class WorldState:
+    """??????????????"""
+    world_id: str
+    seed: int = 42
+    session_log: List[str] = field(default_factory=list)
+    current_location: Optional[Location] = None
+    time: int = 0
+    time_factor: int = 1
+    game_started: bool = False
+    fog_of_war: bool = True
+    
+    # ????
+    players: Dict[str, Player] = field(default_factory=dict)
+    session_players: Dict[str, str] = field(default_factory=dict)  # session_id -> player_id
+    default_party_id: str = "main_party"
+    
+    # ????
+    world_data: Optional[Dict] = None
+    world_map: Optional[WorldMap] = None
+    
+    # ???????????????/???
+    rng_state: Optional[Any] = None
+    np_rng_state: Optional[Any] = None
+    
+    def save_random_state(self, controller):
+        """??????????"""
+        self.rng_state = controller.rng.getstate()
+        self.np_rng_state = controller.np_rng.bit_generator.state
+    
+    def restore_random_state(self, controller):
+        """??????????"""
+        if self.rng_state:
+            controller.rng.setstate(self.rng_state)
+        if self.np_rng_state:
+            controller.np_rng.bit_generator.state = self.np_rng_state
+??2????????
+python
+Copy
+Download
+class StateManager:
+    """?????????????????????"""
+    
+    def __init__(self, world_id: str):
+        self.world_id = world_id
+        self.state_version = "1.0"
+        self.states = {
+            'game': GameState(),
+            'ai': AIState(),
+            'narrative': NarrativeState(),
+            'player': PlayerState()
+        }
+        
+    def save_snapshot(self, controller):
+        """??????"""
+        snapshot = {
+            'version': self.state_version,
+            'timestamp': time.time(),
+            'game_state': self._extract_game_state(controller),
+            'ai_state': self._extract_ai_state(controller),
+            'metadata': {
+                'world_id': controller.world_id,
+                'seed': controller.seed
+            }
+        }
+        return snapshot
+    
+    def load_snapshot(self, controller, snapshot):
+        """??????"""
+        # ????
+        if snapshot.get('version') != self.state_version:
+            self._migrate_state(snapshot)
+        
+        # ????
+        self._restore_game_state(controller, snapshot['game_state'])
+        self._restore_ai_state(controller, snapshot['ai_state'])
+??3????????Event Sourcing?
+python
+Copy
+Download
+class WorldEventStore:
+    """???????????"""
+    
+    def __init__(self, world_id: str):
+        self.world_id = world_id
+        self.events: List[WorldEvent] = []
+        self.current_state = WorldState(world_id)
+        
+    def apply_event(self, event: WorldEvent):
+        """?????????"""
+        self.events.append(event)
+        self.current_state = self._reducer(self.current_state, event)
+        
+    def get_state_at(self, event_index: int) -> WorldState:
+        """????????????"""
+        state = WorldState(self.world_id)
+        for i, event in enumerate(self.events[:event_index+1]):
+            state = self._reducer(state, event)
+        return state
+    
+    def _reducer(self, state: WorldState, event: WorldEvent) -> WorldState:
+        """?????"""
+        # ??????????
+        if isinstance(event, PlayerMovedEvent):
+            state.current_location = event.new_location
+            state.time += event.time_passed
+        elif isinstance(event, GameStartedEvent):
+            state.game_started = True
+        # ... ??????
+        
+        return state
+????
+WorldController
+python
+Copy
+Download
+class WorldController:
+    def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
+        # ????
+        self.state = WorldState(world_id=world_id, seed=seed)
+        self.event_store = WorldEventStore(world_id)
+        
+        # ??????
+        self.rng = random.Random(seed)
+        self.np_rng = np.random.default_rng(seed)
+        self.terrain_generator = TerrainGenerator(seed)
+        self.path_generator = PathGenerator(seed)
+        self.map_utils = MapUtils(seed)
+        
+        # AI ??
+        self.dm_chat_ai = DMChatAI(ai_system)
+        self.narrative_system = NarrativeSystem(
+            self, ai_system, dm_chat_ai=self.dm_chat_ai
+        )
+        self.character_builder = CharacterBuilder(ai_system)
+        
+        # ????
+        if hasattr(ai_system, 'tool_registry'):
+            ai_system.tool_registry.register_from_class(self.character_builder)
+        
+        self.ai_system = ai_system
+        self.terrain_types = self.terrain_generator.terrain_types
+        
+        # ?????
+        self.world_manager = WorldManager(ai_system)
+        self.state.world_data = self.world_manager.load_from_db(world_id)
+????
+????????????????????
+????????????????????????
+??????????/??????
+???????????????????????
+??????????????
+???????????????????????????????
