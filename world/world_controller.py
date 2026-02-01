@@ -92,12 +92,18 @@ class WorldController:
         self.terrain_types = self.terrain_generator.terrain_types
         self.fog_of_war = True
 
+        # Create CampaignState instance
+        self.campaign_state = CampaignState()
+
         # Initialize state tracking
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
-        self.time = 0
-        self.time_factor = 1
-        self.game_started = False
+        
+        # Set core game state via campaign_state (REPLACE OLD FIELDS)
+        self.campaign_state.time = 0
+        self.campaign_state.time_factor = 1  
+        self.campaign_state.game_started = False
+        
         self.default_party_id = "main_party"
 
         # Initialize players
@@ -116,6 +122,8 @@ class WorldController:
         #starting_id = self.world_data.get("starting_location_id", "starting_tavern")
 
         starting_location = None
+        # Initialize with default values
+        self.campaign_state.starting_location_id = None
         for location in self.world_map.locations.values():
             if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
                 starting_location = location
@@ -123,19 +131,19 @@ class WorldController:
         
         if starting_location:
             print("Found starting location")
-            self.starting_location_id = starting_location.id
+            self.campaign_state.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
             self.travel_to_location(starting_location.id)
         else:
             # Fallback to first location if no tavern found
             first_location_id = list(self.world_map.locations.keys())[0]
-            self.starting_location_id = first_location_id
+            self.campaign_state.starting_location_id = first_location_id
             self.reveal_location(first_location_id)
             self.travel_to_location(first_location_id)
 
         # Initialize managers
         self.quest_manager = QuestManager()
-        self.party_manager = PartyManager(self.starting_location_id)
+        self.party_manager = PartyManager(self.campaign_state.starting_location_id)
         self.character_manager = CharacterManager(self.character_builder)
 
         # Transfer existing quests from world data to quest manager
@@ -470,7 +478,7 @@ class WorldController:
                 "height": 800
             },
             "fog_of_war": self.fog_of_war,
-            "starting_location": self.starting_location_id,
+            "starting_location": self.campaign_state.starting_location_id,
             "seed": seed
         }
 
@@ -563,11 +571,11 @@ class WorldController:
         self.game_start_time = datetime.now()
         
     def get_game_time(self):
-        if not self.game_started:
+        if not self.campaign_state.game_started:
             return "Not started"
         
         elapsed = (datetime.now() - self.game_start_time).total_seconds()
-        game_minutes = int(self.time + elapsed * self.time_factor)
+        game_minutes = int(self.campaign_state.time + elapsed * self.campaign_state.time_factor)
         return f"{game_minutes // 60}h {game_minutes % 60}m"
 
     def complete_tavern_intro(self, party_id, player_id):
@@ -614,20 +622,20 @@ class WorldController:
         return {
             # Core world data
             "world_map": self.world_map.serialize(),
-            "time": self.time,
-            "time_factor": self.time_factor,
+            "time": self.campaign_state.time,
+            "time_factor": self.campaign_state.time_factor,
             
             # Player progression
             "parties": party_states,
             "fog_of_war": self.fog_of_war,
-            "starting_location": self.starting_location_id,
+            "starting_location": self.campaign_state.starting_location_id,
             
             # NPC and event data
             "npcs": self.npc_controller.get_npc_states(),
             "events": self.event_scheduler.get_active_events(),
             
             # Game state flags
-            "game_started": self.game_started,
+            "game_started": self.campaign_state.game_started,
             "game_time": self.get_game_time(),
             
             # Player-specific data (if applicable)

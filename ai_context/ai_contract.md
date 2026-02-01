@@ -4,7 +4,23 @@
 - **AI NEVER owns state** - Read-only access to SessionSystem
 - **AI NEVER mutates state directly** - All changes via GameEngine
 - **AI ONLY requests actions via interfaces** - Tool calls return proposals, not execution
-- **Windows Reality**: Use backslashes in CMD (`python tools\script.py`), CRLF endings, NO `python -c` for multiline
+- **Windows Reality**:
+  - Use backslashes in CMD: `python tools\script.py`
+  - CRLF line endings
+  - NO `python -c` for multiline scripts - use .py files instead
+  - Single-line `python -c` only for very simple commands
+  - Example of what DOES NOT work:
+    ```cmd
+    python -c "
+    print('hello')
+    print('world')
+    "
+    ```
+  - Example of what works:
+    ```cmd
+    python -c "print('hello'); print('world')"
+    ```
+  - Better: Create a script file. The user reuses test.py, so if its one time thats what they use.
 
 ## The 7 Runtime Phases (The Conveyor Belt)
 Every command cycles through:

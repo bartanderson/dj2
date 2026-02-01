@@ -718,7 +718,7 @@ def setup_world_system():
         
         # 7. Verify everything is working
         print(f"[OK] World loaded with {len(world_controller.world_map.locations)} locations")
-        print(f"[OK] Starting at: {world_controller.starting_location_id}")
+        print(f"[OK] Starting at: {world_controller.campaign_state.starting_location_id}")
         
         return world_controller, world_id
         

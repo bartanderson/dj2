@@ -108,6 +108,12 @@ class CampaignState:
         self.npcs: Dict[str, NPC] = {}
         self.quests: Dict[str, Quest] = {}
         self.factions: Dict[str, Faction] = {}
+
+        # Core game state (moved from WorldController)
+        self.time: int = 0
+        self.time_factor: int = 1
+        self.game_started: bool = False
+        self.starting_location_id: Optional[str] = None
     
     def add_location(self, location: Location):
         self.locations[location.id] = location

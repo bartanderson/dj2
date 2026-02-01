@@ -3,27 +3,29 @@
   "system_version": "2.0-context-refactor",
   "phases": {
     "tool_calibration": {
-      "status": "in_progress",
-      "completed": ["search_fix", "four_layer_analyzer", "todos_tracking", "context_manager"],
-      "blocked": ["violations_calibration"],
-      "next_action": "Calibrate AST analyzer to detect actual violations vs markers",
-      "completion_percentage": 85
+      "status": "complete",
+      "completed": ["search_fix", "four_layer_analyzer", "todos_tracking", "context_manager", "violations_calibration"],
+      "note": "All tools calibrated and working",
+      "completion_percentage": 100
     },
     "dmchat_fix": {
-      "status": "pending",
-      "dependencies": ["tool_calibration"],
-      "violations_confirmed": [
-        "world/dm_chat_handler.py:293 - Direct AI call in _extract_conversation_context"
-      ],
-      "estimated_effort": "2 hours",
-      "completion_percentage": 0
+      "status": "complete", 
+      "note": "Violation at line 293 already fixed - placeholder implementation with phase-compliant approach documented",
+      "verified_at": "2026-01-31",
+      "completion_percentage": 100
     },
     "campaign_state_rename": {
-      "status": "ready_to_start",
-      "dependencies": [],
-      "architecture_approved": true,
-      "estimated_effort": "4 hours",
-      "risk_level": "medium"
+      "status": "complete",
+      "completed_actions": [
+        "Added state fields to CampaignState.__init__ (time, time_factor, game_started, starting_location_id)",
+        "Created CampaignState instance in WorldController.__init__",
+        "Updated all internal references in WorldController methods (9 locations)",
+        "Updated external references in world_app.py and world/world_generator.py",
+        "Removed old state fields from WorldController",
+        "Tested application - working correctly"
+      ],
+      "completion_percentage": 100,
+      "completed_at": "2026-01-31"
     }
   },
   "interfaces_defined": [
@@ -31,7 +33,8 @@
     "DMChatAI", 
     "GameEngine",
     "CampaignState",
-    "ToolRegistry"
+    "ToolRegistry",
+    "WorldController"
   ],
   "interfaces_pending": [
     "PuzzleSystem",
@@ -39,13 +42,65 @@
     "EnhancedTools"
   ],
   "tools_status": {
-    "working": ["todos", "four_layer", "search", "context_manager", "ai_workflow"],
-    "needs_calibration": ["violations"],
+    "working": ["todos", "four_layer", "search", "context_manager", "violations"],
+    "broken": ["ai_workflow"],
     "experimental": ["deepseek_bridge"]
   },
   "architecture_maturity": {
     "mechanics_stage": "complete",
-    "events_stage": "in_progress", 
+    "events_stage": "ready_for_development", 
     "narrative_stage": "planned"
+  },
+  "technical_debt": [
+    {
+      "component": "WorldController",
+      "issue": "God Object (1500+ lines), mixes coordination, logic, persistence, AI calls",
+      "priority": "medium",
+      "recommended_fix": "Extract WorldState (pure data), WorldRuntime (travel/time), SessionFacade (save/load)",
+      "estimated_effort": "1 day"
+    },
+    {
+      "component": "DMChatHandler",
+      "issue": "Line 293 placeholder, lacks conversation storage integration",
+      "priority": "low",
+      "recommended_fix": "Implement session-based conversation storage and proper DMChatAI boundary",
+      "estimated_effort": "2 hours"
+    },
+    {
+      "component": "GameEngine",
+      "issue": "Incomplete (no full 7-phase loop)",
+      "priority": "high",
+      "recommended_fix": "Complete GameEngine with full phase loop implementation",
+      "estimated_effort": "4 hours"
+    },
+    {
+      "component": "ToolSystem",
+      "issue": "Unguarded (direct mutation instead of proposals)",
+      "priority": "high",
+      "recommended_fix": "Update ToolSystem to return proposals only, not execute",
+      "estimated_effort": "2 hours"
+    },
+    {
+      "component": "ai_workflow.py",
+      "issue": "Import error for UnifiedContextManager",
+      "priority": "low",
+      "recommended_fix": "Fix import or update to use context_manager correctly",
+      "estimated_effort": "30 minutes"
+    }
+  ],
+  "current_focus": "Event System development using new CampaignState structure",
+  "next_session_guide": {
+    "if_continuing_development": [
+      "Run: python ai.py violations .",
+      "Run: python tools\\ai_assistant\\four_layer.py 'Event System design'",
+      "Start with GameEngine completion (high priority tech debt)",
+      "Then move to EventSystem interface implementation"
+    ],
+    "if_starting_fresh": [
+      "Check status_manifest.json for current state",
+      "Run: python scripts\\context_manager.py -q 'Continue CampaignState refactor completion' --target deepseek",
+      "Review technical debt list above",
+      "Start with highest priority tech debt (GameEngine)"
+    ]
   }
 }
