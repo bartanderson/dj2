@@ -5,8 +5,7 @@ Scripts
 *$py.class
 
 #tool generated and constantly changing, so of no value
-ai_context/session/context_for_ai.txt
-ai_context/session/current_session.json
+ai_context/session/
 test.py
 project_ast.json
 #local ignore for my project
