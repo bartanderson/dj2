@@ -13,6 +13,12 @@ project_ast.json
 .archive_index/
 .whoosh_index/
 archive/
+scripts/pywin32_postinstall.py
+scripts/pywin32_testall.py
+scripts/activate
+scripts/activate.bat
+scripts/Activate.ps1
+scripts/unidiff
 
 # C extensions
 *.so
