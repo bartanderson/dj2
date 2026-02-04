@@ -200,8 +200,61 @@ class DeepSeekBridgeReact:
                 continue
         return None
 
+    # def send_via_file_upload(self, text, filename="context.txt"):
+    #     """Send long text via file upload"""
+    #     import tempfile
+    #     import os
+        
+    #     # Save text to temp file
+    #     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', 
+    #                                      suffix=filename, delete=False) as f:
+    #         f.write(text)
+    #         temp_file_path = f.name
+        
+    #     try:
+    #         self.log(f"Created temp file: {temp_file_path} ({len(text)} chars)")
+            
+    #         # Upload file
+    #         file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+    #         file_input.send_keys(temp_file_path)
+    #         self.log("✅ File uploaded")
+            
+    #         # Wait for file to appear
+    #         time.sleep(3)
+            
+    #         # Send instruction in English
+    #         textarea = self.driver.find_element(By.TAG_NAME, "textarea")
+    #         textarea.click()
+    #         time.sleep(0.5)
+            
+    #         instruction = "Please read the uploaded file and provide analysis in English."
+    #         textarea.send_keys(instruction)
+            
+    #         # Find and click send button
+    #         send_button = self._find_send_button()
+    #         if send_button:
+    #             send_button.click()
+    #             self.log("✅ Send button clicked")
+    #         else:
+    #             # Fallback to Enter
+    #             textarea.send_keys(Keys.RETURN)
+    #             self.log("✅ Enter pressed")
+            
+    #         # Wait for send confirmation
+    #         time.sleep(2)
+            
+    #         return True
+            
+    #     except Exception as e:
+    #         self.log(f"❌ File upload failed: {e}")
+    #         return False
+    #     finally:
+    #         # Clean up temp file
+    #         if os.path.exists(temp_file_path):
+    #             os.remove(temp_file_path)
+
     def send_via_file_upload(self, text, filename="context.txt"):
-        """Send long text via file upload"""
+        """Upload file, wait for completion, then send instruction"""
         import tempfile
         import os
         
@@ -214,44 +267,128 @@ class DeepSeekBridgeReact:
         try:
             self.log(f"Created temp file: {temp_file_path} ({len(text)} chars)")
             
-            # Upload file
-            file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+            # STEP 1: Upload file
+            try:
+                file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+            except:
+                # Try XPath as fallback
+                file_input = self.driver.find_element(By.XPATH, '//input[@type="file"]')
+            
             file_input.send_keys(temp_file_path)
-            self.log("✅ File uploaded")
+            self.log("✅ File selected for upload")
             
-            # Wait for file to appear
-            time.sleep(3)
+            # STEP 2: Wait for upload to complete - THIS IS THE KEY CHANGE
+            self.log("⏳ Waiting for upload to complete...")
             
-            # Send instruction in English
-            textarea = self.driver.find_element(By.TAG_NAME, "textarea")
-            textarea.click()
+            # Call the new wait function
+            upload_success = self.wait_for_upload_complete_simple(filename, timeout=60)
+            
+            if not upload_success:
+                self.log("⚠️  Upload timeout after 60 seconds")
+                # Continue anyway, but log warning
+                self.log("Proceeding with send anyway...")
+            
+            # STEP 3: Type and send instruction
+            self.log("📝 Typing instruction...")
+            
+            textarea = self._get_textarea()
+            if not textarea:
+                self.log("❌ Cannot find textarea")
+                return False
+            
+            # Clear and type
+            textarea.clear()
+            
+            # Type a simple instruction
+            instruction = "Please analyze the uploaded file and provide recommendations."
+            textarea.send_keys(instruction)
+            self.log(f"✅ Typed: {instruction}")
+            
+            # Wait a moment for UI
             time.sleep(0.5)
             
-            instruction = "Please read the uploaded file and provide analysis in English."
-            textarea.send_keys(instruction)
+            # Press Enter
+            textarea.send_keys(Keys.RETURN)
+            self.log("✅ Enter pressed")
             
-            # Find and click send button
-            send_button = self._find_send_button()
-            if send_button:
-                send_button.click()
-                self.log("✅ Send button clicked")
+            # Wait for send to process
+            time.sleep(3)
+            
+            # Check if message was sent (textarea should clear)
+            if not textarea.get_attribute('value'):
+                self.log("✅ Textarea cleared - message sent")
             else:
-                # Fallback to Enter
+                self.log("⚠️  Textarea not cleared, pressing Enter again")
                 textarea.send_keys(Keys.RETURN)
-                self.log("✅ Enter pressed")
-            
-            # Wait for send confirmation
-            time.sleep(2)
+                time.sleep(2)
             
             return True
             
         except Exception as e:
             self.log(f"❌ File upload failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
         finally:
             # Clean up temp file
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
+
+    def wait_for_upload_complete_simple(self, filename="context.txt", timeout=60):
+        """Simpler wait that looks for specific patterns in visible text"""
+        self.log(f"⏳ Waiting for '{filename}' upload...")
+        
+        start_time = time.time()
+        last_diagnostic = ""
+        
+        while time.time() - start_time < timeout:
+            try:
+                # Get visible text from the page
+                body = self.driver.find_element(By.TAG_NAME, "body")
+                visible_text = body.text
+                
+                # Check for filename
+                if filename not in visible_text:
+                    self.log(f"  {int(time.time() - start_time)}s: '{filename}' not found in visible text")
+                    time.sleep(2)
+                    continue
+                
+                # Look for file type pattern in visible text
+                # Pattern: word boundary, then "PY" or "TXT", then optional space, then optional size
+                import re
+                
+                # Find all occurrences of file type patterns
+                matches = re.findall(r'\b(PY|TXT)\b\s*\d*\.?\d*\s*[KM]?B?', visible_text, re.IGNORECASE)
+                
+                if matches:
+                    self.log(f"✅ Found file type: {matches[0]}")
+                    # Wait a bit more to ensure it's stable
+                    time.sleep(2)
+                    return True
+                else:
+                    # Log what we did find for debugging
+                    lines = visible_text.split('\n')
+                    relevant_lines = [line for line in lines if filename in line or any(x in line.upper() for x in ['PY', 'TXT', 'UPLOAD', 'PARSE'])]
+                    if relevant_lines:
+                        current_diag = f"Found: {relevant_lines}"
+                        if current_diag != last_diagnostic:
+                            self.log(f"  {int(time.time() - start_time)}s: {current_diag}")
+                            last_diagnostic = current_diag
+                    
+            except Exception as e:
+                self.log(f"  Check error: {e}")
+            
+            time.sleep(2)
+        
+        self.log(f"❌ Upload timeout after {timeout}s")
+        # Final diagnostic
+        try:
+            body = self.driver.find_element(By.TAG_NAME, "body")
+            self.log(f"Final page text snippet:\n{body.text[:500]}...")
+        except:
+            pass
+        
+        return False
     
     def send_message(self, text, max_retries=2):
         """Send message - use file upload for long text"""
@@ -298,11 +435,13 @@ class DeepSeekBridgeReact:
         self.log(f"\n⏳ Waiting for response (max {timeout}s)")
         return self._wait_for_response(timeout)
     
-    def _wait_for_response(self, timeout=120):
-        """Wait for response - simplified version"""
+
+    def _wait_for_response(self, timeout=300):  # Increased timeout for file uploads
+        """Wait for response - IMPROVED version"""
         start_time = time.time()
         last_response = ""
         no_change_count = 0
+        max_stable_checks = 5  # Increased from 2 for file uploads
         
         while time.time() - start_time < timeout:
             response = self._get_response_text()
@@ -312,22 +451,24 @@ class DeepSeekBridgeReact:
                 self.log(f"Response updated: {len(response)} chars")
                 last_response = response
                 no_change_count = 0
-                time.sleep(2)
+                time.sleep(3)  # Wait longer between checks
             elif response:
                 # Response stable
                 no_change_count += 1
-                if no_change_count >= 2:  # Stable for 2 checks (4 seconds)
+                if no_change_count >= max_stable_checks:  # More stable checks
                     self.log(f"✅ Response complete: {len(response)} chars")
                     return response
-                time.sleep(2)
+                time.sleep(3)
             else:
                 # No response yet
-                if time.time() - start_time > 30:
-                    self.log("Taking a while to respond...")
-                time.sleep(2)
+                elapsed = time.time() - start_time
+                if elapsed > 30 and elapsed % 30 < 1:  # Every 30 seconds
+                    self.log(f"Still waiting... ({elapsed:.0f}s elapsed)")
+                time.sleep(3)
         
         self.log(f"⚠️ Timeout after {timeout}s")
-        return last_response    
+        return last_response
+
     def _get_response_text(self):
         """Get the latest response text with improved detection"""
         try:

@@ -8,76 +8,39 @@ from typing import Dict, List, Optional
 import requests
 import time
 
+try:
+    # When context_builder is imported as part of tools.ai_assistant
+    from ..ollama_client import get_ollama_client
+except ImportError:
+    # When running directly or from a different path
+    from ollama_client import get_ollama_client
+
 class BridgeAgent:
-    """Lightweight orchestration using llama3.2:3b via Ollama"""
-    
     def __init__(self, indexer: 'CodebaseIndexer', ollama_model: str = "llama3.2:3b"):
         self.indexer = indexer
         self.ollama_model = ollama_model
-        self.conversation_history = []
-        self.ollama_available = self._check_ollama_available()
+        self.client = get_ollama_client(ollama_model)
+        self.ollama_available = self.client.is_available()
         
-    def _check_ollama_available(self) -> bool:
-        """Check if Ollama is running and the model is available"""
-        try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=5)
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                # Check if our model or a compatible one is available
-                for model in models:
-                    model_name = model.get('name', '')
-                    if self.ollama_model in model_name or "llama" in model_name.lower():
-                        print(f"✓ Ollama model available: {model_name}")
-                        return True
-                print(f"⚠️ Ollama is running but model '{self.ollama_model}' not found")
-                print(f"  Available: {[m.get('name') for m in models]}")
-                return False
-        except:
-            pass
-        print("⚠️ Ollama not available. Some features will be limited.")
-        print("  To enable full features: ollama serve")
-        return False
+        if self.ollama_available:
+            print(f"✓ Ollama available for BridgeAgent")
+        else:
+            print(f"⚠️ Ollama not available for BridgeAgent")
     
     def _call_ollama(self, prompt: str, system: str = None) -> str:
-        """Call Ollama via HTTP API with better error handling"""
+        """Call Ollama via unified client."""
         if not self.ollama_available:
             return ""
-            
-        url = "http://localhost:11434/api/generate"
         
-        payload = {
-            "model": self.ollama_model,
-            "prompt": prompt,
-            "system": system or "You are a code analysis assistant. Be concise and factual.",
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 500  # Reduced for faster responses
-            }
-        }
-        
-        try:
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            
-            # Check if response is valid JSON
-            try:
-                data = response.json()
-                return data.get("response", "").strip()
-            except json.JSONDecodeError:
-                print(f"⚠️ Ollama returned invalid JSON: {response.text[:100]}")
-                return ""
-                
-        except requests.exceptions.ConnectionError:
-            print("⚠️ Lost connection to Ollama. Is it still running?")
-            self.ollama_available = False
-            return ""
-        except requests.exceptions.Timeout:
-            print("⚠️ Ollama request timed out (60s). Model might be loading.")
-            return ""
-        except Exception as e:
-            print(f"⚠️ Ollama error: {e}")
-            return ""
+        return self.client.generate(
+            prompt=prompt, 
+            system=system or "You are a code analysis assistant. Be concise and factual.",
+            temperature=0.1,
+            max_tokens=500
+        )
+    
+    # REMOVE the old _check_ollama_available method entirely
+    # REMOVE the old _call_ollama method entirely
     
     def build_context_for_query(self, user_query: str, depth: str = "balanced") -> Dict:
         """Build context for a query, with or without Ollama"""

@@ -1,10 +1,11 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-Scripts
+*.exe
 *.py[codz]
 *$py.class
 
 #tool generated and constantly changing, so of no value
+ai_context/session/deepseek_response.txt
 ai_context/session/
 test.py
 project_ast.json
