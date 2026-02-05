@@ -26,20 +26,20 @@ def load_all_commands():
         'tools.ai_assistant.cli.commands.architecture_commands',
     ]
     
-    print(f"[DEBUG] Loading {len(command_modules)} command modules...", file=sys.stderr)
+    #print(f"[DEBUG] Loading {len(command_modules)} command modules...", file=sys.stderr)
     
     loaded = 0
     for module_name in command_modules:
         try:
-            print(f"[DEBUG] Attempting to load: {module_name}", file=sys.stderr)
+            #print(f"[DEBUG] Attempting to load: {module_name}", file=sys.stderr)
             module = importlib.import_module(module_name)
             loaded += 1
-            print(f"[DEBUG] [OK] Successfully loaded: {module_name}", file=sys.stderr)
+            #print(f"[DEBUG] [OK] Successfully loaded: {module_name}", file=sys.stderr)
         except Exception as e:
             print(f"[ERROR] ERROR loading module {module_name}: {e}", file=sys.stderr)
             # Don't print full traceback for missing modules, just the error
     
-    print(f"[DEBUG] Loaded {loaded}/{len(command_modules)} modules", file=sys.stderr)
+    #print(f"[DEBUG] Loaded {loaded}/{len(command_modules)} modules", file=sys.stderr)
     return loaded
 
 def setup_argparse() -> argparse.ArgumentParser:
