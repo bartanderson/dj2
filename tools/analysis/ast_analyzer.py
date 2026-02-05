@@ -294,33 +294,64 @@ class ASTAnalyzer:
                             'message': f'Direct {node.func.value.id} call detected. Should use DMChatAI boundary instead.'
                         })
         return violations
-    
+
     def analyze_dependencies(self, project_data: List[Dict]) -> Dict[str, Any]:
-        """Analyze import dependencies between files"""
-        dependencies = {}
+        """Analyze import dependencies between files."""
+        import os
         
+        # Build a lookup of module name to file path for local modules
+        module_to_path = {}
         for file_data in project_data:
-            file_path = file_data['path']
-            dependencies[file_path] = {
-                'imports': [],
+            path = file_data['path']
+            # Get base filename without extension
+            filename = os.path.basename(path)
+            module_name = os.path.splitext(filename)[0]
+            module_to_path[module_name] = path
+        
+        # Initialize dependencies structure
+        dependencies = {}
+        for file_data in project_data:
+            path = file_data['path']
+            dependencies[path] = {
+                'imports': file_data.get('imports', []),
                 'imported_by': []
             }
-            
-            for imp in file_data['imports']:
-                if imp['type'] == 'from':
-                    dependencies[file_path]['imports'].append(imp['module'])
-                elif imp['type'] == 'import':
-                    for name in imp['names']:
-                        dependencies[file_path]['imports'].append(name['name'])
         
-        # Build reverse dependencies
-        for file_path, deps in dependencies.items():
-            for imported_file in deps['imports']:
-                for other_file, other_deps in dependencies.items():
-                    if imported_file in other_file and other_file != file_path:
-                        if 'imported_by' not in dependencies[other_file]:
-                            dependencies[other_file]['imported_by'] = []
-                        dependencies[other_file]['imported_by'].append(file_path)
+        # Track unresolved imports for debugging
+        unresolved_imports = []
+        
+        # Build actual dependencies
+        for file_path, file_deps in dependencies.items():
+            for imported_module in file_deps['imports']:
+                # Skip invalid imports
+                if not imported_module or not isinstance(imported_module, str):
+                    continue
+                
+                # Clean the import - remove any trailing parts after dot
+                # e.g., "os.path" -> "os", "mymodule.submodule" -> "mymodule"
+                base_module = imported_module.split('.')[0]
+                
+                # Check if this base module matches a local file
+                if base_module in module_to_path:
+                    imported_file_path = module_to_path[base_module]
+                    
+                    # Don't create self-dependencies
+                    if imported_file_path != file_path:
+                        # Add to imported_by of the imported file
+                        imported_by_list = dependencies[imported_file_path]['imported_by']
+                        if file_path not in imported_by_list:
+                            imported_by_list.append(file_path)
+                else:
+                    # Not a local module - could be standard library, third-party, or relative import
+                    unresolved_imports.append((file_path, imported_module))
+        
+        # Optional: Log unresolved imports for debugging
+        if unresolved_imports and self.verbose:
+            print(f"\nUnresolved imports (not tracked as dependencies):")
+            for file_path, module in unresolved_imports[:10]:  # Limit output
+                print(f"  {os.path.basename(file_path)} -> {module}")
+            if len(unresolved_imports) > 10:
+                print(f"  ... and {len(unresolved_imports) - 10} more")
         
         return dependencies
     
