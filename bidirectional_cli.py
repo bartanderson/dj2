@@ -41,8 +41,8 @@ def process_question(question: str, context: str = None,
         print_result(result)
     elif deepseek_only:
         # Use only DeepSeek
-        from tools.deepseek_bridge import DeepSeekBridge
-        bridge = DeepSeekBridge()
+        from tools.deepseek_bridge_react import DeepSeekBridgeReact
+        bridge = DeepSeekBridgeReact()
         if not no_browser:
             bridge.connect()
             response = bridge.ask(question)
@@ -57,12 +57,12 @@ def process_question(question: str, context: str = None,
         # Bidirectional
         print("🤖 Starting bidirectional AI collaboration...")
         
-        from tools.deepseek_bridge import DeepSeekBridge
+        from tools.deepseek_bridge_react import DeepSeekBridgeReact
         from tools.local_ai_orchestrator import LocalAIOrchestrator
         
         bridge = None
         if not no_browser:
-            bridge = DeepSeekBridge()
+            bridge = DeepSeekBridgeReact()
             print("🌐 Connecting to DeepSeek...")
             bridge.connect()
         else:
@@ -84,12 +84,12 @@ def interactive_mode(no_browser: bool = False):
     print("Type 'quit' to exit")
     print("-" * 60)
     
-    from tools.deepseek_bridge import DeepSeekBridge
+    from tools.deepseek_bridge_react_react import DeepSeekBridge
     from tools.local_ai_orchestrator import LocalAIOrchestrator
     
     bridge = None
     if not no_browser:
-        bridge = DeepSeekBridge()
+        bridge = DeepSeekBridgeReact()
         print("🌐 Connecting to DeepSeek...")
         bridge.connect()
     else:

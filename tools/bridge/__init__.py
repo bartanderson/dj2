@@ -1,5 +1,12 @@
+# tools/bridge/__init__.py - UPDATED
 """
-AI Bridge tools for Dungeon Journey 2
+Bridge system exports
 """
 
-__all__ = ['BridgeController', 'DeepSeekBridge', 'LocalAIOrchestrator']
+from .deepseek_bridge_react import DeepSeekBridgeReact
+from .bridge_controller import BridgeController
+
+__all__ = [
+    'DeepSeekBridgeReact', 
+    'BridgeController'
+]

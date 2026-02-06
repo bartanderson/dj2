@@ -110,7 +110,7 @@ TOP 3 TO FIX NOW:
 3. [File:Line] - Reason
 
 READY FOR DEEPSEEK? [Yes/No] - Brief explanation
-"""
+"""  # noqa: phase-violation
         
         # Call local AI via Ollama
         return self._call_local_ai(prompt)

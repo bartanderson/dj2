@@ -24,6 +24,7 @@ def load_all_commands():
         'tools.ai_assistant.cli.commands.workflow_commands',
         'tools.ai_assistant.cli.commands.index_commands',
         'tools.ai_assistant.cli.commands.architecture_commands',
+        'tools.ai_assistant.cli.commands.tool_commands', 
     ]
     
     #print(f"[DEBUG] Loading {len(command_modules)} command modules...", file=sys.stderr)
@@ -139,6 +140,16 @@ Examples:
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
         
         elif cmd_name in ['index', 'archive-index']:
+            subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+
+        elif cmd_name == 'tools':
+            subp.add_argument('query', nargs='?', help='Tool search query (optional)')
+            subp.add_argument('--ai-suggest', action='store_true', 
+                            help='Get AI suggestions for tools')
+            subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+        
+        elif cmd_name in ['tool-help', 'th']:
+            subp.add_argument('tool_name', help='Name of the tool to get help for')
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
         
         # Architecture commands don't need additional args

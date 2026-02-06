@@ -56,7 +56,7 @@ class HybridPhaseAuditor:
     def classify_with_local_ai(self, violations_data):
         """Use the unified Ollama client for classification."""
         try:
-            from .ollama_client import get_ollama_client
+            from tools.ollama_client import get_ollama_client
             
             client = get_ollama_client()
             
