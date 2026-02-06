@@ -536,10 +536,165 @@ Code: {code_info.get('content', 'None')}"""
         self._vlog(f"Saved context ({len(context)} chars) to {filepath}")
         return filepath
 
+    def send(self, package: dict, target: str = "auto", keep_open: bool = False) -> bool:
+        """
+        Send package to AI - routes to Ollama or DeepSeek based on context size.
+        
+        Args:
+            package: Context package with 'formatted' key
+            target: "auto", "ollama", "deepseek"
+            keep_open: For DeepSeek - leave browser open
+                
+        Returns:
+            True if sent successfully
+        """
+        if target == "auto":
+            # Estimate tokens (rough: 4 chars per token)
+            estimated_tokens = len(package['formatted']) // 4
+            
+            # 98K safety margin under assumed 128K limit
+            if estimated_tokens < 98304:
+                print(f"[ROUTING] {estimated_tokens} tokens -> Trying Ollama first...")
+                if self.send_to_ollama(package):
+                    return True
+                print("[ROUTING] Ollama failed, falling back to DeepSeek...")
+            else:
+                print(f"[ROUTING] {estimated_tokens} tokens -> DeepSeek (>98304 limit)")
+            
+            return bool(self.send_to_deepseek(package['formatted'], keep_open))
+            
+        elif target in ("ollama", "local"):
+            return self.send_to_ollama(package)
+            
+        else:  # deepseek
+            result = self.send_to_deepseek(package['formatted'], keep_open)
+            return result is not None
+    
+    def send_to_ollama(self, package: dict, max_context_chars: int = 393216) -> bool:
+        """
+        Send context to local Ollama (128K context window assumed).
+        
+        Uses unique naming to avoid conflict with DeepSeek files:
+        - localctx_for_ai.txt (context)
+        - localcur_session.json (current session)
+        - local_response.txt (AI response)
+        - session_localarch_YYYYMMDD_HHMMSS.json (archive)
+        """
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+            from ollama_client import get_ollama_client, ServiceNotRunningError
+        except ImportError as e:
+            print(f"[OLLAMA] Cannot import ollama_client: {e}")
+            return False
+        
+        client = get_ollama_client(auto_start=True)
+        
+        if not client.ensure_running():
+            print("[OLLAMA] Service not available")
+            return False
+        
+        # Truncate context to fit (98K safe limit)
+        full_context = package['formatted']
+        if len(full_context) > max_context_chars:
+            print(f"[OLLAMA] Truncating: {len(full_context)} -> {max_context_chars} chars")
+            truncated = full_context[:max_context_chars]
+            truncated += "\n\n[Note: Context truncated. Use DeepSeek for full analysis.]"
+        else:
+            truncated = full_context
+        
+        # Save local context (unique naming)
+        local_context_file = self.session_dir / "localctx_for_ai.txt"
+        local_response_file = self.session_dir / "local_response.txt"
+        
+        with open(local_context_file, 'w', encoding='utf-8') as f:
+            f.write(truncated)
+        
+        print(f"[OLLAMA] Context saved: {local_context_file}")
+        print(f"[OLLAMA] Sending {len(truncated)} chars (~{len(truncated)//4} tokens)...")
+        
+        try:
+            query = package.get('query', 'Analyze this codebase')
+            
+            response = client.generate(
+                truncated,
+                system="You are a senior Python developer. Be specific and actionable.",
+                temperature=0.7,
+                max_tokens=1500
+            )
+            
+            # Save response
+            with open(local_response_file, 'w', encoding='utf-8') as f:
+                f.write(f"Query: {query}\n")
+                f.write(f"Model: {response.model}\n")
+                f.write(f"Speed: {response.tokens_per_second:.1f} tokens/sec\n")
+                f.write("="*70 + "\n\n")
+                f.write(response.text)
+            
+            print(f"[OLLAMA] Response saved: {local_response_file}")
+            print(f"[OLLAMA] Generated {response.eval_count} tokens "
+                  f"({response.tokens_per_second:.1f}/sec)")
+            
+            # Archive and save session
+            self._archive_local_session()
+            self._save_local_session(package, response.text)
+            
+            return True
+            
+        except ServiceNotRunningError as e:
+            print(f"[OLLAMA] ✗ {e}")
+            return False
+        except Exception as e:
+            print(f"[OLLAMA] ✗ Error: {e}")
+            return False
+    
+    def _archive_local_session(self):
+        """Archive existing local session if present."""
+        current_session = self.session_dir / "localcur_session.json"
+        
+        if current_session.exists():
+            try:
+                with open(current_session, 'r', encoding='utf-8') as f:
+                    session_data = json.load(f)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archive_name = f"session_localarch_{timestamp}.json"
+                archive_path = self.session_dir / archive_name
+                
+                with open(archive_path, 'w', encoding='utf-8') as f:
+                    json.dump(session_data, f, indent=2)
+                
+                print(f"[OLLAMA] Archived: {archive_name}")
+            except Exception as e:
+                print(f"[OLLAMA] Archive warning: {e}")
+    
+    def _save_local_session(self, package: dict, response_text: str):
+        """Save current local session state."""
+        session_file = self.session_dir / "localcur_session.json"
+        
+        session_data = {
+            "topic": package.get('query', 'Unknown'),
+            "started": datetime.now().isoformat(),
+            "updated": datetime.now().isoformat(),
+            "context_size": len(package.get('formatted', '')),
+            "response_preview": response_text[:200] + "..." if len(response_text) > 200 else response_text,
+            "backend": "ollama"
+        }
+        
+        try:
+            with open(session_file, 'w', encoding='utf-8') as f:
+                json.dump(session_data, f, indent=2)
+        except Exception as e:
+            print(f"[OLLAMA] Session save warning: {e}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", "-q", required=True, help="Topic/question")
-    parser.add_argument("--send", "-s", action="store_true", help="Send to DeepSeek")
+    parser.add_argument("--target", "-t", 
+                   choices=["auto", "ollama", "deepseek"],
+                   default="auto",
+                   help="AI backend: auto=smart routing, ollama=local, deepseek=web")
+    parser.add_argument("--send", "-s", action="store_true",
+                       help="Send to AI (uses --target, default: auto)")
     parser.add_argument("--keep-open", "-k", action="store_true", help="Leave browser open")
     parser.add_argument("--no-files", action="store_true", help="Docs only")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
@@ -552,13 +707,17 @@ def main():
     
     print(f"\n[OK] Context: {len(context)} chars")
     
-    if args.send:
-        response = mgr.send_to_deepseek(context, keep_open=args.keep_open)
-        if response:
-            print(f"\n[DONE] Response: {len(response)} chars")
+    if args.send or args.target != "auto":
+        # Build package for send() method
+        package = mgr.build_package(args.query, target="ollama" if args.target in ("ollama", "auto") else "deepseek")
+        
+        success = mgr.send(package, target=args.target, keep_open=args.keep_open)
+        
+        if success:
+            print("\n[DONE] Complete")
         else:
+            print("\n[FALLBACK] Failed, saving to file")
             mgr.save_context(context)
-            print("\n[FALLBACK] Saved to file")
     else:
         filename = args.o or "context_for_ai.txt"
         mgr.save_context(context, filename)
