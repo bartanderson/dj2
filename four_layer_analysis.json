@@ -2,15 +2,1473 @@
   "layer1_code_reality": {
     "found_files": 10,
     "key_files": [
+      "engine\\game_engine.py",
+      "ai_context\\session\\deepseek_response_partial.txt",
+      "world_app.py",
       "tools\\future\\mcp_server.py",
-      "ai_context\\USAGE.md",
-      "tests\\test.py",
-      "ai_context\\development_playbook.md",
-      "ai_context\\status_manifest.json"
+      "ai_context\\session\\deepseek_response.txt"
     ],
     "implementation_status": "Class implemented",
     "enhanced_analysis_available": true,
     "enhanced_results": [
+      {
+        "path": "engine\\game_engine.py",
+        "basic_info": {
+          "content": "",
+          "title": ""
+        },
+        "ast_analysis": {
+          "classes": [
+            {
+              "name": "GamePhase",
+              "bases": [
+                "Enum"
+              ],
+              "decorators": [],
+              "methods": [],
+              "lineno": 7,
+              "docstring": "Canonical game phases as defined in ENGINE_LOOP.md"
+            },
+            {
+              "name": "GameContext",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 19,
+                  "returns": null
+                },
+                {
+                  "name": "set_phase_data",
+                  "args": [
+                    "self",
+                    "phase",
+                    "key",
+                    "value"
+                  ],
+                  "decorators": [],
+                  "lineno": 32,
+                  "returns": null
+                },
+                {
+                  "name": "get_phase_data",
+                  "args": [
+                    "self",
+                    "phase",
+                    "key",
+                    "default"
+                  ],
+                  "decorators": [],
+                  "lineno": 36,
+                  "returns": null
+                },
+                {
+                  "name": "clear_phase_data",
+                  "args": [
+                    "self",
+                    "phase"
+                  ],
+                  "decorators": [],
+                  "lineno": 40,
+                  "returns": null
+                },
+                {
+                  "name": "add_error",
+                  "args": [
+                    "self",
+                    "message",
+                    "phase"
+                  ],
+                  "decorators": [],
+                  "lineno": 44,
+                  "returns": null
+                },
+                {
+                  "name": "add_warning",
+                  "args": [
+                    "self",
+                    "message",
+                    "phase"
+                  ],
+                  "decorators": [],
+                  "lineno": 52,
+                  "returns": null
+                }
+              ],
+              "lineno": 17,
+              "docstring": "Context object passed between phases to maintain isolation"
+            },
+            {
+              "name": "GameEngine",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "world_controller"
+                  ],
+                  "decorators": [],
+                  "lineno": 61,
+                  "returns": null
+                },
+                {
+                  "name": "_initialize_delegates",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 92,
+                  "returns": null
+                },
+                {
+                  "name": "_initialize_mode_delegates",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 120,
+                  "returns": null
+                },
+                {
+                  "name": "set_mode",
+                  "args": [
+                    "self",
+                    "mode"
+                  ],
+                  "decorators": [],
+                  "lineno": 128,
+                  "returns": null
+                },
+                {
+                  "name": "set_dungeon_delegates",
+                  "args": [
+                    "self",
+                    "dungeon_systems"
+                  ],
+                  "decorators": [],
+                  "lineno": 148,
+                  "returns": null
+                },
+                {
+                  "name": "get_mode_status",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 171,
+                  "returns": null
+                },
+                {
+                  "name": "advance",
+                  "args": [
+                    "self",
+                    "player_input",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 189,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_input_phase",
+                  "args": [
+                    "self",
+                    "player_input",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 258,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_interpretation_phase",
+                  "args": [
+                    "self",
+                    "input_data",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 301,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_authority_phase",
+                  "args": [
+                    "self",
+                    "action",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 385,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_mutation_phase",
+                  "args": [
+                    "self",
+                    "ruling",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 473,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_consequence_phase",
+                  "args": [
+                    "self",
+                    "mutation_result",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 549,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "_execute_persistence_phase",
+                  "args": [
+                    "self",
+                    "consequences",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 626,
+                  "returns": null
+                },
+                {
+                  "name": "_execute_view_phase",
+                  "args": [
+                    "self",
+                    "consequences",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 660,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "get_phase_violations",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 721,
+                  "returns": "Dict[str, Any]"
+                },
+                {
+                  "name": "register_system",
+                  "args": [
+                    "self",
+                    "phase",
+                    "system"
+                  ],
+                  "decorators": [],
+                  "lineno": 729,
+                  "returns": null
+                },
+                {
+                  "name": "validate_phase_compliance",
+                  "args": [
+                    "self",
+                    "method_name",
+                    "allowed_phases"
+                  ],
+                  "decorators": [],
+                  "lineno": 734,
+                  "returns": "bool"
+                }
+              ],
+              "lineno": 60,
+              "docstring": null
+            }
+          ],
+          "functions": [],
+          "todos": [
+            {
+              "line": 412,
+              "text": "# TODO: Query world_controller/world_map for valid moves",
+              "type": "TODO"
+            },
+            {
+              "line": 425,
+              "text": "# TODO: Roll actual dice via dm_tools",
+              "type": "TODO"
+            },
+            {
+              "line": 502,
+              "text": "# TODO: Call world_controller.travel_to_location(target)",
+              "type": "TODO"
+            },
+            {
+              "line": 512,
+              "text": "# TODO: Apply damage to target",
+              "type": "TODO"
+            },
+            {
+              "line": 655,
+              "text": "# TODO: Actually save to database via world_controller.persistence",
+              "type": "TODO"
+            }
+          ],
+          "phase_violations": [],
+          "imports": [
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "json",
+                  "asname": null
+                }
+              ],
+              "lineno": 2
+            },
+            {
+              "type": "from",
+              "module": "enum",
+              "names": [
+                {
+                  "name": "Enum",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 3
+            },
+            {
+              "type": "from",
+              "module": "typing",
+              "names": [
+                {
+                  "name": "Dict",
+                  "asname": null
+                },
+                {
+                  "name": "Any",
+                  "asname": null
+                },
+                {
+                  "name": "Optional",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 4
+            },
+            {
+              "type": "from",
+              "module": "datetime",
+              "names": [
+                {
+                  "name": "datetime",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 5
+            }
+          ]
+        }
+      },
+      {
+        "path": "world_app.py",
+        "basic_info": {
+          "content": "",
+          "title": ""
+        },
+        "ast_analysis": {
+          "classes": [
+            {
+              "name": "DungeonConnectionHelper",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "check_all_endpoints",
+                  "args": [],
+                  "decorators": [
+                    "staticmethod"
+                  ],
+                  "lineno": 44,
+                  "returns": null
+                }
+              ],
+              "lineno": 42,
+              "docstring": null
+            },
+            {
+              "name": "DungeonHTTPClient",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "base_url"
+                  ],
+                  "decorators": [],
+                  "lineno": 97,
+                  "returns": null
+                },
+                {
+                  "name": "test_connection",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 102,
+                  "returns": null
+                },
+                {
+                  "name": "send_ai_command",
+                  "args": [
+                    "self",
+                    "command"
+                  ],
+                  "decorators": [],
+                  "lineno": 126,
+                  "returns": null
+                },
+                {
+                  "name": "get_dungeon_state",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 161,
+                  "returns": null
+                },
+                {
+                  "name": "get_party_position",
+                  "args": [
+                    "self"
+                  ],
+                  "decorators": [],
+                  "lineno": 187,
+                  "returns": null
+                },
+                {
+                  "name": "move",
+                  "args": [
+                    "self",
+                    "direction",
+                    "steps"
+                  ],
+                  "decorators": [],
+                  "lineno": 210,
+                  "returns": null
+                }
+              ],
+              "lineno": 96,
+              "docstring": null
+            },
+            {
+              "name": "DungeonInputSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 256,
+                  "returns": null
+                },
+                {
+                  "name": "execute_input_phase",
+                  "args": [
+                    "self",
+                    "player_input",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 259,
+                  "returns": null
+                }
+              ],
+              "lineno": 254,
+              "docstring": "Dungeon Input Phase - receives player input"
+            },
+            {
+              "name": "DungeonInterpretationSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 270,
+                  "returns": null
+                },
+                {
+                  "name": "execute_interpretation_phase",
+                  "args": [
+                    "self",
+                    "input_data",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 273,
+                  "returns": null
+                }
+              ],
+              "lineno": 268,
+              "docstring": "Dungeon Interpretation Phase - uses dungeon AI via HTTP"
+            },
+            {
+              "name": "DungeonAuthoritySystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 310,
+                  "returns": null
+                },
+                {
+                  "name": "execute_authority_phase",
+                  "args": [
+                    "self",
+                    "action",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 313,
+                  "returns": null
+                }
+              ],
+              "lineno": 308,
+              "docstring": "Dungeon Authority Phase - validates via HTTP"
+            },
+            {
+              "name": "DungeonMutationSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 326,
+                  "returns": null
+                },
+                {
+                  "name": "execute_mutation_phase",
+                  "args": [
+                    "self",
+                    "ruling",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 329,
+                  "returns": null
+                }
+              ],
+              "lineno": 324,
+              "docstring": "Dungeon Mutation Phase - executes via HTTP"
+            },
+            {
+              "name": "DungeonConsequenceSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 361,
+                  "returns": null
+                },
+                {
+                  "name": "execute_consequence_phase",
+                  "args": [
+                    "self",
+                    "mutation_result",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 364,
+                  "returns": null
+                }
+              ],
+              "lineno": 359,
+              "docstring": "Dungeon Consequence Phase - generates narration"
+            },
+            {
+              "name": "DungeonViewSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 389,
+                  "returns": null
+                },
+                {
+                  "name": "execute_view_phase",
+                  "args": [
+                    "self",
+                    "consequences",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 392,
+                  "returns": null
+                }
+              ],
+              "lineno": 387,
+              "docstring": "Dungeon View Phase - renders dungeon state"
+            },
+            {
+              "name": "DungeonPersistenceSystem",
+              "bases": [],
+              "decorators": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "args": [
+                    "self",
+                    "http_client"
+                  ],
+                  "decorators": [],
+                  "lineno": 412,
+                  "returns": null
+                },
+                {
+                  "name": "execute_persistence_phase",
+                  "args": [
+                    "self",
+                    "consequences",
+                    "context"
+                  ],
+                  "decorators": [],
+                  "lineno": 415,
+                  "returns": null
+                }
+              ],
+              "lineno": 409,
+              "docstring": "Dungeon Persistence Phase - saves dungeon state via HTTP"
+            }
+          ],
+          "functions": [
+            {
+              "name": "debug_connectivity",
+              "args": [],
+              "decorators": [
+                "app.route('/api/debug/connectivity', methods=['GET'])"
+              ],
+              "lineno": 82,
+              "returns": null
+            },
+            {
+              "name": "test_dungeon_connection",
+              "args": [],
+              "decorators": [
+                "app.route('/api/test-dungeon-connection', methods=['GET'])"
+              ],
+              "lineno": 240,
+              "returns": null
+            },
+            {
+              "name": "get_active_parties_helper",
+              "args": [],
+              "decorators": [],
+              "lineno": 468,
+              "returns": null
+            },
+            {
+              "name": "initialize_dungeon_systems",
+              "args": [],
+              "decorators": [],
+              "lineno": 501,
+              "returns": null
+            },
+            {
+              "name": "test_endpoint2",
+              "args": [],
+              "decorators": [
+                "app.route('/api/test2', methods=['GET'])"
+              ],
+              "lineno": 547,
+              "returns": null
+            },
+            {
+              "name": "health_check",
+              "args": [],
+              "decorators": [
+                "app.route('/api/health', methods=['GET'])"
+              ],
+              "lineno": 562,
+              "returns": null
+            },
+            {
+              "name": "get_world_controller",
+              "args": [],
+              "decorators": [],
+              "lineno": 575,
+              "returns": null
+            },
+            {
+              "name": "get_active_parties_helper",
+              "args": [],
+              "decorators": [],
+              "lineno": 583,
+              "returns": null
+            },
+            {
+              "name": "test_endpoint",
+              "args": [],
+              "decorators": [
+                "app.route('/api/test', methods=['GET'])"
+              ],
+              "lineno": 617,
+              "returns": null
+            },
+            {
+              "name": "dm_chat",
+              "args": [],
+              "decorators": [
+                "app.route('/api/chat/dm', methods=['POST'])"
+              ],
+              "lineno": 621,
+              "returns": null
+            },
+            {
+              "name": "setup_world_system",
+              "args": [],
+              "decorators": [],
+              "lineno": 645,
+              "returns": null
+            },
+            {
+              "name": "main",
+              "args": [],
+              "decorators": [],
+              "lineno": 731,
+              "returns": null
+            },
+            {
+              "name": "load_world",
+              "args": [
+                "world_id"
+              ],
+              "decorators": [
+                "app.route('/api/load-world/<int:world_id>', methods=['POST'])"
+              ],
+              "lineno": 759,
+              "returns": null
+            },
+            {
+              "name": "get_context",
+              "args": [
+                "player_id"
+              ],
+              "decorators": [
+                "app.route('/api/context/<player_id>')"
+              ],
+              "lineno": 766,
+              "returns": null
+            },
+            {
+              "name": "index",
+              "args": [],
+              "decorators": [
+                "app.route('/', endpoint='index')"
+              ],
+              "lineno": 772,
+              "returns": null
+            },
+            {
+              "name": "serve_world_images",
+              "args": [
+                "filename"
+              ],
+              "decorators": [
+                "app.route('/static/world_images/<path:filename>')"
+              ],
+              "lineno": 777,
+              "returns": null
+            },
+            {
+              "name": "serve_character_avatars",
+              "args": [
+                "filename"
+              ],
+              "decorators": [
+                "app.route('/static/character_avatars/<path:filename>')"
+              ],
+              "lineno": 781,
+              "returns": null
+            },
+            {
+              "name": "retry_failed_images",
+              "args": [],
+              "decorators": [
+                "app.route('/api/retry-failed-images', methods=['POST'])"
+              ],
+              "lineno": 785,
+              "returns": null
+            },
+            {
+              "name": "get_player_characters",
+              "args": [],
+              "decorators": [
+                "app.route('/api/player/characters', methods=['GET'])"
+              ],
+              "lineno": 815,
+              "returns": null
+            },
+            {
+              "name": "set_active_character",
+              "args": [],
+              "decorators": [
+                "app.route('/api/player/active-character', methods=['POST'])"
+              ],
+              "lineno": 838,
+              "returns": null
+            },
+            {
+              "name": "get_character_classes",
+              "args": [],
+              "decorators": [
+                "app.route('/api/character-classes', methods=['GET'])"
+              ],
+              "lineno": 864,
+              "returns": null
+            },
+            {
+              "name": "get_character_backgrounds",
+              "args": [],
+              "decorators": [
+                "app.route('/api/character-backgrounds', methods=['GET'])"
+              ],
+              "lineno": 869,
+              "returns": null
+            },
+            {
+              "name": "get_starting_equipment",
+              "args": [
+                "class_name"
+              ],
+              "decorators": [
+                "app.route('/api/starting-equipment/<class_name>', methods=['GET'])"
+              ],
+              "lineno": 874,
+              "returns": null
+            },
+            {
+              "name": "create_character",
+              "args": [],
+              "decorators": [
+                "app.route('/api/create-character', methods=['POST'])"
+              ],
+              "lineno": 914,
+              "returns": null
+            },
+            {
+              "name": "generate_personal_item",
+              "args": [],
+              "decorators": [
+                "app.route('/api/generate-personal-item', methods=['POST'])"
+              ],
+              "lineno": 938,
+              "returns": null
+            },
+            {
+              "name": "engine_status",
+              "args": [],
+              "decorators": [
+                "app.route('/api/engine/status', methods=['GET'])"
+              ],
+              "lineno": 946,
+              "returns": null
+            },
+            {
+              "name": "engine_test",
+              "args": [],
+              "decorators": [
+                "app.route('/api/engine-test', methods=['POST'])"
+              ],
+              "lineno": 987,
+              "returns": null
+            },
+            {
+              "name": "engine_mode",
+              "args": [],
+              "decorators": [
+                "app.route('/api/engine/mode', methods=['GET', 'POST'])"
+              ],
+              "lineno": 1022,
+              "returns": null
+            },
+            {
+              "name": "dungeon_status",
+              "args": [],
+              "decorators": [
+                "app.route('/api/dungeon/status', methods=['GET'])"
+              ],
+              "lineno": 1061,
+              "returns": null
+            },
+            {
+              "name": "dungeon_command",
+              "args": [],
+              "decorators": [
+                "app.route('/api/dungeon/command', methods=['POST'])"
+              ],
+              "lineno": 1088,
+              "returns": null
+            },
+            {
+              "name": "debug_dungeon_structure",
+              "args": [],
+              "decorators": [
+                "app.route('/api/debug/dungeon-structure', methods=['GET'])"
+              ],
+              "lineno": 1126,
+              "returns": null
+            },
+            {
+              "name": "check_dungeon_endpoints",
+              "args": [],
+              "decorators": [
+                "app.route('/api/debug/check-dungeon-endpoints', methods=['GET'])"
+              ],
+              "lineno": 1171,
+              "returns": null
+            },
+            {
+              "name": "travel_to",
+              "args": [
+                "location_id"
+              ],
+              "decorators": [
+                "app.route('/api/travel/<location_id>', methods=['POST'])"
+              ],
+              "lineno": 1206,
+              "returns": null
+            },
+            {
+              "name": "get_location_rumors",
+              "args": [
+                "location_id"
+              ],
+              "decorators": [
+                "app.route('/api/location/<location_id>/rumors')"
+              ],
+              "lineno": 1214,
+              "returns": null
+            },
+            {
+              "name": "enter_dungeon",
+              "args": [],
+              "decorators": [
+                "app.route('/api/enter-dungeon', methods=['POST'])"
+              ],
+              "lineno": 1219,
+              "returns": null
+            },
+            {
+              "name": "create_party",
+              "args": [],
+              "decorators": [
+                "app.route('/api/create-party', methods=['POST'])"
+              ],
+              "lineno": 1225,
+              "returns": null
+            },
+            {
+              "name": "move_character",
+              "args": [],
+              "decorators": [
+                "app.route('/api/move-character', methods=['POST'])"
+              ],
+              "lineno": 1234,
+              "returns": null
+            },
+            {
+              "name": "get_parties",
+              "args": [],
+              "decorators": [
+                "app.route('/api/parties')"
+              ],
+              "lineno": 1243,
+              "returns": null
+            },
+            {
+              "name": "disband_party",
+              "args": [
+                "party_id"
+              ],
+              "decorators": [
+                "app.route('/api/disband-party/<party_id>', methods=['POST'])"
+              ],
+              "lineno": 1251,
+              "returns": null
+            },
+            {
+              "name": "world_state",
+              "args": [],
+              "decorators": [
+                "app.route('/api/world-state')"
+              ],
+              "lineno": 1257,
+              "returns": null
+            },
+            {
+              "name": "analyze_motivation",
+              "args": [],
+              "decorators": [
+                "app.route('/api/analyze-motivation', methods=['POST'])"
+              ],
+              "lineno": 1290,
+              "returns": null
+            },
+            {
+              "name": "narrative_guidance",
+              "args": [],
+              "decorators": [
+                "app.route('/api/narrative-guidance', methods=['POST'])"
+              ],
+              "lineno": 1303,
+              "returns": null
+            },
+            {
+              "name": "all_locations",
+              "args": [],
+              "decorators": [
+                "app.route('/api/locations')"
+              ],
+              "lineno": 1317,
+              "returns": null
+            },
+            {
+              "name": "dm_response",
+              "args": [],
+              "decorators": [
+                "app.route('/api/dm-response', methods=['POST'])"
+              ],
+              "lineno": 1331,
+              "returns": null
+            },
+            {
+              "name": "legacy_dm_response",
+              "args": [],
+              "decorators": [],
+              "lineno": 1420,
+              "returns": null
+            },
+            {
+              "name": "recognize_player",
+              "args": [
+                "self",
+                "session_id",
+                "player_data"
+              ],
+              "decorators": [],
+              "lineno": 1474,
+              "returns": null
+            },
+            {
+              "name": "guide_character_creation",
+              "args": [],
+              "decorators": [
+                "app.route('/api/guide-character-creation', methods=['POST'])"
+              ],
+              "lineno": 1496,
+              "returns": null
+            },
+            {
+              "name": "handle_connect",
+              "args": [],
+              "decorators": [
+                "socketio.on('connect')"
+              ],
+              "lineno": 1531,
+              "returns": null
+            },
+            {
+              "name": "handle_disconnect",
+              "args": [],
+              "decorators": [
+                "socketio.on('disconnect')"
+              ],
+              "lineno": 1537,
+              "returns": null
+            },
+            {
+              "name": "handle_player_register",
+              "args": [
+                "data"
+              ],
+              "decorators": [
+                "socketio.on('player_register')"
+              ],
+              "lineno": 1560,
+              "returns": null
+            },
+            {
+              "name": "handle_assign_character",
+              "args": [
+                "data"
+              ],
+              "decorators": [
+                "socketio.on('assign_character')"
+              ],
+              "lineno": 1592,
+              "returns": null
+            },
+            {
+              "name": "handle_character_move",
+              "args": [
+                "data"
+              ],
+              "decorators": [
+                "socketio.on('character_move')"
+              ],
+              "lineno": 1644,
+              "returns": null
+            },
+            {
+              "name": "handle_join_party",
+              "args": [
+                "data"
+              ],
+              "decorators": [
+                "socketio.on('join_party')"
+              ],
+              "lineno": 1667,
+              "returns": null
+            },
+            {
+              "name": "handle_request_world_state",
+              "args": [],
+              "decorators": [
+                "socketio.on('request_world_state')"
+              ],
+              "lineno": 1724,
+              "returns": null
+            },
+            {
+              "name": "get_ip_address",
+              "args": [],
+              "decorators": [],
+              "lineno": 1738,
+              "returns": null
+            },
+            {
+              "name": "get_zerotier_ip",
+              "args": [],
+              "decorators": [],
+              "lineno": 1750,
+              "returns": null
+            },
+            {
+              "name": "initialize_app",
+              "args": [],
+              "decorators": [],
+              "lineno": 1770,
+              "returns": null
+            }
+          ],
+          "todos": [],
+          "phase_violations": [],
+          "imports": [
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "os",
+                  "asname": null
+                }
+              ],
+              "lineno": 4
+            },
+            {
+              "type": "from",
+              "module": "flask",
+              "names": [
+                {
+                  "name": "Flask",
+                  "asname": null
+                },
+                {
+                  "name": "jsonify",
+                  "asname": null
+                },
+                {
+                  "name": "current_app",
+                  "asname": null
+                },
+                {
+                  "name": "render_template",
+                  "asname": null
+                },
+                {
+                  "name": "send_from_directory",
+                  "asname": null
+                },
+                {
+                  "name": "session",
+                  "asname": null
+                },
+                {
+                  "name": "request",
+                  "asname": null
+                },
+                {
+                  "name": "make_response",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 5
+            },
+            {
+              "type": "from",
+              "module": "flask_socketio",
+              "names": [
+                {
+                  "name": "SocketIO",
+                  "asname": null
+                },
+                {
+                  "name": "emit",
+                  "asname": null
+                },
+                {
+                  "name": "join_room",
+                  "asname": null
+                },
+                {
+                  "name": "leave_room",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 6
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "sys",
+                  "asname": null
+                }
+              ],
+              "lineno": 7
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "random",
+                  "asname": null
+                }
+              ],
+              "lineno": 8
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "uuid",
+                  "asname": null
+                }
+              ],
+              "lineno": 9
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "json",
+                  "asname": null
+                }
+              ],
+              "lineno": 10
+            },
+            {
+              "type": "from",
+              "module": "datetime",
+              "names": [
+                {
+                  "name": "datetime",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 11
+            },
+            {
+              "type": "from",
+              "module": "pathlib",
+              "names": [
+                {
+                  "name": "Path",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 12
+            },
+            {
+              "type": "from",
+              "module": "world.world_controller",
+              "names": [
+                {
+                  "name": "WorldController",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 13
+            },
+            {
+              "type": "from",
+              "module": "world.world_map",
+              "names": [
+                {
+                  "name": "WorldMap",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 14
+            },
+            {
+              "type": "from",
+              "module": "world.t2i",
+              "names": [
+                {
+                  "name": "TextToImage",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 15
+            },
+            {
+              "type": "from",
+              "module": "world.persistence",
+              "names": [
+                {
+                  "name": "WorldManager",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 16
+            },
+            {
+              "type": "from",
+              "module": "world.ai_integration",
+              "names": [
+                {
+                  "name": "BaseAI",
+                  "asname": null
+                },
+                {
+                  "name": "WorldAI",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 17
+            },
+            {
+              "type": "from",
+              "module": "engine.game_engine",
+              "names": [
+                {
+                  "name": "GameEngine",
+                  "asname": null
+                },
+                {
+                  "name": "GamePhase",
+                  "asname": null
+                },
+                {
+                  "name": "GameContext",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 20
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "requests",
+                  "asname": null
+                }
+              ],
+              "lineno": 23
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "socket",
+                  "asname": null
+                }
+              ],
+              "lineno": 1734
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "subprocess",
+                  "asname": null
+                }
+              ],
+              "lineno": 1735
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "re",
+                  "asname": null
+                }
+              ],
+              "lineno": 1736
+            }
+          ]
+        }
+      },
       {
         "path": "tools\\future\\mcp_server.py",
         "basic_info": {
@@ -114,21 +1572,21 @@
       "archive/Docs-old/ENGINE_LOOP.md",
       "archive/Docs-old/PHASE_AUDIT.md"
     ],
-    "documents_found": 4,
-    "archive_documents_found": 3,
-    "mentions_found": 7,
+    "documents_found": 3,
+    "archive_documents_found": 2,
+    "mentions_found": 5,
     "relevant_sections": [
       {
         "document": "ai_context/ai_contract.md",
-        "context": "  - NO `python -c` for multiline scripts - use .py files instead\n  - Single-line `python -c` only for very simple commands\n  - Example of what DOES NOT work:\n    ```cmd\n    python -c \""
+        "context": "## Absolute Constraints\n- **AI NEVER owns state** - Read-only access to SessionSystem\n- **AI NEVER mutates state directly** - All changes via GameEngine\n- **AI ONLY requests actions via interfaces** - Tool calls return proposals, not execution\n- **Windows Reality**:"
       },
       {
         "document": "ai_context/development_playbook.md",
-        "context": "| Grid display          | + \"Quest Complete!\" banner             | + Context-aware atmospheric text   |\n\n## The 7-Step Analysis Framework\n\n### Step 1: Declare Responsibility"
+        "context": "|------------------------|----------------------------------------|----------------------------------------------|\n| Direct position update | + Event state changes (quest active)   | + AI-proposed state changes (emotional state)|\n| `party.x = 5`          | `quest.status = STARTED`               | `npc.mood = SUSPICIOUS` (via GameEngine)     |\n\n### CONSEQUENCE Phase (Results)"
       },
       {
         "document": "ai_context/development_playbook_mini.md",
-        "context": "\n# Quick AI analyze\npython scripts/ai_workflow.py local-analyze --topic \"...\"\nFile Structure\nSession: state, history"
+        "context": "\n## Critical Patterns\n1. **AI\u2192GameEngine\u2192WorldState** (NEVER AI\u2192WorldState directly)\n2. **Session owns mutable state** (GameEngine manages it)\n3. **Events decouple systems** (fire-and-forget)"
       }
     ]
   },
@@ -139,19 +1597,20 @@
     "recent_work": [
       {
         "source": "technical_debt",
-        "component": "ai_workflow.py",
-        "issue": "Import error for UnifiedContextManager",
-        "priority": "low"
+        "component": "GameEngine",
+        "issue": "Incomplete (no full 7-phase loop)",
+        "priority": "high"
       }
     ]
   },
   "layer4_synthesis": {
-    "summary": "Topic 'work' is Class implemented. Found in 7 design documents and 1 historical references. AST analysis: available.",
+    "summary": "Topic 'GameEngine' is Class implemented. Found in 5 design documents and 1 historical references. AST analysis: available.",
     "recommendations": [
-      "Implementation exists - review before modifying"
+      "Implementation exists - review before modifying",
+      "High priority technical debt: GameEngine"
     ],
     "estimated_time": "2-3 hours",
-    "priority": "Medium",
+    "priority": "High",
     "context_hints": [
       "Check ai_contract.md for boundaries",
       "Verify phase compliance with ast_analyzer",

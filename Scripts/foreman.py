@@ -1,242 +1,415 @@
-# foreman.py - One file, testable pieces
+#!/usr/bin/env python3
+"""
+foreman.py - Orchestration tool for AI-assisted development
 
-from pathlib import Path
+Simplified version with:
+- Ollama-first AI with DeepSeek fallback
+- Single 'run' method for all commands
+- Clean, minimal code
+"""
+
 import json
 import subprocess
-import pickle
+import sys
 import re
-from dataclasses import dataclass
-from typing import Dict, Any
+from pathlib import Path
+from typing import Dict, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+import pickle
 
 
-# === PIECE A: Config Loader ===
+# ============================================================================
+# CONFIG LOADER
+# ============================================================================
+
 class ConfigLoader:
+    """Loads tool_index.json and status_manifest.json"""
+    
     def __init__(self, ai_context_path: Path):
         self.path = ai_context_path
         self.tools = {}
         self.status = {}
-
-    def list_tools(self) -> list:
-        """Return flat list of all tool names."""
-        tools = []
-        for category, items in self.tools.items():
-            if isinstance(items, dict):
-                tools.extend(items.keys())
-        return tools
     
     def load(self):
+        """Load configuration files"""
+        # Load tools
         tools_file = self.path / "tool_index.json"
         if tools_file.exists():
-            self.tools = json.loads(tools_file.read_text())
+            with open(tools_file, 'r') as f:
+                self.tools = json.load(f)
         
+        # Load status
         status_file = self.path / "status_manifest.json"
         if status_file.exists():
-            self.status = json.loads(status_file.read_text())
+            with open(status_file, 'r') as f:
+                self.status = json.load(f)
     
-    def get_tool(self, name: str):
-        for cat, items in self.tools.items():
-            if name in items:
+    def list_tools(self) -> List[str]:
+        """Return flat list of all tool names"""
+        tool_list = []
+        for category, items in self.tools.items():
+            if isinstance(items, dict):
+                tool_list.extend(items.keys())
+        return tool_list
+    
+    def get_tool(self, name: str) -> Dict:
+        """Get tool specification by name"""
+        for category, items in self.tools.items():
+            if isinstance(items, dict) and name in items:
                 return items[name]
-        raise KeyError(name)
+        raise KeyError(f"Tool '{name}' not found")
 
 
-# === PIECE B: Constraint Checker ===
+# ============================================================================
+# CONSTRAINT CHECKER
+# ============================================================================
+
 class ConstraintChecker:
-    def check(self, intent: str):
-        bad = ["update state", "mutate", "direct"]
-        for b in bad:
-            if b in intent.lower():
-                return {"ok": False, "fix": f"PROPOSAL: {intent}"}
+    """Simple constraint checker based on ai_contract.md"""
+    
+    def check(self, intent: str) -> Dict:
+        """Check if intent violates constraints"""
+        forbidden = ["update state", "mutate", "direct", "bypass", "skip validation"]
+        
+        for pattern in forbidden:
+            if pattern in intent.lower():
+                return {
+                    "ok": False,
+                    "fix": f"PROPOSAL: {intent} [AWAITING VALIDATION]"
+                }
+        
         return {"ok": True}
 
 
-# === PIECE C: Tool Runner ===
+# ============================================================================
+# TOOL RUNNER
+# ============================================================================
+
 class ToolRunner:
+    """Executes tools from tool_index.json"""
+    
     def __init__(self, root: Path, config: ConfigLoader):
         self.root = root
         self.config = config
-
-    def list_tools(self):
-        """Delegate to config."""
-        return self.config.list_tools()
     
-    def run(self, name: str, **kwargs):
+    def run(self, name: str, **kwargs) -> subprocess.CompletedProcess:
+        """Execute a tool with arguments"""
         tool = self.config.get_tool(name)
-        cmd = tool["windows_cmd"]
-        for k, v in kwargs.items():
-            cmd = cmd.replace(f"{{{k}}}", v)
+        cmd_template = tool.get("windows_cmd", "")
         
-        return subprocess.run(cmd, shell=True, cwd=self.root, 
-                            capture_output=True, text=True)
+        if not cmd_template:
+            raise ValueError(f"Tool '{name}' has no windows_cmd")
+        
+        # Substitute arguments
+        cmd = cmd_template
+        for key, val in kwargs.items():
+            placeholder = f"{{{key}}}"
+            if placeholder in cmd:
+                # Clean the value and replace
+                clean_val = str(val).strip('"\'')
+                cmd = cmd.replace(placeholder, clean_val)
+        
+        # Execute
+        return subprocess.run(
+            cmd,
+            shell=True,
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+    
+    def list_tools(self) -> List[str]:
+        """Delegate to config"""
+        return self.config.list_tools()
 
 
-# === PIECE D: DeepSeek Connector ===
-class DeepSeek:
-    def __init__(self, config: ConfigLoader):
+# ============================================================================
+# AI CLIENT
+# ============================================================================
+
+class AIClient:
+    """
+    Unified AI client with three modes:
+    - "auto": Ollama first, DeepSeek fallback (default)
+    - "ollama": Ollama only
+    - "deepseek": DeepSeek only
+    """
+    
+    def __init__(self, config: ConfigLoader, preference: str = "auto"):
         self.config = config
-        self.last_error = None
+        self.preference = preference.lower()
+        self.ollama_client = None
+        self.deepseek_client = None
+        
+        print(f"[AI Client] Mode: {self.preference}")
+        self._init_clients()
     
-    def ask(self, prompt: str):
-        """Send prompt to DeepSeek via your bridge_controller."""
-        # Method 1: Try importing bridge_controller directly
-        try:
-            import sys
-            from tools.bridge.bridge_controller import BridgeController
+    def _init_clients(self):
+        """Initialize AI backends based on preference"""
+        
+        # Initialize Ollama if needed
+        if self.preference in ["auto", "ollama"]:
+            try:
+                from tools.ollama_client import get_ollama_client
+                self.ollama_client = get_ollama_client()
+                if self.ollama_client and self.ollama_client.is_available():
+                    print("  ✓ Ollama: Available")
+                else:
+                    print("  ⚠ Ollama: Not running (ollama serve)")
+            except Exception as e:
+                print(f"  ⚠ Ollama: Failed - {e}")
+        
+        # Initialize DeepSeek if needed
+        if self.preference in ["auto", "deepseek"]:
+            try:
+                from tools.bridge.bridge_controller import BridgeController
+                self.deepseek_client = BridgeController()
+                print("  ✓ DeepSeek: Bridge available")
+            except Exception as e:
+                print(f"  ⚠ DeepSeek: Failed - {e}")
+    
+    def ask(self, prompt: str) -> str:
+        """Send prompt to AI based on preference"""
+        
+        # Ollama-only mode
+        if self.preference == "ollama":
+            if self.ollama_client and self.ollama_client.is_available():
+                try:
+                    return self.ollama_client.quick_chat(prompt, max_lines=100)
+                except Exception as e:
+                    return f"[Ollama error: {e}]"
+            return "[Ollama not available]"
+        
+        # DeepSeek-only mode
+        elif self.preference == "deepseek":
+            if self.deepseek_client:
+                try:
+                    return self.deepseek_client.ask_deepseek(prompt) or "[DeepSeek: Empty response]"
+                except Exception as e:
+                    return f"[DeepSeek error: {e}]"
+            return "[DeepSeek not available]"
+        
+        # Auto mode: Ollama first, then DeepSeek
+        else:
+            # Try Ollama first
+            if self.ollama_client and self.ollama_client.is_available():
+                try:
+                    return self.ollama_client.quick_chat(prompt, max_lines=100)
+                except Exception as e:
+                    print(f"  Ollama failed: {e}, trying DeepSeek...")
             
-            b = BridgeController()
-            result = b.ask_deepseek(prompt)
-            if result:
-                return result
-            else:
-                self.last_error = "Bridge returned empty response"
-                return f"[DeepSeek error: {self.last_error}]"
-                
-        except ImportError as e:
-            self.last_error = f"Cannot import bridge_controller: {e}"
-            return f"[DeepSeek error: {self.last_error}]"
-        except Exception as e:
-            self.last_error = f"Bridge failed: {e}"
-            return f"[DeepSeek error: {self.last_error}]"
+            # Fallback to DeepSeek
+            if self.deepseek_client:
+                try:
+                    return self.deepseek_client.ask_deepseek(prompt) or "[DeepSeek: Empty response]"
+                except Exception as e:
+                    return f"[Both AIs failed: {e}]"
+            
+            return "[No AI available]"
+    
+    def get_status(self) -> Dict:
+        """Get current status of AI clients"""
+        return {
+            "preference": self.preference,
+            "ollama_available": self.ollama_client and self.ollama_client.is_available(),
+            "deepseek_available": self.deepseek_client is not None
+        }
 
 
-# === PIECE E: Session Memory ===
+# ============================================================================
+# SESSION MANAGER
+# ============================================================================
+
+@dataclass
+class SessionStep:
+    timestamp: str
+    action: str
+    result: str
+
+
+@dataclass
 class Session:
-    def __init__(self, path: Path):
-        self.path = path
+    id: str
+    started: str
+    intent: str
+    steps: List[SessionStep] = field(default_factory=list)
+
+
+class SessionManager:
+    """Manages session persistence"""
+    
+    def __init__(self, session_path: Path):
+        self.path = session_path
         self.path.mkdir(parents=True, exist_ok=True)
+        self.current = None
     
-    def save(self, data):
-        with open(self.path / "last.pkl", 'wb') as f:
-            pickle.dump(data, f)
+    def start(self, intent: str) -> Session:
+        """Start new session"""
+        self.current = Session(
+            id=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            started=datetime.now().isoformat(),
+            intent=intent
+        )
+        self._save()
+        return self.current
     
-    def load(self):
-        try:
-            with open(self.path / "last.pkl", 'rb') as f:
-                return pickle.load(f)
-        except:
-            return None
+    def add_step(self, action: str, result: str):
+        """Add step to current session"""
+        if self.current:
+            self.current.steps.append(SessionStep(
+                timestamp=datetime.now().isoformat(),
+                action=action,
+                result=result[:500]  # Truncate long results
+            ))
+            self._save()
+    
+    def _save(self):
+        """Save session to file"""
+        if self.current:
+            file_path = self.path / f"session_{self.current.id}.pkl"
+            with open(file_path, 'wb') as f:
+                pickle.dump(self.current, f)
 
 
-# === FOREMAN: Pieces Wired Together ===
+# ============================================================================
+# FOREMAN (MAIN CLASS)
+# ============================================================================
+
 class Foreman:
-    def __init__(self):
+    """Main orchestration class"""
+    
+    def __init__(self, ai_preference: str = "auto"):
         self.root = Path("C:/Users/bartl/dev/dj2")
-        self.ai = self.root / "ai_context"
+        self.ai_context = self.root / "ai_context"
         
-        # Pieces
-        self.config = ConfigLoader(self.ai)
+        # Initialize components
+        self.config = ConfigLoader(self.ai_context)
         self.checker = ConstraintChecker()
-        self.session = Session(self.ai / "session")
+        self.session_manager = SessionManager(self.ai_context / "session")
+        self.verbose = False
         
-        # Pieces that need init
+        # These will be set in start()
+        self.ai_client = None
         self.tools = None
-        self.deepseek = None
     
     def start(self):
-        """Turn on pieces."""
+        """Initialize the system"""
+        print("Starting Foreman...")
         self.config.load()
+        self.ai_client = AIClient(self.config, preference=ai_preference)
         self.tools = ToolRunner(self.root, self.config)
-        self.deepseek = DeepSeek(self.config)
-        return "Ready"
+        print("Ready!")
     
-#     def orchestrate(self, goal: str, auto: bool = False):
-#         """
-#         Orchestrate work on a goal: DeepSeek directs, Foreman executes.
-        
-#         Args:
-#             goal: What to work on (stored as instance state for access by sub-methods)
-#             auto: If True, don't ask for approval each step
-#         """
-#         # Store goal as instance state so _gather_context and other methods can access it
-#         # without passing it through every call chain
-#         self.current_goal = goal
-        
-#         print(f"\n=== ORCHESTRATING: {goal} ===")
-        
-#         # Gather context using the stored goal
-#         context = self._gather_context()
-        
-#         # Step 2: Ask DeepSeek for plan
-#         plan_prompt = f"""
-# Goal: {goal}
-
-# Current project status:
-# {context}
-
-# Available tools: {', '.join(self.tools.list_tools()[:10])}
-
-# Create a step-by-step plan using ONLY these formats:
-# 1. tool <tool_name> arg=value arg2=value2
-# 2. ask "question for deepseek"
-
-# Example:
-# 1. tool four_layer topic={goal}
-# 2. tool violations path=.
-# 3. ask "What should I fix first?"
-
-# Respond with numbered steps only. No extra text. No descriptions. Just commands.
-# """
-#         plan_text = self.deepseek.ask(plan_prompt)
-#         print(f"\nDeepSeek plan:\n{plan_text}")
-        
-#         # Step 3: Parse and execute steps
-#         steps = self._parse_plan(plan_text)
-
-#         step_results = []  # To store the results of each step
-        
-#         for i, step in enumerate(steps, 1):
-#             print(f"\n--- Step {i}/{len(steps)}: {step} ---")
-            
-#             # Check constraints
-#             check = self.checker.check(str(step))
-#             if not check["ok"]:
-#                 print(f"BLOCKED: {check['fix']}")
-#                 if not auto:
-#                     fix = input("Proceed with fix? [y/n]: ")
-#                     if fix != 'y':
-#                         break
-#                 step = check['fix']
-            
-#             # Execute
-#             if not auto:
-#                 proceed = input("Execute? [y/n/skip]: ")
-#                 if proceed == 'skip':
-#                     continue
-#                 if proceed != 'y':
-#                     break
-            
-#             result = self._execute_step(step)
-#             print(f"Result: {result[:200]}...")
-            
-#             # Save progress
-#             self.session.save({
-#                 "goal": goal,
-#                 "step": i,
-#                 "action": str(step),
-#                 "result": result[:500]
-#             })
-        
-#         print(f"\n=== DONE: {goal} ===")
-#         return f"Completed {len(steps)} steps"
-
-    def orchestrate(self, goal: str, auto: bool = False):
+    def run(self, command: str):
         """
-        Orchestrate work on a goal: DeepSeek directs, Foreman executes.
-        
-        Args:
-            goal: What to work on (stored as instance state for access by sub-methods)
-            auto: If True, don't ask for approval each step
+        Single entry point for all commands:
+        - work <goal>: Full orchestration
+        - tool <name> [args]: Run a single tool
+        - ask <question>: Ask AI directly
+        - status: Show AI status
+        - help: Show help
         """
-        # Store goal as instance state so _gather_context and other methods can access it
-        # without passing it through every call chain
-        self.current_goal = goal
+        command = command.strip()
+        
+        # Work command: Full orchestration
+        if command.startswith("work "):
+            goal = command[5:]
+            return self.orchestrate(goal, verbose=self.verbose)
+        
+        # Tool command: Run a single tool
+        elif command.startswith("tool "):
+            return self._run_tool(command[5:])
+        
+        # Ask command: Direct AI query
+        elif command.startswith("ask "):
+            question = command[4:]
+            response = self.ai_client.ask(question)
+            
+            # Save to session
+            if self.session_manager.current:
+                self.session_manager.add_step(f"ask: {question}", response)
+            
+            return response
+        
+        # Status command
+        elif command == "status":
+            status = self.ai_client.get_status()
+            return json.dumps(status, indent=2)
+        
+        # Help command
+        elif command in ["help", "?"]:
+            return """
+Commands:
+  work <goal>           - Orchestrate work on a goal
+  tool <name> [args]    - Run a single tool
+  ask <question>        - Ask AI directly
+  status                - Show AI status
+  help                  - Show this help
+
+Flags (when starting):
+  --ollama              - Use Ollama only
+  --deepseek            - Use DeepSeek only
+  --auto                - Ollama first, DeepSeek fallback (default)
+  --verbose             - Save detailed outputs
+"""
+        
+        # Unknown command
+        else:
+            return f"Unknown command: {command}\nType 'help' for available commands."
+    
+    def _run_tool(self, tool_spec: str) -> str:
+        """Run a tool with arguments"""
+        parts = tool_spec.split()
+        if not parts:
+            return "Usage: tool <name> [arg=value]"
+        
+        tool_name = parts[0]
+        kwargs = {}
+        
+        # Parse arguments
+        for part in parts[1:]:
+            if '=' in part:
+                key, val = part.split('=', 1)
+                kwargs[key] = val.strip('"\'')
+        
+        try:
+            # Check constraints
+            check = self.checker.check(f"run {tool_name}")
+            if not check["ok"]:
+                return f"Blocked: {check['fix']}"
+            
+            # Run tool
+            result = self.tools.run(tool_name, **kwargs)
+            output = result.stdout if result.returncode == 0 else f"Error: {result.stderr}"
+            
+            # Save to session
+            if self.session_manager.current:
+                self.session_manager.add_step(f"tool: {tool_name}", output)
+            
+            return output
+            
+        except Exception as e:
+            return f"Tool error: {e}"
+    
+    def orchestrate(self, goal: str, verbose: bool = False):
+        """
+        Orchestrate work on a goal
+        """
+        self.verbose = verbose
+        
+        # Start session
+        self.session_manager.start(f"work: {goal}")
         
         print(f"\n=== ORCHESTRATING: {goal} ===")
+        if verbose:
+            print("  (Verbose mode: saving detailed outputs)")
         
-        # Gather context using the stored goal
+        # Gather context
         context = self._gather_context()
         
-        # Step 2: Ask DeepSeek for plan
+        # Ask AI for plan
         plan_prompt = f"""
 Goal: {goal}
 
@@ -246,304 +419,176 @@ Current project status:
 Available tools: {', '.join(self.tools.list_tools()[:10])}
 
 Create a step-by-step plan using ONLY these formats:
-1. tool <tool_name> arg=value arg2=value2
-2. ask "question for deepseek"
+1. tool <tool_name> arg=value
+2. ask "question"
 
 Example:
 1. tool four_layer topic={goal}
 2. tool violations path=.
 3. ask "What should I fix first?"
 
-Respond with numbered steps only. No extra text. No descriptions. Just commands.
+Respond with numbered steps only. No extra text.
 """
-        plan_text = self.deepseek.ask(plan_prompt)
-        print(f"\nDeepSeek plan:\n{plan_text}")
+        print("\n📋 Getting plan from AI...")
+        plan_text = self.ai_client.ask(plan_prompt)
+        print(f"\nPlan:\n{plan_text}")
         
-        # Step 3: Parse and execute steps
+        # Parse and execute steps
         steps = self._parse_plan(plan_text)
         
-        # Collect all results for context
         all_results = []
-        
         for i, step in enumerate(steps, 1):
             print(f"\n--- Step {i}/{len(steps)}: {step} ---")
             
-            # Check constraints
-            check = self.checker.check(str(step))
-            if not check["ok"]:
-                print(f"BLOCKED: {check['fix']}")
-                if not auto:
-                    fix = input("Proceed with fix? [y/n]: ")
-                    if fix != 'y':
-                        break
-                step = check['fix']
+            # Ask for confirmation
+            proceed = input("Execute? [y/n/skip]: ").strip().lower()
+            if proceed == 'skip':
+                continue
+            if proceed != 'y':
+                print("Stopping.")
+                break
             
-            # Execute
-            if not auto:
-                proceed = input("Execute? [y/n/skip]: ")
-                if proceed == 'skip':
-                    continue
-                if proceed != 'y':
-                    break
-            
-            # Handle ask steps specially - include previous results
-            if step.lower().startswith('ask '):
+            # Execute step
+            if step.startswith('ask '):
                 question = step[4:].strip('"\'')
-                # Build context from all previous results
+                # Include previous results as context
                 if all_results:
-                    context_summary = "\n\n".join([f"Step {j+1}: {result[:200]}..." for j, result in enumerate(all_results)])
-                    full_question = f"Previous steps results:\n{context_summary}\n\nQuestion: {question}"
-                    result = self.deepseek.ask(full_question)
+                    context_summary = "\n".join([f"Step {j}: {r[:200]}..." 
+                                               for j, r in enumerate(all_results, 1)])
+                    full_question = f"Previous results:\n{context_summary}\n\nQuestion: {question}"
+                    result = self.ai_client.ask(full_question)
                 else:
-                    result = self.deepseek.ask(question)
+                    result = self.ai_client.ask(question)
             else:
                 result = self._execute_step(step)
             
             all_results.append(result)
             print(f"Result: {result[:200]}...")
             
-            # Save progress
-            self.session.save({
-                "goal": goal,
-                "step": i,
-                "action": str(step),
-                "result": result[:500]
-            })
+            # Save step
+            self.session_manager.add_step(step, result)
+            
+            # Save to file if verbose
+            if verbose:
+                step_file = self.ai_context / f"step_{i}_{datetime.now().strftime('%H%M%S')}.txt"
+                with open(step_file, 'w', encoding='utf-8') as f:
+                    f.write(f"Step: {step}\n\n")
+                    f.write(result)
+                print(f"  [Verbose] Saved to: {step_file}")
         
-        print(f"\n=== DONE: {goal} ===")
+        print(f"\n✅ Done: {goal}")
         return f"Completed {len(steps)} steps"
     
     def _gather_context(self) -> str:
-        """
-        Build context for DeepSeek using self.current_goal.
+        """Gather current project context"""
+        context = []
         
-        Why instance state: Multiple methods may need the current goal (gather, resume, 
-        status checks). Storing once avoids passing goal through 3+ layers of calls.
-        """
-        # Retrieve goal from instance state (set by orchestrate)
-        goal = getattr(self, 'current_goal', 'Unknown')
+        # Get focus from status manifest
+        focus = self.config.status.get('current_focus', 'Unknown')
+        context.append(f"Current focus: {focus}")
         
-        parts = [f"Goal: {goal}"]
-        
-        # Use four_layer for deep analysis
+        # Run violations check
         try:
-            from tools.ai_assistant.four_layer import FourLayerAnalyzer
-            analyzer = FourLayerAnalyzer()  # Auto-indexer works now
-            analysis = analyzer.analyze_for_context(goal)
-            
-            synth = analysis.get('layer4_synthesis', {})
-            parts.append(f"Status: {synth.get('summary', 'Unknown')}")
-            parts.append(f"Recommendations: {synth.get('recommendations', [])}")
-        except Exception as e:
-            parts.append(f"Analysis error: {e}")
-        
-        # Quick violations check
-        try:
-            v = self.tools.run("violations", path=".")
-            v_lines = v.stdout.strip().split('\n') if v.success else []
-            parts.append(f"Violations: {len(v_lines)} found")
+            result = self.tools.run("violations", path=".")
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                context.append(f"Phase violations: {len(lines)} found")
         except:
-            pass
+            context.append("Phase violations: Could not check")
         
-        return '\n'.join(parts)
+        return "\n".join(context)
     
-    def _parse_plan(self, plan_text: str) -> list:
-        """Parse DeepSeek's plan into steps. Handles numbered or unnumbered."""
+    def _parse_plan(self, plan_text: str) -> List[str]:
+        """Parse AI's plan into steps"""
         steps = []
         for line in plan_text.split('\n'):
             line = line.strip()
             if not line:
                 continue
             
-            # Try numbered format: "1. tool ..."
+            # Look for numbered steps: "1. tool ..." or "1. ask ..."
             match = re.match(r'^\d+\.\s*(.+)$', line)
             if match:
                 steps.append(match.group(1))
+            # Also accept unnumbered but valid commands
             elif line.startswith('tool ') or line.startswith('ask '):
-                # Unnumbered but valid command
                 steps.append(line)
-            # else: skip unknown lines
         
-        return steps if steps else [plan_text]  # Fallback
+        return steps if steps else [plan_text]
     
-    # def _execute_step(self, step: str) -> str:
-    #     """Execute with exact match first, fuzzy fallback."""
-    #     step = step.strip()
-    #     step_lower = step.lower()
-    #     parts = step.split(maxsplit=1)
-    #     tool_name = parts[0] if parts else ""
-    #     args_str = parts[1] if len(parts) > 1 else ""
-
-    #     # DEBUG: Show what tools are available
-    #     available_tools = self.tools.list_tools()
-    #     print(f"  [DEBUG: tool_name='{tool_name}', available={len(available_tools)}, has_four_layer={'four_layer' in available_tools}]")
-        
-    #     # EXACT MATCH FIRST
-    #     if tool_name in self.tools.list_tools():
-    #         kwargs = {}
-    #         for arg in args_str.split():
-    #             if '=' in arg:
-    #                 k, v = arg.split('=', 1)
-    #                 kwargs[k] = v.strip('"\'')
-    #         try:
-    #             result = self.tools.run(tool_name, **kwargs)
-    #             return result.stdout if result.returncode == 0 else result.stderr
-    #         except Exception as e:
-    #             return f"Tool '{tool_name}' error: {e}"
-        
-    #     # FUZZY MATCH: Fallback only if exact not found
-    #     if "extraction" in step_lower or "analysis" in step_lower:
-    #         # Extract topic from various patterns
-    #         topic_match = re.search(r'target=(\w+)|topic=(\w+)|"([^"]+)"', step)
-    #         topic = topic_match.group(1) or topic_match.group(2) or topic_match.group(3) if topic_match else "unknown"
-            
-    #         print(f"  [Interpreted as: tool four_layer topic={topic}]")
-    #         try:
-    #             result = self.tools.run("four_layer", topic=topic)
-    #             return result.stdout if result.returncode == 0 else result.stderr
-    #         except Exception as e:
-    #             return f"Four layer error: {e}"
-        
-    #     # Fuzzy match: search query
-    #     if "search" in step.lower() and "query=" in step.lower():
-    #         query_match = re.search(r'query="([^"]+)"|query=(\S+)', step)
-    #         query = query_match.group(1) or query_match.group(2) if query_match else step
-            
-    #         print(f"  [Interpreted as: tool search query={query}]")
-    #         try:
-    #             result = self.tools.run("search", query=query, limit="5")
-    #             return result.stdout if result.returncode == 0 else result.stderr
-    #         except Exception as e:
-    #             return f"Search error: {e}"
-        
-    #     # Fuzzy match: code_search specifically
-    #     if "code_search" in step.lower():
-    #         query_match = re.search(r'query="([^"]+)"|query=(\S+)', step)
-    #         query = query_match.group(1) or query_match.group(2) if query_match else "GameEngine"
-            
-    #         print(f"  [Interpreted as: tool code_search query={query}]")
-    #         try:
-    #             result = self.tools.run("code_search", query=query, limit="5")
-    #             return result.stdout if result.returncode == 0 else result.stderr
-    #         except Exception as e:
-    #             return f"Code search error: {e}"
-        
-    #     # Check if it's an ask
-    #     if step.lower().startswith('ask '):
-    #         question = step[4:].strip('"\'')
-    #         return self.deepseek.ask(question)
-        
-    #     # Unknown
-    #     return f"Don't know how to: {step[:50]}..."
-
     def _execute_step(self, step: str) -> str:
-        """Execute a single step from plan."""
-        step = step.strip()
-        step_lower = step.lower()
+        """Execute a single step from plan"""
+        # Handle tool commands
+        if step.startswith('tool '):
+            return self._run_tool(step[5:])
         
-        # Check if it's an ask command
-        if step_lower.startswith('ask '):
+        # Handle ask commands (should have been caught earlier)
+        if step.startswith('ask '):
             question = step[4:].strip('"\'')
-            return self.deepseek.ask(question)
+            return self.ai_client.ask(question)
         
-        # Check if it's a tool command
-        if step_lower.startswith('tool '):
-            # Remove "tool " prefix
-            command = step[5:].strip()
-            # Split into tool name and arguments
-            parts = command.split(maxsplit=1)
-            tool_name = parts[0] if parts else ""
-            args_str = parts[1] if len(parts) > 1 else ""
-        else:
-            # Not a recognized command format
-            return f"Unknown command format: {step[:50]}..."
-        
-        # DEBUG: Show what tools are available
-        available_tools = self.tools.list_tools()
-        print(f"  [DEBUG: tool_name='{tool_name}', available={len(available_tools)}, has_four_layer={'four_layer' in available_tools}]")
-        
-        # EXACT MATCH FIRST
-        if tool_name in available_tools:
-            kwargs = {}
-            # Parse arguments (key=value pairs)
-            if args_str:
-                for arg in args_str.split():
-                    if '=' in arg:
-                        k, v = arg.split('=', 1)
-                        kwargs[k] = v.strip('"\'')
-            try:
-                result = self.tools.run(tool_name, **kwargs)
-                return result.stdout if result.returncode == 0 else result.stderr
-            except Exception as e:
-                return f"Tool '{tool_name}' error: {e}"
-        
-        # FUZZY FALLBACK: Only if exact not found
-        if "extraction" in step_lower or "analysis" in step_lower:
-            # Extract topic from various patterns
-            topic_match = re.search(r'target=(\w+)|topic=(\w+)|"([^"]+)"', step)
-            topic = topic_match.group(1) or topic_match.group(2) or topic_match.group(3) if topic_match else "unknown"
-            
-            print(f"  [Interpreted as: tool four_layer topic={topic}]")
-            try:
-                result = self.tools.run("four_layer", topic=topic)
-                return result.stdout if result.returncode == 0 else result.stderr
-            except Exception as e:
-                return f"Four layer error: {e}"
-        
-        if "search" in step_lower and "query=" in step_lower:
-            query_match = re.search(r'query="([^"]+)"|query=(\S+)', step)
-            query = query_match.group(1) or query_match.group(2) if query_match else step
-            
-            print(f"  [Interpreted as: tool search query={query}]")
-            try:
-                result = self.tools.run("search", query=query, limit="5")
-                return result.stdout if result.returncode == 0 else result.stderr
-            except Exception as e:
-                return f"Search error: {e}"
-        
-        if "code_search" in step_lower:
-            query_match = re.search(r'query="([^"]+)"|query=(\S+)', step)
-            query = query_match.group(1) or query_match.group(2) if query_match else "GameEngine"
-            
-            print(f"  [Interpreted as: tool code_search query={query}]")
-            try:
-                result = self.tools.run("code_search", query=query, limit="5")
-                return result.stdout if result.returncode == 0 else result.stderr
-            except Exception as e:
-                return f"Code search error: {e}"
-        
-        # Unknown
-        return f"Tool '{tool_name}' not found and no fuzzy match."
+        # Unknown format
+        return f"Don't know how to: {step}"
+
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
-    import sys
+    # Default settings
+    ai_preference = "auto"
+    verbose = False
     
-    f = Foreman()
-    f.start()
+    # Parse command line arguments
+    args = sys.argv[1:]
     
-    if len(sys.argv) > 1:
-        # Command mode: python foreman.py "work on EventSystem"
-        goal = " ".join(sys.argv[1:])
-        f.orchestrate(goal, auto=False)
+    # Handle flags
+    if "--ollama" in args:
+        ai_preference = "ollama"
+        args.remove("--ollama")
+    elif "--deepseek" in args:
+        ai_preference = "deepseek"
+        args.remove("--deepseek")
+    elif "--auto" in args:
+        ai_preference = "auto"
+        args.remove("--auto")
+    
+    if "--verbose" in args:
+        verbose = True
+        args.remove("--verbose")
+    
+    # Create and start Foreman
+    foreman = Foreman(ai_preference=ai_preference)
+    foreman.verbose = verbose
+    foreman.start()
+    
+    # If there are arguments, run them
+    if args:
+        command = " ".join(args)
+        result = foreman.run(command)
+        if result:
+            print(result)
     else:
         # Interactive mode
-        print("Foreman orchestrator ready.")
-        print("Commands: 'work <goal>' or 'tool <name>' or 'ask <question>'")
+        print(f"\n🔧 Foreman Ready")
+        print(f"   AI Mode: {ai_preference}")
+        print(f"   Verbose: {verbose}")
+        print("\nType 'help' for commands, 'quit' to exit")
         
         while True:
             try:
-                cmd = input("\n> ").strip()
-                if cmd in ["quit", "q"]:
+                user_input = input("\n> ").strip()
+                
+                if user_input in ["quit", "exit", "q"]:
+                    print("Goodbye!")
                     break
                 
-                if cmd.startswith("work "):
-                    f.orchestrate(cmd[5:], auto=False)
-                elif cmd.startswith("tool "):
-                    print(f.do(cmd))  # Use old direct method
-                elif cmd.startswith("ask "):
-                    print(f.deepseek.ask(cmd[4:]))
-                else:
-                    print("Unknown. Use: work <goal>, tool <name>, ask <question>")
+                result = foreman.run(user_input)
+                if result:
+                    print(result)
                     
             except KeyboardInterrupt:
-                break
+                print("\nInterrupted. Type 'quit' to exit.")
+            except Exception as e:
+                print(f"Error: {e}")

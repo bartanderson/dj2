@@ -552,14 +552,14 @@ Code: {code_info.get('content', 'None')}"""
             # Estimate tokens (rough: 4 chars per token)
             estimated_tokens = len(package['formatted']) // 4
             
-            # 98K safety margin under assumed 128K limit
-            if estimated_tokens < 98304:
+            # 115000 is 90% of 128K limit for llama3.2:3b
+            if estimated_tokens < 115000:
                 print(f"[ROUTING] {estimated_tokens} tokens -> Trying Ollama first...")
                 if self.send_to_ollama(package):
                     return True
                 print("[ROUTING] Ollama failed, falling back to DeepSeek...")
             else:
-                print(f"[ROUTING] {estimated_tokens} tokens -> DeepSeek (>98304 limit)")
+                print(f"[ROUTING] {estimated_tokens} tokens -> DeepSeek (>115000 limit)")
             
             return bool(self.send_to_deepseek(package['formatted'], keep_open))
             
