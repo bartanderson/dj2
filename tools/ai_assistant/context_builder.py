@@ -262,13 +262,12 @@ class BridgeAgent:
 
     def get_deep_analysis(self, topic: str) -> Dict:
         """Get deep analysis using FourLayerAnalyzer"""
-        if hasattr(self, 'four_layer_analyzer'):
-            return self.four_layer_analyzer.analyze_for_context(topic)
-        else:
-            # Initialize FourLayerAnalyzer if not already done
-            from .four_layer import FourLayerAnalyzer
-            self.four_layer_analyzer = FourLayerAnalyzer(self.indexer)
-            return self.four_layer_analyzer.analyze_for_context(topic)
+        # Import here to avoid circular dependencies
+        from .four_layer import FourLayerAnalyzer
+        
+        # Create analyzer with our indexer (auto-indexer will work if indexer is None)
+        analyzer = FourLayerAnalyzer(indexer=self.indexer)
+        return analyzer.analyze_for_context(topic)
 
     def build_context_with_depth(self, query: str, depth: str = "balanced") -> Dict:
         """Build context with depth control"""

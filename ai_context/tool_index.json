@@ -25,7 +25,7 @@
       "output": "JSON or formatted report",
       "tested": true,
       "phase_safe": true,
-      "windows_cmd": "python tools\\ai_assistant\\four_layer.py \"topic\"",
+      "windows_cmd": "python tools\\ai_assistant\\four_layer.py \"{topic}\"",
       "example": "python tools\\ai_assistant\\four_layer.py \"DMChatHandler phase compliance\""
     },
     "violations": {
@@ -36,7 +36,7 @@
       "output": "List of violations with file:line locations",
       "tested": true,
       "phase_safe": true,
-      "windows_cmd": "python ai.py violations .",
+      "windows_cmd": "python ai.py {violations} .",
       "note": "Returns 0 for clean code (markers removed)"
     },
     "todos": {
@@ -47,7 +47,7 @@
       "output": "JSON array of technical debt items",
       "tested": true,
       "phase_safe": true,
-      "windows_cmd": "python ai.py todos . > todos.json"
+      "windows_cmd": "python ai.py {todos} . > todos.json"
     },
     "analyze_deep": {
       "description": "AI-powered architectural analysis via Ollama",
@@ -71,7 +71,7 @@
       },
       "output": "Ranked file list with snippets",
       "tested": true,
-      "windows_cmd": "python ai.py search \"query\" --limit 5"
+      "windows_cmd": "python ai.py search \"{query}\" --limit 5"
     },
     "archive_search": {
       "description": "Search historical patterns in archive/Docs-old/",

@@ -1,0 +1,162 @@
+{
+  "layer1_code_reality": {
+    "found_files": 10,
+    "key_files": [
+      "tools\\future\\mcp_server.py",
+      "ai_context\\USAGE.md",
+      "tests\\test.py",
+      "ai_context\\development_playbook.md",
+      "ai_context\\status_manifest.json"
+    ],
+    "implementation_status": "Class implemented",
+    "enhanced_analysis_available": true,
+    "enhanced_results": [
+      {
+        "path": "tools\\future\\mcp_server.py",
+        "basic_info": {
+          "content": "",
+          "title": ""
+        },
+        "ast_analysis": {
+          "classes": [],
+          "functions": [
+            {
+              "name": "run_cli_directly",
+              "args": [
+                "args"
+              ],
+              "decorators": [],
+              "lineno": 13,
+              "returns": null
+            },
+            {
+              "name": "project_search",
+              "args": [
+                "query",
+                "limit"
+              ],
+              "decorators": [
+                "mcp.tool()"
+              ],
+              "lineno": 61,
+              "returns": "str"
+            },
+            {
+              "name": "analyze_component",
+              "args": [
+                "component_name"
+              ],
+              "decorators": [
+                "mcp.tool()"
+              ],
+              "lineno": 66,
+              "returns": "str"
+            }
+          ],
+          "todos": [],
+          "phase_violations": [],
+          "imports": [
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "sys",
+                  "asname": null
+                }
+              ],
+              "lineno": 5
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "os",
+                  "asname": null
+                }
+              ],
+              "lineno": 6
+            },
+            {
+              "type": "import",
+              "names": [
+                {
+                  "name": "io",
+                  "asname": null
+                }
+              ],
+              "lineno": 7
+            },
+            {
+              "type": "from",
+              "module": "mcp.server.fastmcp",
+              "names": [
+                {
+                  "name": "FastMCP",
+                  "asname": null
+                }
+              ],
+              "level": 0,
+              "lineno": 8
+            }
+          ]
+        }
+      }
+    ],
+    "topic_violations": []
+  },
+  "layer2_design_intent": {
+    "design_documents_checked": [
+      "ai_context/ai_contract.md",
+      "ai_context/development_playbook.md",
+      "ai_context/development_playbook_mini.md",
+      "ai_context/USAGE.md",
+      "archive/Docs-old/SYSTEM_OWNERSHIP.md",
+      "archive/Docs-old/ENGINE_LOOP.md",
+      "archive/Docs-old/PHASE_AUDIT.md"
+    ],
+    "documents_found": 4,
+    "archive_documents_found": 3,
+    "mentions_found": 7,
+    "relevant_sections": [
+      {
+        "document": "ai_context/ai_contract.md",
+        "context": "  - NO `python -c` for multiline scripts - use .py files instead\n  - Single-line `python -c` only for very simple commands\n  - Example of what DOES NOT work:\n    ```cmd\n    python -c \""
+      },
+      {
+        "document": "ai_context/development_playbook.md",
+        "context": "| Grid display          | + \"Quest Complete!\" banner             | + Context-aware atmospheric text   |\n\n## The 7-Step Analysis Framework\n\n### Step 1: Declare Responsibility"
+      },
+      {
+        "document": "ai_context/development_playbook_mini.md",
+        "context": "\n# Quick AI analyze\npython scripts/ai_workflow.py local-analyze --topic \"...\"\nFile Structure\nSession: state, history"
+      }
+    ]
+  },
+  "layer3_historical_context": {
+    "historical_mentions": 1,
+    "from_status": 0,
+    "from_accomplishments": 0,
+    "recent_work": [
+      {
+        "source": "technical_debt",
+        "component": "ai_workflow.py",
+        "issue": "Import error for UnifiedContextManager",
+        "priority": "low"
+      }
+    ]
+  },
+  "layer4_synthesis": {
+    "summary": "Topic 'work' is Class implemented. Found in 7 design documents and 1 historical references. AST analysis: available.",
+    "recommendations": [
+      "Implementation exists - review before modifying"
+    ],
+    "estimated_time": "2-3 hours",
+    "priority": "Medium",
+    "context_hints": [
+      "Check ai_contract.md for boundaries",
+      "Verify phase compliance with ast_analyzer",
+      "Review status_manifest.json for current state",
+      "Look for recent work in ACCOMPLISHMENTS.md"
+    ]
+  }
+}
