@@ -90,7 +90,7 @@ class ASTAnalyzer:
             print(f"Error parsing {filepath}: {e}")
             return None
 
-        phase_violations = self._detect_phase_violations_in_source(source, filepath)
+        phase_violations = self._detect_phase_violations_in_source(source, filepath, tree)
         phase_violations.extend(self._detect_ai_boundary_violations(tree, filepath))
 
         file_info = {
@@ -131,9 +131,51 @@ class ASTAnalyzer:
                         'type': 'TODO' if 'todo' in comment else 'FIXME'
                     })
         return todos
-    
-    def _detect_phase_violations_in_source(self, source: str, filepath: str) -> List[Dict[str, Any]]:
-        """Detect potential phase violations in source code"""
+
+    def _get_string_literal_ranges(self, tree) -> List[tuple]:
+        """Get line ranges of all string literals in the AST."""
+        string_ranges = []
+        
+        for node in ast.walk(tree):
+            start_line = None
+            end_line = None
+            
+            # Python 3.8+ uses ast.Constant for strings
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+            # Python < 3.8 uses ast.Str
+            elif isinstance(node, ast.Str):
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+            # F-strings
+            elif isinstance(node, ast.JoinedStr):
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+            # Bytes
+            elif isinstance(node, ast.Bytes):
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+            # Python 3.8+ bytes as Constant
+            elif isinstance(node, ast.Constant) and isinstance(node.value, bytes):
+                start_line = node.lineno
+                end_line = getattr(node, 'end_lineno', start_line)
+            
+            if start_line:
+                string_ranges.append((start_line, end_line))
+        
+        return string_ranges
+
+    def _is_line_in_string(self, line_num: int, string_ranges: List[tuple]) -> bool:
+        """Check if a line number is inside any string literal range."""
+        for start, end in string_ranges:
+            if start <= line_num <= end:
+                #print(f"[DEBUG] Line {line_num} is in string range {start}-{end}")
+                return True
+        return False
+        
+    def _detect_phase_violations_in_source(self, source: str, filepath: str, tree=None) -> List[Dict[str, Any]]:
+        """Detect potential phase violations in source code using AST to skip strings."""
         
         # Skip the analyzer's own files
         import os
@@ -153,8 +195,22 @@ class ASTAnalyzer:
         violations = []
         lines = source.split('\n')
         
+        # If we have an AST tree, use it to identify string literal ranges
+        string_line_ranges = []
+        if tree is not None:
+            string_line_ranges = self._get_string_literal_ranges(tree)
+        
+        # Debug: print file being checked AFTER string_line_ranges is defined
+        # print(f"[DEBUG] Checking {filepath} for violations")
+        # print(f"[DEBUG] String ranges: {string_line_ranges}")
+        
         for i, line in enumerate(lines):
             line_num = i + 1
+            
+            # Check if this line is inside a string literal
+            if self._is_line_in_string(line_num, string_line_ranges):
+                # print(f"[DEBUG] Line {line_num} skipped - inside string")
+                continue
             
             # Remove comments from the line before checking
             if '#' in line:

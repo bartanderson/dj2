@@ -36,7 +36,7 @@
       "output": "List of violations with file:line locations",
       "tested": true,
       "phase_safe": true,
-      "windows_cmd": "python ai.py {violations} .",
+      "windows_cmd": "python ai.py violations {path}",
       "note": "Returns 0 for clean code (markers removed)"
     },
     "todos": {
