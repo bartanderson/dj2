@@ -40,7 +40,7 @@ class FourLayerAnalyzer:
             self.indexer = indexer
         elif auto_index:
             try:
-                from tools.ai_assistant.indexer import CodebaseIndexer
+                from tools.ai_assistant.cli.indexer import CodebaseIndexer
                 self.indexer = CodebaseIndexer()
             except Exception as e:
                 print(f"Warning: Could not create indexer: {e}")
@@ -417,7 +417,7 @@ def main():
     
     args = parser.parse_args()
     
-    from tools.ai_assistant.indexer import CodebaseIndexer
+    from tools.ai_assistant.cli.indexer import CodebaseIndexer
     indexer = CodebaseIndexer()
     analyzer = FourLayerAnalyzer(indexer=indexer)
     

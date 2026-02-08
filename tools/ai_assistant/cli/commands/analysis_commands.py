@@ -16,7 +16,7 @@ def analyze_command(args):
         from ..context_builder import BridgeAgent
     except ImportError:
         # Fallback for direct execution
-        from tools.ai_assistant.indexer import CodebaseIndexer
+        from tools.ai_assistant.cli.indexer import CodebaseIndexer
         from tools.ai_assistant.context_builder import BridgeAgent
     
     indexer = CodebaseIndexer(index_dir=args.index_dir)

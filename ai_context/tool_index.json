@@ -114,5 +114,109 @@
       "tested": true,
       "windows_cmd": "python scripts\\tool_discovery.py [search-term]"
     }
+  },
+  "ai_commands": {
+    "search": {
+      "description": "Search codebase",
+      "windows_cmd": "python ai.py search",
+      "tested": true,
+      "phase_safe": true
+    },
+    "violations": {
+      "description": "Find phase boundary violations",
+      "windows_cmd": "python ai.py violations",
+      "tested": true,
+      "phase_safe": true
+    },
+    "todos": {
+      "description": "Find TODOs and FIXMEs",
+      "windows_cmd": "python ai.py todos",
+      "tested": true,
+      "phase_safe": true
+    },
+    "deps": {
+      "description": "Show dependency analysis",
+      "windows_cmd": "python ai.py deps",
+      "tested": true,
+      "phase_safe": true
+    },
+    "structure": {
+      "description": "Show project structure",
+      "windows_cmd": "python ai.py structure",
+      "tested": true,
+      "phase_safe": true
+    },
+    "context": {
+      "description": "Build context for DeepSeek",
+      "windows_cmd": "python ai.py context",
+      "tested": true,
+      "phase_safe": true
+    },
+    "validate": {
+      "description": "Validate DeepSeek responses",
+      "windows_cmd": "python ai.py validate",
+      "tested": true,
+      "phase_safe": true
+    },
+    "guardrails": {
+      "description": "Show guardrails",
+      "windows_cmd": "python ai.py guardrails",
+      "tested": true,
+      "phase_safe": true
+    },
+    "phase-check": {
+      "description": "Check phase compliance",
+      "windows_cmd": "python ai.py phase-check",
+      "tested": true,
+      "phase_safe": true
+    },
+    "bridge-status": {
+      "description": "Check bridge status",
+      "windows_cmd": "python ai.py bridge-status",
+      "tested": true,
+      "phase_safe": true
+    },
+    "refactor-plan": {
+      "description": "Generate refactoring plan",
+      "windows_cmd": "python ai.py refactor-plan",
+      "tested": true,
+      "phase_safe": true
+    },
+    "js-css-check": {
+      "description": "Check JS/CSS separation",
+      "windows_cmd": "python ai.py js-css-check",
+      "tested": true,
+      "phase_safe": true
+    },
+    "analyze-project": {
+      "description": "Complete project analysis",
+      "windows_cmd": "python ai.py analyze-project",
+      "tested": true,
+      "phase_safe": true
+    },
+    "feature-report": {
+      "description": "Generate feature report",
+      "windows_cmd": "python ai.py feature-report",
+      "tested": true,
+      "phase_safe": true
+    },
+    "living-workflow": {
+      "description": "Run living workflow",
+      "windows_cmd": "python ai.py living-workflow",
+      "tested": true,
+      "phase_safe": true
+    },
+    "tools": {
+      "description": "List available tools",
+      "windows_cmd": "python ai.py tools",
+      "tested": true,
+      "phase_safe": true
+    },
+    "tool-help": {
+      "description": "Get tool help",
+      "windows_cmd": "python ai.py tool-help",
+      "tested": true,
+      "phase_safe": true
+    }
   }
 }

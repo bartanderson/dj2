@@ -1,60 +1,75 @@
-# tools/ai_assistant/cli/commands/tool_commands.py
+# tools/ai_assistant/cli/commands/tool_commands.py - ULTRA SIMPLE VERSION
 """
-Tool discovery commands for AI Assistant CLI
+Tool discovery commands - SIMPLE VERSION THAT WORKS
 """
 
 import sys
+import json
 from pathlib import Path
 
-# Import registry
 from . import register_command
 
-# Try to import from scripts.tool_discovery
-try:
-    from scripts.tool_discovery import list_tools, get_tool_help, ai_suggest_tools
-except ImportError:
-    # Fallback: try to add the scripts directory to path
-    scripts_dir = Path(__file__).parent.parent.parent.parent / 'scripts'
-    if scripts_dir.exists():
-        sys.path.insert(0, str(scripts_dir))
-        from tool_discovery import list_tools, get_tool_help, ai_suggest_tools
-    else:
-        # If not found, create stubs
-        def list_tools(query=None):
-            print("Error: tool_discovery.py not found")
-        
-        def get_tool_help(tool_name):
-            print(f"Error: tool_discovery.py not found, cannot get help for {tool_name}")
-        
-        def ai_suggest_tools(query):
-            return None
-
 def tools_command(args):
-    """List and search available tools"""
-    if args.query:
-        list_tools(args.query)
-    else:
-        list_tools()
+    """Simple tool listing that doesn't depend on scripts/"""
+    project_root = Path(__file__).parent.parent.parent.parent.parent
     
-    # Also show AI suggestions if query provided
-    if args.query and hasattr(args, 'ai_suggest') and args.ai_suggest:
-        print("\n[AI TOOL SUGGESTIONS]")
-        print("-" * 40)
-        suggestions = ai_suggest_tools(args.query)
-        if suggestions:
-            print(suggestions)
+    # Load tool_index.json directly
+    tool_file = project_root / "ai_context" / "tool_index.json"
+    
+    if not tool_file.exists():
+        print("[FAIL] tool_index.json not found")
+        return 1
+    
+    try:
+        with open(tool_file, 'r') as f:
+            tools = json.load(f)
+    except Exception as e:
+        print(f"[FAIL] Error reading tool_index.json: {e}")
+        return 1
+    
+    print("\n[TOOLS] AVAILABLE TOOLS (DJ2)")
+    print("=" * 50)
+    
+    for category, tool_dict in tools.items():
+        print(f"\n{category.upper()}:")
+        for name, info in tool_dict.items():
+            status = "[OK]" if info.get("tested") else "[WARN]"
+            desc = info.get('description', 'No description')[:50]
+            print(f"  {status} {name:<20} - {desc}...")
     
     return 0
 
 def tool_help_command(args):
-    """Get detailed help for a tool"""
-    if args.tool_name:
-        get_tool_help(args.tool_name)
-    else:
+    """Simple tool help that doesn't depend on scripts/"""
+    if not args.tool_name:
         print("Error: tool name required")
-        print("Usage: python ai.py tool-help <tool_name>")
+        return 1
     
-    return 0
+    project_root = Path(__file__).parent.parent.parent.parent.parent
+    tool_file = project_root / "ai_context" / "tool_index.json"
+    
+    if not tool_file.exists():
+        print("[FAIL] tool_index.json not found")
+        return 1
+    
+    with open(tool_file, 'r') as f:
+        tools = json.load(f)
+    
+    # Search nested structure
+    for category, tool_dict in tools.items():
+        if args.tool_name in tool_dict:
+            info = tool_dict[args.tool_name]
+            print(f"\n[HELP] {args.tool_name.upper()}")
+            print("=" * 40)
+            print(f"Description: {info.get('description', 'N/A')}")
+            print(f"Category: {category}")
+            print(f"Tested: {'[OK] Yes' if info.get('tested') else '[WARN] No'}")
+            print(f"Phase Safe: {'[OK] Yes' if info.get('phase_safe') else '[FAIL] No'}")
+            print(f"\nCommand: {info.get('windows_cmd', 'N/A')}")
+            return 0
+    
+    print(f"[FAIL] Tool '{args.tool_name}' not found")
+    return 1
 
 # Register commands
 register_command('tools', tools_command, "List and search available tools")

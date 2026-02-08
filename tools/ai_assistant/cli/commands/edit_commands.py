@@ -451,7 +451,7 @@ def extract_command(args):
     try:
         from ..indexer import CodebaseIndexer
     except ImportError:
-        from tools.ai_assistant.indexer import CodebaseIndexer
+        from tools.ai_assistant.cli.indexer import CodebaseIndexer
     
     indexer = CodebaseIndexer(index_dir=args.index_dir)
     

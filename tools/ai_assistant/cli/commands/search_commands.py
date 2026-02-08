@@ -16,7 +16,7 @@ try:
     from ..config import AIConfig
 except ImportError:
     # Fallback for direct execution
-    from tools.ai_assistant.indexer import CodebaseIndexer
+    from tools.ai_assistant.cli.indexer import CodebaseIndexer
     from tools.ai_assistant.archive_indexer import ArchiveIndexer
     from tools.ai_assistant.config import AIConfig
 
@@ -132,9 +132,12 @@ def archive_search_command(args):
     """Search only the archive index"""
     indexer = ArchiveIndexer(index_dir='.archive_index')
     
-    # If no query provided, prompt
+    # If no query provided, show usage
     if not args.query and not args.path:
-        args.query = input("Enter search query for archive: ")
+        print("Error: Query or path required for archive search")
+        print("Usage: ai.py archive-search <query> [options]")
+        print("       ai.py archive-search --path <path> [options]")
+        return 1
     
     # Build query parameters
     search_params = {
