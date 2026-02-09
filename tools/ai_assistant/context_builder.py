@@ -13,7 +13,7 @@ try:
     from ..ollama_client import get_ollama_client
 except ImportError:
     # When running directly or from a different path
-    from ollama_client import get_ollama_client
+    from tools.ollama_client import get_ollama_client
 
 class BridgeAgent:
     def __init__(self, indexer: 'CodebaseIndexer', ollama_model: str = "llama3.2:3b"):
@@ -28,19 +28,27 @@ class BridgeAgent:
             print(f"⚠️ Ollama not available for BridgeAgent")
     
     def _call_ollama(self, prompt: str, system: str = None) -> str:
-        """Call Ollama via unified client."""
-        if not self.ollama_available:
-            return ""
+        """Call Ollama via unified client - FIXED VERSION"""
+        if not self.ollama_available or not self.client:
+            return "[Ollama not available]"
         
-        return self.client.generate(
-            prompt=prompt, 
-            system=system or "You are a code analysis assistant. Be concise and factual.",
-            temperature=0.1,
-            max_tokens=500
-        )
-    
-    # REMOVE the old _check_ollama_available method entirely
-    # REMOVE the old _call_ollama method entirely
+        try:
+            result = self.client.generate(
+                prompt=prompt,
+                system=system or "You are a code analysis assistant. Be concise and factual.",
+                temperature=0.1,
+                max_tokens=500
+            )
+            # The generate method returns a GenerationResult object
+            # We need to extract the text from it
+            if hasattr(result, 'text'):
+                return str(result.text).strip()
+            elif hasattr(result, 'response'):
+                return str(result.response).strip()
+            else:
+                return str(result).strip()
+        except Exception as e:
+            return f"[Ollama error: {e}]"
     
     def build_context_for_query(self, user_query: str, depth: str = "balanced") -> Dict:
         """Build context for a query, with or without Ollama"""

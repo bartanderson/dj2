@@ -1,4 +1,41 @@
 {
+  "ai_commands": {
+    "ai_search": {
+      "description": "Search codebase using AI-powered search",
+      "windows_cmd": "python ai.py search \"{query}\" --limit 10",
+      "tested": true
+    },
+    "ai_analyze": {
+      "description": "Deep analysis of a topic",
+      "windows_cmd": "python ai.py analyze \"{query}\" --detail",
+      "tested": true
+    },
+    "ai_violations": {
+      "description": "Check for phase boundary violations",
+      "windows_cmd": "python ai.py violations .",
+      "tested": true
+    },
+    "ai_todos": {
+      "description": "Find TODOs and FIXMEs in code",
+      "windows_cmd": "python ai.py todos .",
+      "tested": true
+    },
+    "ai_context": {
+      "description": "Build context package for DeepSeek analysis",
+      "windows_cmd": "python ai.py context \"{query}\"",
+      "tested": true
+    },
+    "ai_tools": {
+      "description": "List available AI tools",
+      "windows_cmd": "python ai.py tools",
+      "tested": true
+    },
+    "ai_index": {
+      "description": "Update code search index",
+      "windows_cmd": "python ai.py index",
+      "tested": true
+    }
+  },
   "extraction": {
     "context_manager": {
       "description": "Unified context extraction for AI sessions",
@@ -72,16 +109,6 @@
       "output": "Ranked file list with snippets",
       "tested": true,
       "windows_cmd": "python ai.py search \"{query}\" --limit 5"
-    },
-    "archive_search": {
-      "description": "Search historical patterns in archive/Docs-old/",
-      "input": {
-        "query": "string",
-        "limit": "number"
-      },
-      "output": "Historical implementations from 152+ archived files",
-      "tested": true,
-      "windows_cmd": "python ai.py archive-search \"pattern\" --limit 10"
     }
   },
   "workflow": {
@@ -120,103 +147,120 @@
       "description": "Search codebase",
       "windows_cmd": "python ai.py search",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "violations": {
       "description": "Find phase boundary violations",
       "windows_cmd": "python ai.py violations",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "todos": {
       "description": "Find TODOs and FIXMEs",
       "windows_cmd": "python ai.py todos",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "deps": {
       "description": "Show dependency analysis",
       "windows_cmd": "python ai.py deps",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "structure": {
       "description": "Show project structure",
       "windows_cmd": "python ai.py structure",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "context": {
       "description": "Build context for DeepSeek",
       "windows_cmd": "python ai.py context",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "validate": {
       "description": "Validate DeepSeek responses",
       "windows_cmd": "python ai.py validate",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "guardrails": {
       "description": "Show guardrails",
       "windows_cmd": "python ai.py guardrails",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "phase-check": {
       "description": "Check phase compliance",
       "windows_cmd": "python ai.py phase-check",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "bridge-status": {
       "description": "Check bridge status",
       "windows_cmd": "python ai.py bridge-status",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "refactor-plan": {
       "description": "Generate refactoring plan",
       "windows_cmd": "python ai.py refactor-plan",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "js-css-check": {
       "description": "Check JS/CSS separation",
       "windows_cmd": "python ai.py js-css-check",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "analyze-project": {
       "description": "Complete project analysis",
       "windows_cmd": "python ai.py analyze-project",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "feature-report": {
       "description": "Generate feature report",
       "windows_cmd": "python ai.py feature-report",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "living-workflow": {
       "description": "Run living workflow",
       "windows_cmd": "python ai.py living-workflow",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "tools": {
       "description": "List available tools",
       "windows_cmd": "python ai.py tools",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     },
     "tool-help": {
       "description": "Get tool help",
       "windows_cmd": "python ai.py tool-help",
       "tested": true,
-      "phase_safe": true
+      "phase_safe": true,
+      "actual_status": "\u2705 Working"
     }
   }
 }

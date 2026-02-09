@@ -289,6 +289,7 @@ class Foreman:
         self.checker = ConstraintChecker()
         self.session_manager = SessionManager(self.ai_context / "session")
         self.verbose = False
+        self.ai_preference = ai_preference
         
         # These will be set in start()
         self.ai_client = None
@@ -298,7 +299,7 @@ class Foreman:
         """Initialize the system"""
         print("Starting Foreman...")
         self.config.load()
-        self.ai_client = AIClient(self.config, preference=ai_preference)
+        self.ai_client = AIClient(self.config, preference=self.ai_preference)
         self.tools = ToolRunner(self.root, self.config)
         print("Ready!")
     

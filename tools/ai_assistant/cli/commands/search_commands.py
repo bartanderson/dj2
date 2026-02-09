@@ -12,12 +12,10 @@ from . import register_command
 # Try relative imports for our modules
 try:
     from ..indexer import CodebaseIndexer
-    from ..archive_indexer import ArchiveIndexer
     from ..config import AIConfig
 except ImportError:
     # Fallback for direct execution
     from tools.ai_assistant.cli.indexer import CodebaseIndexer
-    from tools.ai_assistant.archive_indexer import ArchiveIndexer
     from tools.ai_assistant.config import AIConfig
 
 def search_command(args):
@@ -128,84 +126,5 @@ def search_command(args):
     
     return 0
 
-def archive_search_command(args):
-    """Search only the archive index"""
-    indexer = ArchiveIndexer(index_dir='.archive_index')
-    
-    # If no query provided, show usage
-    if not args.query and not args.path:
-        print("Error: Query or path required for archive search")
-        print("Usage: ai.py archive-search <query> [options]")
-        print("       ai.py archive-search --path <path> [options]")
-        return 1
-    
-    # Build query parameters
-    search_params = {
-        "limit": args.limit,
-    }
-    
-    if args.query:
-        results = indexer.search(args.query, **search_params)
-        
-        if not results:
-            print("No results found in archive.")
-            return 0
-        
-        print(f"\nFound {len(results)} results in archive for: {args.query}")
-        print("=" * 80)
-        
-        for i, result in enumerate(results, 1):
-            print(f"\n{i}. {result['path']} [ARCHIVE] (score: {result['score']:.3f})")
-            if args.verbose:
-                print(f"   Type: {result['file_type']}")
-                print(f"   Preview: {result['content_preview'][:200]}...")
-    
-    return 0
-
-def combined_search_command(args):
-    """Search both main and archive indexes"""
-    main_indexer = CodebaseIndexer(index_dir='.whoosh_index')
-    archive_indexer = ArchiveIndexer(index_dir='.archive_index')
-    
-    print(f"Searching both indexes for: {args.query}")
-    print("=" * 80)
-    
-    # Search main index
-    print("\n=== MAIN CODEBASE RESULTS ===")
-    main_results = main_indexer.search(args.query, limit=args.limit)
-    
-    if main_results:
-        for i, result in enumerate(main_results[:args.limit], 1):
-            archive_flag = " [ARCHIVE]" if result.get('is_archive') else ""
-            print(f"\n{i}. {result['path']}{archive_flag}")
-            print(f"   Score: {result['score']:.3f}")
-            if args.verbose:
-                print(f"   Type: {result['file_type']}")
-    else:
-        print("  No results in main codebase")
-    
-    # Search archive index
-    print("\n=== ARCHIVE RESULTS ===")
-    archive_results = archive_indexer.search(args.query, limit=args.limit)
-    
-    if archive_results:
-        for i, result in enumerate(archive_results[:args.limit], 1):
-            print(f"\n{i}. {result['path']} [ARCHIVE]")
-            print(f"   Score: {result['score']:.3f}")
-            if args.verbose:
-                print(f"   Type: {result['file_type']}")
-    else:
-        print("  No results in archive")
-    
-    # Summary
-    print(f"\n=== SUMMARY ===")
-    print(f"Main codebase: {len(main_results)} results")
-    print(f"Archive: {len(archive_results)} results")
-    print(f"Total: {len(main_results) + len(archive_results)} results")
-    
-    return 0
-
 # Register all search commands
 register_command('search', search_command, "Search the codebase")
-register_command('archive-search', archive_search_command, "Search only the archive index", aliases=['archives'])
-register_command('combined-search', combined_search_command, "Search both main and archive indexes", aliases=['csearch'])

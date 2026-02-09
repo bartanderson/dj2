@@ -139,7 +139,7 @@ Examples:
             subp.add_argument('--limit', type=int, default=10, help='Result limit')
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
         
-        elif cmd_name in ['index', 'archive-index']:
+        elif cmd_name == 'index':
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
 
         elif cmd_name == 'tools':
@@ -148,8 +148,18 @@ Examples:
                             help='Get AI suggestions for tools')
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
         
-        elif cmd_name in ['tool-help', 'th']:
+        elif cmd_name == 'tool-help':
             subp.add_argument('tool_name', help='Name of the tool to get help for')
+            subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+
+        elif cmd_name == 'extract':
+            subp.add_argument('component', help='Component name to extract')
+            subp.add_argument('--output', '-o', help='Output file for extraction analysis')
+            subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+
+        elif cmd_name == 'find-class':
+            subp.add_argument('file', help='File to search in')
+            subp.add_argument('class_name', help='Class name to find')
             subp.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
         
         # Architecture commands don't need additional args

@@ -177,14 +177,6 @@ python ai.py violations . > post_fix.txt
 fc pre_fix.txt post_fix.txt
 ```
 
-Workflow 3: Archive Old Patterns
-```cmd
-:: When you need to reference old implementations
-python ai.py archive-index  # Index archive/Docs-old if not indexed
-python ai.py archive-search "how we did character creation before"
-:: Copy relevant excerpt to context when needed
-```
-
 Troubleshooting
 "File not found: ai_contract.md"
 Cause: Running from wrong directory or files not moved to ai_context/
@@ -203,19 +195,6 @@ Fix: Use truncation flags
 ```cmd
 python scripts\context_manager.py --query "topic" --target ollama --max-tokens 2000
 ```
-
-Need Historical Context from Original Docs
-Option A: Direct file access
-```cmd
-type "archive\Docs-old\PHASE_AUDIT.md" | findstr "January 24"
-```
-
-Option B: Search archived index (if indexed)
-```cmd
-python ai.py archive-search "PHASE_VIOLATION markers" --limit 5
-```
-
-Maintenance
 
 Updating System Status
 Edit ai_context\status_manifest.json manually or generate via:
