@@ -372,6 +372,28 @@ Constraints: AI never mutates state, phases: Input->Interp->Auth->Mutate->Conseq
 Tools: {docs.get('tools', 'None')}
 Violations: {violations}
 Code: {code_info.get('content', 'None')}"""
+
+        # ADD: Include project status for certain queries
+        if any(word in query.lower() for word in ["status", "progress", "overview", "dashboard"]):
+            try:
+                # Get real project status
+                from scripts.project_auditor import ProjectAuditor
+                auditor = ProjectAuditor()
+                project_status = auditor.get_project_status()
+                
+                if "error" not in project_status:
+                    # Add to context
+                    status_context = f"""
+[PROJECT STATUS]
+Completion: {project_status['completion']}%
+Phases: {project_status['complete_phases']}/{project_status['total_phases']} complete
+Active phases: {', '.join(project_status['active_phases']) if project_status['active_phases'] else 'None'}
+"""
+                    # Insert after core documentation
+                    formatted = formatted.replace("[CODE]", status_context + "\n[CODE]")
+            except ImportError:
+                pass  # Silently fail if project_auditor not available
+        
         
         token_estimate = len(formatted.split())
         actual_tokens_estimate = len(formatted) // 4  # Rough estimate: 1 token ≈ 4 chars
