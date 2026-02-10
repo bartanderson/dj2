@@ -1,0 +1,30 @@
+[run]
+omit =
+    /*/Lib/*
+    /*/static/*
+    /*/Scripts/*
+    /*/site-packages/*
+    /*/Python*/
+    /*/__pycache__/*
+    /*/archive/*
+    /*/DOCS/*
+    /*/generated_images/*
+    /*/templates/*
+    /*/.whoosh_index/*
+    /*/.git/*
+
+[report]
+omit =
+    /*/Lib/*\
+    /*/static/*
+    /*/Scripts/*
+    /*/site-packages/*
+    /*/Python*/
+    /*/__pycache__/*
+    /*/archive/*
+    /*/DOCS/*
+    /*/generated_images/*
+    /*/templates/*
+    /*/.whoosh_index/*
+    /*/.git/*
+
