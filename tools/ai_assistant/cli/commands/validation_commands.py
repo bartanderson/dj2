@@ -1,3 +1,4 @@
+# coding=utf-8
 """
 Validation and guardrails commands for AI Assistant CLI
 """
@@ -86,96 +87,78 @@ def validate_command(args):
     return 0 if validation.get('is_valid', True) else 1
 
 def guardrails_command(args):
-    """Show and validate guardrails"""
-    # Guardrail files are in DOCS/ directory
-    guardrail_files = {
-        'phase': 'DOCS/ENGINE_LOOP.md',
-        'system': 'DOCS/SYSTEM_OWNERSHIP.md',
-        'integration': 'DOCS/INTEGRATION_CHECKLIST.md',
-        'documentation': 'DOCS/DOCUMENTATION_STANDARDS.md',
-        'workflow': 'DOCS/DOCUMENTATION_WORKFLOW.md',
-    }
+    """REAL implementation - runs the new guardrails tool"""
+    import sys
+    from pathlib import Path
+    import subprocess
     
-    if args.list:
-        print("Available guardrail categories:")
-        for key, filename in guardrail_files.items():
-            path = Path(filename)
-            if path.exists():
-                size = path.stat().st_size
-                print(f"  {key}: {filename} ({size} bytes)")
-            else:
-                print(f"  {key}: {filename} (NOT FOUND)")
-        return 0
+    print("🔍 Running AI Contract Guardrails...")
     
-    # Show default (development) if none specified
-    from ..indexer import CodebaseIndexer
-    from ..context_builder import BridgeAgent
+    # Find the new tool
+    tool_path = Path(__file__).parent.parent.parent.parent.parent / "tools" / "analysis" / "guardrails.py"
     
-    # Use BridgeAgent to parse and summarize guardrails
-    indexer = CodebaseIndexer(index_dir=args.index_dir)
-    agent = BridgeAgent(indexer)
+    if not tool_path.exists():
+        print(f"Error: guardrails tool not found at {tool_path}")
+        return 1
     
-    # Get phase compliance summary
-    phase_context = indexer.get_phase_violation_context()
+    # Build command
+    cmd = [sys.executable, str(tool_path)]
     
-    print("\nGUARDRAILS SUMMARY")
-    print("=" * 80)
+    # Add any flags from args
+    if hasattr(args, 'list') and args.list:
+        cmd.append("--list")
     
-    if phase_context:
-        violations = phase_context.get('total_violations', 0)
-        print(f"Phase violations in project: {violations}")
-        if violations > 0:
-            print("\nRecent phase violations from audit:")
-            for i, violation in enumerate(phase_context.get('violations', [])[:3], 1):
-                print(f"\n{i}. {violation[:200]}...")
+    # Run it
+    result = subprocess.run(
+        cmd, 
+        capture_output=True, 
+        text=True, 
+        encoding='utf-8', 
+        errors='replace'
+    )
     
-    # List key guardrail files
-    print("\nKey guardrail files found:")
-    for key, filename in guardrail_files.items():
-        path = Path(filename)
-        if path.exists():
-            print(f"  ✓ {key}: {filename}")
-        else:
-            print(f"  ✗ {key}: {filename} (missing)")
+    print(result.stdout)
+    if result.stderr:
+        print(f"Error: {result.stderr[:500]}", file=sys.stderr)
     
-    return 0
+    return result.returncode
 
 def phase_check_command(args):
-    """Check phase compliance for specific files or patterns"""
-    from ..indexer import CodebaseIndexer
+    """REAL implementation - runs the new phase-check tool"""
+    import sys
+    from pathlib import Path
+    import subprocess
     
-    indexer = CodebaseIndexer(index_dir=args.index_dir)
+    print("🔍 Running Phase Compliance Check...")
     
-    # Search for phase violations
-    results = indexer.search("phase violation", limit=args.limit)
+    # Find the new tool
+    tool_path = Path(__file__).parent.parent.parent.parent.parent / "tools" / "analysis" / "phase_checker.py"
     
-    if not results:
-        print("No phase violations found in indexed files.")
-        return 0
+    if not tool_path.exists():
+        print(f"Error: phase-checker tool not found at {tool_path}")
+        return 1
     
-    print(f"\nFound {len(results)} files with phase violation references:")
-    print("=" * 80)
+    # Build command
+    cmd = [sys.executable, str(tool_path)]
     
-    violation_files = []
-    for result in results:
-        file_path = result['path']
-        if file_path.endswith('.py'):
-            violation_files.append(file_path)
-            print(f"  - {file_path} (score: {result['score']:.3f})")
+    # Add any flags from args
+    if hasattr(args, 'verbose') and args.verbose:
+        cmd.append("--verbose")
     
-    # Check specific patterns
-    if args.patterns:
-        print(f"\nChecking patterns: {args.patterns}")
-        patterns = args.patterns.split(',')
-        
-        for pattern in patterns:
-            pattern_results = indexer.search(pattern, limit=5)
-            if pattern_results:
-                print(f"\nPattern '{pattern}':")
-                for result in pattern_results:
-                    print(f"  - {result['path']}")
+    # Run it
+    result = subprocess.run(
+        cmd, 
+        capture_output=True, 
+        text=True, 
+        encoding='utf-8', 
+        errors='replace'
+    )
     
-    return 0
+    print(result.stdout)
+    if result.stderr:
+        print(f"Error: {result.stderr[:500]}", file=sys.stderr)
+    
+    return result.returncode
 
 # Register validation commands
 register_command('validate', validate_command, "Validate a DeepSeek response")

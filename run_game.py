@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding=utf-8
 """Single script to run the entire Dungeon Journey 2 game"""
 import subprocess
 import sys

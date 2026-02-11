@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# coding=utf-8
 """
 Run Analysis Suite - Executes all code analysis tools
 Generates reports for the Project Auditor dashboard

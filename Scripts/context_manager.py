@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# coding=utf-8
 """
 CONTEXT MANAGER - Load docs and files, send to AI
 Attempts full context, only chunks if interface fails

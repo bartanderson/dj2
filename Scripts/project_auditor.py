@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# coding=utf-8
 """
 PROJECT AUDITOR - Consolidated dashboard with REAL analysis only
 Replaces: watchdog.py + ai_workflow.py

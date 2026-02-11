@@ -1,4 +1,5 @@
 # tools/verify_integration.py (UPDATED VERSION)
+# coding=utf-8
 """
 Verification script for Ollama integration.
 Run this after implementing all changes.

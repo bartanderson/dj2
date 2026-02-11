@@ -1,4 +1,5 @@
 # tools/phase_auditor.py
+# coding=utf-8
 """
 Hybrid Phase Auditor - Uses local AI for 80% work, prepares for DeepSeek
 """

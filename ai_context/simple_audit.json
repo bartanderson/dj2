@@ -1,0 +1,157 @@
+{
+  "commands": [
+    "search",
+    "analyze",
+    "violations",
+    "todos",
+    "deps",
+    "structure",
+    "delete",
+    "insert",
+    "replace",
+    "write",
+    "replace-text",
+    "extract-class",
+    "extract-lines",
+    "extract",
+    "find-class",
+    "context",
+    "validate",
+    "guardrails",
+    "phase-check",
+    "bridge-status",
+    "index",
+    "refactor-plan",
+    "js-css-check",
+    "analyze-project",
+    "feature-report",
+    "living-workflow",
+    "tools",
+    "tool-help",
+    "th"
+  ],
+  "results": {
+    "search": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "analyze": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "violations": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "todos": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "deps": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "structure": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "delete": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "insert": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "replace": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "write": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "replace-text": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "extract-class": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "extract-lines": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "extract": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "find-class": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "context": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "validate": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "guardrails": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "phase-check": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "bridge-status": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "index": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "refactor-plan": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "js-css-check": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "analyze-project": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "feature-report": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "living-workflow": {
+      "status": "\u2705 Working",
+      "returncode": 0
+    },
+    "tools": {
+      "status": "\u26a0\ufe0f  Partial",
+      "returncode": 1
+    },
+    "tool-help": {
+      "status": "\u26a0\ufe0f  Partial",
+      "returncode": 1
+    },
+    "th": {
+      "status": "\u26a0\ufe0f  Partial",
+      "returncode": 1
+    }
+  },
+  "summary": {
+    "working": 26,
+    "partial": 3,
+    "broken": 0,
+    "total": 29
+  }
+}

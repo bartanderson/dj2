@@ -1,4 +1,5 @@
 # world\aidungeon_master.py
+# coding=utf-8
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, Tuple

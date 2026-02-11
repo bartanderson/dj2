@@ -1,5 +1,5 @@
-
 # world/dm_chat_handler.py
+# coding=utf-8
 from typing import Dict, List, Optional, Set, Any
 class DMChatHandler:
     """

@@ -1,4 +1,5 @@
 # bidirectional_cli.py
+# coding=utf-8
 """
 CLI for bidirectional AI collaboration
 """

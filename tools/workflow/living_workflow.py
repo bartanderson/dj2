@@ -1,4 +1,5 @@
 #tools/workflow/living_workflow.py
+# coding=utf-8
 """
 LIVING WORKFLOW - Complete analysis and integration workflow
 Simplified version

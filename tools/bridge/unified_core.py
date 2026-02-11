@@ -1,4 +1,5 @@
 # tools/bridge/unified_core.py - UPDATED
+# coding=utf-8
 """
 Unified bridge core - Internal implementation used by compatibility wrappers
 """

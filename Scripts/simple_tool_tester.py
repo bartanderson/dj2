@@ -1,4 +1,5 @@
 # scripts/simple_tool_tester.py
+# coding=utf-8
 """
 Simple, accurate tool tester - now with real arguments
 """
