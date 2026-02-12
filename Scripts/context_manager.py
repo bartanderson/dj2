@@ -421,110 +421,37 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
             }
         }
     
-    def send_chunked(self, bridge, context: str) -> bool:
-        """
-        Send in chunks if single send fails or is too large
-        Strategy: Send header, then wait for 'ack', then body
-        """
-        CHUNK_SIZE = 8000  # Safe per-message size
-        
-        if len(context) <= CHUNK_SIZE:
-            self._vlog(f"Context fits in single chunk: {len(context)} chars")
-            return bridge.send(context)
-        
-        print(f"[CHUNK] Context too large ({len(context)}), splitting...")
-        
-        # Split into chunks
-        chunks = [context[i:i+CHUNK_SIZE] for i in range(0, len(context), CHUNK_SIZE)]
-        total = len(chunks)
-        
-        self._vlog(f"Split into {total} chunks of ~{CHUNK_SIZE} chars each")
-        
-        for i, chunk in enumerate(chunks):
-            is_last = (i == total - 1)
-            header = f"[Part {i+1}/{total}] "
-            if is_last:
-                header += "FINAL - Respond to this:\n\n"
-            else:
-                header += "STOP after reading. Wait for next part. Type 'ack' when ready.\n\n"
-            
-            full_chunk = header + chunk
-            
-            if not bridge.send(full_chunk):
-                print(f"[FAIL] Failed to send chunk {i+1}")
-                self._vlog(f"Failed to send chunk {i+1}/{total}")
-                return False
-            
-            print(f"[CHUNK] Sent part {i+1}/{total}")
-            self._vlog(f"Sent chunk {i+1}/{total}: {len(full_chunk)} chars")
-            
-            if not is_last:
-                # Wait for acknowledgment from DeepSeek
-                print(f"[CHUNK] Waiting for DeepSeek to acknowledge (stop/wait)...")
-                import time
-                time.sleep(8)  # Give them time to read
-                
-                # Check if they responded with "ack" or similar
-                ack = bridge.receive()
-                if ack:
-                    print(f"[CHUNK] DeepSeek said: {ack[:100]}...")
-                    self._vlog(f"Received acknowledgment: {ack[:100]}...")
-                    if "ack" in ack.lower() or "ready" in ack.lower() or "next" in ack.lower():
-                        print("[CHUNK] Acknowledged, sending next...")
-                    else:
-                        print("[CHUNK] Continuing anyway...")
-                else:
-                    print("[CHUNK] No response yet, waiting 5 more seconds...")
-                    self._vlog("No acknowledgment received, waiting additional 5s")
-                    time.sleep(5)
-        
-        return True
-    
     def send_to_deepseek(self, context: str, keep_open: bool = False) -> str:
+        """Send context to DeepSeek via file upload (reliable)."""
         try:
             sys.path.insert(0, str(PROJECT_ROOT / "tools"))
             from bridge.deepseek_bridge_react import DeepSeekBridgeReact as DeepSeekBridge
-            
+
             print("[BRIDGE] Connecting...")
-            self._vlog(f"Initializing DeepSeekBridge (deepthink=True, search=False)")
-            bridge = DeepSeekBridge(deepthink=True, search=False)
-            
+            self._vlog(f"Initializing DeepSeekBridgeReact")
+            bridge = DeepSeekBridge()
+
             if not bridge.connect():
                 print("[FAIL] Could not connect")
                 self._vlog("Bridge connection failed")
                 return None
-            
-            print(f"[BRIDGE] Sending context ({len(context)} chars)...")
+
+            print(f"[BRIDGE] Uploading context ({len(context)} chars)...")
             self._vlog(f"Context size: {len(context)} chars, ~{len(context)//4} tokens")
-            
-            # Try full send first
-            success = bridge.send(context)
-            
-            if not success and len(context) > 8000:
-                # Full send failed, try chunked
-                print("[INFO] Full send failed, attempting chunked...")
-                self._vlog("Full send failed, falling back to chunked mode")
-                success = self.send_chunked(bridge, context)
-            
-            if not success:
-                print("[FAIL] Could not send")
-                self._vlog("Send operation failed completely")
+
+            # ========== SINGLE FILE UPLOAD ==========
+            filename = f"context_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            if bridge.send_via_file_upload(context, filename):
+                print("[BRIDGE] File uploaded, waiting for response...")
+                response = bridge._wait_for_response(timeout=180)
+            else:
+                print("[FAIL] File upload failed")
                 bridge.close()
                 return None
-            
-            print("[BRIDGE] Waiting for DeepThink completion...")
-            complete = bridge._wait_for_response()
-            
-            if not complete:
-                print("[WARNING] Hit 120s timeout")
-                self._vlog("Response timeout after 120s")
-            else:
-                self._vlog("Response completed within timeout")
-            
-            response = bridge.receive()
-            
+            # =========================================
+
             if response:
-                suffix = "" if complete else "_partial"
+                suffix = "_partial" if not response else ""
                 response_file = self.session_dir / f"deepseek_response{suffix}.txt"
                 response_file.write_text(self.clean_ascii(response), encoding='utf-8')
                 print(f"[SAVE] Response: {response_file} ({len(response)} chars)")
@@ -533,18 +460,18 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
                 response = "[Capture failed - check browser]"
                 print("[WARNING] Could not capture response")
                 self._vlog("Response capture returned None")
-            
+
             if keep_open:
                 print("\n[BROWSER LEFT OPEN]")
                 print("Close Chrome manually when done reading.")
                 self._vlog("Browser left open per request")
-                return response
             else:
                 bridge.close()
                 print("[BRIDGE] Closed")
                 self._vlog("Bridge closed")
-                return response
-                
+
+            return response
+
         except Exception as e:
             print(f"[ERROR] {e}")
             self._vlog(f"Exception: {type(e).__name__}: {e}")

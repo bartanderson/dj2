@@ -22,6 +22,19 @@ from typing import Dict, List, Any, Optional, Set, Tuple
 from collections import defaultdict
 from datetime import datetime
 
+MIN_CONCEPT_LENGTH = 3
+# ----------------------------------------------------------------------
+# DOMAIN CONFLICT PENALTIES – downweight files from unrelated domains
+# Add keywords for domains that should be penalized when the intent
+# does NOT contain those words.
+# ----------------------------------------------------------------------
+DOMAIN_CONFLICT_KEYWORDS = {
+    'movement': {'move', 'movement', 'walk', 'travel', 'position', 'grid', 'step'},
+    # Add other domains as needed, e.g.:
+    # 'combat': {'attack', 'damage', 'fight', 'weapon', 'enemy'},
+    # 'inventory': {'item', 'equip', 'pickup', 'drop', 'store'},
+}
+
 # ----------------------------------------------------------------------
 # Project tool imports – with explicit fallback and error messages
 # ----------------------------------------------------------------------
@@ -56,10 +69,64 @@ STATE_HOLDERS = {'SessionSystem', 'GameEngine', 'WorldState', 'Database', 'Repos
 # Minimum word length for vocabulary indexing
 MIN_CONCEPT_LENGTH = 3
 
+# ----------------------------------------------------------------------
+# GLOBAL ARCHITECTURE RULES – loaded from files or embedded
+# ----------------------------------------------------------------------
+def load_global_rules(project_root: Path) -> Dict[str, str]:
+    """Load ai_contract.md and development_playbook.md if present."""
+    rules = {
+        'ai_contract': None,
+        'playbook': None,
+        'phase_sequence': 'Input → Interpretation → Authority → Mutation → Consequence → Persistence → View',
+        'ai_contract_rules': [
+            '1. AI NEVER owns state.',
+            '2. AI NEVER mutates state directly.',
+            '3. AI ONLY requests actions via interfaces.'
+        ],
+        'role_definitions': '\n'.join([
+            '- Core: default role, no special path',
+            '- Adapter: paths containing /routes/',
+            '- AI-Facing: paths containing /ai/',
+            '- Boundary: files matching dm_chat_ai or ai_boundary'
+        ])
+    }
+    # Try to load from files
+    ai_contract = project_root / 'ai_context' / 'ai_contract.md'
+    if ai_contract.exists():
+        try:
+            rules['ai_contract'] = ai_contract.read_text(encoding='utf-8')
+        except:
+            pass
+    playbook = project_root / 'ai_context' / 'development_playbook.md'
+    if playbook.exists():
+        try:
+            rules['playbook'] = playbook.read_text(encoding='utf-8')
+        except:
+            pass
+    return rules
 
 # ----------------------------------------------------------------------
-# UTILITY FUNCTIONS
+# UTILITY FUNCTIONS 
 # ----------------------------------------------------------------------
+# clean_ascii from context_manager.py – minimal standalone
+def clean_ascii(text: str) -> str: 
+    """Replace common Unicode issues with ASCII equivalents."""
+    if not text:
+        return text
+    fixes = {
+        '├ó┼ôΓÇª': '...', '├ó┼ôΓÇÜ': ',', '├óΓÇ¥': '"', '├óΓÇ₧': '"',
+        '├óΓÇÖ': "'", 'ΓåÆ': '->', 'ΓåÉ': '<-', 'ΓÇ£': '"', 'ΓÇ¥': '"',
+        'ΓÇÿ': "'", 'ΓÇÖ': "'", 'ΓÇö': '-', 'ΓÇô': '-', 'ΓÇª': '...',
+        '→': '->', '←': '<-', '✓': '[OK]', '✅': '[OK]', '⚠': '[WARN]',
+        '🔍': '[SEARCH]', '🏗': '[BUILD]', '💾': '[SAVE]', '📝': '[NOTE]',
+        '📋': '[DOC]', '🔧': '[TOOL]', '🎯': '[FOCUS]', '💻': '[CODE]',
+        '✅': '[OK]', '❌': '[FAIL]', '•': '*', '—': '-', '…': '...',
+    }
+    for bad, good in fixes.items():
+        text = text.replace(bad, good)
+    # Replace any remaining non-ASCII
+    return ''.join(c if ord(c) < 128 else '?' for c in text)
+
 def split_identifier(name: str) -> List[str]:
     """CamelCase + snake_case → words, lowercased, filtered."""
     if not name:
@@ -345,25 +412,22 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
     print(f"✅ Scout DB saved: {db_path} ({len(file_infos)} files, {len(vocabulary)} concepts)")
 
 
-# ----------------------------------------------------------------------
-# RECON MODE (intent‑driven)
-# ----------------------------------------------------------------------
-def run_recon(intent: str, db_path: str, categories_path: Optional[str] = None,
-              max_files: int = 5, output_format: str = 'text', verbose: bool = False):
-    """Load scout DB, find files matching intent, generate report."""
-    db_path = Path(db_path)
-    if not db_path.exists():
-        print(f"❌ Scout DB not found: {db_path}", file=sys.stderr)
-        print("   Run `--scout` first.", file=sys.stderr)
-        return 1
+# ======================================================================
+# NEW: Context Generation Helpers
+# ======================================================================
 
+def _get_top_files_for_intent(intent: str, db_path: Path, categories_path: Optional[str] = None,
+                              max_files: int = 5, verbose: bool = False) -> List[Tuple[str, int, Dict]]:
+    """
+    Core scoring logic – returns list of (file_path, score, file_data).
+    Extracted from run_recon to avoid duplication.
+    """
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 1. Try cluster‑based matching if categories file provided and exists
     matched_clusters = []
-    cluster_file_scores = defaultdict(int)  # file -> +2 per cluster
+    cluster_file_scores = defaultdict(int)
 
     if categories_path and Path(categories_path).exists():
         if _HAS_CONTEXT_ASSEMBLER:
@@ -371,7 +435,6 @@ def run_recon(intent: str, db_path: str, categories_path: Optional[str] = None,
                 parser = IntentParser(categories_path)
                 parsed = parser.parse(intent)
                 matched_clusters = [c['name'] for c in parsed.get('matched_clusters', [])]
-
                 for cluster_name in matched_clusters:
                     row = cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,)).fetchone()
                     if row:
@@ -390,54 +453,304 @@ def run_recon(intent: str, db_path: str, categories_path: Optional[str] = None,
         if verbose:
             print("   No categories file, using pure vocabulary matching.", file=sys.stderr)
 
-    # 2. Vocabulary matching
     intent_words = [w for w in intent.lower().split() if len(w) >= MIN_CONCEPT_LENGTH]
     concept_scores = defaultdict(int)
-
     for word in intent_words:
         rows = cur.execute("SELECT file_path FROM concepts WHERE concept = ?", (word,)).fetchall()
         for row in rows:
             concept_scores[row[0]] += 1
 
-    # 3. Combine scores
     combined_scores = defaultdict(int)
     for f, score in cluster_file_scores.items():
         combined_scores[f] += score
     for f, score in concept_scores.items():
         combined_scores[f] += score
 
+    # ------------------------------------------------------------------
+    # Apply domain conflict penalties
+    # ------------------------------------------------------------------
+    intent_lower = intent.lower()
+    for file_path in list(combined_scores.keys()):
+        # Fetch full file data from DB (needed to inspect its concepts)
+        row = cur.execute("SELECT data FROM files WHERE path = ?", (file_path,)).fetchone()
+        if not row:
+            continue
+        data = json.loads(row[0])
+
+        # 1. Size penalty – very large files are often too broad
+        line_count = data.get('line_count', 0)
+        if line_count > 500:
+            combined_scores[file_path] *= 0.5
+
+        # 2. Domain conflict penalty
+        # Build set of all concept words in this file
+        file_concepts = set()
+        for cls in data.get('classes', []):
+            file_concepts.update(split_identifier(cls['name']))
+        for func in data.get('functions', []):
+            file_concepts.update(split_identifier(func['name']))
+
+        # Check each domain
+        for domain, keywords in DOMAIN_CONFLICT_KEYWORDS.items():
+            # If the intent does NOT mention this domain...
+            if domain not in intent_lower and not any(k in intent_lower for k in keywords):
+                # ... but the file has many keywords from that domain
+                overlap = file_concepts.intersection(keywords)
+                if len(overlap) >= 2:   # at least two distinct keywords
+                    combined_scores[file_path] *= 0.3   # heavy penalty
+                elif len(overlap) == 1:
+                    combined_scores[file_path] *= 0.7   # mild penalty
+
+
     if not combined_scores:
-        print(f"⚠️  No files matched intent '{intent}'. Try broader terms.", file=sys.stderr)
-        return 1
+        conn.close()
+        return []
 
-    # 4. Select top N files
     top_files = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[:max_files]
-
-    # 5. Load full file data
-    result = {
-        'intent': intent,
-        'matched_clusters': matched_clusters,
-        'files': []
-    }
+    result = []
     for file_path, score in top_files:
         row = cur.execute("SELECT data FROM files WHERE path = ?", (file_path,)).fetchone()
         if row:
             file_data = json.loads(row[0])
             file_data['relevance_score'] = score
-            result['files'].append(file_data)
-
+            result.append((file_path, score, file_data))
     conn.close()
+    return result
 
-    # 6. Sort files by score (descending)
+# ----------------------------------------------------------------------
+# RECON MODE (intent‑driven)
+# ----------------------------------------------------------------------
+def run_recon(intent: str, db_path: str, categories_path: Optional[str] = None,
+              max_files: int = 5, output_format: str = 'text', verbose: bool = False):
+    db_path = Path(db_path)
+    if not db_path.exists():
+        print(f"❌ Scout DB not found: {db_path}", file=sys.stderr)
+        print("   Run `--scout` first.", file=sys.stderr)
+        return 1
+
+    top_files = _get_top_files_for_intent(intent, db_path, categories_path, max_files, verbose)
+    if not top_files:
+        print(f"⚠️  No files matched intent '{intent}'. Try broader terms.", file=sys.stderr)
+        return 1
+
+    result = {
+        'intent': intent,
+        'matched_clusters': [],  # we could collect them but not needed for report
+        'files': [data for _, _, data in top_files]
+    }
+    # sort by score descending
     result['files'].sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
 
     if output_format == 'json':
         print(json.dumps(result, indent=2, default=str))
     else:
         print(generate_text_report(result))
-
     return 0
 
+# ----------------------------------------------------------------------
+# Generate Context Package - must be after run_recon
+# ----------------------------------------------------------------------
+def generate_context_package(intent: str, db_path: Path, categories_path: Optional[str] = None,
+                             max_files: int = 5, level: str = 'standard', verbose: bool = False):
+    """Build tiered context for AI consumption."""
+    db_path = Path(db_path)
+    if not db_path.exists():
+        print(f"❌ Scout DB not found: {db_path}\n   Run `--scout` first.", file=sys.stderr)
+        return 1
+
+    # 1. Get top files
+    top_files = _get_top_files_for_intent(intent, db_path, categories_path, max_files, verbose)
+    if not top_files:
+        print(f"⚠️  No files matched intent '{intent}'.", file=sys.stderr)
+        return 1
+
+    # 2. Load global rules
+    project_root = Path(db_path).parent.parent  # assume db is in ai_context/
+    rules = load_global_rules(project_root)
+
+    # 3. Project summary (via report_summary JSON)
+    summary_data = {}
+    # capture JSON output of report_summary
+    import io, contextlib
+    f = io.StringIO()
+    with contextlib.redirect_stdout(f):
+        report_summary(str(db_path), 'json')
+    try:
+        summary_data = json.loads(f.getvalue())
+    except:
+        summary_data = {"error": "Could not parse summary"}
+
+    # 4. Build output
+    lines = []
+    lines.append("=" * 80)
+    lines.append(f"ARCHITECTURE RECONNAISSANCE – CONTEXT PACKAGE")
+    lines.append(f"Generated: {datetime.now().isoformat()}")
+    lines.append(f"Intent: {intent}")
+    lines.append(f"Context level: {level}")
+    lines.append(f"Max files: {max_files}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    # Global rules
+    lines.append("## GLOBAL ARCHITECTURAL RULES")
+    if rules['ai_contract']:
+        lines.append(clean_ascii(rules['ai_contract']))
+    else:
+        lines.append("### AI Contract")
+        for rule in rules['ai_contract_rules']:
+            lines.append(rule)
+        lines.append("")
+        lines.append("### Phase Sequence")
+        lines.append(rules['phase_sequence'])
+        lines.append("")
+        lines.append("### Role Definitions")
+        lines.append(rules['role_definitions'])
+    if rules['playbook']:
+        lines.append("")
+        lines.append("### Development Playbook")
+        lines.append(clean_ascii(rules['playbook']))
+    lines.append("")
+
+    # Project health summary
+    lines.append("## PROJECT HEALTH SUMMARY")
+    if "error" not in summary_data:
+        lines.append(f"- Python files: {summary_data.get('python_files', '?')}")
+        lines.append(f"- Total lines: {summary_data.get('total_lines', 0):,}")
+        lines.append(f"- Hot files: {summary_data.get('hot_files', '?')}")
+        lines.append(f"- Mutation files: {summary_data.get('mutation_files', '?')}")
+        lines.append(f"- Unique concepts: {summary_data.get('unique_concepts', '?')}")
+        lines.append(f"- Clusters: {summary_data.get('clusters', '?')}")
+    else:
+        lines.append(f"- {summary_data.get('error')}")
+    lines.append("")
+
+    # Intent-matched files
+    lines.append(f"## INTENT-MATCHED FILES (top {len(top_files)})")
+    for idx, (file_path, score, data) in enumerate(top_files, 1):
+        lines.append("")
+        lines.append("---")
+        lines.append(f"### {idx}. `{file_path}` (score: {score})")
+        lines.append(f"- **Role**: {data.get('role', 'Unknown')}")
+        lines.append(f"- **Hot**: {'Yes' if data.get('is_hot') else 'No'}")
+        lines.append(f"- **Line count**: {data.get('line_count', 0)}")
+        lines.append(f"- **Phase violations**: {len(data.get('phase_violations', []))}")
+        if data.get('phase_violations'):
+            for v in data['phase_violations'][:3]:
+                lines.append(f"  - line {v.get('line', '?')}: {v.get('pattern', 'unknown')}")
+        lines.append(f"- **Mutations**: {len(data.get('mutations', []))}")
+        if data.get('mutations'):
+            for m in data['mutations'][:3]:
+                lines.append(f"  - line {m.get('line', '?')}: {m.get('call', '?')}")
+        lines.append(f"- **Read-only methods**: {', '.join(data.get('read_only_methods', [])) if data.get('read_only_methods') else 'None'}")
+        lines.append(f"- **Importers**: {len(data.get('imported_by', []))} files")
+        if data.get('imported_by'):
+            lines.append(f"  - {', '.join(Path(p).name for p in data['imported_by'][:5])}")
+            if len(data['imported_by']) > 5:
+                lines.append(f"  - ... and {len(data['imported_by'])-5} more")
+        lines.append(f"- **Imports**: {len(data.get('imports', []))} modules")
+        
+        # INTERFACES (always include)
+        lines.append("")
+        lines.append("#### Interfaces")
+        lines.append("```python")
+        # classes
+        for cls in data.get('classes', []):
+            lines.append(f"class {cls['name']}:")
+            for meth in cls.get('methods', []):
+                args = ', '.join(meth.get('args', []))
+                ret = f" -> {meth['returns']}" if meth.get('returns') else ''
+                lines.append(f"    def {meth['name']}({args}){ret}")
+            if cls.get('read_only_methods'):
+                lines.append(f"    # read-only: {', '.join(cls['read_only_methods'])}")
+        # top-level functions
+        for func in data.get('functions', []):
+            args = ', '.join(func.get('args', []))
+            ret = f" -> {func['returns']}" if func.get('returns') else ''
+            lines.append(f"def {func['name']}({args}){ret}")
+        lines.append("```")
+        lines.append("")
+
+        # SOURCE CODE (conditional on level)
+        include_source = False
+        if level == 'deep':
+            include_source = True
+        elif level == 'standard':
+            if data.get('is_hot') or idx == 1:  # top file always gets source
+                include_source = True
+        # brief: no source
+
+        if include_source:
+            try:
+                full_path = project_root / file_path
+                if full_path.exists():
+                    with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                        source = f.read()
+                    # truncate if very large (over 500 lines for deep, 200 for standard)
+                    lines_limit = 500 if level == 'deep' else 200
+                    source_lines = source.splitlines()
+                    if len(source_lines) > lines_limit:
+                        source = '\n'.join(source_lines[:lines_limit]) + f"\n... (truncated at {lines_limit} lines)"
+                    lines.append("#### Source code")
+                    lines.append("```python")
+                    lines.append(source)
+                    lines.append("```")
+                    lines.append("")
+            except Exception as e:
+                lines.append(f"*[Error reading source: {e}]*")
+
+    # RIPPLE IMPACT (simple version)
+    lines.append("## RIPPLE IMPACT")
+    for file_path, score, data in top_files:
+        importers = data.get('imported_by', [])
+        if importers:
+            lines.append(f"- **{Path(file_path).name}** is imported by {len(importers)} files:")
+            lines.append(f"  - {', '.join(Path(p).name for p in importers[:5])}")
+            if len(importers) > 5:
+                lines.append(f"    ... and {len(importers)-5} more")
+        else:
+            lines.append(f"- **{Path(file_path).name}** has no direct importers.")
+    lines.append("")
+
+    # CONCEPTUAL OVERLAP
+    lines.append("## CONCEPTUAL OVERLAP")
+    intent_words = set(w for w in intent.lower().split() if len(w) >= MIN_CONCEPT_LENGTH)
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    concept_counts = []
+    for word in intent_words:
+        count = cur.execute("SELECT COUNT(DISTINCT file_path) FROM concepts WHERE concept = ?", (word,)).fetchone()[0]
+        if count > 0:
+            concept_counts.append((word, count))
+    conn.close()
+    if concept_counts:
+        lines.append("Concepts in your intent and their prevalence:")
+        for word, count in sorted(concept_counts, key=lambda x: x[1], reverse=True):
+            lines.append(f"- `{word}` appears in {count} files")
+    else:
+        lines.append("No strong concept overlap found.")
+    lines.append("")
+
+    # Clusters that matched
+    if categories_path and Path(categories_path).exists():
+        try:
+            with open(categories_path, 'r') as f:
+                cat_data = json.load(f)
+            clusters = cat_data.get('clusters', [])
+            matched_names = set()
+            for word in intent_words:
+                for cl in clusters:
+                    if word in cl.get('concepts', []):
+                        matched_names.add(cl['name'])
+            if matched_names:
+                lines.append("Related clusters (from discovered_categories.json):")
+                for name in matched_names:
+                    lines.append(f"- {name}")
+        except:
+            pass
+
+    lines.append("=" * 80)
+    print("\n".join(lines))
+    return 0  
 
 # ----------------------------------------------------------------------
 # REPORT MODES (pre‑canned)
@@ -918,14 +1231,13 @@ def _answer_summary(db_path: Path) -> str:
 # REPORT FORMATTING (for intent mode)
 # ----------------------------------------------------------------------
 def generate_text_report(analysis: Dict[str, Any]) -> str:
-    """Produce the ASCII‑art console report for intent mode."""
+    """Produce the ASCII‑art console report for intent mode – no truncation."""
     lines = []
     lines.append("=" * 80)
     lines.append(f'RECON REPORT: "{analysis["intent"]}"')
     lines.append("=" * 80)
     lines.append("")
 
-    # TERRITORY
     lines.append(f"TERRITORY ({len(analysis['files'])} files mapped):")
     for f in analysis['files']:
         role = f.get('role', 'Unknown')
@@ -933,7 +1245,6 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
         lines.append(f"  {role}: {path}")
     lines.append("")
 
-    # BOUNDARY FLAGS
     lines.append("BOUNDARY FLAGS:")
     for f in analysis['files']:
         if f.get('is_hot'):
@@ -946,36 +1257,32 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
             lines.append(f"  ✅ SAFE ZONE: {f['path']} clean {f['role'].lower()} pattern")
     lines.append("")
 
-    # INTERFACES (signatures only)
     lines.append("INTERFACES (signatures only):")
     for f in analysis['files']:
         lines.append(f"  {f['path']}:")
-        # classes
-        for cls in f.get('classes', [])[:2]:
+        # CLASSES – show all methods, no truncation
+        for cls in f.get('classes', []):
             lines.append(f"    class {cls['name']}:")
-            for meth in cls.get('methods', [])[:3]:
+            for meth in cls.get('methods', []):
                 args = ', '.join(meth.get('args', []))
                 ret = f" -> {meth['returns']}" if meth.get('returns') else ''
                 lines.append(f"      def {meth['name']}({args}){ret}")
-            if len(cls.get('methods', [])) > 3:
-                lines.append(f"      [{len(cls['methods']) - 3} more methods...]")
-            # show read‑only hints
+            # Show ALL read‑only methods, no limit
             if cls.get('read_only_methods'):
-                ro_sample = ', '.join(cls['read_only_methods'][:2])
-                lines.append(f"      [read-only: {ro_sample}]")
-        # top-level functions
-        for func in f.get('functions', [])[:2]:
+                ro_list = ', '.join(cls['read_only_methods'])
+                lines.append(f"      [read-only: {ro_list}]")
+        # TOP‑LEVEL FUNCTIONS – show all
+        for func in f.get('functions', []):
             args = ', '.join(func.get('args', []))
             ret = f" -> {func['returns']}" if func.get('returns') else ''
             lines.append(f"    def {func['name']}({args}){ret}")
-        # export summary
+        # IMPORTERS – show all, no truncation
         imported_by = f.get('imported_by', [])
         if imported_by:
-            short = ', '.join(Path(p).name for p in imported_by[:3])
-            lines.append(f"    Exported to: {len(imported_by)} files ({short}...)")
+            full_list = ', '.join(Path(p).name for p in imported_by)
+            lines.append(f"    Exported to: {len(imported_by)} files ({full_list})")
         lines.append("")
 
-    # CALL GRAPH (simplified)
     lines.append("CALL GRAPH (simplified):")
     edges = set()
     for f in analysis['files']:
@@ -992,30 +1299,26 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
                             edges.add(f"{f['path']} → {other['path']}")
     for edge in sorted(edges):
         lines.append(f"  {edge}")
-    # mutation edges
     for f in analysis['files']:
         for mut in f.get('mutations', []):
             lines.append(f"  {f['path']}:{mut['line']} → {mut['call']} (state mutation)")
     lines.append("")
 
-    # SAFE MODIFICATION ZONES
     lines.append("SAFE MODIFICATION ZONES:")
     safe_count = 0
     for f in analysis['files']:
         if not f.get('is_hot'):
-            # Collect read‑only methods from classes
             ro_methods = []
             for cls in f.get('classes', []):
                 ro_methods.extend(cls.get('read_only_methods', []))
             if ro_methods:
-                sample = ', '.join(ro_methods[:2])
+                sample = ', '.join(ro_methods)  # show ALL
                 lines.append(f"  • Add logic in {sample} (read‑only)")
                 safe_count += 1
     if safe_count == 0:
         lines.append("  • No clear safe zones – review hot files first.")
     lines.append("")
 
-    # REQUIRES ARCHITECTURAL REVIEW
     lines.append("REQUIRES ARCHITECTURAL REVIEW:")
     for f in analysis['files']:
         if f.get('is_hot') and f.get('role') == 'Core':
@@ -1025,7 +1328,6 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
                 lines.append(f"  • {f['path']} has phase violations – review boundaries")
     lines.append("")
 
-    # RECOMMENDED CONTEXT
     lines.append("RECOMMENDED CONTEXT FOR DEEP ANALYSIS:")
     for f in analysis['files']:
         if f.get('is_hot'):
@@ -1036,27 +1338,134 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
 
     return '\n'.join(lines)
 
+# ======================================================================
+# NEW: Consult Mode – Context + AI Delivery
+# ======================================================================
+def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None,
+                 categories_path: Optional[str] = None,
+                 max_files: int = 5, level: str = 'standard',
+                 target: str = 'auto',
+                 save_session: bool = False,
+                 verbose: bool = False):
+    """
+    Generate context package and send it to AI using ContextManager.
+    project_root: explicitly passed from CLI or detected.
+    """
+    # 1. Determine project root
+    if project_root is None:
+        project_root = Path.cwd()
+    else:
+        project_root = Path(project_root).resolve()
+
+    # 2. Generate context (capture stdout)
+    import io
+    import contextlib
+    context_output = io.StringIO()
+    with contextlib.redirect_stdout(context_output):
+        exit_code = generate_context_package(
+            intent=intent,
+            db_path=db_path,
+            categories_path=categories_path,
+            max_files=max_files,
+            level=level,
+            verbose=verbose
+        )
+    if exit_code != 0:
+        return exit_code
+    context_text = context_output.getvalue()
+
+    # 3. Import ContextManager from scripts directory (no package assumption)
+    import sys
+    scripts_path = project_root / 'scripts'
+    if not scripts_path.exists():
+        print(f"❌ Scripts directory not found: {scripts_path}", file=sys.stderr)
+        return 1
+
+    if str(scripts_path) not in sys.path:
+        sys.path.insert(0, str(scripts_path))
+        if verbose:
+            print(f"[CONSULT] Added {scripts_path} to sys.path", file=sys.stderr)
+
+    try:
+        from context_manager import ContextManager
+    except ImportError as e:
+        print(f"❌ Could not import ContextManager from {scripts_path}: {e}", file=sys.stderr)
+        print("   Make sure context_manager.py exists in that directory and has no syntax errors.", file=sys.stderr)
+        return 1
+
+    # 4. Build package and send
+    mgr = ContextManager(verbose=verbose)
+    package = mgr.build_package(intent, target='auto')
+    package['formatted'] = context_text
+    package['query'] = intent
+
+    print("\n" + "="*80)
+    print("📤 SENDING CONTEXT TO AI...")
+    print("="*80)
+
+    success = mgr.send(package, target=target, keep_open=True)
+
+    if not success:
+        print("❌ Failed to send context to AI.", file=sys.stderr)
+        return 1
+
+    # 5. Retrieve the response
+    session_dir = mgr.session_dir
+    import glob
+    response_files = list(session_dir.glob("deepseek_response*.txt")) + \
+                     list(session_dir.glob("local_response.txt"))
+    if response_files:
+        latest = max(response_files, key=lambda p: p.stat().st_mtime)
+        response_text = latest.read_text(encoding='utf-8')
+        print("\n" + "="*80)
+        print("🤖 AI RESPONSE")
+        print("="*80)
+        print(response_text)
+    else:
+        print("⚠️  Could not locate AI response file.", file=sys.stderr)
+        response_text = ""
+
+    # 6. Optional: Save full session
+    if save_session:
+        import json
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_intent = intent.replace(' ', '_')[:20]
+        session_file = mgr.session_dir / f"consult_{timestamp}_{safe_intent}.json"
+        session_data = {
+            "timestamp": datetime.now().isoformat(),
+            "intent": intent,
+            "context_level": level,
+            "max_files": max_files,
+            "context": context_text,
+            "ai_response": response_text,
+            "model": "auto-routed"
+        }
+        with open(session_file, 'w', encoding='utf-8') as f:
+            json.dump(session_data, f, indent=2, ensure_ascii=False)
+        print(f"\n💾 Full session saved: {session_file}")
+
+    return 0
 
 # ----------------------------------------------------------------------
 # CLI ENTRY POINT
 # ----------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description='Architecture Reconnaissance – Scout + Recon + Ask',
+        description='Architecture Reconnaissance – Scout + Recon + Ask + Context',
         epilog='Examples:\n'
-               '  arch_recon.py --score                 # full scan → SQLite\n'
-               '  arch_recon.py "movement authority"    # instant intent report\n'
-               '  arch_recon.py --hot                   # list hot files\n'
-               '  arch_recon.py --ask "what is hot"     # natural language question\n'
-               '  arch_recon.py --ask                   # interactive session'
+               '  arch_recon.py --scout                 # full scan\n'
+               '  arch_recon.py "movement"              # intent report\n'
+               '  arch_recon.py --context "character"   # context package (standard)\n'
+               '  arch_recon.py --context "combat" --context-level deep\n'
     )
     parser.add_argument('intent', nargs='?', help='Natural language intent (required for recon)')
     parser.add_argument('--scout', action='store_true', help='Run scout (full project scan)')
     parser.add_argument('--db', default='ai_context/scout.db', help='SQLite DB path (default: ai_context/scout.db)')
     parser.add_argument('--categories', '-c', help='Path to discovered_categories.json (for intent parsing)')
     parser.add_argument('--project-root', '-r', default='.', help='Project root directory (for scout)')
-    parser.add_argument('--max-files', '-m', type=int, default=5, help='Max files in recon report')
-    parser.add_argument('--format', '-f', choices=['text', 'json'], default='text', help='Output format')
+    parser.add_argument('--max-files', '-m', type=int, default=5, help='Max files in recon report or context')
+    parser.add_argument('--format', '-f', choices=['text', 'json'], default='text', help='Output format (recon/report modes)')
     parser.add_argument('--force', action='store_true', help='Force rescan (with --scout)')
     parser.add_argument('--ignore-dirs', '-i', nargs='+',
                         default=['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive'],
@@ -1075,6 +1484,17 @@ def main():
     # ASK mode
     parser.add_argument('--ask', nargs='?', const='', help='Natural language question (if no argument, interactive)')
 
+    # NEW: Context mode
+    parser.add_argument('--context', action='store_true', help='Generate AI‑ready context package (requires intent)')
+    parser.add_argument('--context-level', choices=['brief', 'standard', 'deep'], default='standard',
+                        help='Detail level for context package (default: standard)')
+
+    # NEW: Consult mode (automated AI consultation)
+    parser.add_argument('--consult', action='store_true', help='Generate context and send to AI (requires intent)')
+    parser.add_argument('--target', choices=['auto', 'ollama', 'deepseek'], default='auto',
+                        help='AI backend for consult mode (default: auto)')
+    parser.add_argument('--save-session', action='store_true', help='Save the consultation session (context + response)')
+
     args = parser.parse_args()
 
     # Scout mode
@@ -1088,7 +1508,7 @@ def main():
         )
         return 0
 
-    # Report modes (no intent needed)
+    # Report modes
     if args.hot:
         return report_hot(args.db, args.limit, args.format)
     if args.mutations:
@@ -1104,16 +1524,58 @@ def main():
 
     # ASK mode
     if args.ask is not None:
-        # args.ask is either empty string (interactive) or a question
         question = args.ask if args.ask else None
         return ask_mode(args.db, question)
+
+    # NEW: Context mode
+    if args.context:
+        if not args.intent:
+            print("❌ --context requires an intent (e.g., --context 'character creation')", file=sys.stderr)
+            return 1
+        # Default categories path
+        if not args.categories:
+            default_cat = Path(args.db).parent / 'discovered_categories.json'
+            if default_cat.exists():
+                args.categories = str(default_cat)
+        return generate_context_package(
+            intent=args.intent,
+            db_path=Path(args.db),
+            categories_path=args.categories,
+            max_files=args.max_files,
+            level=args.context_level,
+            verbose=args.verbose
+        )
+
+    # NEW: Consult mode
+    if args.consult:
+        if not args.intent:
+            print("❌ --consult requires an intent (e.g., --consult 'character creation')", file=sys.stderr)
+            return 1
+        # Default categories path
+        if not args.categories:
+            default_cat = Path(args.db).parent / 'discovered_categories.json'
+            if default_cat.exists():
+                args.categories = str(default_cat)
+        # Determine project root: either from --project-root or current working directory
+        project_root = Path(args.project_root).resolve() if args.project_root else Path.cwd()
+        return consult_mode(
+            intent=args.intent,
+            db_path=Path(args.db),
+            project_root=project_root,
+            categories_path=args.categories,
+            max_files=args.max_files,
+            level=args.context_level,
+            target=args.target,
+            save_session=args.save_session,
+            verbose=args.verbose
+        )
 
     # Recon mode (requires intent)
     if not args.intent:
         parser.print_help()
         return 1
 
-    # Default categories path: if not provided, look next to DB
+    # Default categories path
     if not args.categories:
         default_cat = Path(args.db).parent / 'discovered_categories.json'
         if default_cat.exists():
