@@ -196,7 +196,7 @@ def analyze_file_for_scout(filepath: Path, project_root: Path, ignore_dirs: List
                 method_node = next((n for n in ast.walk(node) if isinstance(n, ast.FunctionDef) and n.name == method['name']), None)
                 if method_node and not _method_has_mutation(method_node):
                     read_only_methods.append(f"{node.name}.{method['name']}")
-            class_info['read_only_methods'] = read_only_methods[:5]
+            class_info['read_only_methods'] = read_only_methods
             file_info['classes'].append(class_info)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             file_info['functions'].append(analyzer.extract_function_info(node))
@@ -635,18 +635,16 @@ def generate_context_package(intent: str, db_path: Path, categories_path: Option
         lines.append(f"- **Line count**: {data.get('line_count', 0)}")
         lines.append(f"- **Phase violations**: {len(data.get('phase_violations', []))}")
         if data.get('phase_violations'):
-            for v in data['phase_violations'][:3]:
+            for v in data['phase_violations']:
                 lines.append(f"  - line {v.get('line', '?')}: {v.get('pattern', 'unknown')}")
         lines.append(f"- **Mutations**: {len(data.get('mutations', []))}")
         if data.get('mutations'):
-            for m in data['mutations'][:3]:
+            for m in data['mutations']:
                 lines.append(f"  - line {m.get('line', '?')}: {m.get('call', '?')}")
         lines.append(f"- **Read-only methods**: {', '.join(data.get('read_only_methods', [])) if data.get('read_only_methods') else 'None'}")
         lines.append(f"- **Importers**: {len(data.get('imported_by', []))} files")
         if data.get('imported_by'):
-            lines.append(f"  - {', '.join(Path(p).name for p in data['imported_by'][:5])}")
-            if len(data['imported_by']) > 5:
-                lines.append(f"  - ... and {len(data['imported_by'])-5} more")
+            lines.append(f"  - {', '.join(Path(p).name for p in data['imported_by'])}")
         lines.append(f"- **Imports**: {len(data.get('imports', []))} modules")
         
         # INTERFACES (always include)
@@ -704,9 +702,7 @@ def generate_context_package(intent: str, db_path: Path, categories_path: Option
         importers = data.get('imported_by', [])
         if importers:
             lines.append(f"- **{Path(file_path).name}** is imported by {len(importers)} files:")
-            lines.append(f"  - {', '.join(Path(p).name for p in importers[:5])}")
-            if len(importers) > 5:
-                lines.append(f"    ... and {len(importers)-5} more")
+            lines.append(f"  - {', '.join(Path(p).name for p in importers)}")
         else:
             lines.append(f"- **{Path(file_path).name}** has no direct importers.")
     lines.append("")
@@ -788,13 +784,11 @@ def report_hot(db_path: str, limit: int, output_format: str):
         for i, row in enumerate(rows, 1):
             data = json.loads(row['data'])
             print(f"{i}. {row['path']}")
-            for v in data.get('phase_violations', [])[:2]:
+            for v in data.get('phase_violations', []):
                 print(f"   ⚠️  Phase violation (line {v.get('line', '?')}): {v.get('pattern', 'unknown')}")
-            for m in data.get('mutations', [])[:2]:
+            for m in data.get('mutations', []):
                 print(f"   💉 Mutation: {m.get('call', '?')} (line {m.get('line', '?')})")
-            if len(data.get('phase_violations', [])) > 2 or len(data.get('mutations', [])) > 2:
-                print(f"   ... and more")
-        print()
+            print()
     return 0
 
 
@@ -830,10 +824,8 @@ def report_mutations(db_path: str, limit: int, output_format: str):
         for i, row in enumerate(rows, 1):
             data = json.loads(row['data'])
             print(f"{i}. {row['path']}")
-            for m in data.get('mutations', [])[:3]:
+            for m in data.get('mutations', []):
                 print(f"   → {m.get('call', '?')} (line {m.get('line', '?')})")
-            if len(data.get('mutations', [])) > 3:
-                print(f"   ... and {len(data['mutations'])-3} more")
         print()
     return 0
 
@@ -1099,16 +1091,16 @@ def _answer_hot(db_path: Path) -> str:
         return "✅ No hot files found. Architecture is clean!"
 
     lines = ["🔥 Hot files:"]
-    for row in rows[:5]:  # top 5
+    for row in rows:
         data = json.loads(row['data'])
         desc = []
         if data.get('phase_violations'):
-            desc.append(f"phase violation (line {data['phase_violations'][0].get('line', '?')})")
+            for v in data['phase_violations']:
+                desc.append(f"phase violation (line {v.get('line', '?')})")
         if data.get('mutations'):
-            desc.append(f"mutation (line {data['mutations'][0].get('line', '?')})")
+            for m in data['mutations']:
+                desc.append(f"mutation (line {m.get('line', '?')})")
         lines.append(f"  • {row['path']} – {', '.join(desc)}")
-    if len(rows) > 5:
-        lines.append(f"  ... and {len(rows)-5} more")
     return "\n".join(lines)
 
 
@@ -1117,7 +1109,7 @@ def _answer_mutations(db_path: Path) -> str:
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT path, data FROM files WHERE json_extract(data, '$.mutations') != '[]' LIMIT 10"
+        "SELECT path, data FROM files WHERE json_extract(data, '$.mutations') != '[]'"
     ).fetchall()
     conn.close()
 
@@ -1125,12 +1117,10 @@ def _answer_mutations(db_path: Path) -> str:
         return "✅ No direct state mutations found."
 
     lines = ["💉 Direct state mutations:"]
-    for row in rows[:5]:
+    for row in rows:
         data = json.loads(row['data'])
-        for m in data.get('mutations', [])[:2]:
+        for m in data.get('mutations', []):
             lines.append(f"  • {row['path']}:{m.get('line', '?')} → {m.get('call', '?')}")
-    if len(rows) > 5:
-        lines.append(f"  ... and {len(rows)-5} more files")
     return "\n".join(lines)
 
 
@@ -1183,10 +1173,8 @@ def _answer_importers_of(db_path: Path, target_file: str) -> str:
         return f"ℹ️  No files import '{target_file}'."
 
     lines = [f"📤 Files that import {target_file}:"]
-    for imp in importers[:10]:
+    for imp in importers:
         lines.append(f"  • {imp}")
-    if len(importers) > 10:
-        lines.append(f"  ... and {len(importers)-10} more")
     return "\n".join(lines)
 
 
@@ -1231,7 +1219,7 @@ def _answer_summary(db_path: Path) -> str:
 # REPORT FORMATTING (for intent mode)
 # ----------------------------------------------------------------------
 def generate_text_report(analysis: Dict[str, Any]) -> str:
-    """Produce the ASCII‑art console report for intent mode – no truncation."""
+    """Produce the ASCII‑art console report – NO TRUNCATION, EVERYTHING SHOWN."""
     lines = []
     lines.append("=" * 80)
     lines.append(f'RECON REPORT: "{analysis["intent"]}"')
@@ -1260,23 +1248,22 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
     lines.append("INTERFACES (signatures only):")
     for f in analysis['files']:
         lines.append(f"  {f['path']}:")
-        # CLASSES – show all methods, no truncation
+        # CLASSES – all methods, all read‑only
         for cls in f.get('classes', []):
             lines.append(f"    class {cls['name']}:")
             for meth in cls.get('methods', []):
                 args = ', '.join(meth.get('args', []))
                 ret = f" -> {meth['returns']}" if meth.get('returns') else ''
                 lines.append(f"      def {meth['name']}({args}){ret}")
-            # Show ALL read‑only methods, no limit
             if cls.get('read_only_methods'):
                 ro_list = ', '.join(cls['read_only_methods'])
                 lines.append(f"      [read-only: {ro_list}]")
-        # TOP‑LEVEL FUNCTIONS – show all
+        # TOP‑LEVEL FUNCTIONS – all
         for func in f.get('functions', []):
             args = ', '.join(func.get('args', []))
             ret = f" -> {func['returns']}" if func.get('returns') else ''
             lines.append(f"    def {func['name']}({args}){ret}")
-        # IMPORTERS – show all, no truncation
+        # IMPORTERS – all, no truncation
         imported_by = f.get('imported_by', [])
         if imported_by:
             full_list = ', '.join(Path(p).name for p in imported_by)
@@ -1312,8 +1299,8 @@ def generate_text_report(analysis: Dict[str, Any]) -> str:
             for cls in f.get('classes', []):
                 ro_methods.extend(cls.get('read_only_methods', []))
             if ro_methods:
-                sample = ', '.join(ro_methods)  # show ALL
-                lines.append(f"  • Add logic in {sample} (read‑only)")
+                all_ro = ', '.join(ro_methods)
+                lines.append(f"  • Add logic in {all_ro} (read‑only)")
                 safe_count += 1
     if safe_count == 0:
         lines.append("  • No clear safe zones – review hot files first.")
@@ -1346,6 +1333,7 @@ def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None
                  max_files: int = 5, level: str = 'standard',
                  target: str = 'auto',
                  save_session: bool = False,
+                 keep_open: bool = False, 
                  verbose: bool = False):
     """
     Generate context package and send it to AI using ContextManager.
@@ -1403,7 +1391,7 @@ def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None
     print("📤 SENDING CONTEXT TO AI...")
     print("="*80)
 
-    success = mgr.send(package, target=target, keep_open=True)
+    success = mgr.send(package, target=target, keep_open=keep_open)
 
     if not success:
         print("❌ Failed to send context to AI.", file=sys.stderr)
@@ -1430,7 +1418,7 @@ def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None
         import json
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_intent = intent.replace(' ', '_')[:20]
+        safe_intent = intent.replace(' ', '_')[:100]
         session_file = mgr.session_dir / f"consult_{timestamp}_{safe_intent}.json"
         session_data = {
             "timestamp": datetime.now().isoformat(),
@@ -1494,7 +1482,8 @@ def main():
     parser.add_argument('--target', choices=['auto', 'ollama', 'deepseek'], default='auto',
                         help='AI backend for consult mode (default: auto)')
     parser.add_argument('--save-session', action='store_true', help='Save the consultation session (context + response)')
-
+    parser.add_argument('--keep-open', '-k', action='store_true', help='Leave DeepSeek browser open')
+    
     args = parser.parse_args()
 
     # Scout mode
@@ -1567,6 +1556,7 @@ def main():
             level=args.context_level,
             target=args.target,
             save_session=args.save_session,
+            keep_open=args.keep_open,
             verbose=args.verbose
         )
 
