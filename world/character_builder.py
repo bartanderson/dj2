@@ -16,7 +16,7 @@ class CharacterBuilder:
         """Create a new character with AI enhancements"""
         # Create base character
         char_class = CLASSES[char_data["class"].lower()]
-        background = _generate_background_story(self, char_data)
+        background = self._generate_background_story(char_data)
         
         character = Character(
             owner_id=owner_id,

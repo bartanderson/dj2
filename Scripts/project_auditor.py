@@ -202,7 +202,39 @@ class ProjectAuditor:
             }
         except Exception as e:
             return {"error": str(e)}
-    
+
+    def get_coverage(self) -> Dict:
+        """Load coverage.json and return per‑file and total coverage."""
+        cov_file = PROJECT_ROOT / "reports" / "coverage.json"
+        if not cov_file.exists():
+            return {"error": "coverage.json not found. Run run_analysis.py first."}
+        
+        try:
+            with open(cov_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            total = data.get("totals", {}).get("percent_covered", 0)
+            files = data.get("files", {})
+            
+            # Flatten into list of {path, coverage}
+            per_file = []
+            for path, info in files.items():
+                per_file.append({
+                    "path": path,
+                    "coverage": info.get("summary", {}).get("percent_covered", 0)
+                })
+            
+            # Sort by coverage ascending (worst first)
+            per_file.sort(key=lambda x: x["coverage"])
+            
+            return {
+                "total_coverage": total,
+                "files_with_low_coverage": [f for f in per_file if f["coverage"] < 70],
+                "worst_files": per_file[:10]  # bottom 10
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     def show_dashboard(self):
         """Show consolidated REAL dashboard"""
         print("\n" + "="*80)
@@ -228,7 +260,25 @@ class ProjectAuditor:
                 print(f"Active: {', '.join(project_status['active_phases'])}")
         else:
             print(f"Status: {project_status['error']}")
-        
+
+        # 1.5 TEST COVERAGE
+        print("\n🧪 TEST COVERAGE")
+        print("-" * 50)
+        coverage = self.get_coverage()
+        if "error" not in coverage:
+            print(f"Overall coverage: {coverage['total_coverage']:.1f}%")
+            low_files = coverage.get('files_with_low_coverage', [])
+            if low_files:
+                print(f"Low‑coverage files (<70%): {len(low_files)}")
+                for f in low_files[:5]:
+                    print(f"  • {f['path']} – {f['coverage']:.1f}%")
+                if len(low_files) > 5:
+                    print(f"  ... and {len(low_files)-5} more")
+            else:
+                print("✅ All files ≥70% coverage")
+        else:
+            print(f"⚠️  {coverage['error']}")
+
         # 2. Code Health
         print("\n🏥 CODE HEALTH")
         print("-" * 50)
