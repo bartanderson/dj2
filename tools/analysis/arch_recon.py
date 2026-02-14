@@ -58,6 +58,31 @@ STATE_HOLDERS = {'SessionSystem', 'GameEngine', 'WorldState', 'Database', 'Repos
 
 MIN_CONCEPT_LENGTH = 3
 
+def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
+                    project_root: str = '.', ignore_dirs: List[str] = None, verbose: bool = False):
+    """Check if DB exists/prompt to scan. Returns True if ready, False if cancelled."""
+    if db_path.exists() and not force:
+        # Optional: check age (e.g., older than 1 day)
+        age = datetime.now() - datetime.fromtimestamp(db_path.stat().st_mtime)
+        if age.days >= 1 and not no_prompt:
+            print(f"🕒 Scout DB is {age.days} day(s) old.")
+            answer = input("Rescan now? (Y/n): ").strip().lower()
+            if answer != 'n':
+                force = True
+        # else proceed
+    if not db_path.exists() and not no_prompt:
+        print("❌ Scout DB not found.")
+        answer = input("Run a full scout scan now? (Y/n): ").strip().lower()
+        if answer != 'n':
+            force = True
+        else:
+            return False
+
+    if force:
+        print("🔄 Running scout scan...")
+        run_scout(project_root, str(db_path), force=True, ignore_dirs=ignore_dirs, verbose=verbose)
+    return True
+
 # ----------------------------------------------------------------------
 # GLOBAL ARCHITECTURE RULES – loaded from files or embedded
 # ----------------------------------------------------------------------
@@ -270,6 +295,25 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
 
     print(f"   Analyzed {len(file_infos)} files.")
 
+    def find_corresponding_test(source_path: str, project_root: Path) -> Optional[str]:
+        """Find test file for a source file."""
+        source_file = Path(source_path)
+        test_dir = project_root / 'tests'
+        
+        # Pattern 1: tests/test_<module>.py
+        test_file = test_dir / f"test_{source_file.stem}.py"
+        if test_file.exists():
+            return str(test_file.relative_to(project_root))
+        
+        # Pattern 2: tests/<subdir>/test_<module>.py
+        for subdir in test_dir.iterdir():
+            if subdir.is_dir():
+                nested_test = subdir / f"test_{source_file.stem}.py"
+                if nested_test.exists():
+                    return str(nested_test.relative_to(project_root))
+        
+        return None
+
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
     cur = conn.cursor()
@@ -309,6 +353,14 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
             value TEXT
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS test_coverage (
+            source_path TEXT PRIMARY KEY,
+            test_path TEXT,
+            test_exists INTEGER DEFAULT 0,
+            FOREIGN KEY (source_path) REFERENCES files(path)
+        )
+    """)
 
     cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                 ("scout_timestamp", datetime.now().isoformat()))
@@ -331,6 +383,13 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
                 file_info_copy.get('line_count', 0),
                 1 if file_info_copy.get('is_hot') else 0
             )
+        )
+
+    for file_info in file_infos:
+        test_path = find_corresponding_test(file_info['path'], project_root)
+        cur.execute(
+            "INSERT OR REPLACE INTO test_coverage (source_path, test_path, test_exists) VALUES (?, ?, ?)",
+            (file_info['path'], test_path, 1 if test_path else 0)
         )
 
     for word, paths in vocabulary.items():
@@ -357,6 +416,210 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
     conn.commit()
     conn.close()
     print(f"✅ Scout DB saved: {db_path} ({len(file_infos)} files, {len(vocabulary)} concepts)")
+
+def report_risk_heatmap(db_path: str, min_priority: str = "MEDIUM",
+                        output_format: str = 'text', include_tools: bool = False,
+                        layers: Optional[List[str]] = None):
+    """Show files ranked by risk (hot + untested + widely used)."""
+    db_path = Path(db_path)
+    if not db_path.exists():
+        print(f"❌ Scout DB not found: {db_path}", file=sys.stderr)
+        return 1
+
+    PRIORITY_WEIGHTS = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+    min_weight = PRIORITY_WEIGHTS.get(min_priority.upper(), 2)
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+
+    # --- Build file filtering conditions (applied to the `files` table) ---
+    file_conditions = []
+    if not include_tools and (not layers or all(l not in ['tools', 'scripts'] for l in (layers or []))):
+        file_conditions.append("REPLACE(f.path, '\\', '/') NOT LIKE 'tools/%'")
+        file_conditions.append("REPLACE(f.path, '\\', '/') NOT LIKE 'Scripts/%'")
+        file_conditions.append("REPLACE(f.path, '\\', '/') NOT LIKE 'scripts/%'")
+
+    if layers:
+        layer_conditions = []
+        for layer in layers:
+            layer_conditions.append(f"REPLACE(f.path, '\\', '/') LIKE '{layer}/%'")
+        if layer_conditions:
+            file_conditions.append("(" + " OR ".join(layer_conditions) + ")")
+
+    # Helper to append file conditions to a WHERE clause
+    def with_file_conditions(base_where=""):
+        if not file_conditions:
+            return base_where
+        condition_str = " AND ".join(file_conditions)
+        if base_where:
+            return base_where + " AND " + condition_str
+        else:
+            return "WHERE " + condition_str
+
+    # --- Diagnostics ---
+    total = conn.execute(f"SELECT COUNT(*) FROM files f {with_file_conditions()}").fetchone()[0]
+    total_all = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+
+    print("📊 DATA DIAGNOSTICS:")
+    print("-" * 50)
+    if not include_tools:
+        print(f"Project files (excl. tools): {total}")
+        print(f"Total files (incl. tools): {total_all}")
+    else:
+        print(f"Total files: {total}")
+
+    hot = conn.execute(f"""
+        SELECT COUNT(*) FROM files f
+        {with_file_conditions(base_where="WHERE is_hot = 1")}
+    """).fetchone()[0]
+    print(f"Hot files: {hot}")
+
+    tested = conn.execute(f"""
+        SELECT COUNT(*) FROM test_coverage tc
+        JOIN files f ON tc.source_path = f.path
+        {with_file_conditions(base_where="WHERE tc.test_exists = 1")}
+    """).fetchone()[0]
+    print(f"Files with tests: {tested}")
+
+    importer_stats = conn.execute(f"""
+        SELECT
+            MIN(COALESCE(json_array_length(json_extract(data, '$.imported_by')), 0)) as min_imp,
+            MAX(COALESCE(json_array_length(json_extract(data, '$.imported_by')), 0)) as max_imp,
+            AVG(COALESCE(json_array_length(json_extract(data, '$.imported_by')), 0)) as avg_imp
+        FROM files f {with_file_conditions()}
+    """).fetchone()
+    print(f"Importer count - Min: {importer_stats['min_imp']}, Max: {importer_stats['max_imp']}, Avg: {importer_stats['avg_imp']:.1f}")
+
+    # Top importers
+    print(f"\n📈 TOP 10 MOST IMPORTED FILES ({'incl.' if include_tools else 'excl.'} tools):")
+    top_importers = conn.execute(f"""
+        SELECT
+            f.path,
+            f.role,
+            f.is_hot,
+            COALESCE(json_array_length(json_extract(f.data, '$.imported_by')), 0) as importers,
+            tc.test_exists,
+            f.line_count
+        FROM files f
+        LEFT JOIN test_coverage tc ON f.path = tc.source_path
+        {with_file_conditions()}
+        ORDER BY importers DESC
+        LIMIT 10
+    """).fetchall()
+
+    for row in top_importers:
+        test_status = "✅" if row['test_exists'] else "❌"
+        hot_status = "🔥" if row['is_hot'] else "  "
+        print(f"  {hot_status} {test_status} {row['importers']:>3} imports  {row['path'][:60]}")
+
+    print("\n" + "=" * 100)
+    print("🔥 RISK HEATMAP (min priority: {})".format(min_priority))
+    print("=" * 100)
+
+    # Main risk query
+    query = f"""
+        SELECT
+            f.path,
+            f.role,
+            f.line_count,
+            f.is_hot,
+            COALESCE(json_array_length(json_extract(f.data, '$.imported_by')), 0) as importer_count,
+            COALESCE(json_array_length(json_extract(f.data, '$.mutations')), 0) as mutations,
+            COALESCE(json_array_length(json_extract(f.data, '$.phase_violations')), 0) as violations,
+            tc.test_exists,
+            tc.test_path
+        FROM files f
+        LEFT JOIN test_coverage tc ON f.path = tc.source_path
+        {with_file_conditions()}
+        ORDER BY f.line_count DESC
+    """
+
+    rows = conn.execute(query).fetchall()
+
+    # Calculate risk scores
+    risk_items = []
+    for row in rows:
+        violations = row['violations'] or 0
+        mutations = row['mutations'] or 0
+        importers = row['importer_count'] or 0
+        tested = 1 if row['test_exists'] else 0
+        is_hot = row['is_hot'] or 0
+        lines = row['line_count'] or 0
+
+        risk_score = 0
+        if not tested:
+            risk_score += min(importers * 3, 30)
+            risk_score += min(lines // 100, 20)
+        if is_hot:
+            risk_score += 15
+        risk_score += violations * 5
+        risk_score += mutations * 3
+        if tested:
+            risk_score -= 5
+
+        if risk_score >= 20:
+            priority = "CRITICAL"
+        elif risk_score >= 10:
+            priority = "HIGH"
+        elif risk_score >= 5:
+            priority = "MEDIUM"
+        else:
+            priority = "LOW"
+
+        if PRIORITY_WEIGHTS[priority] >= min_weight:
+            risk_items.append({
+                'path': row['path'],
+                'role': row['role'],
+                'risk_score': risk_score,
+                'priority': priority,
+                'violations': violations,
+                'mutations': mutations,
+                'importers': importers,
+                'tested': bool(tested),
+                'test_path': row['test_path'],
+                'lines': lines,
+                'is_hot': bool(is_hot)
+            })
+
+    risk_items.sort(key=lambda x: x['risk_score'], reverse=True)
+
+    if output_format == 'json':
+        print(json.dumps(risk_items[:20], indent=2))
+    else:
+        print(f"{'Priority':<10} {'Score':<6} {'Tested':<7} {'Hot':<5} {'Role':<12} {'Imp/Lines':<15} {'File'}")
+        print("-" * 100)
+
+        for item in risk_items[:30]:
+            tested_flag = "✅" if item['tested'] else "❌"
+            hot_flag = "🔥" if item['is_hot'] else "  "
+            stats = f"{item['importers']}/{item['lines']}"
+            print(f"{item['priority']:<10} {item['risk_score']:<6} {tested_flag:<7} {hot_flag:<5} {item['role']:<12} {stats:<15} {item['path'][:50]}")
+
+        print("=" * 100)
+        print(f"\nShowing {len(risk_items)} files with priority >= {min_priority}")
+        print("Scope: " + ("All files" if include_tools else "Project files (excl. tools/ and Scripts/)"))
+        if layers:
+            print(f"Layers: {', '.join(layers)}")
+        print("Risk formula:")
+        print("  Untested: +importers*3 (max 30), +lines/100 (max 20)")
+        print("  Hot files: +15")
+        print("  Legacy issues: +violations*5, +mutations*3")
+        print("  Tested: -5")
+
+        untested = [i for i in risk_items if not i['tested']]
+        if untested:
+            print(f"\n🎯 {len(untested)} untested files found")
+            high_untested = [i for i in untested if i['priority'] in ['HIGH', 'CRITICAL']]
+            if high_untested:
+                print(f"\n🔥 TOP PRIORITY - {len(high_untested)} HIGH/CRITICAL untested files:")
+                for item in high_untested[:5]:
+                    print(f"   - {item['path']}")
+                    print(f"     Score: {item['risk_score']} | Importers: {item['importers']} | Lines: {item['lines']}")
+        else:
+            print("\n✅ All files are tested!")
+
+    conn.close()
+    return 0
 
 # ----------------------------------------------------------------------
 # RECON CORE – intent scoring
@@ -1452,6 +1715,15 @@ def main():
     parser.add_argument('--test-file', help='Path to existing test file to update')
     parser.add_argument('--output', '-o', help='Output file path for generated test (default: tests/test_<intent>.py)')
 
+    parser.add_argument('--risk-heatmap', action='store_true', help='Show risk-ranked files')
+    parser.add_argument('--min-priority', default='MEDIUM', choices=['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
+    parser.add_argument('--include-tools', action='store_true', 
+                    help='Include tools/ and Scripts/ folders in analysis (default: excluded)')
+    parser.add_argument('--layer', action='append', choices=['world', 'dungeon_neo', 'engine', 'ai', 'tools', 'scripts'],
+                    help='Filter by layer (can be used multiple times)')
+    parser.add_argument('--no-prompt', action='store_true',
+                    help='Skip interactive prompts (use existing DB or fail)')
+
     args = parser.parse_args()
 
     # Scout mode
@@ -1467,20 +1739,48 @@ def main():
 
     # Report modes
     if args.hot:
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
         return report_hot(args.db, args.limit, args.format)
     if args.mutations:
-        return report_mutations(args.db, args.limit, args.format)
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        return report_hot(args.db, args.limit, args.format)
     if args.largest:
-        return report_largest(args.db, args.limit, args.format)
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        return report_hot(args.db, args.limit, args.format)
     if args.concepts:
-        return report_concepts(args.db, args.limit, args.format)
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        return report_hot(args.db, args.limit, args.format)
     if args.exporters:
-        return report_exporters(args.db, args.limit, args.format)
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        return report_hot(args.db, args.limit, args.format)
     if args.summary:
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
         return report_summary(args.db, args.format)
 
     # ASK mode
     if args.ask is not None:
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
         question = args.ask if args.ask else None
         return ask_mode(args.db, question)
 
@@ -1493,6 +1793,12 @@ def main():
             default_cat = Path(args.db).parent / 'discovered_categories.json'
             if default_cat.exists():
                 args.categories = str(default_cat)
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        question = args.ask if args.ask else None
+        return ask_mode(args.db, question)
         return generate_context_package(
             intent=args.intent,
             db_path=Path(args.db),
@@ -1544,6 +1850,14 @@ def main():
             verbose=args.verbose
         )
 
+    if args.risk_heatmap:
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                               verbose=args.verbose):
+            return 1
+        return report_risk_heatmap(args.db, args.min_priority, args.format,
+                                   args.include_tools, args.layer)
+
     # Test update mode
     if args.test_update:
         if not args.test_file or not args.diff:
@@ -1562,6 +1876,11 @@ def main():
             project_root=project_root,
             verbose=args.verbose
         )
+
+    if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
+                           project_root=args.project_root, ignore_dirs=args.ignore_dirs,
+                           verbose=args.verbose):
+        return 1
 
     # Recon mode (requires intent)
     if not args.intent:
