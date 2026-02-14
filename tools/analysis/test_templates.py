@@ -1,5 +1,5 @@
 """Test template library for generating high-quality tests from patterns."""
-
+import sqlite3
 import json
 import re
 import ast
@@ -205,9 +205,139 @@ class TestTemplateLibrary:
                 best_template = template
         
         return best_template if best_score > 0 else None
+
+# Add to tools/analysis/test_templates.py
+
+class TestValidator:
+    """Validate generated tests against actual codebase structure."""
+    
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(str(db_path))
+        self.conn.row_factory = sqlite3.Row
+    
+    def validate_mock_target(self, target_path: str) -> tuple[bool, str]:
+        """Check if a mock target (e.g., 'dungeon_neo.api.get_image') actually exists."""
+        parts = target_path.split('.')
+        
+        # Try to find the module
+        module_parts = []
+        for i, part in enumerate(parts):
+            candidate = '.'.join(parts[:i+1])
+            # Check in scout DB
+            row = self.conn.execute(
+                "SELECT path FROM files WHERE path LIKE ? LIMIT 1",
+                (f"%{candidate.replace('.', '/')}%",)
+            ).fetchone()
+            if row:
+                module_parts.append(part)
+            else:
+                break
+        
+        if not module_parts:
+            return False, f"Module not found: {parts[0]}"
+        
+        # Check if attribute exists in the file's exports
+        remaining = parts[len(module_parts):]
+        if remaining:
+            # Check if function/class exists in the file
+            file_row = self.conn.execute(
+                "SELECT data FROM files WHERE path LIKE ?",
+                (f"%{module_parts[-1]}.py%",)
+            ).fetchone()
+            
+            if file_row:
+                data = json.loads(file_row['data'])
+                available_names = (
+                    [c['name'] for c in data.get('classes', [])] +
+                    [f['name'] for f in data.get('functions', [])]
+                )
+                
+                for attr in remaining:
+                    if attr not in available_names:
+                        return False, f"'{attr}' not found in {'.'.join(module_parts)}. Available: {available_names[:10]}"
+        
+        return True, "Valid"
+
+    def validate_imports(self, code: str) -> list[str]:
+        """Check that all imported modules exist in the codebase. Return list of missing modules."""
+        import ast
+        missing = []
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module = alias.name
+                    if not self._module_exists(module):
+                        missing.append(module)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    module = node.module
+                    if not self._module_exists(module):
+                        missing.append(module)
+        return missing
+
+    def _module_exists(self, module: str) -> bool:
+        """Check if a dotted module name corresponds to a Python file in the DB."""
+        # Convert module to relative path: e.g., 'dungeon_neo.dungeon_system' -> 'dungeon_neo/dungeon_system.py'
+        path_candidate = module.replace('.', '/') + '.py'
+        # Also check for __init__.py? If module is a package, the file might be __init__.py inside that directory.
+        # For simplicity, we'll check both the file and package existence.
+        # We'll query the files table for paths that start with the module path as a directory.
+        # But a direct file match is easiest.
+        cur = self.conn.cursor()
+        # Check direct file
+        cur.execute("SELECT 1 FROM files WHERE path = ?", (path_candidate,))
+        if cur.fetchone():
+            return True
+        # Check if it's a package: there should be an __init__.py in that directory.
+        package_init = module.replace('.', '/') + '/__init__.py'
+        cur.execute("SELECT 1 FROM files WHERE path = ?", (package_init,))
+        if cur.fetchone():
+            return True
+        return False
+    
+    def validate_fixture_usage(self, test_code: str, available_fixtures: list) -> list[str]:
+        """Find fixture references that don't exist."""
+        issues = []
+        
+        # Find @pytest.fixture decorated functions
+        fixture_pattern = r'@pytest\.fixture.*?\ndef\s+(\w+)'
+        defined_fixtures = re.findall(fixture_pattern, test_code, re.DOTALL)
+        
+        # Find function parameters that look like fixtures
+        test_pattern = r'def\s+test_\w+\((.*?)\):'
+        for match in re.finditer(test_pattern, test_code):
+            params = [p.strip().split(':')[0].split('=')[0].strip() 
+                     for p in match.group(1).split(',') if p.strip()]
+            
+            for param in params:
+                if param == 'self':
+                    continue
+                if param not in defined_fixtures and param not in available_fixtures:
+                    # Check if it's a mock from @patch
+                    if not f"'{param}'" in test_code:  # Rough heuristic
+                        issues.append(f"Undefined fixture '{param}' in {match.group(0)}")
+        
+        return issues
+    
+    def suggest_correct_mock(self, wrong_target: str, intended_behavior: str) -> str:
+        """Suggest correct mock target based on behavioral contracts in DB."""
+        # Search for functions with similar behavior
+        rows = self.conn.execute("""
+            SELECT file_path, function_name, description
+            FROM behavioral_contracts
+            WHERE description LIKE ? OR side_effects LIKE ?
+            LIMIT 5
+        """, (f'%{intended_behavior}%', f'%{intended_behavior}%')).fetchall()
+        
+        if rows:
+            suggestions = [f"{r['file_path']}:{r['function_name']}" for r in rows]
+            return f"Did you mean: {', '.join(suggestions)}?"
+        return "No similar functions found in codebase"
     
     def build_generation_prompt(self, target_file: str, contracts: List[dict], 
-                                template: dict) -> str:
+                                template: dict, module_list: str = "") -> str:
         """Build a prompt for test generation using template patterns."""
         
         # Extract key patterns from template
@@ -244,15 +374,26 @@ Mock strategies in this codebase: {', '.join(mock_strategies)}
 ```python
 {example['source'] if example else ''}
 ```
+**Existing top‑level modules in this project:** {module_list}
 TARGET FUNCTIONS TO TEST:
 {chr(10).join(contracts_desc)}
-GENERATION RULES:
-Use the SAME mocking patterns as the reference template
-Test the SPECIFIC side effects listed for each function
-Include tests for error conditions if 'exception_conditions' in testable_behaviors
-DO NOT just test hasattr - test actual behavior
-Follow the fixture pattern: create dependencies as fixtures with proper mocking
-Output only the complete Python test file, no explanations.
+GENERATION RULES (MUST FOLLOW):
+Only patch modules and attributes that exist in the codebase – use the exact names shown in the behavioral contracts.
+Do not invent new modules, classes, or attributes.
+When using @patch, the mock parameter comes AFTER any fixtures in the test function signature (fixtures first, then patched mocks).
+Never treat a fixture as a real object; fixtures are setup functions that return objects – pytest injects the return value automatically.
+Use the behavioral contracts' function names and file paths to determine correct import paths.
+Include tests for error conditions if 'exception_conditions' is in testable_behaviors.
+DO NOT just test hasattr – test actual behavior (return values, side effects, exceptions).
+Follow the fixture pattern: create dependencies as fixtures with proper mocking.
+Output only the complete Python test file, no explanations, no metadata, no commentary. Start with the imports and end with the last line of code. Do not include lines like "Model: ..." or "Here is the test:".
+- Each test function must follow the Arrange‑Act‑Assert pattern:
+  * Arrange: set up mocks, fixtures, and input data.
+  * Act: call the function being tested and store its return value.
+  * Assert: verify the return value, side effects, and/or mock calls.
+- All variables used in the test must be defined inside the test function (or as fixtures).
+- Never leave a test incomplete – every test must contain at least one assertion and the function call it is testing.
+- Do not include any placeholder comments like "# Act" without actual code.
 """
         return prompt
     

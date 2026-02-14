@@ -1,9 +1,3 @@
-Query: ai dungeon master
-Model: llama3.2:3b
-Speed: 405.2 tokens/sec
-======================================================================
-
-```python
 import pytest
 from unittest.mock import patch, MagicMock
 from dungeon_neo.ai_integration import DungeonAI
@@ -65,4 +59,3 @@ def test_get_character(get_character_mock, character):
     data = {'player_id': '123'}
     result = get_character_mock(data)
     assert result is not None
-```
