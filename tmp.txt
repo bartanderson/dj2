@@ -1,0 +1,369 @@
+diff --git a/tools/analysis/arch_recon.py b/tools/analysis/arch_recon.py
+index c3b16a9..6bbc8c4 100644
+--- a/tools/analysis/arch_recon.py
++++ b/tools/analysis/arch_recon.py
+@@ -185,6 +185,8 @@ def analyze_file_for_scout(filepath: Path, project_root: Path, ignore_dirs: List
+         'line_count': len(source.splitlines()),
+         'phase_violations': analyzer._detect_phase_violations_in_source(source, str(filepath), tree),
+     }
++    file_info['behavioral_contracts'] = extract_behavioral_contracts(tree, source)
++    file_info['contract_count'] = len(file_info['behavioral_contracts'])
+ 
+     for node in ast.iter_child_nodes(tree):
+         if isinstance(node, (ast.Import, ast.ImportFrom)):
+@@ -251,6 +253,116 @@ def build_import_map(project_root: Path, ignore_dirs: List[str]) -> Dict[str, Li
+             continue
+     return dict(import_map)
+ 
++def extract_behavioral_contracts(tree: ast.AST, source: str) -> List[dict]:
++    """Extract what functions promise to do, their side effects, and testable behaviors."""
++    contracts = []
++    
++    for node in ast.walk(tree):
++        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
++            # Skip private methods unless they're important
++            if node.name.startswith('_') and not node.name.startswith('__'):
++                continue
++                
++            docstring = ast.get_docstring(node)
++            contract = {
++                'function': node.name,
++                'line': node.lineno,
++                'args': [arg.arg for arg in node.args.args if arg.arg != 'self'],
++                'returns': None,
++                'description': '',
++                'side_effects': [],
++                'raises': [],
++                'preconditions': [],
++                'testable_behaviors': [],
++                'complexity_score': calculate_complexity(node),
++            }
++            
++            # Extract return type
++            if node.returns:
++                try:
++                    contract['returns'] = ast.unparse(node.returns)
++                except:
++                    contract['returns'] = str(type(node.returns))
++            
++            # Parse docstring for behaviors
++            if docstring:
++                lines = docstring.split('\n')
++                contract['description'] = lines[0].strip()[:150]
++                
++                doc_lower = docstring.lower()
++                
++                # Detect side effects (mutations, state changes)
++                side_effect_patterns = [
++                    (r'(?:updates?|modifies?|changes?|sets?)\s+(?:the\s+)?(\w+)', 'mutates {}'),
++                    (r'(?:saves?|persists?|stores?)\s+(?:to|into)?\s+(\w+)', 'saves to {}'),
++                    (r'(?:creates?|initializes?|builds?)\s+(?:a\s+)?(?:new\s+)?(\w+)', 'creates {}'),
++                    (r'(?:sends?|emits?|triggers?)\s+(?:a\s+)?(\w+)', 'sends {}'),
++                    (r'(?:clears?|resets?|removes?)\s+(?:the\s+)?(\w+)', 'clears {}'),
++                ]
++                
++                for pattern, template in side_effect_patterns:
++                    for match in re.finditer(pattern, doc_lower):
++                        effect = template.format(match.group(1))
++                        if effect not in contract['side_effects']:
++                            contract['side_effects'].append(effect)
++                
++                # Detect exceptions/raises
++                if 'raises:' in doc_lower or 'raises ' in doc_lower:
++                    # Simple extraction - look for exception names after "Raises:"
++                    raise_section = re.search(r'raises:?\s*(.+?)(?:\n\n|\Z)', doc_lower, re.DOTALL)
++                    if raise_section:
++                        # Look for exception class names (Capitalized words)
++                        exceptions = re.findall(r'\b([A-Z][a-zA-Z]*(?:Error|Exception))\b', raise_section.group(1))
++                        contract['raises'] = list(set(exceptions))
++                
++                # Detect testable behaviors from docstring structure
++                if 'example' in doc_lower or '>>>' in docstring:
++                    contract['testable_behaviors'].append('has_doctest_examples')
++                if 'returns' in doc_lower:
++                    contract['testable_behaviors'].append('verifiable_return_value')
++                if contract['raises']:
++                    contract['testable_behaviors'].append('exception_conditions')
++                if contract['side_effects']:
++                    contract['testable_behaviors'].append('state_change_verification')
++            
++            # Infer behaviors from AST structure
++            # Check for obvious patterns
++            for subnode in ast.walk(node):
++                if isinstance(subnode, ast.Call):
++                    # Detect AI calls
++                    if isinstance(subnode.func, ast.Attribute):
++                        if subnode.func.attr in ['generate_text', 'generate_structured_data', 'generate_embedding']:
++                            contract['testable_behaviors'].append('ai_dependency_mock_required')
++                    # Detect database calls
++                    if isinstance(subnode.func, ast.Attribute):
++                        if subnode.func.attr in ['execute', 'commit', 'fetchone', 'fetchall']:
++                            contract['testable_behaviors'].append('database_interaction')
++                # Detect state mutations
++                if isinstance(subnode, ast.Assign):
++                    if isinstance(subnode.targets[0], ast.Attribute):
++                        if isinstance(subnode.targets[0].value, ast.Name):
++                            if subnode.targets[0].value.id in ['self', 'cls']:
++                                contract['testable_behaviors'].append('internal_state_change')
++            
++            # Only keep contracts that seem testable (have some behavior to verify)
++            if (contract['description'] or 
++                contract['side_effects'] or 
++                contract['testable_behaviors'] or
++                contract['complexity_score'] > 3):
++                contracts.append(contract)
++    
++    return contracts
++
++def calculate_complexity(node: ast.FunctionDef) -> int:
++    """Simple cyclomatic complexity approximation."""
++    complexity = 1
++    for subnode in ast.walk(node):
++        if isinstance(subnode, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
++            complexity += 1
++        elif isinstance(subnode, ast.BoolOp):
++            complexity += len(subnode.values) - 1
++    return complexity
++
+ # ----------------------------------------------------------------------
+ # SCOUT MODE
+ # ----------------------------------------------------------------------
+@@ -369,6 +481,20 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
+     cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                 ("file_count", str(len(file_infos))))
+ 
++    cur.execute("""
++        CREATE TABLE IF NOT EXISTS behavioral_contracts (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            file_path TEXT,
++            function_name TEXT,
++            line_number INTEGER,
++            description TEXT,
++            side_effects TEXT,  -- JSON array
++            testable_behaviors TEXT,  -- JSON array
++            complexity_score INTEGER,
++            FOREIGN KEY (file_path) REFERENCES files(path)
++        )
++    """)
++
+     for file_info in file_infos:
+         file_info_copy = file_info.copy()
+         file_info_copy.pop('source', None)
+@@ -384,13 +510,26 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
+                 1 if file_info_copy.get('is_hot') else 0
+             )
+         )
+-
+-    for file_info in file_infos:
+         test_path = find_corresponding_test(file_info['path'], project_root)
+         cur.execute(
+             "INSERT OR REPLACE INTO test_coverage (source_path, test_path, test_exists) VALUES (?, ?, ?)",
+             (file_info['path'], test_path, 1 if test_path else 0)
+         )
++        # Insert behavioral contracts
++        for contract in file_info.get('behavioral_contracts', []):
++            cur.execute("""
++                INSERT INTO behavioral_contracts 
++                (file_path, function_name, line_number, description, side_effects, testable_behaviors, complexity_score)
++                VALUES (?, ?, ?, ?, ?, ?, ?)
++            """, (
++                file_info['path'],
++                contract['function'],
++                contract['line'],
++                contract['description'],
++                json.dumps(contract['side_effects']),
++                json.dumps(contract['testable_behaviors']),
++                contract['complexity_score']
++            ))
+ 
+     for word, paths in vocabulary.items():
+         for path in set(paths):
+@@ -417,6 +556,56 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
+     conn.close()
+     print(f"✅ Scout DB saved: {db_path} ({len(file_infos)} files, {len(vocabulary)} concepts)")
+ 
++def report_contracts(db_path: str, file_path: Optional[str] = None, min_complexity: int = 0):
++    """Show behavioral contracts extracted from code."""
++    db_path = Path(db_path)
++    conn = sqlite3.connect(str(db_path))
++    conn.row_factory = sqlite3.Row
++    
++    if file_path:
++        rows = conn.execute("""
++            SELECT * FROM behavioral_contracts 
++            WHERE file_path = ? AND complexity_score >= ?
++            ORDER BY complexity_score DESC
++        """, (file_path, min_complexity)).fetchall()
++    else:
++        # Show high-value contracts across all files
++        rows = conn.execute("""
++            SELECT bc.*, f.role, tc.test_exists
++            FROM behavioral_contracts bc
++            JOIN files f ON bc.file_path = f.path
++            LEFT JOIN test_coverage tc ON f.path = tc.source_path
++            WHERE bc.complexity_score >= ? AND tc.test_exists = 0
++            ORDER BY bc.complexity_score DESC
++            LIMIT 30
++        """, (min_complexity,)).fetchall()
++    
++    print(f"\n📝 BEHAVIORAL CONTRACTS (complexity >= {min_complexity})")
++    print("=" * 100)
++    
++    current_file = None
++    for row in rows:
++        if row['file_path'] != current_file:
++            current_file = row['file_path']
++            tested = "✅" if row['test_exists'] else "❌"
++            print(f"\n📁 {current_file} [{tested}]")
++            print("-" * 80)
++        
++        behaviors = json.loads(row['testable_behaviors'] or '[]')
++        side_effects = json.loads(row['side_effects'] or '[]')
++        
++        print(f"  🔹 {row['function_name']}() (line {row['line_number']}, complexity: {row['complexity_score']})")
++        if row['description']:
++            print(f"     📋 {row['description']}")
++        if side_effects:
++            print(f"     ⚡ Side effects: {', '.join(side_effects)}")
++        if behaviors:
++            print(f"     🧪 Testable: {', '.join(behaviors)}")
++        print()
++    
++    conn.close()
++    return 0
++
+ def report_risk_heatmap(db_path: str, min_priority: str = "MEDIUM",
+                         output_format: str = 'text', include_tools: bool = False,
+                         layers: Optional[List[str]] = None):
+@@ -1505,6 +1694,7 @@ def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None
+ # ----------------------------------------------------------------------
+ def generate_test(intent: str, db_path: Path, categories_path: Optional[str] = None,
+                   project_root: Optional[Path] = None, output_file: Optional[str] = None,
++                  use_template: bool = False, template_dir: Optional[Path] = None,
+                   verbose: bool = False):
+     if project_root is None:
+         project_root = Path.cwd()
+@@ -1524,6 +1714,57 @@ def generate_test(intent: str, db_path: Path, categories_path: Optional[str] = N
+         return exit_code
+     context_text = context_output.getvalue()
+ 
++    # If template mode is enabled, replace the generic context with a template‑driven prompt
++    if use_template:
++        try:
++            from tools.analysis.test_templates import TestTemplateLibrary
++        except ImportError as e:
++            print(f"⚠️  Template library not available, falling back to generic generation. {e}", file=sys.stderr)
++            use_template = False
++        else:
++            # Find the top file matched by the intent (reuse your scoring logic)
++            top_files = _get_top_files_for_intent(intent, db_path, categories_path, max_files=1, verbose=verbose)
++            if top_files:
++                target_file = top_files[0][0]
++                # Fetch behavioral contracts for that file
++                conn = sqlite3.connect(str(db_path))
++                conn.row_factory = sqlite3.Row
++                rows = conn.execute("""
++                    SELECT function_name, description, side_effects, testable_behaviors, complexity_score
++                    FROM behavioral_contracts
++                    WHERE file_path = ?
++                    ORDER BY complexity_score DESC
++                    LIMIT 5
++                """, (target_file,)).fetchall()
++                conn.close()
++
++                contracts = []
++                for r in rows:
++                    contracts.append({
++                        'function': r['function_name'],
++                        'args': [],  # we don't store args yet; could be enhanced later
++                        'description': r['description'] or '',
++                        'side_effects': json.loads(r['side_effects'] or '[]'),
++                        'testable_behaviors': json.loads(r['testable_behaviors'] or '[]')
++                    })
++
++                if contracts:
++                    lib = TestTemplateLibrary(Path(template_dir) if template_dir else None)
++                    # Use intent words as search concepts
++                    concepts = [w for w in intent.lower().split() if len(w) >= 3]
++                    template = lib.find_best_template(concepts)
++                    if template:
++                        # Build the specialized prompt
++                        prompt = lib.build_generation_prompt(target_file, contracts, template)
++                        # Overwrite context_text with this prompt
++                        context_text = prompt
++                    else:
++                        print("⚠️  No matching template found, using generic generation.", file=sys.stderr)
++                else:
++                    print("⚠️  No behavioral contracts found for target file, using generic generation.", file=sys.stderr)
++            else:
++                print("⚠️  Could not determine target file for intent, using generic generation.", file=sys.stderr)
++
+     prompt = f"""You are a senior Python test engineer. Using the following architectural context, write a **pytest** test file for the feature: "{intent}".
+ 
+ **Requirements:**
+@@ -1723,6 +1964,12 @@ def main():
+                     help='Filter by layer (can be used multiple times)')
+     parser.add_argument('--no-prompt', action='store_true',
+                     help='Skip interactive prompts (use existing DB or fail)')
++    parser.add_argument('--extract-template', metavar='TEST_FILE',
++                    help='Extract test patterns from an existing test file and save as template')
++    parser.add_argument('--test-with-template', action='store_true',
++                        help='Use template library for test generation (requires --test)')
++    parser.add_argument('--template-dir', default=None,
++                        help='Directory where templates are stored (default: tools/analysis/templates)')
+ 
+     args = parser.parse_args()
+ 
+@@ -1834,19 +2081,23 @@ def main():
+     # Test generation mode
+     if args.test:
+         if not args.intent:
+-            print("❌ --test requires an intent (e.g., --test 'character creation')", file=sys.stderr)
++            print("❌ --test requires an intent...")
+             return 1
+         if not args.categories:
+             default_cat = Path(args.db).parent / 'discovered_categories.json'
+             if default_cat.exists():
+                 args.categories = str(default_cat)
+         project_root = Path(args.project_root).resolve() if args.project_root else Path.cwd()
++        if not args.template_dir:
++            args.template_dir = Path(__file__).parent / 'templates'
+         return generate_test(
+             intent=args.intent,
+             db_path=Path(args.db),
+             categories_path=args.categories,
+             project_root=project_root,
+             output_file=args.output,
++            use_template=args.test_with_template,
++            template_dir=args.template_dir,
+             verbose=args.verbose
+         )
+ 
+@@ -1858,6 +2109,27 @@ def main():
+         return report_risk_heatmap(args.db, args.min_priority, args.format,
+                                    args.include_tools, args.layer)
+ 
++    if args.extract_template:
++        try:
++            from tools.analysis.test_templates import TestTemplateLibrary
++        except ImportError as e:
++            print(f"❌ Could not import TestTemplateLibrary: {e}", file=sys.stderr)
++            return 1
++
++        lib = TestTemplateLibrary(Path(args.template_dir) if args.template_dir else None)
++        template = lib.extract_template_from_file(Path(args.extract_template))
++        if template:
++            # Name the template after the original file without 'test_' prefix
++            name = Path(args.extract_template).stem.replace('test_', '')
++            lib.save_template(template, name)
++            print(f"✅ Template extracted and saved as '{name}'")
++            print(f"   Patterns found: {len(template['patterns']['test_structure'])} tests")
++            categories = {e.get('focus', 'general') for e in template.get('example_tests', [])}
++            print(f"   Example categories: {categories}")
++        else:
++            print("⚠️  Failed to extract template.")
++        return 0
++
+     # Test update mode
+     if args.test_update:
+         if not args.test_file or not args.diff:

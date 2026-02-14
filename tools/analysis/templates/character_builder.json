@@ -1,0 +1,119 @@
+{
+  "source_file": "tests\\test_character_builder.py",
+  "patterns": {
+    "imports": [
+      "pytest",
+      "from unittest.mock import Mock, patch",
+      "from world import character_builder"
+    ],
+    "fixtures": [
+      {
+        "name": "mock_ai",
+        "args": [],
+        "has_mock_arg": false,
+        "return_type": null
+      },
+      {
+        "name": "builder",
+        "args": [
+          "mock_ai"
+        ],
+        "has_mock_arg": true,
+        "return_type": null
+      }
+    ],
+    "mock_strategies": [
+      "unittest.mock.patch",
+      "Mock instantiation",
+      "return_value configuration",
+      "call verification"
+    ],
+    "assertion_patterns": [
+      "mock_call_verification",
+      "equality_assertions"
+    ],
+    "test_structure": [
+      {
+        "name": "test_create_character_calls_ai_and_builds_character",
+        "docstring": "Test that create_character() uses AI and returns a properly built Character.",
+        "uses_mocks": false,
+        "mock_targets": [],
+        "assertion_count": 17,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 18
+      },
+      {
+        "name": "test_create_character_without_personal_item",
+        "docstring": "Test that no personal item is added when not provided.",
+        "uses_mocks": false,
+        "mock_targets": [],
+        "assertion_count": 0,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 1
+      },
+      {
+        "name": "test_generate_personality_tool",
+        "docstring": "Direct test of the _generate_personality tool method.",
+        "uses_mocks": false,
+        "mock_targets": [
+          "mock_ai.generate_structured_data.assert_called_once"
+        ],
+        "assertion_count": 1,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 2
+      },
+      {
+        "name": "test_generate_background_story_tool",
+        "docstring": "Direct test of the _generate_background_story tool method.",
+        "uses_mocks": false,
+        "mock_targets": [
+          "mock_ai.generate_text.assert_called_once"
+        ],
+        "assertion_count": 1,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 2
+      },
+      {
+        "name": "test_generate_personal_item_tool",
+        "docstring": "Test the generate_personal_item tool.",
+        "uses_mocks": false,
+        "mock_targets": [
+          "mock_ai.generate_structured_data.assert_called_once"
+        ],
+        "assertion_count": 2,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 3
+      },
+      {
+        "name": "test_get_equipment_suggestions_tool",
+        "docstring": "Test the get_equipment_suggestions tool.",
+        "uses_mocks": false,
+        "mock_targets": [
+          "mock_ai.generate_text.assert_called_once"
+        ],
+        "assertion_count": 2,
+        "fixture_deps": [
+          "builder",
+          "mock_ai"
+        ],
+        "complexity": 3
+      }
+    ]
+  },
+  "example_tests": []
+}
