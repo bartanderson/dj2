@@ -38,6 +38,7 @@ class BridgeCore:
         """Connect to DeepSeek"""
         try:
             options = Options()
+            options.add_argument("--log-level=3") #disable most logs but thats fine with me (gets rid of gcm deprecated errors)
             options.add_argument(f"--user-data-dir={self.profile_path}")
             self.driver = webdriver.Chrome(options=options)
             self.driver.get("https://chat.deepseek.com")
