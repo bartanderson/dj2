@@ -11,7 +11,6 @@ Modes:
   --consult <intent>          : context + send to AI (auto‑routed)
   --test <intent>             : generate pytest file using AI
   --test-update               : update existing test using git diff
-  --extract-patterns <file>   : analyze a test file and store patterns in DB
 
 No truncation. No guessing. All real data from your live scout DB.
 """
@@ -564,6 +563,44 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
     file_infos = []
     vocabulary = defaultdict(list)
 
+    for i, py_file in enumerate(py_files):
+        if verbose and (i % 50 == 0):
+            print(f"   Processing file {i+1}/{len(py_files)}...")
+        file_info = analyze_file_for_scout(py_file, project_root, ignore_dirs)
+        if not file_info:
+            continue
+        module_name = py_file.stem
+        file_info['imported_by'] = import_map.get(module_name, [])
+        file_infos.append(file_info)
+
+        for cls in file_info.get('classes', []):
+            for word in split_identifier(cls['name']):
+                vocabulary[word].append(file_info['path'])
+        for func in file_info.get('functions', []):
+            for word in split_identifier(func['name']):
+                vocabulary[word].append(file_info['path'])
+
+    print(f"   Analyzed {len(file_infos)} files.")
+
+    def find_corresponding_test(source_path: str, project_root: Path) -> Optional[str]:
+        """Find test file for a source file."""
+        source_file = Path(source_path)
+        test_dir = project_root / 'tests'
+        
+        # Pattern 1: tests/test_<module>.py
+        test_file = test_dir / f"test_{source_file.stem}.py"
+        if test_file.exists():
+            return str(test_file.relative_to(project_root))
+        
+        # Pattern 2: tests/<subdir>/test_<module>.py
+        for subdir in test_dir.iterdir():
+            if subdir.is_dir():
+                nested_test = subdir / f"test_{source_file.stem}.py"
+                if nested_test.exists():
+                    return str(nested_test.relative_to(project_root))
+        
+        return None
+
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
     cur = conn.cursor()
@@ -573,10 +610,6 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
         cur.execute("DROP TABLE IF EXISTS concepts")
         cur.execute("DROP TABLE IF EXISTS clusters")
         cur.execute("DROP TABLE IF EXISTS meta")
-        cur.execute("DROP TABLE IF EXISTS test_coverage")
-        cur.execute("DROP TABLE IF EXISTS behavioral_contracts")
-        cur.execute("DROP TABLE IF EXISTS imports")
-        cur.execute("DROP TABLE IF EXISTS test_patterns")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
@@ -615,6 +648,14 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
             FOREIGN KEY (source_path) REFERENCES files(path)
         )
     """)
+
+    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                ("scout_timestamp", datetime.now().isoformat()))
+    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                ("project_root", str(project_root)))
+    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                ("file_count", str(len(file_infos))))
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS behavioral_contracts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -628,67 +669,6 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
             FOREIGN KEY (file_path) REFERENCES files(path)
         )
     """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS imports (
-            importer_path TEXT,
-            imported_module TEXT,
-            import_type TEXT,
-            line_number INTEGER,
-            FOREIGN KEY (importer_path) REFERENCES files(path) ON DELETE CASCADE
-        )
-    """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_importer ON imports(importer_path)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_imported ON imports(imported_module)")
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS test_patterns (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_file TEXT,
-            pattern_type TEXT,
-            pattern_data TEXT,
-            extracted_from TEXT,
-            FOREIGN KEY (source_file) REFERENCES files(path)
-        )
-    """)
-
-    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                ("scout_timestamp", datetime.now().isoformat()))
-    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                ("project_root", str(project_root)))
-    cur.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                ("file_count", str(len(file_infos))))
-
-    for i, py_file in enumerate(py_files):
-        if verbose and (i % 50 == 0):
-            print(f"   Processing file {i+1}/{len(py_files)}...")
-        file_info = analyze_file_for_scout(py_file, project_root, ignore_dirs)
-        if not file_info:
-            continue
-        module_name = py_file.stem
-        file_info['imported_by'] = import_map.get(module_name, [])
-        file_infos.append(file_info)
-
-        for cls in file_info.get('classes', []):
-            for word in split_identifier(cls['name']):
-                vocabulary[word].append(file_info['path'])
-        for func in file_info.get('functions', []):
-            for word in split_identifier(func['name']):
-                vocabulary[word].append(file_info['path'])
-
-    print(f"   Analyzed {len(file_infos)} files.")
-
-    # Function to find corresponding test
-    def find_corresponding_test(source_path: str, project_root: Path) -> Optional[str]:
-        source_file = Path(source_path)
-        test_dir = project_root / 'tests'
-        test_file = test_dir / f"test_{source_file.stem}.py"
-        if test_file.exists():
-            return str(test_file.relative_to(project_root))
-        for subdir in test_dir.iterdir():
-            if subdir.is_dir():
-                nested_test = subdir / f"test_{source_file.stem}.py"
-                if nested_test.exists():
-                    return str(nested_test.relative_to(project_root))
-        return None
 
     for file_info in file_infos:
         file_info_copy = file_info.copy()
@@ -725,31 +705,6 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
                 json.dumps(contract['testable_behaviors']),
                 contract['complexity_score']
             ))
-
-        # Insert imports from the AST analysis
-        def extract_imports_from_ast(file_path: str, tree: ast.AST) -> List[Tuple[str, str, int]]:
-            imports = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        imports.append((alias.name.split('.')[0], 'import', node.lineno))
-                elif isinstance(node, ast.ImportFrom):
-                    if node.module:
-                        module_base = node.module.split('.')[0]
-                        imports.append((module_base, 'from', node.lineno))
-            return imports
-
-        try:
-            with open(py_file, 'r', encoding='utf-8', errors='ignore') as f:
-                source = f.read()
-            tree = ast.parse(source)
-            for (imp_mod, imp_type, lineno) in extract_imports_from_ast(file_info['path'], tree):
-                cur.execute(
-                    "INSERT INTO imports (importer_path, imported_module, import_type, line_number) VALUES (?, ?, ?, ?)",
-                    (file_info['path'], imp_mod, imp_type, lineno)
-                )
-        except Exception:
-            pass
 
     for word, paths in vocabulary.items():
         for path in set(paths):
@@ -1900,7 +1855,7 @@ def consult_mode(intent: str, db_path: Path, project_root: Optional[Path] = None
             "max_files": max_files,
             "target": target,
             "context": context_text,
-            "ai_response": response, #TODO is this right? previously response_text
+            "ai_response": response_text,
             "model": "user-specified" if target != 'auto' else "auto-routed"
         }
         with open(session_file, 'w', encoding='utf-8') as f:
@@ -2059,7 +2014,6 @@ def generate_test(intent: str, db_path: Path, categories_path: Optional[str] = N
 {context_text}
 ```
 
-
 Output **only** the Python code, no explanations, no markdown.
 """
     if not output_file:
@@ -2110,8 +2064,8 @@ Output **only** the Python code, no explanations, no markdown.
     # Normalize and clean the initial response
     response = normalize_unicode(response)
     response = clean_ai_response(response)
-
-
+    #response = fix_syntax_heuristics(response)
+    #response = auto_fix_braces(response)
 
     # Retry loop: if syntax invalid, ask AI to fix it (max 2 attempts)
     max_attempts = 2
@@ -2142,14 +2096,13 @@ Context around line {error_line}:
 ```python
 {context_snippet}
 ```
-Here is the COMPLETE test code with the error:
 
+Here is the COMPLETE test code with the error:
 ```python
 {response}
 ```
 
-
-
+ 
 
 Common fixes:
 - Missing closing parenthesis: add ) at end of line {error_line}
@@ -2157,22 +2110,14 @@ Common fixes:
 - Unclosed string: check quotes on line {error_line}
 - Unexpected EOF: add missing closing braces/parentheses at the very end
 Specific fix hints for this error type:
-- If "cannot assign to attribute here": Check for obj.attr = value inside function calls, list comprehensions, or generator expressions. Move the assignment outside.
-- If "invalid syntax" on line with =: Check if it's == (comparison) vs = (assignment) confusion.
-- If line starts with .: It's a continuation line that lost its parent statement.
-- If "Maybe you meant '==' or ':=' instead of '='":
-  * You wrote if x = value: or while x = value:
-  * Change to if x == value: for comparison
-  * Only use := (walrus) if you really need assignment + evaluation
-  * Example fix: if user = None: → if user == None:
-
-
-
-
-
-
-
-
+- If "cannot assign to attribute here": Check for `obj.attr = value` inside function calls, list comprehensions, or generator expressions. Move the assignment outside.
+- If "invalid syntax" on line with `=`: Check if it's `==` (comparison) vs `=` (assignment) confusion.
+- If line starts with `.`: It's a continuation line that lost its parent statement.
+- If "Maybe you meant '==' or ':=' instead of '='": 
+  * You wrote `if x = value:` or `while x = value:` 
+  * Change to `if x == value:` for comparison
+  * Only use `:=` (walrus) if you really need assignment + evaluation
+  * Example fix: `if user = None:` → `if user == None:`
 
 CRITICAL: Fix ONLY the syntax error at line {error_line}.
 Return the COMPLETE corrected Python file. No explanations, no markdown, just code.
@@ -2187,14 +2132,12 @@ Here is the test code:
 {response}
 ```
 
-
 Fix the syntax error and return the COMPLETE corrected Python file. No explanations.
 """
         # Create a new package for correction
         correction_package = mgr.build_package("fix test syntax", target='auto')
         correction_package['formatted'] = correction_prompt
         correction_package['query'] = "Fix test syntax"
-
 
         # Send to AI again
         f_correction = io.StringIO()
@@ -2221,8 +2164,8 @@ Fix the syntax error and return the COMPLETE corrected Python file. No explanati
         # Normalize and clean again
         response = normalize_unicode(response)
         response = clean_ai_response(response)
-
-
+        #response = fix_syntax_heuristics(response)
+        #response = auto_fix_braces(response)
 
     else:
         # Loop finished without break (should not happen because we break on success)
@@ -2279,14 +2222,16 @@ def update_test(test_file: str, diff_range: str, db_path: Path, categories_path:
 
     prompt = f"""You are a senior Python test engineer. I have an existing pytest test file and a git diff of recent changes.
 
-Existing test:
+**Existing test:**
 ```python
 {existing_test}
 ```
+
 Git diff (changes that need to be reflected in the test):
 ```
 {diff_text}
 ```
+
 Please update the test to match the new code. Keep the same style, mocking strategy, and assertions. Output only the updated Python code, no explanations.
 """
     import sys
@@ -2329,100 +2274,9 @@ Please update the test to match the new code. Keep the same style, mocking strat
         f.write(response)
     print(f"✅ Test updated: {test_file}")
     return 0
-#----------------------------------------------------------------------
-#PATTERN EXTRACTION
-#----------------------------------------------------------------------
-    def extract_test_patterns(test_path: str, db_path: Path, project_root: Path):
-        """Analyze a test file and store patterns in the database."""
-        import ast
-        from pathlib import Path
-        import json
-        test_path = Path(test_path)
-        if not test_path.exists():
-            print(f"❌ Test file not found: {test_path}")
-            return 1
-
-        # Try to infer source file: if test is tests/test_foo.py, source is foo.py
-        # More sophisticated: look for import of a module after sys.modules patches
-        source_guess = None
-        if test_path.stem.startswith('test_'):
-            source_guess = test_path.stem[5:] + '.py'
-            # could be in world/, engine/, etc. We'll need to search or rely on DB.
-            # For now, we'll store with source_file = None.
-        with open(test_path, 'r', encoding='utf-8') as f:
-            source = f.read()
-        tree = ast.parse(source)
-        patterns = {
-            'pre_import_mocks': [],
-            'fixtures': [],
-            'test_methods': [],
-        }
-
-        # Find module-level statements that modify sys.modules
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                # Looking for sys.modules['...'] = ...
-                if (isinstance(node.targets[0], ast.Subscript) and
-                    isinstance(node.targets[0].value, ast.Name) and
-                    node.targets[0].value.id == 'sys' and
-                    isinstance(node.targets[0].slice, ast.Constant) and
-                    node.targets[0].slice.value == 'modules'):
-                    # This is a sys.modules patch
-                    # The subscript's value is the module name, e.g., 'dnd_character'
-                    if isinstance(node.targets[0].slice, ast.Constant):
-                        mod_name = node.targets[0].slice.value
-                        patterns['pre_import_mocks'].append(mod_name)
-
-        # Find fixtures
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and any(
-                isinstance(d, ast.Name) and d.id == 'pytest' for d in node.decorator_list
-            ):
-                # It's a pytest fixture
-                fixture = {
-                    'name': node.name,
-                    'returns': None,
-                    'dependencies': [arg.arg for arg in node.args.args if arg.arg != 'self']
-                }
-                patterns['fixtures'].append(fixture)
-
-            # Find test methods
-            if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
-                test_method = {
-                    'name': node.name,
-                    'docstring': ast.get_docstring(node),
-                    'fixtures_used': [arg.arg for arg in node.args.args if arg.arg != 'self'],
-                }
-                patterns['test_methods'].append(test_method)
-
-        # Store patterns in DB
-        conn = sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-
-        # For each pattern type, insert a row
-        for mock_mod in patterns['pre_import_mocks']:
-            cur.execute(
-                "INSERT INTO test_patterns (source_file, pattern_type, pattern_data, extracted_from) VALUES (?, ?, ?, ?)",
-                (source_guess, 'pre_import_mock', json.dumps({'module': mock_mod}), str(test_path))
-            )
-        for fix in patterns['fixtures']:
-            cur.execute(
-                "INSERT INTO test_patterns (source_file, pattern_type, pattern_data, extracted_from) VALUES (?, ?, ?, ?)",
-                (source_guess, 'fixture', json.dumps(fix), str(test_path))
-            )
-        for test in patterns['test_methods']:
-            cur.execute(
-                "INSERT INTO test_patterns (source_file, pattern_type, pattern_data, extracted_from) VALUES (?, ?, ?, ?)",
-                (source_guess, 'test_method', json.dumps(test), str(test_path))
-            )
-
-        conn.commit()
-        conn.close()
-        print(f"✅ Extracted patterns from {test_path} into {db_path}")
-        return 0
-#----------------------------------------------------------------------
-#CLI ENTRY POINT
-#----------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# CLI ENTRY POINT
+# ----------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
     description='Architecture Reconnaissance – Scout + Recon + Ask + Context + Consult + Test',
@@ -2432,8 +2286,7 @@ def main():
     ' arch_recon.py --context "movement" --context-level deep\n'
     ' arch_recon.py --consult "session persistence" --target deepseek\n'
     ' arch_recon.py --test "tool_system" --output tests/test_tool_system.py\n'
-    ' arch_recon.py --test-update --test-file tests/test_character_builder.py --diff HEAD~1\n'
-    ' arch_recon.py --extract-patterns tests/test_character_builder.py'
+    ' arch_recon.py --test-update --test-file tests/test_character_builder.py --diff HEAD~1'
     )
     parser.add_argument('intent', nargs='?', help='Natural language intent (required for recon/context/consult/test)')
     parser.add_argument('--scout', action='store_true', help='Run scout (full project scan)')
@@ -2444,10 +2297,9 @@ def main():
     parser.add_argument('--format', '-f', choices=['text', 'json'], default='text', help='Output format (recon/report modes)')
     parser.add_argument('--force', action='store_true', help='Force rescan (with --scout)')
     parser.add_argument('--ignore-dirs', '-i', nargs='+',
-    default=['pycache', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive'],
+    default=['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive'],
     help='Directories to ignore (scout only)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
-
 
     # Report modes
     parser.add_argument('--hot', action='store_true', help='List all hot files')
@@ -2480,11 +2332,6 @@ def main():
     parser.add_argument('--test-file', help='Path to existing test file to update')
     parser.add_argument('--output', '-o', help='Output file path for generated test (default: tests/test_<intent>.py)')
 
-    # Pattern extraction
-    parser.add_argument('--extract-patterns', metavar='TEST_FILE',
-                        help='Extract test patterns from an existing test file and store in DB')
-
-    # Other options
     parser.add_argument('--risk-heatmap', action='store_true', help='Show risk-ranked files')
     parser.add_argument('--min-priority', default='MEDIUM', choices=['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
     parser.add_argument('--include-tools', action='store_true', 
@@ -2494,21 +2341,13 @@ def main():
     parser.add_argument('--no-prompt', action='store_true',
                     help='Skip all interactive prompts (DB rescan and default interactive menu). Use for scripting.')
     parser.add_argument('--extract-template', metavar='TEST_FILE',
-                    help='Extract test patterns from an existing test file and save as template (legacy)')
+                    help='Extract test patterns from an existing test file and save as template')
     parser.add_argument('--test-with-template', action='store_true',
                         help='Use template library for test generation (requires --test)')
     parser.add_argument('--template-dir', default=None,
                         help='Directory where templates are stored (default: tools/analysis/templates)')
 
     args = parser.parse_args()
-
-    # Handle pattern extraction (new)
-    if args.extract_patterns:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
-                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
-                               verbose=args.verbose):
-            return 1
-        return extract_test_patterns(args.extract_patterns, Path(args.db), Path(args.project_root).resolve())
 
     # Scout mode
     if args.scout:
@@ -2523,37 +2362,37 @@ def main():
 
     # Report modes
     if args.hot:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
         return report_hot(args.db, args.limit, args.format)
     if args.mutations:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        return report_mutations(args.db, args.limit, args.format)
+        return report_hot(args.db, args.limit, args.format)
     if args.largest:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        return report_largest(args.db, args.limit, args.format)
+        return report_hot(args.db, args.limit, args.format)
     if args.concepts:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        return report_concepts(args.db, args.limit, args.format)
+        return report_hot(args.db, args.limit, args.format)
     if args.exporters:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        return report_exporters(args.db, args.limit, args.format)
+        return report_hot(args.db, args.limit, args.format)
     if args.summary:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
@@ -2561,12 +2400,10 @@ def main():
 
     # ASK mode
     if args.ask is not None:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        question = args.ask if args.ask else None
-        return ask_mode(args.db, question)
 
     # Context mode
     if args.context:
@@ -2577,10 +2414,11 @@ def main():
             default_cat = Path(args.db).parent / 'discovered_categories.json'
             if default_cat.exists():
                 args.categories = str(default_cat)
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
+            
         return generate_context_package(
             intent=args.intent,
             db_path=Path(args.db),
@@ -2637,7 +2475,7 @@ def main():
         )
 
     if args.risk_heatmap:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
@@ -2684,20 +2522,34 @@ def main():
             verbose=args.verbose
         )
 
-    if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
+    if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=False,
                            project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                            verbose=args.verbose):
         return 1
 
-    # Default: if no intent, and no other action, and not --no-prompt, launch interactive ask mode
-    if not args.intent:
+    # After parsing args, check if any action was requested
+    has_action = (
+        args.scout or args.hot or args.mutations or args.largest or args.concepts or
+        args.exporters or args.summary or args.ask is not None or args.context or
+        args.consult or args.test or args.test_update or args.risk_heatmap or
+        args.extract_template
+    )
+
+    if not has_action:
+        # No explicit command
         if not args.no_prompt:
+            # Default to interactive ask mode
             return ask_mode(args.db, question=None)
         else:
+            # --no-prompt given, just exit
             print("No command specified. Use --help for usage.")
             return 0
 
     # Recon mode (requires intent)
+    if not args.intent:
+        parser.print_help()
+        return 1
+
     if not args.categories:
         default_cat = Path(args.db).parent / 'discovered_categories.json'
         if default_cat.exists():

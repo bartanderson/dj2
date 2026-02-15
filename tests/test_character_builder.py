@@ -1,171 +1,297 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
-# ----------------------------------------------------------------------
-# Mock the Character class BEFORE importing character_builder
-# ----------------------------------------------------------------------
-class MockCharacter:
-    def __init__(self, owner_id=None, name=None, classs=None, level=None, background=None, race=None):
-        self.owner_id = owner_id
-        self.name = name
-        self.classs = classs
-        self.level = level
-        self.background = background
-        self.race = race
-        self.ai_personality = None
-        self.background_story = None
-        self.add_custom_item = Mock()
+# Import the class under test
+from world.character_builder import CharacterBuilder
 
-# ----------------------------------------------------------------------
-# Import the module under test and inject mock
-# ----------------------------------------------------------------------
-from world import character_builder
-character_builder.Character = MockCharacter
-
-# ----------------------------------------------------------------------
-# Mock the CLASSES dict from dnd_character
-# ----------------------------------------------------------------------
-MOCK_CLASSES = {
-    'fighter': Mock(name='FighterClass'),
-    'wizard': Mock(name='WizardClass'),
-    'rogue': Mock(name='RogueClass'),
-    'cleric': Mock(name='ClericClass'),
-    'bard': Mock(name='BardClass'),
-}
-
-# ----------------------------------------------------------------------
-# Fixtures
-# ----------------------------------------------------------------------
 
 @pytest.fixture
 def mock_ai():
-    """Mock the AI system so no real calls are made."""
-    ai = Mock()
-    ai.generate_structured_data.return_value = {
-        "traits": "Brave but reckless",
-        "ideals": "Freedom for all",
-        "bonds": "I owe a life debt",
-        "flaws": "I trust too easily"
-    }
-    ai.generate_text.return_value = (
-        "Thorin was born in the Iron Hills, son of a legendary smith. "
-        "He took up the axe after his clan was scattered by orc raiders. "
-        "His starting equipment is a family heirloom axe and a shield bearing his clan's crest."
-    )
-    return ai
+    """Fixture providing a mocked DungeonAI instance."""
+    return Mock()
+
 
 @pytest.fixture
-def builder(mock_ai):
-    """Create a CharacterBuilder with mocked dependencies."""
-    with patch('world.character_builder.CLASSES', MOCK_CLASSES):
-        instance = character_builder.CharacterBuilder(mock_ai)
-        yield instance
+def mock_character_class():
+    """Fixture providing a mocked Character class with call tracking."""
+    mock = Mock()
+    # Create a mock instance that tracks method calls
+    mock_instance = Mock()
+    mock.return_value = mock_instance
+    return mock, mock_instance
 
-# ----------------------------------------------------------------------
-# Tests
-# ----------------------------------------------------------------------
 
-def test_create_character_calls_ai_and_builds_character(builder, mock_ai):
-    """Test that create_character() uses AI and returns a properly built Character."""
-    char_data = {
-        "name": "Thorin",
-        "race": "Dwarf",
-        "class": "fighter",
-        "background": "Soldier",
-        "personal_item": {
-            "name": "Axe of Ancestors",
-            "description": "A finely crafted dwarven axe passed down through generations."
+@pytest.fixture
+def mock_classes():
+    """Fixture providing mocked CLASSES dictionary."""
+    return {
+        "warrior": Mock(),
+        "mage": Mock(),
+        "rogue": Mock()
+    }
+
+
+@pytest.fixture
+def character_builder(mock_ai):
+    """Fixture providing a CharacterBuilder instance with mocked AI."""
+    return CharacterBuilder(ai_system=mock_ai)
+
+
+class TestCharacterBuilder:
+    """Test suite for CharacterBuilder class."""
+
+    def test_create_character_success(self, character_builder, mock_ai, mock_character_class, mock_classes):
+        """Test successful character creation with all AI enhancements applied.
+        
+        Arrange: Mock CLASSES, Character, and AI responses
+        Act: Call create_character with complete char_data
+        Assert: Character instantiated correctly, AI methods called, custom item added
+        """
+        # Arrange
+        mock_char_cls, mock_instance = mock_character_class
+        
+        char_data = {
+            "name": "Test Hero",
+            "race": "Human",
+            "class": "warrior",
+            "background": "Soldier",
+            "personal_item": {
+                "name": "Family Sword",
+                "description": "An old but reliable blade"
+            }
         }
-    }
-    owner_id = "player123"
+        owner_id = "user_123"
+        
+        mock_classes["warrior"] = Mock()
+        mock_ai.generate_structured_data.return_value = {
+            "traits": "Brave",
+            "ideals": "Honor",
+            "bonds": "Family",
+            "flaws": "Stubborn"
+        }
+        mock_ai.generate_text.return_value = "Background story text"
+        
+        # Act
+        with patch("world.character_builder.CLASSES", mock_classes):
+            with patch("world.character_builder.Character", mock_char_cls):
+                result = character_builder.create_character(owner_id, char_data)
+        
+        # Assert
+        assert result == mock_instance
+        mock_char_cls.assert_called_once_with(
+            owner_id=owner_id,
+            name="Test Hero",
+            classs=mock_classes["warrior"],
+            level=1,
+            background="Background story text",
+            race="Human"
+        )
+        assert mock_instance.ai_personality == {
+            "traits": "Brave",
+            "ideals": "Honor",
+            "bonds": "Family",
+            "flaws": "Stubborn"
+        }
+        assert mock_instance.background_story == "Background story text"
+        mock_instance.add_custom_item.assert_called_once_with(
+            "Family Sword",
+            "An old but reliable blade"
+        )
 
-    character = builder.create_character(owner_id, char_data)
+    def test_create_character_without_personal_item(self, character_builder, mock_ai, mock_character_class, mock_classes):
+        """Test character creation without a personal item.
+        
+        Arrange: Mock dependencies, provide char_data without personal_item
+        Act: Call create_character
+        Assert: Character created, add_custom_item not called
+        """
+        # Arrange
+        mock_char_cls, mock_instance = mock_character_class
+        
+        char_data = {
+            "name": "Minimal Hero",
+            "race": "Elf",
+            "class": "mage",
+            "background": "Sage"
+        }
+        owner_id = "user_456"
+        
+        mock_classes["mage"] = Mock()
+        mock_ai.generate_structured_data.return_value = {}
+        mock_ai.generate_text.return_value = "Story"
+        
+        # Act
+        with patch("world.character_builder.CLASSES", mock_classes):
+            with patch("world.character_builder.Character", mock_char_cls):
+                result = character_builder.create_character(owner_id, char_data)
+        
+        # Assert
+        assert result == mock_instance
+        mock_instance.add_custom_item.assert_not_called()
 
-    assert mock_ai.generate_structured_data.called
-    assert mock_ai.generate_text.called
+    def test_create_character_class_case_insensitive(self, character_builder, mock_ai, mock_character_class, mock_classes):
+        """Test that class lookup is case-insensitive.
+        
+        Arrange: Mock CLASSES with lowercase key, provide uppercase class name
+        Act: Call create_character with uppercase class name
+        Assert: Correct class retrieved from CLASSES
+        """
+        # Arrange
+        mock_char_cls, mock_instance = mock_character_class
+        
+        char_data = {
+            "name": "Case Test",
+            "race": "Dwarf",
+            "class": "WARRIOR",  # Uppercase
+            "background": "Knight"
+        }
+        owner_id = "user_789"
+        
+        mock_warrior_class = Mock()
+        mock_classes["warrior"] = mock_warrior_class
+        mock_ai.generate_structured_data.return_value = {}
+        mock_ai.generate_text.return_value = "Story"
+        
+        # Act
+        with patch("world.character_builder.CLASSES", mock_classes):
+            with patch("world.character_builder.Character", mock_char_cls):
+                result = character_builder.create_character(owner_id, char_data)
+        
+        # Assert
+        mock_char_cls.assert_called_once()
+        call_kwargs = mock_char_cls.call_args[1]
+        assert call_kwargs["classs"] == mock_warrior_class
 
-    personality_prompt = mock_ai.generate_structured_data.call_args[0][0]
-    assert "Dwarf" in personality_prompt
-    assert "fighter" in personality_prompt
-    assert "Soldier" in personality_prompt
+    def test_generate_personality(self, character_builder, mock_ai):
+        """Test AI personality generation with correct prompt and schema.
+        
+        Arrange: Set up mock AI response
+        Act: Call _generate_personality
+        Assert: AI called with correct prompt and schema, result returned
+        """
+        # Arrange
+        char_data = {
+            "race": "Halfling",
+            "class": "rogue",
+            "background": "Criminal"
+        }
+        expected_response = {
+            "traits": "Sneaky",
+            "ideals": "Freedom",
+            "bonds": "Thieves' Guild",
+            "flaws": "Greedy"
+        }
+        mock_ai.generate_structured_data.return_value = expected_response
+        
+        # Act
+        result = character_builder._generate_personality(char_data)
+        
+        # Assert
+        assert result == expected_response
+        mock_ai.generate_structured_data.assert_called_once()
+        call_args = mock_ai.generate_structured_data.call_args[0]
+        assert "Halfling" in call_args[0]
+        assert "rogue" in call_args[0]
+        assert "Criminal" in call_args[0]
+        assert call_args[1] == {
+            "traits": "string",
+            "ideals": "string",
+            "bonds": "string",
+            "flaws": "string"
+        }
 
-    bg_prompt = mock_ai.generate_text.call_args[0][0]
-    assert "Thorin" in bg_prompt
-    assert "Dwarf" in bg_prompt
-    assert "fighter" in bg_prompt
-    assert "Soldier" in bg_prompt
+    def test_generate_background_story(self, character_builder, mock_ai):
+        """Test background story generation with correct prompt.
+        
+        Arrange: Set up mock AI text response
+        Act: Call _generate_background_story
+        Assert: AI called with correct prompt, result returned
+        """
+        # Arrange
+        char_data = {
+            "name": "Aria",
+            "race": "Elf",
+            "class": "mage",
+            "background": "Hermit"
+        }
+        expected_story = "Aria grew up in isolation..."
+        mock_ai.generate_text.return_value = expected_story
+        
+        # Act
+        result = character_builder._generate_background_story(char_data)
+        
+        # Assert
+        assert result == expected_story
+        mock_ai.generate_text.assert_called_once()
+        call_prompt = mock_ai.generate_text.call_args[0][0]
+        assert "Aria" in call_prompt
+        assert "Elf" in call_prompt
+        assert "mage" in call_prompt
+        assert "Hermit" in call_prompt
 
-    assert character.owner_id == "player123"
-    assert character.name == "Thorin"
-    assert character.race == "Dwarf"
-    assert character.classs == MOCK_CLASSES['fighter']
-    assert character.level == 1
-    assert character.background == mock_ai.generate_text.return_value
-    assert character.background_story == mock_ai.generate_text.return_value
-    assert character.ai_personality == mock_ai.generate_structured_data.return_value
+    def test_generate_personal_item(self, character_builder, mock_ai):
+        """Test personalized item generation with correct prompt and schema.
+        
+        Arrange: Set up mock AI response
+        Act: Call generate_personal_item
+        Assert: AI called with correct prompt and schema, result returned
+        """
+        # Arrange
+        char_concept = "mysterious warlock"
+        expected_item = {
+            "name": "Shadow Tome",
+            "description": "A dark book",
+            "special_significance": "Family heirloom"
+        }
+        mock_ai.generate_structured_data.return_value = expected_item
+        
+        # Act
+        result = character_builder.generate_personal_item(char_concept)
+        
+        # Assert
+        assert result == expected_item
+        mock_ai.generate_structured_data.assert_called_once()
+        call_args = mock_ai.generate_structured_data.call_args[0]
+        assert "mysterious warlock" in call_args[0]
+        assert call_args[1] == {
+            "name": "string",
+            "description": "string",
+            "special_significance": "string"
+        }
 
-    character.add_custom_item.assert_called_once_with(
-        "Axe of Ancestors",
-        "A finely crafted dwarven axe passed down through generations."
-    )
+    def test_get_equipment_suggestions(self, character_builder, mock_ai):
+        """Test equipment suggestions with text splitting.
+        
+        Arrange: Set up mock AI response with newline-separated items
+        Act: Call get_equipment_suggestions
+        Assert: AI called with correct prompt, result split into list
+        """
+        # Arrange
+        char_concept = "stealthy archer"
+        ai_response = "- Longbow with darkwood finish\n- Smoke bombs for quick escapes"
+        mock_ai.generate_text.return_value = ai_response
+        
+        # Act
+        result = character_builder.get_equipment_suggestions(char_concept)
+        
+        # Assert
+        assert result == ["- Longbow with darkwood finish", "- Smoke bombs for quick escapes"]
+        mock_ai.generate_text.assert_called_once()
+        call_prompt = mock_ai.generate_text.call_args[0][0]
+        assert "stealthy archer" in call_prompt
 
-def test_create_character_without_personal_item(builder, mock_ai):
-    """Test that no personal item is added when not provided."""
-    char_data = {
-        "name": "Eldrin",
-        "race": "Elf",
-        "class": "wizard",
-        "background": "Sage"
-    }
-    owner_id = "player456"
-
-    character = builder.create_character(owner_id, char_data)
-    character.add_custom_item.assert_not_called()
-
-def test_generate_personality_tool(builder, mock_ai):
-    """Direct test of the _generate_personality tool method."""
-    char_data = {
-        "race": "Halfling",
-        "class": "rogue",
-        "background": "Criminal"
-    }
-    result = builder._generate_personality(char_data)
-    assert result == mock_ai.generate_structured_data.return_value
-    mock_ai.generate_structured_data.assert_called_once()
-
-def test_generate_background_story_tool(builder, mock_ai):
-    """Direct test of the _generate_background_story tool method."""
-    char_data = {
-        "name": "Balin",
-        "race": "Dwarf",
-        "class": "cleric",
-        "background": "Acolyte"
-    }
-    result = builder._generate_background_story(char_data)
-    assert result == mock_ai.generate_text.return_value
-    mock_ai.generate_text.assert_called_once()
-
-def test_generate_personal_item_tool(builder, mock_ai):
-    """Test the generate_personal_item tool."""
-    mock_ai.generate_structured_data.return_value = {
-        "name": "Harmonica of Whimsy",
-        "description": "A magical harmonica that plays tunes that lift spirits or confuse enemies.",
-        "special_significance": "Once owned by a legendary bard"
-    }
-    result = builder.generate_personal_item("a musical rogue")
-    assert result == mock_ai.generate_structured_data.return_value
-    mock_ai.generate_structured_data.assert_called_once()
-    prompt = mock_ai.generate_structured_data.call_args[0][0]
-    assert "a musical rogue" in prompt
-
-def test_get_equipment_suggestions_tool(builder, mock_ai):
-    """Test the get_equipment_suggestions tool."""
-    mock_ai.generate_text.return_value = "- Standard: Leather armor, shortsword\n- Unconventional: Flask of Alchemist's Fire"
-    result = builder.get_equipment_suggestions("a sneaky rogue")
-    assert result == ["- Standard: Leather armor, shortsword", "- Unconventional: Flask of Alchemist's Fire"]
-    mock_ai.generate_text.assert_called_once()
-    prompt = mock_ai.generate_text.call_args[0][0]
-    assert "a sneaky rogue" in prompt
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    def test_get_equipment_suggestions_empty_response(self, character_builder, mock_ai):
+        """Test equipment suggestions with empty AI response.
+        
+        Arrange: Set up mock AI to return empty string
+        Act: Call get_equipment_suggestions
+        Assert: Result is list with empty string
+        """
+        # Arrange
+        mock_ai.generate_text.return_value = ""
+        
+        # Act
+        result = character_builder.get_equipment_suggestions("any concept")
+        
+        # Assert
+        assert result == [""]

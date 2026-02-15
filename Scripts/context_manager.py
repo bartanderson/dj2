@@ -451,15 +451,20 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
             # =========================================
 
             if response:
-                suffix = "_partial" if not response else ""
-                response_file = self.session_dir / f"deepseek_response{suffix}.txt"
-                response_file.write_text(self.clean_ascii(response), encoding='utf-8')
-                print(f"[SAVE] Response: {response_file} ({len(response)} chars)")
-                self._vlog(f"Response saved: {len(response)} chars to {response_file.name}")
+                # Write to fixed name (overwrites previous) – always show
+                fixed_file = self.session_dir / "deepseek_response.txt"
+                fixed_file.write_text(self.clean_ascii(response), encoding='utf-8')
+                print(f"[SAVE] Fixed response: {fixed_file}")
+
+                # Also write a timestamped copy – show only in verbose mode
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                timestamped_file = self.session_dir / f"deepseek_response_{timestamp}.txt"
+                timestamped_file.write_text(self.clean_ascii(response), encoding='utf-8')
+                self._vlog(f"Archived response: {timestamped_file}")
+
+                return response, timestamped_file
             else:
-                response = "[Capture failed - check browser]"
-                print("[WARNING] Could not capture response")
-                self._vlog("Response capture returned None")
+                return None, None
 
             if keep_open:
                 print("\n[BROWSER LEFT OPEN]")
@@ -486,39 +491,21 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
         self._vlog(f"Saved context ({len(context)} chars) to {filepath}")
         return filepath
 
-    def send(self, package: dict, target: str = "auto", keep_open: bool = False) -> bool:
-        """
-        Send package to AI - routes to Ollama or DeepSeek based on context size.
-        
-        Args:
-            package: Context package with 'formatted' key
-            target: "auto", "ollama", "deepseek"
-            keep_open: For DeepSeek - leave browser open
-                
-        Returns:
-            True if sent successfully
-        """
+    def send(self, package: dict, target: str = "auto", keep_open: bool = False) -> tuple[bool, Path | None]:
         if target == "auto":
-            # Estimate tokens (rough: 4 chars per token)
             estimated_tokens = len(package['formatted']) // 4
-            
-            # 115000 is 90% of 128K limit for llama3.2:3b
             if estimated_tokens < 115000:
-                print(f"[ROUTING] {estimated_tokens} tokens -> Trying Ollama first...")
-                if self.send_to_ollama(package):
-                    return True
-                print("[ROUTING] Ollama failed, falling back to DeepSeek...")
-            else:
-                print(f"[ROUTING] {estimated_tokens} tokens -> DeepSeek (>115000 limit)")
-            
-            return bool(self.send_to_deepseek(package['formatted'], keep_open))
-            
+                success = self.send_to_ollama(package)
+                return success, None
+            # fallback
+            result, path = self.send_to_deepseek(package['formatted'], keep_open)
+            return result is not None, path
         elif target in ("ollama", "local"):
-            return self.send_to_ollama(package)
-            
+            success = self.send_to_ollama(package)
+            return success, None
         else:  # deepseek
-            result = self.send_to_deepseek(package['formatted'], keep_open)
-            return result is not None
+            result, path = self.send_to_deepseek(package['formatted'], keep_open)
+            return result is not None, path
     
     def send_to_ollama(self, package: dict, max_context_chars: int = 393216) -> bool:
         """

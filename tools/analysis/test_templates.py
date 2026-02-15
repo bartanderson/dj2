@@ -206,7 +206,71 @@ class TestTemplateLibrary:
         
         return best_template if best_score > 0 else None
 
-# Add to tools/analysis/test_templates.py
+    def build_generation_prompt(self, target_file: str, contracts: List[dict], 
+                                template: dict, module_list: str = "") -> str:
+        """Build a prompt for test generation using template patterns."""
+        
+        # Extract key patterns from template
+        imports = '\n'.join(template['patterns']['imports'][:10])
+        fixtures = template['patterns']['fixtures']
+        mock_strategies = template['patterns']['mock_strategies']
+        example = template['example_tests'][0] if template['example_tests'] else None
+        
+        # Build contracts description
+        contracts_desc = []
+        for c in contracts[:5]:  # Top 5 most complex contracts
+            behaviors = ', '.join(c.get('testable_behaviors', []))
+            side_effects = ', '.join(c.get('side_effects', []))
+            contracts_desc.append(f"""
+Function: {c['function']}({', '.join(c['args'])})
+Description: {c['description']}
+Side effects: {side_effects}
+Testable aspects: {behaviors}
+""")
+        
+        prompt = f"""You are a senior Python test engineer. Write a pytest test file for: {target_file}
+
+**REFERENCE TEMPLATE (from similar tested file):**
+Imports used:
+```python
+{imports}
+```
+Fixture pattern:
+```python
+{self._format_fixture(fixtures[0]) if fixtures else '# No fixtures found'}
+```
+Mock strategies in this codebase: {', '.join(mock_strategies)}
+{'Example test from similar file:' if example else ''}
+```python
+{example['source'] if example else ''}
+```
+**Existing top‑level modules in this project:** {module_list}
+TARGET FUNCTIONS TO TEST:
+{chr(10).join(contracts_desc)}
+GENERATION RULES (MUST FOLLOW):
+Only patch modules and attributes that exist in the codebase – use the exact names shown in the behavioral contracts.
+Do not invent new modules, classes, or attributes.
+When using @patch, the mock parameter comes AFTER any fixtures in the test function signature (fixtures first, then patched mocks).
+Never treat a fixture as a real object; fixtures are setup functions that return objects – pytest injects the return value automatically.
+Use the behavioral contracts' function names and file paths to determine correct import paths.
+Include tests for error conditions if 'exception_conditions' is in testable_behaviors.
+DO NOT just test hasattr – test actual behavior (return values, side effects, exceptions).
+Follow the fixture pattern: create dependencies as fixtures with proper mocking.
+Output only the complete Python test file, no explanations, no metadata, no commentary. Start with the imports and end with the last line of code. Do not include lines like "Model: ..." or "Here is the test:".
+- Each test function must follow the Arrange‑Act‑Assert pattern:
+  * Arrange: set up mocks, fixtures, and input data.
+  * Act: call the function being tested and store its return value.
+  * Assert: verify the return value, side effects, and/or mock calls.
+- All variables used in the test must be defined inside the test function (or as fixtures).
+- Never leave a test incomplete – every test must contain at least one assertion and the function call it is testing.
+- Do not include any placeholder comments like "# Act" without actual code.
+"""
+        return prompt
+    
+    def _format_fixture(self, fixture: dict) -> str:
+        """Format a fixture for the prompt."""
+        args_str = ', '.join(fixture['args'])
+        return f"@pytest.fixture\ndef {fixture['name']}({args_str}):\n    # Setup code here\n    return mock_object"
 
 class TestValidator:
     """Validate generated tests against actual codebase structure."""
@@ -336,68 +400,3 @@ class TestValidator:
             return f"Did you mean: {', '.join(suggestions)}?"
         return "No similar functions found in codebase"
     
-    def build_generation_prompt(self, target_file: str, contracts: List[dict], 
-                                template: dict, module_list: str = "") -> str:
-        """Build a prompt for test generation using template patterns."""
-        
-        # Extract key patterns from template
-        imports = '\n'.join(template['patterns']['imports'][:10])
-        fixtures = template['patterns']['fixtures']
-        mock_strategies = template['patterns']['mock_strategies']
-        example = template['example_tests'][0] if template['example_tests'] else None
-        
-        # Build contracts description
-        contracts_desc = []
-        for c in contracts[:5]:  # Top 5 most complex contracts
-            behaviors = ', '.join(c.get('testable_behaviors', []))
-            side_effects = ', '.join(c.get('side_effects', []))
-            contracts_desc.append(f"""
-Function: {c['function']}({', '.join(c['args'])})
-Description: {c['description']}
-Side effects: {side_effects}
-Testable aspects: {behaviors}
-""")
-        
-        prompt = f"""You are a senior Python test engineer. Write a pytest test file for: {target_file}
-
-**REFERENCE TEMPLATE (from similar tested file):**
-Imports used:
-```python
-{imports}
-```
-Fixture pattern:
-```python
-{self._format_fixture(fixtures[0]) if fixtures else '# No fixtures found'}
-```
-Mock strategies in this codebase: {', '.join(mock_strategies)}
-{'Example test from similar file:' if example else ''}
-```python
-{example['source'] if example else ''}
-```
-**Existing top‑level modules in this project:** {module_list}
-TARGET FUNCTIONS TO TEST:
-{chr(10).join(contracts_desc)}
-GENERATION RULES (MUST FOLLOW):
-Only patch modules and attributes that exist in the codebase – use the exact names shown in the behavioral contracts.
-Do not invent new modules, classes, or attributes.
-When using @patch, the mock parameter comes AFTER any fixtures in the test function signature (fixtures first, then patched mocks).
-Never treat a fixture as a real object; fixtures are setup functions that return objects – pytest injects the return value automatically.
-Use the behavioral contracts' function names and file paths to determine correct import paths.
-Include tests for error conditions if 'exception_conditions' is in testable_behaviors.
-DO NOT just test hasattr – test actual behavior (return values, side effects, exceptions).
-Follow the fixture pattern: create dependencies as fixtures with proper mocking.
-Output only the complete Python test file, no explanations, no metadata, no commentary. Start with the imports and end with the last line of code. Do not include lines like "Model: ..." or "Here is the test:".
-- Each test function must follow the Arrange‑Act‑Assert pattern:
-  * Arrange: set up mocks, fixtures, and input data.
-  * Act: call the function being tested and store its return value.
-  * Assert: verify the return value, side effects, and/or mock calls.
-- All variables used in the test must be defined inside the test function (or as fixtures).
-- Never leave a test incomplete – every test must contain at least one assertion and the function call it is testing.
-- Do not include any placeholder comments like "# Act" without actual code.
-"""
-        return prompt
-    
-    def _format_fixture(self, fixture: dict) -> str:
-        """Format a fixture for the prompt."""
-        args_str = ', '.join(fixture['args'])
-        return f"@pytest.fixture\ndef {fixture['name']}({args_str}):\n    # Setup code here\n    return mock_object"
