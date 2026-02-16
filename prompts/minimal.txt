@@ -1,0 +1,8 @@
+You have access to the following tool:
+- find_target_file(intent): Find the primary file for a given intent.
+
+To use the tool, output exactly:
+TOOL_CALL: find_target_file(value)
+where value is the intent string.
+
+You will receive the result as "TOOL_RESULT: ...". Then output the result as your final answer.

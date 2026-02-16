@@ -24,11 +24,12 @@ import sqlite3
 import argparse
 import io
 import contextlib
+import numpy as np
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Set, Tuple
 from collections import defaultdict
 from datetime import datetime
-
+sys.path.insert(0, str(Path(__file__).parent)) # Add the directory containing this file to sys.path so we can import embedding_model
 # ----------------------------------------------------------------------
 # Project tool imports – with explicit fallback
 # ----------------------------------------------------------------------
@@ -58,6 +59,25 @@ MUTATING_METHODS = {'update', 'save', 'delete', 'create', 'add', 'remove', 'inse
 STATE_HOLDERS = {'SessionSystem', 'GameEngine', 'WorldState', 'Database', 'Repository'}
 
 MIN_CONCEPT_LENGTH = 3
+
+def generate_file_summary(tree: ast.AST, source: str) -> str:
+    """Generate a text summary of the file for embedding."""
+    parts = []
+    # Module docstring
+    module_doc = ast.get_docstring(tree)
+    if module_doc:
+        parts.append(module_doc)
+    # Walk the tree to collect class/function docstrings and comments
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            doc = ast.get_docstring(node)
+            if doc:
+                parts.append(doc)
+        # We could also extract comments, but that's more complex. Docstrings are usually enough.
+    # Also add all identifiers (split class, function, method names)
+    # We can reuse the identifier splitting from the vocabulary building
+    # But for simplicity, we'll rely on docstrings.
+    return "\n".join(parts)
 
 def normalize_unicode(text: str) -> str:
     """Replace common invisible Unicode characters with ASCII equivalents."""
@@ -529,6 +549,32 @@ def extract_behavioral_contracts(tree: ast.AST, source: str) -> List[dict]:
     
     return contracts
 
+def extract_dict_key_accesses(node):
+    """Extract dictionary key accesses from a function node."""
+    accesses = []
+    for subnode in ast.walk(node):
+        if isinstance(subnode, ast.Subscript):
+            if (isinstance(subnode.slice, ast.Constant) and 
+                isinstance(subnode.slice.value, str) and
+                isinstance(subnode.value, ast.Name)):
+                accesses.append((subnode.value.id, subnode.slice.value))
+    return accesses
+
+def extract_method_params(func_node, class_name=None):
+    """Extract parameters from a FunctionDef node."""
+    params = []
+    for i, arg in enumerate(func_node.args.args):
+        if arg.arg not in ('self', 'cls'):
+            params.append((arg.arg, i))
+    return params
+
+def extract_constructor_params(class_node):
+    """Find __init__ in a class and extract its parameters."""
+    for node in ast.walk(class_node):
+        if isinstance(node, ast.FunctionDef) and node.name == '__init__':
+            return extract_method_params(node)
+    return []
+
 def calculate_complexity(node: ast.FunctionDef) -> int:
     """Simple cyclomatic complexity approximation."""
     complexity = 1
@@ -577,6 +623,7 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
         cur.execute("DROP TABLE IF EXISTS behavioral_contracts")
         cur.execute("DROP TABLE IF EXISTS imports")
         cur.execute("DROP TABLE IF EXISTS test_patterns")
+        cur.execute("DROP TABLE IF EXISTS file_embeddings")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
@@ -637,6 +684,44 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
             FOREIGN KEY (importer_path) REFERENCES files(path) ON DELETE CASCADE
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS method_params (
+            file_path TEXT,
+            class_name TEXT,           -- NULL for top-level functions
+            method_name TEXT,
+            param_name TEXT,
+            param_position INTEGER,
+            FOREIGN KEY (file_path) REFERENCES files(path) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dict_key_access (
+            file_path TEXT,
+            function_name TEXT,
+            dict_var TEXT,
+            key TEXT,
+            FOREIGN KEY (file_path) REFERENCES files(path) ON DELETE CASCADE
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS class_constructors (
+            file_path TEXT,
+            class_name TEXT,
+            param_name TEXT,
+            param_position INTEGER,
+            FOREIGN KEY (file_path) REFERENCES files(path) ON DELETE CASCADE
+        )
+    """)
+    # Optional: store literal dicts if we find assignments to known constants
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS dict_literals (
+            file_path TEXT,
+            dict_name TEXT,
+            key TEXT,
+            value_type TEXT,   -- e.g., 'str', 'class'
+            FOREIGN KEY (file_path) REFERENCES files(path) ON DELETE CASCADE
+        )
+    """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_importer ON imports(importer_path)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_imported ON imports(imported_module)")
     cur.execute("""
@@ -647,6 +732,13 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
             pattern_data TEXT,
             extracted_from TEXT,
             FOREIGN KEY (source_file) REFERENCES files(path)
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS file_embeddings (
+            file_path TEXT PRIMARY KEY,
+            embedding BLOB NOT NULL,
+            FOREIGN KEY (file_path) REFERENCES files(path) ON DELETE CASCADE
         )
     """)
 
@@ -661,11 +753,121 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
         if verbose and (i % 50 == 0):
             print(f"   Processing file {i+1}/{len(py_files)}...")
         file_info = analyze_file_for_scout(py_file, project_root, ignore_dirs)
+        # --- BEGIN INSERTION: Extract detailed API information ---
+        if file_info:
+            try:
+                insert_count_dict = 0
+                insert_count_params = 0
+                insert_count_constructors = 0
+                with open(py_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    source = f.read()
+                tree = ast.parse(source)
+                # For each function, record dict key accesses and parameters
+                for func_node in ast.walk(tree):
+                    if isinstance(func_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        print(f"   [EXTRACT] Found function: {func_node.name}", file=sys.stderr)
+                        # Determine if it's a method (enclosed in class)
+                        in_class = False
+                        for parent in ast.walk(tree):
+                            if parent != func_node and isinstance(parent, ast.ClassDef):
+                                for child in ast.walk(parent):
+                                    if child is func_node:
+                                        in_class = True
+                                        break
+                                if in_class:
+                                    break
+                        # Record dict key accesses
+                        for dict_var, key in extract_dict_key_accesses(func_node):
+                            print(f"      [EXTRACT] dict access: {dict_var}['{key}']", file=sys.stderr)
+                            cur.execute(
+                                "INSERT INTO dict_key_access (file_path, function_name, dict_var, key) VALUES (?, ?, ?, ?)",
+                                (file_info['path'], func_node.name, dict_var, key)
+                            )
+                            insert_count_dict += 1
+                        # Record method parameters (top-level only here; class methods handled later)
+                        if not in_class:
+                            for param_name, pos in extract_method_params(func_node):
+                                print(f"      [EXTRACT] param: {param_name} (pos {pos})", file=sys.stderr)
+                                cur.execute(
+                                    "INSERT INTO method_params (file_path, class_name, method_name, param_name, param_position) VALUES (?, ?, ?, ?, ?)",
+                                    (file_info['path'], None, func_node.name, param_name, pos)
+                                )
+                                insert_count_params += 1
+                # For each class, record __init__ parameters and method parameters
+                for cls in file_info.get('classes', []):
+                    cls_name = cls['name']
+                    # Find the class node in the tree
+                    class_node = None
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.ClassDef) and node.name == cls_name:
+                            class_node = node
+                            break
+                    if class_node:
+                        # __init__ parameters
+                        for param_name, pos in extract_constructor_params(class_node):
+                            cur.execute(
+                                "INSERT INTO class_constructors (file_path, class_name, param_name, param_position) VALUES (?, ?, ?, ?)",
+                                (file_info['path'], cls_name, param_name, pos)
+                            )
+                            insert_count_params += 1
+                        # All other methods in the class
+                        for method_node in class_node.body:
+                            if isinstance(method_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                                method_name = method_node.name
+                                for param_name, pos in extract_method_params(method_node):
+                                    cur.execute(
+                                        "INSERT INTO method_params (file_path, class_name, method_name, param_name, param_position) VALUES (?, ?, ?, ?, ?)",
+                                        (file_info['path'], cls_name, method_name, param_name, pos)
+                                    )
+                                    insert_count_params += 1
+            except Exception as e:
+                if verbose:
+                    print(f"   Warning: could not extract detailed info from {py_file}: {e}")
+
+            if verbose:
+                print(f"   [DEBUG] {py_file.name}: dict_key_access={insert_count_dict}, method_params={insert_count_params}, class_constructors={insert_count_constructors}", file=sys.stderr)
+        
+        # --- END INSERTION ---
         if not file_info:
             continue
         module_name = py_file.stem
         file_info['imported_by'] = import_map.get(module_name, [])
         file_infos.append(file_info)
+
+        # Generate and store embedding
+        try:
+            with open(py_file, 'r', encoding='utf-8', errors='ignore') as f:
+                source = f.read()
+            tree = ast.parse(source)
+            # Generate summary (docstrings + identifiers)
+            summary_parts = []
+            module_doc = ast.get_docstring(tree)
+            if module_doc:
+                summary_parts.append(module_doc)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    doc = ast.get_docstring(node)
+                    if doc:
+                        summary_parts.append(doc)
+            # Add identifiers as a bag of words
+            identifiers = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Name):
+                    identifiers.append(node.id)
+            if identifiers:
+                summary_parts.append(" ".join(identifiers))
+            summary = "\n".join(summary_parts)
+            if summary.strip():
+                from embedding_model import embed_text
+                emb = embed_text(summary)
+                emb_bytes = emb.astype(np.float32).tobytes()
+                cur.execute(
+                    "INSERT OR REPLACE INTO file_embeddings (file_path, embedding) VALUES (?, ?)",
+                    (file_info['path'], emb_bytes)
+                )
+        except Exception as e:
+            if verbose:
+                print(f"   Warning: could not generate embedding for {py_file}: {e}")
 
         for cls in file_info.get('classes', []):
             for word in split_identifier(cls['name']):
@@ -1036,63 +1238,88 @@ def report_risk_heatmap(db_path: str, min_priority: str = "MEDIUM",
 def _get_top_files_for_intent(intent: str, db_path: Path, categories_path: Optional[str] = None,
                               max_files: int = 5, verbose: bool = False) -> List[Tuple[str, int, Dict]]:
     conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    matched_clusters = []
-    cluster_file_scores = defaultdict(int)
+    # Check if embeddings table exists and has data
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_embeddings'")
+    if cur.fetchone():
+        from embedding_model import embed_text, cosine_similarity
+        import numpy as np
+        intent_emb = embed_text(intent)
+        rows = cur.execute("SELECT file_path, embedding FROM file_embeddings").fetchall()
+        scores = []
+        for file_path, emb_bytes in rows:
+            emb = np.frombuffer(emb_bytes, dtype=np.float32)
+            sim = cosine_similarity(intent_emb, emb)
+            scores.append((file_path, sim))
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top_paths = [file_path for file_path, _ in scores[:max_files]]
+        result = []
+        for file_path in top_paths:
+            row = cur.execute("SELECT data FROM files WHERE path = ?", (file_path,)).fetchone()
+            if row:
+                data = json.loads(row[0])
+                # Use similarity as score (multiplied by 100 for compatibility)
+                data['relevance_score'] = int(scores[top_paths.index(file_path)][1] * 100)
+                result.append((file_path, scores[top_paths.index(file_path)][1], data))
+        conn.close()
+        return result
+    else:
+        # Fallback to old keyword scoring (keep your existing code here)
+        matched_clusters = []
+        cluster_file_scores = defaultdict(int)
 
-    if categories_path and Path(categories_path).exists():
-        if _HAS_CONTEXT_ASSEMBLER:
-            try:
-                parser = IntentParser(categories_path)
-                parsed = parser.parse(intent)
-                matched_clusters = [c['name'] for c in parsed.get('matched_clusters', [])]
-                for cluster_name in matched_clusters:
-                    row = cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,)).fetchone()
-                    if row:
-                        files = json.loads(row[0])
-                        for f in files:
-                            cluster_file_scores[f] += 2
+        if categories_path and Path(categories_path).exists():
+            if _HAS_CONTEXT_ASSEMBLER:
+                try:
+                    parser = IntentParser(categories_path)
+                    parsed = parser.parse(intent)
+                    matched_clusters = [c['name'] for c in parsed.get('matched_clusters', [])]
+                    for cluster_name in matched_clusters:
+                        row = cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,)).fetchone()
+                        if row:
+                            files = json.loads(row[0])
+                            for f in files:
+                                cluster_file_scores[f] += 2
+                    if verbose:
+                        print(f"   Matched clusters: {', '.join(matched_clusters)}", file=sys.stderr)
+                except Exception as e:
+                    if verbose:
+                        print(f"   Cluster matching failed: {e}", file=sys.stderr)
+            else:
                 if verbose:
-                    print(f"   Matched clusters: {', '.join(matched_clusters)}", file=sys.stderr)
-            except Exception as e:
-                if verbose:
-                    print(f"   Cluster matching failed: {e}", file=sys.stderr)
+                    print("   context_assembler not available, skipping cluster matching.", file=sys.stderr)
         else:
             if verbose:
-                print("   context_assembler not available, skipping cluster matching.", file=sys.stderr)
-    else:
-        if verbose:
-            print("   No categories file, using pure vocabulary matching.", file=sys.stderr)
+                print("   No categories file, using pure vocabulary matching.", file=sys.stderr)
 
-    intent_words = [w for w in intent.lower().split() if len(w) >= MIN_CONCEPT_LENGTH]
-    concept_scores = defaultdict(int)
-    for word in intent_words:
-        rows = cur.execute("SELECT file_path FROM concepts WHERE concept = ?", (word,)).fetchall()
-        for row in rows:
-            concept_scores[row[0]] += 1
+        intent_words = [w for w in intent.lower().split() if len(w) >= MIN_CONCEPT_LENGTH]
+        concept_scores = defaultdict(int)
+        for word in intent_words:
+            rows = cur.execute("SELECT file_path FROM concepts WHERE concept = ?", (word,)).fetchall()
+            for row in rows:
+                concept_scores[row[0]] += 1
 
-    combined_scores = defaultdict(int)
-    for f, score in cluster_file_scores.items():
-        combined_scores[f] += score
-    for f, score in concept_scores.items():
-        combined_scores[f] += score
+        combined_scores = defaultdict(int)
+        for f, score in cluster_file_scores.items():
+            combined_scores[f] += score
+        for f, score in concept_scores.items():
+            combined_scores[f] += score
 
-    if not combined_scores:
+        if not combined_scores:
+            conn.close()
+            return []
+
+        top_files = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[:max_files]
+        result = []
+        for file_path, score in top_files:
+            row = cur.execute("SELECT data FROM files WHERE path = ?", (file_path,)).fetchone()
+            if row:
+                file_data = json.loads(row[0])
+                file_data['relevance_score'] = score
+                result.append((file_path, score, file_data))
         conn.close()
-        return []
-
-    top_files = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)[:max_files]
-    result = []
-    for file_path, score in top_files:
-        row = cur.execute("SELECT data FROM files WHERE path = ?", (file_path,)).fetchone()
-        if row:
-            file_data = json.loads(row[0])
-            file_data['relevance_score'] = score
-            result.append((file_path, score, file_data))
-    conn.close()
-    return result
+        return result
 
 # ----------------------------------------------------------------------
 # RECON MODE (intent‑driven report, no truncation)
