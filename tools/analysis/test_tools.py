@@ -2,6 +2,7 @@
 Tools for test generation, to be used with agent.py.
 Exports TOOLS and HANDLERS.
 """
+import os
 import sys
 import json
 import sqlite3
@@ -19,12 +20,16 @@ def make_handlers(db_path, project_root):
     # Define all query functions inside the factory so they capture db_path/project_root
     def get_imports(args):
         file_path = args["file_path"]
+        print(f"DEBUG get_imports: file_path from args = {file_path}", file=sys.stderr)
+        normalized = os.path.normpath(file_path)
+        print(f"DEBUG get_imports: normalized = {normalized}", file=sys.stderr)
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         rows = cur.execute(
             "SELECT DISTINCT imported_module FROM imports WHERE importer_path = ?",
-            (file_path,)
+            (normalized,)
         ).fetchall()
+        print(f"DEBUG get_imports: rows found = {rows}", file=sys.stderr)
         conn.close()
         return json.dumps([r[0] for r in rows])
 
@@ -108,7 +113,7 @@ def make_handlers(db_path, project_root):
             print("DEBUG: Using fallback for 'character'", file=sys.stderr)
             return json.dumps("world/character_builder.py")
         
-        return json.dumps(None)
+        return row[0] if row else None
             
     def read_file(args):
         file_path = args["file_path"]

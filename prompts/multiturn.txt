@@ -9,7 +9,8 @@ Follow this plan:
    - `get_class_constructor_params(class_file=..., class_name=...)`
    - `get_behavioral_contract(file_path=..., function_name=...)`
    - `read_file(file_path=...)`
-3. After gathering all facts, compose a detailed prompt for `call_deepseek` that includes all the gathered information, and call that tool. The tool will return the complete test.
+3. After receiving a TOOL_RESULT: ... line, you must use that value in your next tool call. For example, if you receive a file path, immediately call get_imports with that file path.
+4. After gathering all facts, compose a detailed prompt for `call_deepseek` that includes all the gathered information, and call that tool. The tool will return the complete test.
 
 **Important rules:**
 - Call only **one tool per turn**.
@@ -19,9 +20,9 @@ Follow this plan:
 Example of correct usage:
 User: character creation
 Assistant: TOOL_CALL: find_target_file(intent="character creation")
-(You receive the result: "world/character_builder.py")
+(You receive the result: "world/character_builder.py") and use it in the next tool call
 Assistant: TOOL_CALL: get_imports(file_path="world/character_builder.py")
-... and so on.
+... each result being used as the parameter to the next tool call in your list till done.
 
 To use a tool, output exactly one line per tool call in the format:
 TOOL_CALL: tool_name(arg1, arg2, ...)
