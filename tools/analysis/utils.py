@@ -1,9 +1,26 @@
 """Shared utility functions."""
+import os
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 MIN_CONCEPT_LENGTH = 3
+
+def module_to_file_path(full_module: str, project_root: Path) -> Optional[Path]:
+    """
+    Convert a dotted module name (e.g., 'world.ai_integration') to a file path.
+    Returns a Path if the file exists, otherwise None.
+    """
+    # Replace dots with OS separator and add .py
+    rel_path = full_module.replace('.', os.sep) + '.py'
+    candidate = project_root / rel_path
+    if candidate.exists():
+        return candidate
+    # If not found, try __init__.py in the package directory
+    pkg_path = project_root / full_module.replace('.', os.sep) / '__init__.py'
+    if pkg_path.exists():
+        return pkg_path
+    return None
 
 def split_identifier(name: str) -> List[str]:
     if not name:

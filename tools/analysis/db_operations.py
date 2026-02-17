@@ -3,12 +3,11 @@ import sqlite3
 import json
 from typing import List, Tuple, Optional, Dict, Any
 
-def get_imports(db_path, file_path):
-    """Return list of imported module names for a file."""
+def get_imports_full(db_path, file_path):
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT DISTINCT imported_module FROM imports WHERE importer_path = ?",
+        "SELECT DISTINCT full_module FROM imports WHERE importer_path = ?",
         (file_path,)
     ).fetchall()
     conn.close()
@@ -25,11 +24,10 @@ def insert_file(conn: sqlite3.Connection, file_path: str, file_data: dict, role:
         (file_path, json.dumps(file_data, default=str), role, line_count, 1 if is_hot else 0)
     )
 
-def insert_import(conn: sqlite3.Connection, importer_path: str, imported_module: str, import_type: str, line_number: int) -> None:
-    """Insert an import record."""
+def insert_import(conn, importer_path, full_module, import_type, line_number):
     conn.execute(
-        "INSERT INTO imports (importer_path, imported_module, import_type, line_number) VALUES (?, ?, ?, ?)",
-        (importer_path, imported_module, import_type, line_number)
+        "INSERT INTO imports (importer_path, full_module, import_type, line_number) VALUES (?, ?, ?, ?)",
+        (importer_path, full_module, import_type, line_number)
     )
 
 def insert_dict_key(conn: sqlite3.Connection, file_path: str, function_name: str, dict_var: str, key: str) -> None:

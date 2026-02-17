@@ -16,7 +16,8 @@ if str(script_dir) not in sys.path:
     sys.path.insert(0, str(script_dir))
 
 from intent_matcher import _get_top_files_for_intent
-from db_operations import get_imports
+from db_operations import get_imports_full
+from utils import module_to_file_path
 
 # ----------------------------------------------------------------------
 # Helper: load architectural rules (same as before)
@@ -147,24 +148,9 @@ def main():
     print(f"Target file: {target_file}", file=sys.stderr)
 
     # Get imports
-    imports = get_imports(db_path, target_file)  # returns list of module names (top-level)
+    imports = get_imports_full(db_path, target_file)  # returns list of module names (top-level)
+    print(f"DEBUG: get_imports_full returned: {imports}", file=sys.stderr)
     source_dir = (project_root / target_file).parent
-
-    # Resolve import paths
-    import_paths = []
-    external_packages = []
-    for mod in imports:
-        candidates = find_imported_file(conn, mod, str(source_dir), project_root)
-        if candidates:
-            # Take the first candidate that is not the same as target_file
-            for cand in candidates:
-                if cand != target_file:
-                    import_paths.append(cand)
-                    break
-        else:
-            # Not found locally – treat as external package
-            external_packages.append(mod)
-            print(f"ℹ️  External package: {mod}", file=sys.stderr)
 
     # Load architectural rules
     rules = load_global_rules(project_root)
@@ -172,17 +158,17 @@ def main():
     # Build the context
     context_parts = []
 
-    # # Architectural rules
-    # context_parts.append("## ARCHITECTURAL RULES")
-    # if rules['ai_contract']:
-    #     context_parts.append(rules['ai_contract'])
-    # else:
-    #     context_parts.append("\n".join(rules['ai_contract_rules']))
-    #     context_parts.append(f"Phase sequence: {rules['phase_sequence']}")
-    #     context_parts.append(rules['role_definitions'])
-    # if rules['playbook']:
-    #     context_parts.append(rules['playbook'])
-    # context_parts.append("")
+    # Architectural rules
+    context_parts.append("## ARCHITECTURAL RULES")
+    if rules['ai_contract']:
+        context_parts.append(rules['ai_contract'])
+    else:
+        context_parts.append("\n".join(rules['ai_contract_rules']))
+        context_parts.append(f"Phase sequence: {rules['phase_sequence']}")
+        context_parts.append(rules['role_definitions'])
+    if rules['playbook']:
+        context_parts.append(rules['playbook'])
+    context_parts.append("")
 
     # Target file source
     context_parts.append(f"## SOURCE: {target_file}")

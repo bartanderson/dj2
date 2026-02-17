@@ -3,6 +3,7 @@ import ast
 import json
 import sqlite3
 import re
+import numpy as np
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from tools.analysis import extractors
 from tools.analysis import db_operations as db
 from tools.analysis.embedding_model import embed_text
 from tools.analysis.ast_analyzer import ASTAnalyzer  # keep as is
+DEBUG = True
 
 MUTATING_METHODS = {'update', 'save', 'delete', 'create', 'add', 'remove', 'insert', 'set', 'put', 'patch'}
 STATE_HOLDERS = {'SessionSystem', 'GameEngine', 'WorldState', 'Database', 'Repository'}
@@ -292,14 +294,14 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS imports (
                 importer_path TEXT,
-                imported_module TEXT,
+                full_module TEXT,
                 import_type TEXT,
                 line_number INTEGER,
                 FOREIGN KEY (importer_path) REFERENCES files(path) ON DELETE CASCADE
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_importer ON imports(importer_path)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_imported ON imports(imported_module)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_imports_full_module ON imports(full_module)")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS method_params (
                 file_path TEXT,
@@ -443,15 +445,14 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
                 print(f"   Warning: could not generate embedding for {py_file}: {e}")
 
         # Insert imports
-        try:
-            imports_found = extractors.extract_imports_from_ast(tree, file_info['path'])
-            for (imp_mod, imp_type, lineno) in imports_found:
-                db.insert_import(conn, file_info['path'], imp_mod, imp_type, lineno)
-        except Exception as e:
-            if verbose:
-                print(f"   Warning: could not extract imports from {py_file}: {e}")
+        imports_found = extractors.extract_imports_from_ast(tree, file_info['path'])
+        if DEBUG:
+            print(f"DEBUG: imports_found = {imports_found}") 
+            print(f"DEBUG: Imports found in {py_file.name}: {imports_found}")
+        for (full_mod, imp_type, lineno) in imports_found:
+            db.insert_import(conn, file_info['path'], full_mod, imp_type, lineno)
 
-        # Add to vocabulary (for concept table)
+        # Add to vocabulary (for concept table) – now outside the try block
         for cls in file_info.get('classes', []):
             for word in utils.split_identifier(cls['name']):
                 vocabulary[word].append(file_info['path'])
