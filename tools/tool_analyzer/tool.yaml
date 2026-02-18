@@ -1,0 +1,19 @@
+name: tool_analyzer
+description: Multi-source analysis of all tools - combines descriptions, git history, and code structure
+
+provides:
+  - action: analyze.tool_ecosystem
+    description: Complete analysis of all tools using multiple data sources
+    outputs:
+      - name: inventory
+      - name: dependencies
+      - name: hotspots
+      - name: orphans
+      - name: duplicates
+      - name: recommendations
+  
+  - action: report.tool_landscape
+    description: Generate human-readable landscape report
+    inputs:
+      - name: analysis_data
+      - name: format

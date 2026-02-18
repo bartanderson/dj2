@@ -1,0 +1,13 @@
+name: "Analyze Tool Ecosystem"
+description: "Multi-source analysis of all tools"
+
+steps:
+  - action: analyze.tool_ecosystem
+    with: {}
+    as: ecosystem_data
+  
+  - action: report.tool_landscape
+    with:
+      analysis_data: previous.ecosystem_data
+      format: "summary"
+    as: landscape_report
