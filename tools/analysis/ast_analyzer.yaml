@@ -6,46 +6,46 @@ capabilities:
   provides:
     - action: analyze.ast.parse
       description: Parse Python file into AST tree
-      input:
+      inputs:
         - name: file_path
           type: string
-      output:
+      outputs:
         - name: ast_tree
           type: object
     
     - action: analyze.ast.extract_functions
       description: Extract all function definitions from AST
-      input:
+      inputs:
         - name: ast_tree
           type: object
-      output:
+      outputs:
         - name: functions
           type: list
     
     - action: analyze.ast.extract_classes
       description: Extract all class definitions from AST
-      input:
+      inputs:
         - name: ast_tree
           type: object
-      output:
+      outputs:
         - name: classes
           type: list
     
     - action: analyze.ast.find_imports
       description: Find all import statements in AST
-      input:
+      inputs:
         - name: ast_tree
           type: object
-      output:
+      outputs:
         - name: imports
           type: list
     
     - action: analyze.ast.get_docstrings
       description: Extract docstrings from AST nodes
-      input:
+      inputs:
         - name: ast_tree
           type: object
-      output:
+      outputs:
         - name: docstrings
           type: dict
 
@@ -57,6 +57,7 @@ relationships:
     - arch_recon.py
   part_of: core_analysis_system
 
-notes: |
-  This is the foundation of all AST-based analysis in the project.
-  If other files claim similar capabilities, they may be wrappers or duplicates.
+metrics:
+  complexity: high
+  test_coverage: unknown
+  last_updated: 2026-02-18
