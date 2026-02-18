@@ -23,21 +23,22 @@ PROJECT_ROOT = TOOLS_DIR.parent
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-def _load_capabilities(self):
-    cap_file = self.path / "tool.yaml"
-    if cap_file.exists():
-        try:
-            data = yaml.safe_load(cap_file.read_text(encoding='utf-8'))
-            # Only use 'provides' key; if missing, default to empty list
-            return {
-                'provides': data.get('provides', []),
-                'requires': data.get('requires', []),
-                'name': data.get('name', self.name)
-            }
-        except Exception as e:
-            print(f"Error loading {cap_file}: {e}")
-            return {'provides': [], 'requires': [], 'name': self.name}
-    return {'provides': [], 'requires': [], 'name': self.name}
+class Tool:
+    """Represents a tool with declared capabilities."""
+    def __init__(self, name, path):
+        self.name = name
+        self.path = Path(path)
+        self.capabilities = self._load_capabilities()
+    
+    def _load_capabilities(self):
+        cap_file = self.path / "tool.yaml"
+        if cap_file.exists():
+            try:
+                return yaml.safe_load(cap_file.read_text(encoding='utf-8'))
+            except:
+                return {'provides': [], 'requires': [], 'name': self.name}
+        return {'provides': [], 'requires': [], 'name': self.name}
+    
     def __repr__(self):
         return f"Tool({self.name})"
 
