@@ -1,0 +1,33 @@
+name: context_manager
+description: Load documents and files, prepare context for AI
+path: scripts/context_manager.py
+
+capabilities:
+  provides:
+    - action: context.load_files
+      description: Load multiple files into context
+      inputs:
+        - name: file_paths
+          type: list
+        - name: max_size
+          type: integer
+      outputs:
+        - name: context
+          type: string
+        - name: truncated
+          type: boolean
+    
+    - action: context.chunk_if_needed
+      description: Split context if too large for interface
+      inputs:
+        - name: context
+          type: string
+        - name: chunk_size
+          type: integer
+      outputs:
+        - name: chunks
+          type: list
+
+notes: |
+  Previously used chunking, now may handle full context.
+  Verify current behavior before relying on chunking capability.

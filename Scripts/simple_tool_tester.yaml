@@ -1,0 +1,30 @@
+name: tool_tester
+description: Simple, accurate tool tester with real arguments
+path: scripts/simple_tool_tester.py
+
+capabilities:
+  provides:
+    - action: test.run_tool
+      description: Run a tool with given arguments
+      inputs:
+        - name: tool_name
+          type: string
+        - name: args
+          type: object
+      outputs:
+        - name: success
+          type: boolean
+        - name: output
+        - name: error
+    
+    - action: test.verify_tool
+      description: Verify tool produces expected output
+      inputs:
+        - name: tool_name
+          type: string
+        - name: test_input
+        - name: expected_output
+      outputs:
+        - name: passed
+          type: boolean
+        - name: actual

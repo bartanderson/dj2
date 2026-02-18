@@ -1,0 +1,52 @@
+name: project_auditor
+description: Consolidated dashboard with real analysis only
+path: scripts/project_auditor.py
+
+capabilities:
+  provides:
+    - action: audit.violations
+      description: Show architectural violations
+      outputs:
+        - name: violations
+          type: list
+        - name: count
+          type: integer
+    
+    - action: audit.todos
+      description: Show TODO items from codebase
+      outputs:
+        - name: todos
+          type: list
+        - name: count
+          type: integer
+    
+    - action: audit.git_activity
+      description: Show recent git activity
+      inputs:
+        - name: days
+          type: integer
+      outputs:
+        - name: commits
+          type: list
+        - name: stats
+          type: object
+    
+    - action: audit.tool_health
+      description: Check health of all tools
+      outputs:
+        - name: tools
+          type: list
+        - name: unhealthy
+          type: list
+    
+    - action: audit.sessions
+      description: Show active sessions
+      outputs:
+        - name: sessions
+          type: list
+        - name: count
+          type: integer
+
+notes: |
+  Replaces: watchdog.py + ai_workflow.py
+  NO FAKE ANALYSIS - only calls existing tools
