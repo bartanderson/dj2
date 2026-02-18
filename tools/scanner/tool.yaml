@@ -1,0 +1,14 @@
+name: file_scanner
+description: Scans directories for files
+
+provides:
+  - action: scan.files
+    description: List files matching pattern
+    inputs:
+      - name: path
+        type: string
+      - name: pattern
+        type: string
+    outputs:
+      - name: files
+        type: list

@@ -1,0 +1,23 @@
+name: ar_prefix_rename
+description: Rename arch_recon decomposed modules to ar_ prefix for visual grouping
+
+isolation:
+  branch: auto/ar-prefix-rename
+  base: main
+
+steps:
+  - name: inventory
+    description: Find all modules imported by arch_recon.py
+    
+  - name: stage_renames
+    description: Execute git mv and update imports in arch_recon.py
+    
+  - name: validate
+    description: Check Python syntax on all modified files
+    
+  - name: review
+    description: Present changes in WinDiff for human approval
+    interactive: true
+
+on_approval: merge_branch
+on_rejection: delete_branch

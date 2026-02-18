@@ -1,0 +1,14 @@
+name: findings_reporter
+description: Formats and displays findings
+
+provides:
+  - action: report.findings
+    description: Generate human-readable report
+    inputs:
+      - name: data
+        type: object
+      - name: format
+        type: string
+    outputs:
+      - name: report
+        type: string

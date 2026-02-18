@@ -1,0 +1,26 @@
+name: "Verify Project Structure"
+description: "Check that all Python files have matching test files"
+
+steps:
+  - action: scan.files
+    with:
+      path: "tools/analysis"
+      pattern: "*.py"
+    as: source_files
+  
+  - action: scan.files
+    with:
+      path: "tests"
+      pattern: "test_*.py"
+    as: test_files
+  
+  - action: analyze.coverage
+    with:
+      sources: previous.source_files
+      tests: previous.test_files
+    as: coverage_report
+  
+  - action: report.findings
+    with:
+      data: previous.coverage_report
+      format: "summary"
