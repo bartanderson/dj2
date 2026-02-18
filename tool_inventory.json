@@ -1,0 +1,1843 @@
+{
+  "files": [
+    {
+      "path": "tools/json_search.py",
+      "folder": "tools",
+      "name": "json_search.py",
+      "size": 2471,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ollama_client.py",
+      "folder": "tools",
+      "name": "ollama_client.py",
+      "size": 16256,
+      "modified": "2026-02-18T03:02:25.335441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/phase_auditor.py",
+      "folder": "tools",
+      "name": "phase_auditor.py",
+      "size": 9010,
+      "modified": "2026-02-18T03:02:25.335441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/quick_scan.py",
+      "folder": "tools",
+      "name": "quick_scan.py",
+      "size": 2891,
+      "modified": "2026-02-18T03:15:41.935072",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/test_ollama_simple.py",
+      "folder": "tools",
+      "name": "test_ollama_simple.py",
+      "size": 701,
+      "modified": "2026-02-18T03:02:25.337441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/verify_integration.py",
+      "folder": "tools",
+      "name": "verify_integration.py",
+      "size": 5969,
+      "modified": "2026-02-18T03:02:25.339441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/__init__.py",
+      "folder": "tools",
+      "name": "__init__.py",
+      "size": 301,
+      "modified": "2026-02-18T03:02:25.313443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/context_builder.py",
+      "folder": "tools/ai_assistant",
+      "name": "context_builder.py",
+      "size": 12506,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/editing_commands.py",
+      "folder": "tools/ai_assistant",
+      "name": "editing_commands.py",
+      "size": 14560,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/four_layer.py",
+      "folder": "tools/ai_assistant",
+      "name": "four_layer.py",
+      "size": 19954,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/__init__.py",
+      "folder": "tools/ai_assistant",
+      "name": "__init__.py",
+      "size": 284,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/command_router.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "command_router.py",
+      "size": 10198,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/config.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "config.py",
+      "size": 4860,
+      "modified": "2026-02-18T03:02:25.319443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/indexer.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "indexer.py",
+      "size": 18182,
+      "modified": "2026-02-18T03:02:25.319443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/__init__.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "__init__.py",
+      "size": 92,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/analysis_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "analysis_commands.py",
+      "size": 9841,
+      "modified": "2026-02-18T03:02:25.315442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/architecture_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "architecture_commands.py",
+      "size": 1867,
+      "modified": "2026-02-18T03:02:25.316442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/edit_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "edit_commands.py",
+      "size": 23296,
+      "modified": "2026-02-18T03:02:25.316442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/index_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "index_commands.py",
+      "size": 1153,
+      "modified": "2026-02-18T03:02:25.317442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/search_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "search_commands.py",
+      "size": 5110,
+      "modified": "2026-02-18T03:02:25.317442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/tool_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "tool_commands.py",
+      "size": 1866,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/validation_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "validation_commands.py",
+      "size": 5069,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/workflow_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "workflow_commands.py",
+      "size": 5151,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/__init__.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "__init__.py",
+      "size": 1383,
+      "modified": "2026-02-18T03:02:25.315442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/agent.py",
+      "folder": "tools/analysis",
+      "name": "agent.py",
+      "size": 8254,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/arch_recon.py",
+      "folder": "tools/analysis",
+      "name": "arch_recon.py",
+      "size": 16225,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/ast_analyzer.py",
+      "folder": "tools/analysis",
+      "name": "ast_analyzer.py",
+      "size": 22322,
+      "modified": "2026-02-18T03:02:25.322442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/clean_and_repopulate.py",
+      "folder": "tools/analysis",
+      "name": "clean_and_repopulate.py",
+      "size": 5471,
+      "modified": "2026-02-18T03:02:25.322442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/context_assembler.py",
+      "folder": "tools/analysis",
+      "name": "context_assembler.py",
+      "size": 4895,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/db_operations.py",
+      "folder": "tools/analysis",
+      "name": "db_operations.py",
+      "size": 5493,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/db_queries.py",
+      "folder": "tools/analysis",
+      "name": "db_queries.py",
+      "size": 2940,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/discover_categories.py",
+      "folder": "tools/analysis",
+      "name": "discover_categories.py",
+      "size": 13265,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/dump_context.py",
+      "folder": "tools/analysis",
+      "name": "dump_context.py",
+      "size": 8438,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/embedding_model.py",
+      "folder": "tools/analysis",
+      "name": "embedding_model.py",
+      "size": 583,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/extractors.py",
+      "folder": "tools/analysis",
+      "name": "extractors.py",
+      "size": 4077,
+      "modified": "2026-02-18T03:02:25.325442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/generate_test.py",
+      "folder": "tools/analysis",
+      "name": "generate_test.py",
+      "size": 8324,
+      "modified": "2026-02-18T03:02:25.325442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/guardrails.py",
+      "folder": "tools/analysis",
+      "name": "guardrails.py",
+      "size": 6682,
+      "modified": "2026-02-18T03:02:25.326442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/intent_matcher.py",
+      "folder": "tools/analysis",
+      "name": "intent_matcher.py",
+      "size": 1961,
+      "modified": "2026-02-18T03:02:25.326442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/phase_checker.py",
+      "folder": "tools/analysis",
+      "name": "phase_checker.py",
+      "size": 7248,
+      "modified": "2026-02-18T03:02:25.327442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/populate_imports.py",
+      "folder": "tools/analysis",
+      "name": "populate_imports.py",
+      "size": 2450,
+      "modified": "2026-02-18T03:02:25.327442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/reporters.py",
+      "folder": "tools/analysis",
+      "name": "reporters.py",
+      "size": 15290,
+      "modified": "2026-02-18T03:02:25.328442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/scanner.py",
+      "folder": "tools/analysis",
+      "name": "scanner.py",
+      "size": 23547,
+      "modified": "2026-02-18T03:02:25.328442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/test_templates.py",
+      "folder": "tools/analysis",
+      "name": "test_templates.py",
+      "size": 19279,
+      "modified": "2026-02-18T03:02:25.329442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/test_tools.py",
+      "folder": "tools/analysis",
+      "name": "test_tools.py",
+      "size": 11065,
+      "modified": "2026-02-18T03:02:25.329442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/utils.py",
+      "folder": "tools/analysis",
+      "name": "utils.py",
+      "size": 1654,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/__init__.py",
+      "folder": "tools/analysis",
+      "name": "__init__.py",
+      "size": 119,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/architecture/enhanced_architect.py",
+      "folder": "tools/architecture",
+      "name": "enhanced_architect.py",
+      "size": 10353,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/architecture/__init__.py",
+      "folder": "tools/architecture",
+      "name": "__init__.py",
+      "size": 100,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/bridge_controller.py",
+      "folder": "tools/bridge",
+      "name": "bridge_controller.py",
+      "size": 3303,
+      "modified": "2026-02-18T03:02:25.331442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/deepseek_bridge_react.py",
+      "folder": "tools/bridge",
+      "name": "deepseek_bridge_react.py",
+      "size": 2697,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/unified_core.py",
+      "folder": "tools/bridge",
+      "name": "unified_core.py",
+      "size": 9966,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/__init__.py",
+      "folder": "tools/bridge",
+      "name": "__init__.py",
+      "size": 247,
+      "modified": "2026-02-18T03:02:25.331442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/coverage_analyzer/run.py",
+      "folder": "tools/coverage_analyzer",
+      "name": "run.py",
+      "size": 1143,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/future/mcp_server.py",
+      "folder": "tools/future",
+      "name": "mcp_server.py",
+      "size": 2335,
+      "modified": "2026-02-18T03:02:25.333442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/future/test_server.py",
+      "folder": "tools/future",
+      "name": "test_server.py",
+      "size": 241,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/nativeclaw/nativeclaw.py",
+      "folder": "tools/nativeclaw",
+      "name": "nativeclaw.py",
+      "size": 31286,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/reporter/run.py",
+      "folder": "tools/reporter",
+      "name": "run.py",
+      "size": 856,
+      "modified": "2026-02-18T03:02:25.336441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/scanner/run.py",
+      "folder": "tools/scanner",
+      "name": "run.py",
+      "size": 578,
+      "modified": "2026-02-18T03:02:25.336441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/tool_analyzer/run.py",
+      "folder": "tools/tool_analyzer",
+      "name": "run.py",
+      "size": 18650,
+      "modified": "2026-02-18T03:02:25.337441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/utils/format_ai_markdown.py",
+      "folder": "tools/utils",
+      "name": "format_ai_markdown.py",
+      "size": 4654,
+      "modified": "2026-02-18T03:02:25.338441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/utils/__init__.py",
+      "folder": "tools/utils",
+      "name": "__init__.py",
+      "size": 98,
+      "modified": "2026-02-18T03:02:25.338441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/workflow/__init__.py",
+      "folder": "tools/workflow",
+      "name": "__init__.py",
+      "size": 104,
+      "modified": "2026-02-18T03:02:25.339441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "scripts/context_manager.py",
+      "folder": "scripts",
+      "name": "context_manager.py",
+      "size": 27649,
+      "modified": "2026-02-18T03:02:25.274441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "scripts/project_auditor.py",
+      "folder": "scripts",
+      "name": "project_auditor.py",
+      "size": 16021,
+      "modified": "2026-02-18T03:02:25.276441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "scripts/pywin32_postinstall.py",
+      "folder": "scripts",
+      "name": "pywin32_postinstall.py",
+      "size": 25736,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "scripts/pywin32_testall.py",
+      "folder": "scripts",
+      "name": "pywin32_testall.py",
+      "size": 3847,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "scripts/simple_tool_tester.py",
+      "folder": "scripts",
+      "name": "simple_tool_tester.py",
+      "size": 7138,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "ai.py",
+      "folder": ".",
+      "name": "ai.py",
+      "size": 851,
+      "modified": "2026-02-18T03:02:25.279441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "app.py",
+      "folder": ".",
+      "name": "app.py",
+      "size": 1114,
+      "modified": "2026-02-18T03:02:25.285441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "bidirectional_cli.py",
+      "folder": ".",
+      "name": "bidirectional_cli.py",
+      "size": 5046,
+      "modified": "2026-02-18T03:02:25.285441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "check_imports.py",
+      "folder": ".",
+      "name": "check_imports.py",
+      "size": 393,
+      "modified": "2026-02-18T03:02:25.286442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "create_tables.py",
+      "folder": ".",
+      "name": "create_tables.py",
+      "size": 7060,
+      "modified": "2026-02-18T03:02:25.288442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo_web_app.py",
+      "folder": ".",
+      "name": "dungeon_neo_web_app.py",
+      "size": 7333,
+      "modified": "2026-02-18T03:02:25.294442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "run_analysis.py",
+      "folder": ".",
+      "name": "run_analysis.py",
+      "size": 12186,
+      "modified": "2026-02-18T03:02:25.302443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "run_game.py",
+      "folder": ".",
+      "name": "run_game.py",
+      "size": 3232,
+      "modified": "2026-02-18T03:02:25.303442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "test.py",
+      "folder": ".",
+      "name": "test.py",
+      "size": 5151,
+      "modified": "2026-02-16T17:14:42.359114",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tie.py",
+      "folder": ".",
+      "name": "tie.py",
+      "size": 2078,
+      "modified": "2026-02-18T03:02:25.313443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tii.py",
+      "folder": ".",
+      "name": "tii.py",
+      "size": 1610,
+      "modified": "2026-02-18T03:02:25.313443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world_app.py",
+      "folder": ".",
+      "name": "world_app.py",
+      "size": 69260,
+      "modified": "2026-02-18T03:02:25.376412",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "__init__.py",
+      "folder": ".",
+      "name": "__init__.py",
+      "size": 0,
+      "modified": "2026-02-18T03:02:25.279441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "ai/ai_boundary.py",
+      "folder": "ai",
+      "name": "ai_boundary.py",
+      "size": 7639,
+      "modified": "2026-02-18T03:02:25.280443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "ai/__init__.py",
+      "folder": "ai",
+      "name": "__init__.py",
+      "size": 0,
+      "modified": "2026-02-18T03:02:25.279441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "core/dungeon.py",
+      "folder": "core",
+      "name": "dungeon.py",
+      "size": 4345,
+      "modified": "2026-02-18T03:02:25.287442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "core/dungeon_standalone.py",
+      "folder": "core",
+      "name": "dungeon_standalone.py",
+      "size": 4507,
+      "modified": "2026-02-18T03:02:25.287442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "core/game_state.py",
+      "folder": "core",
+      "name": "game_state.py",
+      "size": 617,
+      "modified": "2026-02-18T03:02:25.287442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "core/__init__.py",
+      "folder": "core",
+      "name": "__init__.py",
+      "size": 0,
+      "modified": "2026-02-18T03:02:25.286442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/ai_integration.py",
+      "folder": "dungeon_neo",
+      "name": "ai_integration.py",
+      "size": 12709,
+      "modified": "2026-02-18T03:02:25.289442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/cell_neo.py",
+      "folder": "dungeon_neo",
+      "name": "cell_neo.py",
+      "size": 5294,
+      "modified": "2026-02-18T03:02:25.289442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/constants.py",
+      "folder": "dungeon_neo",
+      "name": "constants.py",
+      "size": 2800,
+      "modified": "2026-02-18T03:02:25.289442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/dm_tools.py",
+      "folder": "dungeon_neo",
+      "name": "dm_tools.py",
+      "size": 17433,
+      "modified": "2026-02-18T03:02:25.290442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/entity.py",
+      "folder": "dungeon_neo",
+      "name": "entity.py",
+      "size": 527,
+      "modified": "2026-02-18T03:02:25.290442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/generator_neo.py",
+      "folder": "dungeon_neo",
+      "name": "generator_neo.py",
+      "size": 40442,
+      "modified": "2026-02-18T03:02:25.291442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/grid_system.py",
+      "folder": "dungeon_neo",
+      "name": "grid_system.py",
+      "size": 1074,
+      "modified": "2026-02-18T03:02:25.291442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/movement_service.py",
+      "folder": "dungeon_neo",
+      "name": "movement_service.py",
+      "size": 8033,
+      "modified": "2026-02-18T03:02:25.292442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/overlay.py",
+      "folder": "dungeon_neo",
+      "name": "overlay.py",
+      "size": 5235,
+      "modified": "2026-02-18T03:02:25.292442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/renderer_neo.py",
+      "folder": "dungeon_neo",
+      "name": "renderer_neo.py",
+      "size": 27681,
+      "modified": "2026-02-18T03:02:25.292442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/state_neo.py",
+      "folder": "dungeon_neo",
+      "name": "state_neo.py",
+      "size": 7599,
+      "modified": "2026-02-18T03:02:25.293442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/test_campaign.py",
+      "folder": "dungeon_neo",
+      "name": "test_campaign.py",
+      "size": 2433,
+      "modified": "2026-02-18T03:02:25.293442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "dungeon_neo/visibility_neo.py",
+      "folder": "dungeon_neo",
+      "name": "visibility_neo.py",
+      "size": 4669,
+      "modified": "2026-02-18T03:02:25.294442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "engine/game_engine.py",
+      "folder": "engine",
+      "name": "game_engine.py",
+      "size": 31211,
+      "modified": "2026-02-18T03:02:25.295442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "engine/phases.py",
+      "folder": "engine",
+      "name": "phases.py",
+      "size": 17166,
+      "modified": "2026-02-18T03:02:25.295442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "recovered_code/recovered_enhanced_tools.py",
+      "folder": "recovered_code",
+      "name": "recovered_enhanced_tools.py",
+      "size": 17635,
+      "modified": "2026-02-18T03:02:25.300442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "recovered_code/recovered_puzzle_system.py",
+      "folder": "recovered_code",
+      "name": "recovered_puzzle_system.py",
+      "size": 14411,
+      "modified": "2026-02-18T03:02:25.300442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "routes/api.py",
+      "folder": "routes",
+      "name": "api.py",
+      "size": 6263,
+      "modified": "2026-02-18T03:02:25.302443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "routes/__init__.py",
+      "folder": "routes",
+      "name": "__init__.py",
+      "size": 0,
+      "modified": "2026-02-18T03:02:25.301442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "Scripts/context_manager.py",
+      "folder": "Scripts",
+      "name": "context_manager.py",
+      "size": 27649,
+      "modified": "2026-02-18T03:02:25.274441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "Scripts/project_auditor.py",
+      "folder": "Scripts",
+      "name": "project_auditor.py",
+      "size": 16021,
+      "modified": "2026-02-18T03:02:25.276441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "Scripts/pywin32_postinstall.py",
+      "folder": "Scripts",
+      "name": "pywin32_postinstall.py",
+      "size": 25736,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "Scripts/pywin32_testall.py",
+      "folder": "Scripts",
+      "name": "pywin32_testall.py",
+      "size": 3847,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "Scripts/simple_tool_tester.py",
+      "folder": "Scripts",
+      "name": "simple_tool_tester.py",
+      "size": 7138,
+      "modified": "2026-02-18T03:02:25.277442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/ref_test_character_builder.py",
+      "folder": "tests",
+      "name": "ref_test_character_builder.py",
+      "size": 6842,
+      "modified": "2026-02-18T03:02:25.310442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/test_ai_dungeon_master.py",
+      "folder": "tests",
+      "name": "test_ai_dungeon_master.py",
+      "size": 8311,
+      "modified": "2026-02-18T03:02:25.311442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/test_character -generated manually fixed with AI help. More fixes.py",
+      "folder": "tests",
+      "name": "test_character -generated manually fixed with AI help. More fixes.py",
+      "size": 7919,
+      "modified": "2026-02-18T03:02:25.311442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/test_character_builder.py",
+      "folder": "tests",
+      "name": "test_character_builder.py",
+      "size": 10797,
+      "modified": "2026-02-18T03:02:25.312442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/test_character_creation.py",
+      "folder": "tests",
+      "name": "test_character_creation.py",
+      "size": 964,
+      "modified": "2026-02-18T03:02:25.312442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tests/test_tool_system.py",
+      "folder": "tests",
+      "name": "test_tool_system.py",
+      "size": 1172,
+      "modified": "2026-02-18T03:02:25.312442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/json_search.py",
+      "folder": "tools",
+      "name": "json_search.py",
+      "size": 2471,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ollama_client.py",
+      "folder": "tools",
+      "name": "ollama_client.py",
+      "size": 16256,
+      "modified": "2026-02-18T03:02:25.335441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/phase_auditor.py",
+      "folder": "tools",
+      "name": "phase_auditor.py",
+      "size": 9010,
+      "modified": "2026-02-18T03:02:25.335441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/quick_scan.py",
+      "folder": "tools",
+      "name": "quick_scan.py",
+      "size": 2891,
+      "modified": "2026-02-18T03:15:41.935072",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/test_ollama_simple.py",
+      "folder": "tools",
+      "name": "test_ollama_simple.py",
+      "size": 701,
+      "modified": "2026-02-18T03:02:25.337441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/verify_integration.py",
+      "folder": "tools",
+      "name": "verify_integration.py",
+      "size": 5969,
+      "modified": "2026-02-18T03:02:25.339441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/__init__.py",
+      "folder": "tools",
+      "name": "__init__.py",
+      "size": 301,
+      "modified": "2026-02-18T03:02:25.313443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/context_builder.py",
+      "folder": "tools/ai_assistant",
+      "name": "context_builder.py",
+      "size": 12506,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/editing_commands.py",
+      "folder": "tools/ai_assistant",
+      "name": "editing_commands.py",
+      "size": 14560,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/four_layer.py",
+      "folder": "tools/ai_assistant",
+      "name": "four_layer.py",
+      "size": 19954,
+      "modified": "2026-02-18T03:02:25.320442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/__init__.py",
+      "folder": "tools/ai_assistant",
+      "name": "__init__.py",
+      "size": 284,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/command_router.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "command_router.py",
+      "size": 10198,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/config.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "config.py",
+      "size": 4860,
+      "modified": "2026-02-18T03:02:25.319443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/indexer.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "indexer.py",
+      "size": 18182,
+      "modified": "2026-02-18T03:02:25.319443",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/__init__.py",
+      "folder": "tools/ai_assistant/cli",
+      "name": "__init__.py",
+      "size": 92,
+      "modified": "2026-02-18T03:02:25.314442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/analysis_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "analysis_commands.py",
+      "size": 9841,
+      "modified": "2026-02-18T03:02:25.315442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/architecture_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "architecture_commands.py",
+      "size": 1867,
+      "modified": "2026-02-18T03:02:25.316442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/edit_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "edit_commands.py",
+      "size": 23296,
+      "modified": "2026-02-18T03:02:25.316442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/index_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "index_commands.py",
+      "size": 1153,
+      "modified": "2026-02-18T03:02:25.317442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/search_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "search_commands.py",
+      "size": 5110,
+      "modified": "2026-02-18T03:02:25.317442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/tool_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "tool_commands.py",
+      "size": 1866,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/validation_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "validation_commands.py",
+      "size": 5069,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/workflow_commands.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "workflow_commands.py",
+      "size": 5151,
+      "modified": "2026-02-18T03:02:25.318442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/ai_assistant/cli/commands/__init__.py",
+      "folder": "tools/ai_assistant/cli/commands",
+      "name": "__init__.py",
+      "size": 1383,
+      "modified": "2026-02-18T03:02:25.315442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/agent.py",
+      "folder": "tools/analysis",
+      "name": "agent.py",
+      "size": 8254,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/arch_recon.py",
+      "folder": "tools/analysis",
+      "name": "arch_recon.py",
+      "size": 16225,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/ast_analyzer.py",
+      "folder": "tools/analysis",
+      "name": "ast_analyzer.py",
+      "size": 22322,
+      "modified": "2026-02-18T03:02:25.322442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/clean_and_repopulate.py",
+      "folder": "tools/analysis",
+      "name": "clean_and_repopulate.py",
+      "size": 5471,
+      "modified": "2026-02-18T03:02:25.322442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/context_assembler.py",
+      "folder": "tools/analysis",
+      "name": "context_assembler.py",
+      "size": 4895,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/db_operations.py",
+      "folder": "tools/analysis",
+      "name": "db_operations.py",
+      "size": 5493,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/db_queries.py",
+      "folder": "tools/analysis",
+      "name": "db_queries.py",
+      "size": 2940,
+      "modified": "2026-02-18T03:02:25.323442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/discover_categories.py",
+      "folder": "tools/analysis",
+      "name": "discover_categories.py",
+      "size": 13265,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/dump_context.py",
+      "folder": "tools/analysis",
+      "name": "dump_context.py",
+      "size": 8438,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/embedding_model.py",
+      "folder": "tools/analysis",
+      "name": "embedding_model.py",
+      "size": 583,
+      "modified": "2026-02-18T03:02:25.324442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/extractors.py",
+      "folder": "tools/analysis",
+      "name": "extractors.py",
+      "size": 4077,
+      "modified": "2026-02-18T03:02:25.325442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/generate_test.py",
+      "folder": "tools/analysis",
+      "name": "generate_test.py",
+      "size": 8324,
+      "modified": "2026-02-18T03:02:25.325442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/guardrails.py",
+      "folder": "tools/analysis",
+      "name": "guardrails.py",
+      "size": 6682,
+      "modified": "2026-02-18T03:02:25.326442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/intent_matcher.py",
+      "folder": "tools/analysis",
+      "name": "intent_matcher.py",
+      "size": 1961,
+      "modified": "2026-02-18T03:02:25.326442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/phase_checker.py",
+      "folder": "tools/analysis",
+      "name": "phase_checker.py",
+      "size": 7248,
+      "modified": "2026-02-18T03:02:25.327442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/populate_imports.py",
+      "folder": "tools/analysis",
+      "name": "populate_imports.py",
+      "size": 2450,
+      "modified": "2026-02-18T03:02:25.327442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/reporters.py",
+      "folder": "tools/analysis",
+      "name": "reporters.py",
+      "size": 15290,
+      "modified": "2026-02-18T03:02:25.328442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/scanner.py",
+      "folder": "tools/analysis",
+      "name": "scanner.py",
+      "size": 23547,
+      "modified": "2026-02-18T03:02:25.328442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/test_templates.py",
+      "folder": "tools/analysis",
+      "name": "test_templates.py",
+      "size": 19279,
+      "modified": "2026-02-18T03:02:25.329442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/test_tools.py",
+      "folder": "tools/analysis",
+      "name": "test_tools.py",
+      "size": 11065,
+      "modified": "2026-02-18T03:02:25.329442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/utils.py",
+      "folder": "tools/analysis",
+      "name": "utils.py",
+      "size": 1654,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/analysis/__init__.py",
+      "folder": "tools/analysis",
+      "name": "__init__.py",
+      "size": 119,
+      "modified": "2026-02-18T03:02:25.321442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/architecture/enhanced_architect.py",
+      "folder": "tools/architecture",
+      "name": "enhanced_architect.py",
+      "size": 10353,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/architecture/__init__.py",
+      "folder": "tools/architecture",
+      "name": "__init__.py",
+      "size": 100,
+      "modified": "2026-02-18T03:02:25.330442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/bridge_controller.py",
+      "folder": "tools/bridge",
+      "name": "bridge_controller.py",
+      "size": 3303,
+      "modified": "2026-02-18T03:02:25.331442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/deepseek_bridge_react.py",
+      "folder": "tools/bridge",
+      "name": "deepseek_bridge_react.py",
+      "size": 2697,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/unified_core.py",
+      "folder": "tools/bridge",
+      "name": "unified_core.py",
+      "size": 9966,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/bridge/__init__.py",
+      "folder": "tools/bridge",
+      "name": "__init__.py",
+      "size": 247,
+      "modified": "2026-02-18T03:02:25.331442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/coverage_analyzer/run.py",
+      "folder": "tools/coverage_analyzer",
+      "name": "run.py",
+      "size": 1143,
+      "modified": "2026-02-18T03:02:25.332444",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/future/mcp_server.py",
+      "folder": "tools/future",
+      "name": "mcp_server.py",
+      "size": 2335,
+      "modified": "2026-02-18T03:02:25.333442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/future/test_server.py",
+      "folder": "tools/future",
+      "name": "test_server.py",
+      "size": 241,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/nativeclaw/nativeclaw.py",
+      "folder": "tools/nativeclaw",
+      "name": "nativeclaw.py",
+      "size": 31286,
+      "modified": "2026-02-18T03:02:25.334442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/reporter/run.py",
+      "folder": "tools/reporter",
+      "name": "run.py",
+      "size": 856,
+      "modified": "2026-02-18T03:02:25.336441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/scanner/run.py",
+      "folder": "tools/scanner",
+      "name": "run.py",
+      "size": 578,
+      "modified": "2026-02-18T03:02:25.336441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/tool_analyzer/run.py",
+      "folder": "tools/tool_analyzer",
+      "name": "run.py",
+      "size": 18650,
+      "modified": "2026-02-18T03:02:25.337441",
+      "has_tool_yaml": true
+    },
+    {
+      "path": "tools/utils/format_ai_markdown.py",
+      "folder": "tools/utils",
+      "name": "format_ai_markdown.py",
+      "size": 4654,
+      "modified": "2026-02-18T03:02:25.338441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/utils/__init__.py",
+      "folder": "tools/utils",
+      "name": "__init__.py",
+      "size": 98,
+      "modified": "2026-02-18T03:02:25.338441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "tools/workflow/__init__.py",
+      "folder": "tools/workflow",
+      "name": "__init__.py",
+      "size": 104,
+      "modified": "2026-02-18T03:02:25.339441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/ai_dungeon_master.py",
+      "folder": "world",
+      "name": "ai_dungeon_master.py",
+      "size": 54971,
+      "modified": "2026-02-18T03:02:25.340441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/ai_integration.py",
+      "folder": "world",
+      "name": "ai_integration.py",
+      "size": 15686,
+      "modified": "2026-02-18T03:02:25.340441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/ai_prompts.py",
+      "folder": "world",
+      "name": "ai_prompts.py",
+      "size": 1015,
+      "modified": "2026-02-18T03:02:25.341441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/authority_system.py",
+      "folder": "world",
+      "name": "authority_system.py",
+      "size": 12115,
+      "modified": "2026-02-18T03:02:25.341441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/campaign.py",
+      "folder": "world",
+      "name": "campaign.py",
+      "size": 5345,
+      "modified": "2026-02-18T03:02:25.342441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/character.py",
+      "folder": "world",
+      "name": "character.py",
+      "size": 5120,
+      "modified": "2026-02-18T03:02:25.342441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/character_builder.py",
+      "folder": "world",
+      "name": "character_builder.py",
+      "size": 4198,
+      "modified": "2026-02-18T03:02:25.342441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/character_manager.py",
+      "folder": "world",
+      "name": "character_manager.py",
+      "size": 5159,
+      "modified": "2026-02-18T03:02:25.343441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/db.py",
+      "folder": "world",
+      "name": "db.py",
+      "size": 1340,
+      "modified": "2026-02-18T03:02:25.343441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/dm_chat_ai.py",
+      "folder": "world",
+      "name": "dm_chat_ai.py",
+      "size": 14612,
+      "modified": "2026-02-18T03:02:25.344442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/dm_chat_handler.py",
+      "folder": "world",
+      "name": "dm_chat_handler.py",
+      "size": 38185,
+      "modified": "2026-02-18T03:02:25.344442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/dm_tools.py",
+      "folder": "world",
+      "name": "dm_tools.py",
+      "size": 17418,
+      "modified": "2026-02-18T03:02:25.344442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/entity.py",
+      "folder": "world",
+      "name": "entity.py",
+      "size": 521,
+      "modified": "2026-02-18T03:02:25.345442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/image_generator.py",
+      "folder": "world",
+      "name": "image_generator.py",
+      "size": 1483,
+      "modified": "2026-02-18T03:02:25.345442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/map_utils.py",
+      "folder": "world",
+      "name": "map_utils.py",
+      "size": 3094,
+      "modified": "2026-02-18T03:02:25.345442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/movement_service.py",
+      "folder": "world",
+      "name": "movement_service.py",
+      "size": 6988,
+      "modified": "2026-02-18T03:02:25.346441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/narrative_engine.py",
+      "folder": "world",
+      "name": "narrative_engine.py",
+      "size": 6493,
+      "modified": "2026-02-18T03:02:25.346441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/narrative_system.py",
+      "folder": "world",
+      "name": "narrative_system.py",
+      "size": 48068,
+      "modified": "2026-02-18T03:02:25.347441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/overlay.py",
+      "folder": "world",
+      "name": "overlay.py",
+      "size": 5235,
+      "modified": "2026-02-18T03:02:25.347441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/party_manager.py",
+      "folder": "world",
+      "name": "party_manager.py",
+      "size": 4655,
+      "modified": "2026-02-18T03:02:25.348442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/party_system.py",
+      "folder": "world",
+      "name": "party_system.py",
+      "size": 4976,
+      "modified": "2026-02-18T03:02:25.348442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/paths.py",
+      "folder": "world",
+      "name": "paths.py",
+      "size": 12080,
+      "modified": "2026-02-18T03:02:25.348442",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/persistence.py",
+      "folder": "world",
+      "name": "persistence.py",
+      "size": 10742,
+      "modified": "2026-02-18T03:02:25.349441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/player.py",
+      "folder": "world",
+      "name": "player.py",
+      "size": 1310,
+      "modified": "2026-02-18T03:02:25.349441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/quest_manager.py",
+      "folder": "world",
+      "name": "quest_manager.py",
+      "size": 3926,
+      "modified": "2026-02-18T03:02:25.349441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/session_system.py",
+      "folder": "world",
+      "name": "session_system.py",
+      "size": 4711,
+      "modified": "2026-02-18T03:02:25.350441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/t2i.py",
+      "folder": "world",
+      "name": "t2i.py",
+      "size": 13790,
+      "modified": "2026-02-18T03:02:25.350441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/terrain.py",
+      "folder": "world",
+      "name": "terrain.py",
+      "size": 9415,
+      "modified": "2026-02-18T03:02:25.351441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/tool_system.py",
+      "folder": "world",
+      "name": "tool_system.py",
+      "size": 2337,
+      "modified": "2026-02-18T03:02:25.351441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/travel_system.py",
+      "folder": "world",
+      "name": "travel_system.py",
+      "size": 3633,
+      "modified": "2026-02-18T03:02:25.351441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/utils.py",
+      "folder": "world",
+      "name": "utils.py",
+      "size": 811,
+      "modified": "2026-02-18T03:02:25.352441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/world_builder.py",
+      "folder": "world",
+      "name": "world_builder.py",
+      "size": 12058,
+      "modified": "2026-02-18T03:02:25.352441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/world_controller.py",
+      "folder": "world",
+      "name": "world_controller.py",
+      "size": 48305,
+      "modified": "2026-02-18T03:02:25.352441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/world_generator.py",
+      "folder": "world",
+      "name": "world_generator.py",
+      "size": 25968,
+      "modified": "2026-02-18T03:02:25.353441",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/world_map.py",
+      "folder": "world",
+      "name": "world_map.py",
+      "size": 3680,
+      "modified": "2026-02-18T03:02:25.375410",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/world_session.py",
+      "folder": "world",
+      "name": "world_session.py",
+      "size": 4746,
+      "modified": "2026-02-18T03:02:25.376412",
+      "has_tool_yaml": false
+    },
+    {
+      "path": "world/__init__.py",
+      "folder": "world",
+      "name": "__init__.py",
+      "size": 0,
+      "modified": "2026-02-18T03:02:25.339441",
+      "has_tool_yaml": false
+    }
+  ],
+  "summary": {
+    "total": 215,
+    "with_tool_yaml": 8,
+    "by_folder": {
+      "tools": {
+        "count": 14,
+        "with_yaml": 0
+      },
+      "tools/ai_assistant": {
+        "count": 8,
+        "with_yaml": 0
+      },
+      "tools/ai_assistant/cli": {
+        "count": 8,
+        "with_yaml": 0
+      },
+      "tools/ai_assistant/cli/commands": {
+        "count": 18,
+        "with_yaml": 0
+      },
+      "tools/analysis": {
+        "count": 44,
+        "with_yaml": 0
+      },
+      "tools/architecture": {
+        "count": 4,
+        "with_yaml": 0
+      },
+      "tools/bridge": {
+        "count": 8,
+        "with_yaml": 0
+      },
+      "tools/coverage_analyzer": {
+        "count": 2,
+        "with_yaml": 2
+      },
+      "tools/future": {
+        "count": 4,
+        "with_yaml": 0
+      },
+      "tools/nativeclaw": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "tools/reporter": {
+        "count": 2,
+        "with_yaml": 2
+      },
+      "tools/scanner": {
+        "count": 2,
+        "with_yaml": 2
+      },
+      "tools/tool_analyzer": {
+        "count": 2,
+        "with_yaml": 2
+      },
+      "tools/utils": {
+        "count": 4,
+        "with_yaml": 0
+      },
+      "tools/workflow": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "scripts": {
+        "count": 5,
+        "with_yaml": 0
+      },
+      ".": {
+        "count": 13,
+        "with_yaml": 0
+      },
+      "ai": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "core": {
+        "count": 4,
+        "with_yaml": 0
+      },
+      "dungeon_neo": {
+        "count": 13,
+        "with_yaml": 0
+      },
+      "engine": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "recovered_code": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "routes": {
+        "count": 2,
+        "with_yaml": 0
+      },
+      "Scripts": {
+        "count": 5,
+        "with_yaml": 0
+      },
+      "tests": {
+        "count": 6,
+        "with_yaml": 0
+      },
+      "world": {
+        "count": 37,
+        "with_yaml": 0
+      }
+    }
+  },
+  "ignored_patterns": [
+    "__pycache__",
+    "venv",
+    ".git",
+    "node_modules",
+    "Lib",
+    "docs",
+    "archive"
+  ]
+}
