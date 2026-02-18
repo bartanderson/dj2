@@ -3,6 +3,7 @@ __pycache__/
 *.exe
 *.py[codz]
 *$py.class
+*.wav
 
 #coverge
 etc/
