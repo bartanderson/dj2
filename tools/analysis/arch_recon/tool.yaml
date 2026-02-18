@@ -3,7 +3,7 @@ description: Architecture reconnaissance - scan, analyze, generate context, cons
 path: tools/analysis/arch_recon.py
 execution: cli
 
-capabilities:
+provides:
   - action: arch.scan_project
     description: Full project scan to populate database
     flags: ["--scout"]
