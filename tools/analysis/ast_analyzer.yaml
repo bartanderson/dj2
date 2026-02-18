@@ -1,0 +1,62 @@
+name: ast_analyzer
+description: Core AST analysis engine for the project
+path: tools/analysis/ast_analyzer.py
+
+capabilities:
+  provides:
+    - action: analyze.ast.parse
+      description: Parse Python file into AST tree
+      input:
+        - name: file_path
+          type: string
+      output:
+        - name: ast_tree
+          type: object
+    
+    - action: analyze.ast.extract_functions
+      description: Extract all function definitions from AST
+      input:
+        - name: ast_tree
+          type: object
+      output:
+        - name: functions
+          type: list
+    
+    - action: analyze.ast.extract_classes
+      description: Extract all class definitions from AST
+      input:
+        - name: ast_tree
+          type: object
+      output:
+        - name: classes
+          type: list
+    
+    - action: analyze.ast.find_imports
+      description: Find all import statements in AST
+      input:
+        - name: ast_tree
+          type: object
+      output:
+        - name: imports
+          type: list
+    
+    - action: analyze.ast.get_docstrings
+      description: Extract docstrings from AST nodes
+      input:
+        - name: ast_tree
+          type: object
+      output:
+        - name: docstrings
+          type: dict
+
+relationships:
+  used_by:
+    - four_layer.py
+    - guardrails.py
+    - phase_checker.py
+    - arch_recon.py
+  part_of: core_analysis_system
+
+notes: |
+  This is the foundation of all AST-based analysis in the project.
+  If other files claim similar capabilities, they may be wrappers or duplicates.
