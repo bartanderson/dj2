@@ -1,0 +1,18 @@
+name: "Analyze Tool Risk"
+description: "Run arch_recon risk analysis on the tools directory"
+
+steps:
+  - action: arch.risk_analysis
+    with:
+      # arch_recon's risk analysis accepts these parameters:
+      min_priority: "HIGH"        # only show HIGH and CRITICAL risks
+      # We need to specify the target? The tool might need a layer or intent.
+      # From arch_recon --help, risk heatmap applies to whole project unless filtered.
+      # We can filter by layer using --layer tools.
+      # But the YAML parameters don't include layer yet. We can add it.
+      # Let's assume we can pass additional parameters via the 'with' dict.
+      # The executor will pass them as flags if they're declared.
+      # Since 'layer' isn't in the parameters list, it will warn but still pass.
+      # We'll include it and see.
+      layer: "tools"
+    as: risk_report

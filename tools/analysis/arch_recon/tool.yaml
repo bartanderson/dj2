@@ -21,6 +21,7 @@ provides:
     flags: ["--risk-heatmap"]
     parameters:
       min_priority: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+      layer: "string"
     outputs: ["risk_report"]
   
   - action: arch.generate_context
