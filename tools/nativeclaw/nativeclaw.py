@@ -218,6 +218,7 @@ class CapabilityResolver:
 
             # --- CLI execution branch ---
             if execution == 'cli':
+                print("cli")
                 # Get the script path from the tool's capabilities (or default)
                 script_path_rel = tool.capabilities.get('path', tool.name + '.py')
                 script_path = self.root / script_path_rel
@@ -226,6 +227,7 @@ class CapabilityResolver:
                     result_data = {'error': 'script not found', 'status': 'failed'}
                     failed_steps.append(action)
                 else:
+                    print("path exists")
                     cmd = [sys.executable, str(script_path)]
 
                     # Add static flags from the capability
@@ -234,6 +236,7 @@ class CapabilityResolver:
                     # Add parameters based on capability's 'parameters' declaration
                     declared_params = cap.get('parameters', {})
                     for param_name, param_value in inputs.items():
+                        print(f"debug: param name: {param_name} param value: {param_value}")
                         if param_name in declared_params:
                             flag = f"--{param_name.replace('_', '-')}"
                             if isinstance(param_value, bool) and param_value:
