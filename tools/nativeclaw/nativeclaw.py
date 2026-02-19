@@ -274,7 +274,7 @@ class CapabilityResolver:
                             capture_output=True,
                             text=True,
                             encoding='utf-8',
-                            timeout=60
+                            timeout=300
                         )
                         if result.returncode != 0:
                             print(f"    ❌ CLI tool failed (code {result.returncode})")

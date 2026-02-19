@@ -34,17 +34,19 @@ def analyze_ecosystem():
     project_root = Path(__file__).parent.parent.parent
     
     # Source 1: File system scan
+    print("Scanning files...")
     all_py_files = scan_python_files(project_root)
-    
+    print(f"Found {len(all_py_files)} files")
+    print("Getting git history...")
     # Source 2: Git history
     git_stats = get_git_history(project_root, all_py_files)
-    
     # Source 3: Import analysis
+    print("Analyzing imports...")
     import_graph = analyze_imports(project_root, all_py_files)
-    
     # Source 4: Your descriptions (hardcoded from our session)
+    print("Getting descriptions...")
     descriptions = get_known_descriptions()
-    
+    print("Combining data...")    
     # Combine sources
     inventory = []
     for file_info in all_py_files:
@@ -63,6 +65,7 @@ def analyze_ecosystem():
         })
     
     # Analysis
+    print("Returning data...")
     return {
         'inventory': inventory,
         'summary': summarize_inventory(inventory),
@@ -84,7 +87,8 @@ def scan_python_files(root):
         full_path = root / scan_dir
         if not full_path.exists():
             continue
-            
+
+        full_path = root / "tools/tool_analyzer"
         for py_file in full_path.rglob('*.py'):
             if '__pycache__' in str(py_file):
                 continue
