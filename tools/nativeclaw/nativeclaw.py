@@ -135,14 +135,24 @@ class CapabilityResolver:
                     'step': step,
                     'tools': [],
                     'selected': None,
+                    'capability': None,
                     'status': 'missing'
                 })
                 continue
+
+            # Pick the first tool (could be smarter later)
+            tool = tools[0]
+            # Find which capability provides this action
+            capability = None
+            for cap in tool.capabilities.get('provides', []):
+                if isinstance(cap, dict) and cap.get('action') == action:
+                    capability = cap
+                    break
             
             plan.append({
                 'step': step,
                 'tools': tools,
-                'selected': tools[0],
+                'selected': tool,
                 'status': 'found'
             })
         
@@ -197,6 +207,96 @@ class CapabilityResolver:
                     inputs[key] = value
             
             print(f"    Inputs: {inputs}")
+
+            # ===== NEW: CLI EXECUTION BRANCH =====
+            if item['selected'] and item['capability']:
+                tool = item['selected']
+                cap = item['capability']
+                
+                # Check if tool uses CLI execution (default to cli if not specified)
+                execution = tool.capabilities.get('execution', 'cli')
+                if execution == 'cli':
+                    # Determine script path
+                    script_path = self.root / tool.capabilities.get('path', f"{tool.name}.py")
+                    if not script_path.exists():
+                        # Fallback: maybe the tool name is the path
+                        script_path = self.root / tool.name
+                    
+                    if not script_path.exists():
+                        print(f"    ❌ Script not found: {script_path}")
+                        result_data = {'error': 'script not found', 'status': 'failed'}
+                        failed_steps.append(action)
+                    else:
+                        # Build command
+                        cmd = [sys.executable, str(script_path)]
+                        # Add static flags from capability
+                        cmd.extend(cap.get('flags', []))
+                        # Add parameters from inputs
+                        params = cap.get('parameters', {})
+                        for param_name, param_value in inputs.items():
+                            if param_name in params:
+                                flag = f"--{param_name.replace('_', '-')}"
+                                if isinstance(param_value, bool) and param_value:
+                                    cmd.append(flag)
+                                elif not isinstance(param_value, bool):
+                                    cmd.extend([flag, str(param_value)])
+                            else:
+                                # Undeclared parameter – warn but still pass?
+                                print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
+                                flag = f"--{param_name.replace('_', '-')}"
+                                cmd.extend([flag, str(param_value)])
+                        
+                        print(f"    Running: {' '.join(cmd)}")
+                        try:
+                            result = subprocess.run(
+                                cmd,
+                                cwd=self.root,
+                                capture_output=True,
+                                text=True,
+                                timeout=60
+                            )
+                            if result.returncode != 0:
+                                print(f"    ❌ CLI tool failed (code {result.returncode})")
+                                if result.stderr:
+                                    print(f"    Error: {result.stderr[:200]}")
+                                failed_steps.append(action)
+                                result_data = {
+                                    'error': result.stderr,
+                                    'status': 'failed',
+                                    'returncode': result.returncode
+                                }
+                            else:
+                                # Try to parse JSON output
+                                try:
+                                    if result.stdout.strip():
+                                        result_data = json.loads(result.stdout)
+                                        result_data['status'] = 'success'
+                                    else:
+                                        result_data = {'status': 'success', 'message': 'No output'}
+                                except json.JSONDecodeError:
+                                    result_data = {
+                                        'output': result.stdout.strip(),
+                                        'status': 'success',
+                                        'note': 'non-JSON output'
+                                    }
+                                print(f"    ✅ CLI tool succeeded")
+                        except subprocess.TimeoutExpired:
+                            print(f"    ❌ CLI tool timed out")
+                            failed_steps.append(action)
+                            result_data = {'error': 'timeout', 'status': 'failed'}
+                        except Exception as e:
+                            print(f"    ❌ Error running CLI tool: {e}")
+                            failed_steps.append(action)
+                            result_data = {'error': str(e), 'status': 'failed'}
+                    
+                    # Store result and skip the rest of the loop for this step
+                    step_name = step.get('as', action)
+                    context[step_name] = result_data
+                    results[action] = result_data
+                    output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
+                    print(f"    Output: {output_preview}")
+                    continue  # Skip to next step
+            # ===== END NEW BRANCH =====
             
             # Find the tool's entry point
             tool_entry = None
