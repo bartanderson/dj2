@@ -34,13 +34,17 @@ class Tool:
         cap_file = self.path / "tool.yaml"
         if cap_file.exists():
             try:
-                return yaml.safe_load(cap_file.read_text(encoding='utf-8'))
-            except:
+                data = yaml.safe_load(cap_file.read_text(encoding='utf-8'))
+                # Ensure required keys exist
+                if 'provides' not in data:
+                    data['provides'] = []
+                if 'requires' not in data:
+                    data['requires'] = []
+                return data
+            except Exception as e:
+                print(f"Error loading {cap_file}: {e}")
                 return {'provides': [], 'requires': [], 'name': self.name}
         return {'provides': [], 'requires': [], 'name': self.name}
-    
-    def __repr__(self):
-        return f"Tool({self.name})"
 
 class ToolRegistry:
     """Finds and manages all tools."""
