@@ -211,6 +211,12 @@ class CapabilityResolver:
                     inputs[key] = value
             
             print(f"    Inputs: {inputs}")
+            # Debug: check execution flag and inputs
+            print(f"    [DEBUG] execution = {tool.capabilities.get('execution')}")
+            print(f"    [DEBUG] inputs type = {type(inputs)}")
+            if inputs is None:
+                inputs = {}
+                print(f"    [DEBUG] inputs was None, set to empty dict")
             if inputs is None:
                 inputs = {}
                 print("    ⚠️  inputs was None, replaced with empty dict")
