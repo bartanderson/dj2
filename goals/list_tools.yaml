@@ -1,0 +1,15 @@
+name: "List Tools Files"
+description: "Scan tools directory and summarize findings"
+
+steps:
+  - action: scan.files
+    with:
+      path: "tools"
+      pattern: "*.py"
+    as: file_list
+
+  - action: report.findings
+    with:
+      data: previous.file_list
+      format: "summary"
+    as: report
