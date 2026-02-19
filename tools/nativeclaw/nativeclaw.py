@@ -207,6 +207,9 @@ class CapabilityResolver:
                     inputs[key] = value
             
             print(f"    Inputs: {inputs}")
+            if inputs is None:
+                inputs = {}
+                print("    ⚠️  inputs was None, replaced with empty dict")
 
             # After inputs are prepared, before the entry-point search
             if item['selected'] and item['capability']:
@@ -215,6 +218,7 @@ class CapabilityResolver:
 
                 # Check if this tool uses CLI execution
                 if tool.capabilities.get('execution') == 'cli':
+                    print(f"    [DEBUG] Starting CLI execution for {action}")
                     script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
                     if not script_path.exists():
                         print(f"    ❌ Script not found: {script_path}")
@@ -223,9 +227,25 @@ class CapabilityResolver:
                     else:
                         cmd = [sys.executable, str(script_path)]
                         # Add static flags from capability
-                        cmd.extend(cap.get('flags', []))
+                        flags = cap.get('flags', [])
+                        if flags is None:
+                            flags = []
+                        cmd.extend(flags)
+
+                        # Get parameters definition – ensure it's a dict
+                        params = cap.get('parameters')
+                        if params is None:
+                            params = {}
+                            print(f"    [DEBUG] No parameters defined for this capability, using empty dict")
+                        else:
+                            print(f"    [DEBUG] Parameters defined: {params}")
+
+                        # Ensure inputs is a dict
+                        if not isinstance(inputs, dict):
+                            print(f"    [DEBUG] inputs is not a dict: {inputs}, resetting to empty")
+                            inputs = {}
+
                         # Add parameters from inputs
-                        params = cap.get('parameters', {})
                         for param_name, param_value in inputs.items():
                             if param_name in params:
                                 flag = f"--{param_name.replace('_', '-')}"
@@ -234,7 +254,6 @@ class CapabilityResolver:
                                 elif not isinstance(param_value, bool):
                                     cmd.extend([flag, str(param_value)])
                             else:
-                                # Undeclared parameter – warn but pass as flag? We'll warn only.
                                 print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
 
                         print(f"    Running: {' '.join(cmd)}")
@@ -286,7 +305,7 @@ class CapabilityResolver:
                     results[action] = result_data
                     output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
                     print(f"    Output: {output_preview}")
-                    continue  # Important: skip the later entry‑point logic
+                    continue
             
             # Find the tool's entry point
             tool_entry = None
