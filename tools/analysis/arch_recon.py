@@ -23,6 +23,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
+from typing import List
+
 from scanner import run_scout
 from reporters import (
     report_hot, report_mutations, report_largest, report_concepts,
