@@ -174,174 +174,191 @@ class CapabilityResolver:
         }
     
     def execute_plan(self, plan, session=None):
-        """Execute the resolved plan by running actual tools."""
-        if session:
-            self.session = session
+    """Execute the resolved plan by running actual tools."""
+    if session:
+        self.session = session
 
-        results = {}
-        context = {}
-        failed_steps = []
+    results = {}
+    context = {}
+    failed_steps = []
 
-        print("\n📋 Executing capability plan:")
-        print("="*60)
+    print("\n📋 Executing capability plan:")
+    print("="*60)
 
-        for i, item in enumerate(plan['plan']):
-            if item['status'] == 'missing':
-                print(f"  ❌ Step {i+1}: {item['step'].get('action', 'unknown')} - NO TOOL")
-                failed_steps.append(item['step'].get('action', 'unknown'))
-                continue
+    for i, item in enumerate(plan['plan']):
+        if item['status'] == 'missing':
+            print(f"  ❌ Step {i+1}: {item['step'].get('action', 'unknown')} - NO TOOL")
+            failed_steps.append(item['step'].get('action', 'unknown'))
+            continue
 
-            tool = item['selected']
-            step = item['step']
-            action = step.get('action')
-            cap = item['capability']          # the specific capability dict from 'provides'
+        tool = item['selected']
+        step = item['step']
+        action = step.get('action')
+        cap = item['capability']          # the specific capability dict from 'provides'
 
-            print(f"\n  Step {i+1}: {action}")
-            print(f"    Using: {tool.name}")
+        print(f"\n  Step {i+1}: {action}")
+        print(f"    Using: {tool.name}")
 
-            # Prepare inputs - resolve from context
-            inputs = {}
-            for key, value in step.get('with', {}).items():
-                if isinstance(value, str) and value.startswith('previous.'):
-                    ref = value.split('.')[1]
-                    if ref in context:
-                        inputs[key] = context[ref]
-                    else:
-                        print(f"    ⚠️  Missing reference: {ref}")
-                        inputs[key] = None
+        # --- Safely prepare inputs ---
+        inputs = {}
+        with_value = step.get('with')
+        if with_value is None:
+            with_value = {}
+        elif not isinstance(with_value, dict):
+            print(f"    ⚠️  'with' value is not a dict (type: {type(with_value)}), treating as empty")
+            with_value = {}
+
+        for key, value in with_value.items():
+            if isinstance(value, str) and value.startswith('previous.'):
+                ref = value.split('.')[1]
+                if ref in context:
+                    inputs[key] = context[ref]
                 else:
-                    inputs[key] = value
-
-            print(f"    Inputs: {inputs}")
-
-            # Determine execution method from tool's capabilities dict
-            execution = tool.capabilities.get('execution', 'cli')   # default to cli if not specified
-
-            # --- CLI execution branch ---
-            if execution == 'cli':
-                print("cli")
-                # Get the script path from the tool's capabilities (or default)
-                script_path_rel = tool.capabilities.get('path', tool.name + '.py')
-                script_path = self.root / script_path_rel
-                if not script_path.exists():
-                    print(f"    ❌ Script not found: {script_path}")
-                    result_data = {'error': 'script not found', 'status': 'failed'}
-                    failed_steps.append(action)
-                else:
-                    print("path exists")
-                    cmd = [sys.executable, str(script_path)]
-
-                    # Add static flags from the capability
-                    cmd.extend(cap.get('flags', []))
-
-                    # Add parameters based on capability's 'parameters' declaration
-                    declared_params = cap.get('parameters', {})
-                    for param_name, param_value in inputs.items():
-                        print(f"debug: param name: {param_name} param value: {param_value}")
-                        if param_name in declared_params:
-                            flag = f"--{param_name.replace('_', '-')}"
-                            if isinstance(param_value, bool) and param_value:
-                                cmd.append(flag)
-                            elif not isinstance(param_value, bool):
-                                cmd.extend([flag, str(param_value)])
-                        else:
-                            print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
-
-                    print(f"    Running: {' '.join(cmd)}")
-                    try:
-                        result = subprocess.run(
-                            cmd,
-                            cwd=self.root,
-                            capture_output=True,
-                            text=True,
-                            timeout=60
-                        )
-                        if result.returncode != 0:
-                            print(f"    ❌ CLI tool failed (code {result.returncode})")
-                            if result.stderr:
-                                print(f"    Error: {result.stderr[:200]}")
-                            failed_steps.append(action)
-                            result_data = {
-                                'error': result.stderr,
-                                'status': 'failed',
-                                'returncode': result.returncode
-                            }
-                        else:
-                            # Try to parse JSON output
-                            try:
-                                if result.stdout.strip():
-                                    result_data = json.loads(result.stdout)
-                                    result_data['status'] = 'success'
-                                else:
-                                    result_data = {'status': 'success', 'message': 'No output'}
-                            except json.JSONDecodeError:
-                                result_data = {
-                                    'output': result.stdout.strip(),
-                                    'status': 'success',
-                                    'note': 'non-JSON output'
-                                }
-                            print(f"    ✅ CLI tool succeeded")
-                    except subprocess.TimeoutExpired:
-                        print(f"    ❌ CLI tool timed out")
-                        failed_steps.append(action)
-                        result_data = {'error': 'timeout', 'status': 'failed'}
-                    except Exception as e:
-                        print(f"    ❌ Error running CLI tool: {e}")
-                        failed_steps.append(action)
-                        result_data = {'error': str(e), 'status': 'failed'}
-
-            # --- (Future) other execution types (e.g., registry) can be added here ---
-
+                    print(f"    ⚠️  Missing reference: {ref}")
+                    inputs[key] = None
             else:
-                # Fallback simulation for tools without a recognized execution method
-                print(f"    ⚠️  No execution method '{execution}' implemented, simulating")
-                # Simulation logic (keep your existing simulation cases)
-                if action == 'scan.files':
-                    result_data = {
-                        'files': ['arch_recon.py', 'scanner.py', 'intent_matcher.py'],
-                        'count': 3
-                    }
-                elif action == 'extract.imports':
-                    result_data = {
-                        'imports': ['intent_matcher', 'reporters', 'db_operations'],
-                        'count': 3
-                    }
-                elif action == 'analyze.coverage':
-                    result_data = {
-                        'total_files': 10,
-                        'covered_files': 7,
-                        'uncovered_files': ['file1.py', 'file2.py', 'file3.py'],
-                        'coverage_percent': 70.0
-                    }
-                elif action == 'report.findings':
-                    result_data = {
-                        'report': 'Coverage: 70% (7/10 files)',
-                        'format': 'summary'
-                    }
-                else:
-                    result_data = {'status': 'simulated', 'action': action}
+                inputs[key] = value
 
-            # Track created files if the tool told us about them (optional)
-            if self.session and result_data.get('created_files'):
-                for f in result_data['created_files']:
-                    self.session.track_created(f)
+        print(f"    Inputs: {inputs}")
 
-            # Store in context
+        # --- Validate capability ---
+        if cap is None:
+            print(f"    ❌ No capability definition for action '{action}' in tool {tool.name}")
+            result_data = {'error': 'missing capability definition', 'status': 'failed'}
+            failed_steps.append(action)
+            # Store result and skip to next step
             step_name = step.get('as', action)
             context[step_name] = result_data
             results[action] = result_data
-
             output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
             print(f"    Output: {output_preview}")
+            continue
 
-        print("\n" + "="*60)
+        # --- Determine execution method ---
+        execution = tool.capabilities.get('execution', 'cli')   # default to cli
 
-        if failed_steps:
-            print(f"⚠️  Plan completed with failures: {list(set(failed_steps))}")
+        # --- CLI execution branch ---
+        if execution == 'cli':
+            print("    [CLI execution]")
+            script_path_rel = tool.capabilities.get('path', tool.name + '.py')
+            script_path = self.root / script_path_rel
+            if not script_path.exists():
+                print(f"    ❌ Script not found: {script_path}")
+                result_data = {'error': 'script not found', 'status': 'failed'}
+                failed_steps.append(action)
+            else:
+                print("    Script found")
+                cmd = [sys.executable, str(script_path)]
+
+                # Add static flags from the capability
+                cmd.extend(cap.get('flags', []))
+
+                # Add parameters based on capability's 'parameters' declaration
+                declared_params = cap.get('parameters', {})
+                for param_name, param_value in inputs.items():
+                    print(f"    debug: param '{param_name}' = {param_value}")
+                    if param_name in declared_params:
+                        flag = f"--{param_name.replace('_', '-')}"
+                        if isinstance(param_value, bool) and param_value:
+                            cmd.append(flag)
+                        elif not isinstance(param_value, bool):
+                            cmd.extend([flag, str(param_value)])
+                    else:
+                        print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
+
+                print(f"    Running: {' '.join(cmd)}")
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        cwd=self.root,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+                    if result.returncode != 0:
+                        print(f"    ❌ CLI tool failed (code {result.returncode})")
+                        if result.stderr:
+                            print(f"    Error: {result.stderr[:200]}")
+                        failed_steps.append(action)
+                        result_data = {
+                            'error': result.stderr,
+                            'status': 'failed',
+                            'returncode': result.returncode
+                        }
+                    else:
+                        # Try to parse JSON output
+                        try:
+                            if result.stdout.strip():
+                                result_data = json.loads(result.stdout)
+                                result_data['status'] = 'success'
+                            else:
+                                result_data = {'status': 'success', 'message': 'No output'}
+                        except json.JSONDecodeError:
+                            result_data = {
+                                'output': result.stdout.strip(),
+                                'status': 'success',
+                                'note': 'non-JSON output'
+                            }
+                        print(f"    ✅ CLI tool succeeded")
+                except subprocess.TimeoutExpired:
+                    print(f"    ❌ CLI tool timed out")
+                    failed_steps.append(action)
+                    result_data = {'error': 'timeout', 'status': 'failed'}
+                except Exception as e:
+                    print(f"    ❌ Error running CLI tool: {e}")
+                    failed_steps.append(action)
+                    result_data = {'error': str(e), 'status': 'failed'}
+
+        # --- Future execution types can be added here ---
         else:
-            print("✅ Plan execution complete")
+            print(f"    ⚠️  No execution method '{execution}' implemented, simulating")
+            # Simulation fallback (keep your existing cases)
+            if action == 'scan.files':
+                result_data = {
+                    'files': ['arch_recon.py', 'scanner.py', 'intent_matcher.py'],
+                    'count': 3
+                }
+            elif action == 'extract.imports':
+                result_data = {
+                    'imports': ['intent_matcher', 'reporters', 'db_operations'],
+                    'count': 3
+                }
+            elif action == 'analyze.coverage':
+                result_data = {
+                    'total_files': 10,
+                    'covered_files': 7,
+                    'uncovered_files': ['file1.py', 'file2.py', 'file3.py'],
+                    'coverage_percent': 70.0
+                }
+            elif action == 'report.findings':
+                result_data = {
+                    'report': 'Coverage: 70% (7/10 files)',
+                    'format': 'summary'
+                }
+            else:
+                result_data = {'status': 'simulated', 'action': action}
 
-        return results
+        # --- Track created files if any ---
+        if self.session and result_data.get('created_files'):
+            for f in result_data['created_files']:
+                self.session.track_created(f)
+
+        # --- Store in context ---
+        step_name = step.get('as', action)
+        context[step_name] = result_data
+        results[action] = result_data
+
+        output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
+        print(f"    Output: {output_preview}")
+
+    print("\n" + "="*60)
+
+    if failed_steps:
+        print(f"⚠️  Plan completed with failures: {list(set(failed_steps))}")
+    else:
+        print("✅ Plan execution complete")
+
+    return results
 
 class Session:
     """Generic safety wrapper for ANY operation - belt AND suspenders."""
@@ -678,23 +695,17 @@ def main():
         
         if execute == 'y':
             # Start a session
-            print("debug 681")
             session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
-            print("debug 683")
             branch = session.start()
-            print("debug 685")
             resolver.set_session(session)
-            print("debug 687")
             
             try:
                 # Execute the plan
                 outputs = resolver.execute_plan(result, session)
-                print("debug 692")
                 
                 # Save review
                 archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
                 archive_dir.mkdir(parents=True, exist_ok=True)
-                print("debug 697")
                 
                 state = {
                     'branch_name': branch,
@@ -702,25 +713,21 @@ def main():
                     'goal_name': goal.get('name'),
                     'timestamp': datetime.now().isoformat()
                 }
-                print("debug 705")
 
                 with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
                     json.dump(state, f, indent=2)
-                print("debug 709")
                 
                 with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "diff", f"{session.original_branch}..{branch}"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
-                print("debug 716")
                 
                 with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "ls-tree", "-r", branch, "--name-only"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
-                print("debug 723")
                 
                 resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Goal: {goal.get('name', 'unknown')}
@@ -731,12 +738,10 @@ To resume this review:
 """
                 with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
                     f.write(resume_instructions)
-                print("debug 734")
                 
                 print("\n" + "="*70)
                 print(f"✅ Review saved to: {archive_dir}")
                 print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
-                print("debug 739")
                 
                 input("\nPress Enter when ready to approve/reject...")
                 resp = input("Approve? [Y]es [N]o: ").strip().upper()
