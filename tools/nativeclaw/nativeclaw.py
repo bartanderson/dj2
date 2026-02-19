@@ -193,45 +193,34 @@ class CapabilityResolver:
             tool = item['selected']
             step = item['step']
             action = step.get('action')
+            cap = item['capability']          # the specific capability dict from 'provides'
 
             print(f"\n  Step {i+1}: {action}")
             print(f"    Using: {tool.name}")
 
-            # --- DEBUG: show tool capabilities ---
-            print(f"    [DEBUG] tool.capabilities keys: {list(tool.capabilities.keys())}")
-            print(f"    [DEBUG] execution flag: {tool.capabilities.get('execution')}")
-
             # Prepare inputs - resolve from context
-            print("    [DEBUG] Starting inputs preparation")
             inputs = {}
-            try:
-                with_dict = step.get('with')
-                print(f"    [DEBUG] step.get('with') = {with_dict}")
-                if with_dict is None:
-                    with_dict = {}
-                    print("    [DEBUG] with_dict was None, using empty dict")
-                for key, value in with_dict.items():
-                    print(f"    [DEBUG] processing key={key}, value={value}")
-                    if isinstance(value, str) and value.startswith('previous.'):
-                        ref = value.split('.')[1]
-                        if ref in context:
-                            inputs[key] = context[ref]
-                            print(f"    [DEBUG] resolved {ref} to {context[ref]}")
-                        else:
-                            print(f"    ⚠️  Missing reference: {ref}")
-                            inputs[key] = None
+            for key, value in step.get('with', {}).items():
+                if isinstance(value, str) and value.startswith('previous.'):
+                    ref = value.split('.')[1]
+                    if ref in context:
+                        inputs[key] = context[ref]
                     else:
-                        inputs[key] = value
-            except Exception as e:
-                print(f"    [DEBUG] Exception during inputs preparation: {e}")
-                raise
+                        print(f"    ⚠️  Missing reference: {ref}")
+                        inputs[key] = None
+                else:
+                    inputs[key] = value
 
-            print(f"    [DEBUG] inputs after preparation: {inputs}")
+            print(f"    Inputs: {inputs}")
 
-            # --- CLI EXECUTION BRANCH ---
-            if tool.capabilities.get('execution') == 'cli':
-                print(f"    [DEBUG] Entering CLI execution branch")
-                script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
+            # Determine execution method from tool's capabilities dict
+            execution = tool.capabilities.get('execution', 'cli')   # default to cli if not specified
+
+            # --- CLI execution branch ---
+            if execution == 'cli':
+                # Get the script path from the tool's capabilities (or default)
+                script_path_rel = tool.capabilities.get('path', tool.name + '.py')
+                script_path = self.root / script_path_rel
                 if not script_path.exists():
                     print(f"    ❌ Script not found: {script_path}")
                     result_data = {'error': 'script not found', 'status': 'failed'}
@@ -239,27 +228,20 @@ class CapabilityResolver:
                 else:
                     cmd = [sys.executable, str(script_path)]
 
-                    # Add static flags from capability
-                    flags = item['capability'].get('flags', [])
-                    if flags is None:
-                        flags = []
-                    cmd.extend(flags)
+                    # Add static flags from the capability
+                    cmd.extend(cap.get('flags', []))
 
-                    # Get parameter definitions
-                    params = item['capability'].get('parameters', {})
-                    if params is None:
-                        params = {}
-
-                    # Add parameters from inputs
+                    # Add parameters based on capability's 'parameters' declaration
+                    declared_params = cap.get('parameters', {})
                     for param_name, param_value in inputs.items():
-                        if param_name in params:
+                        if param_name in declared_params:
                             flag = f"--{param_name.replace('_', '-')}"
                             if isinstance(param_value, bool) and param_value:
                                 cmd.append(flag)
                             elif not isinstance(param_value, bool):
                                 cmd.extend([flag, str(param_value)])
                         else:
-                            print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
+                            print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
 
                     print(f"    Running: {' '.join(cmd)}")
                     try:
@@ -304,85 +286,12 @@ class CapabilityResolver:
                         failed_steps.append(action)
                         result_data = {'error': str(e), 'status': 'failed'}
 
-                # Store result and skip the rest of the loop for this step
-                step_name = step.get('as', action)
-                context[step_name] = result_data
-                results[action] = result_data
-                output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
-                print(f"    Output: {output_preview}")
-                continue  # Skip the rest of the loop
+            # --- (Future) other execution types (e.g., registry) can be added here ---
 
-            # --- (The rest of the method – entry‑point search, simulation, etc.) ---
-            # Find the tool's entry point - try common patterns
-            tool_entry = None
-            possible_entries = [
-                tool.path / "run.py",
-                tool.path / "tool.py",
-                tool.path / "main.py",
-                tool.path / f"{tool.name}.py",
-                tool.path / "exec.py"
-            ]
-
-            for entry in possible_entries:
-                if entry.exists():
-                    tool_entry = entry
-                    break
-
-            if tool_entry and tool_entry.exists():
-                cmd = [sys.executable, str(tool_entry)]
-                cmd.append(json.dumps(inputs))
-
-                print(f"    Running: {' '.join(cmd)}")
-
-                try:
-                    result = subprocess.run(
-                        cmd,
-                        cwd=self.root,
-                        capture_output=True,
-                        text=True,
-                        timeout=60
-                    )
-
-                    if result.returncode != 0:
-                        print(f"    ❌ Tool failed (code {result.returncode})")
-                        if result.stderr:
-                            print(f"    Error: {result.stderr[:200]}")
-                        failed_steps.append(action)
-                        result_data = {
-                            'error': result.stderr,
-                            'status': 'failed',
-                            'returncode': result.returncode
-                        }
-                    else:
-                        try:
-                            if result.stdout.strip():
-                                result_data = json.loads(result.stdout)
-                                result_data['status'] = 'success'
-                            else:
-                                result_data = {'status': 'success', 'message': 'No output'}
-                            print(f"    ✅ Tool succeeded")
-                        except json.JSONDecodeError:
-                            result_data = {
-                                'status': 'success',
-                                'output': result.stdout.strip(),
-                                'note': 'non-JSON output'
-                            }
-                            print(f"    ⚠️  Tool output not JSON")
-
-                    if result.stderr:
-                        print(f"    stderr: {result.stderr[:200]}")
-
-                except subprocess.TimeoutExpired:
-                    print(f"    ❌ Tool timed out after 60 seconds")
-                    failed_steps.append(action)
-                    result_data = {'error': 'timeout', 'status': 'failed'}
-                except Exception as e:
-                    print(f"    ❌ Error running tool: {e}")
-                    failed_steps.append(action)
-                    result_data = {'error': str(e), 'status': 'failed'}
             else:
-                print(f"    ⚠️  No entry point found for {tool.name}, simulating")
-                # Fall back to simulation based on action type
+                # Fallback simulation for tools without a recognized execution method
+                print(f"    ⚠️  No execution method '{execution}' implemented, simulating")
+                # Simulation logic (keep your existing simulation cases)
                 if action == 'scan.files':
                     result_data = {
                         'files': ['arch_recon.py', 'scanner.py', 'intent_matcher.py'],
@@ -408,10 +317,12 @@ class CapabilityResolver:
                 else:
                     result_data = {'status': 'simulated', 'action': action}
 
+            # Track created files if the tool told us about them (optional)
             if self.session and result_data.get('created_files'):
                 for f in result_data['created_files']:
                     self.session.track_created(f)
 
+            # Store in context
             step_name = step.get('as', action)
             context[step_name] = result_data
             results[action] = result_data
