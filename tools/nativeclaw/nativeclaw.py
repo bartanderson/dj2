@@ -694,18 +694,21 @@ def main():
                 }
                 with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
                     json.dump(state, f, indent=2)
+                print("697")
                 
                 with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "diff", f"{session.original_branch}..{branch}"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
+                print("704")
                 
                 with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "ls-tree", "-r", branch, "--name-only"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
+                print("711")
                 
                 resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Goal: {goal.get('name', 'unknown')}
@@ -716,6 +719,7 @@ To resume this review:
 """
                 with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
                     f.write(resume_instructions)
+                print("722")
                 
                 print("\n" + "="*70)
                 print(f"✅ Review saved to: {archive_dir}")
