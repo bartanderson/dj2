@@ -273,6 +273,7 @@ class CapabilityResolver:
                             cwd=self.root,
                             capture_output=True,
                             text=True,
+                            encoding-'utf-8',
                             timeout=60
                         )
                         if result.returncode != 0:
@@ -702,6 +703,16 @@ def main():
             try:
                 # Execute the plan
                 outputs = resolver.execute_plan(result, session)
+
+                # Check if any files were changed
+                diff_output = subprocess.run(
+                    ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
+                    cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
+                )
+                if not diff_output.stdout.strip():
+                    print("\n✅ No files were changed – nothing to review.")
+                    session.abort()   # or just delete the branch
+                    return
                 
                 # Save review
                 archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -737,7 +748,7 @@ To resume this review:
   Scripts\\nativeclaw.bat resume {archive_dir}
 """
                 with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
-                    f.write(resume_instructions)
+                    f.write(resume_instructions)              
                 
                 print("\n" + "="*70)
                 print(f"✅ Review saved to: {archive_dir}")
