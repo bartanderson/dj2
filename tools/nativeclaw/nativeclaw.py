@@ -248,23 +248,56 @@ class CapabilityResolver:
                     failed_steps.append(action)
                 else:
                     print("    Script found")
+                    # cmd = [sys.executable, str(script_path)]
+
+                    # # Add static flags from the capability
+                    # cmd.extend(cap.get('flags', []))
+
+                    # # Add parameters based on capability's 'parameters' declaration
+                    # declared_params = cap.get('parameters', {})
+                    # for param_name, param_value in inputs.items():
+                    #     print(f"    debug: param '{param_name}' = {param_value}")
+                    #     if param_name in declared_params:
+                    #         flag = f"--{param_name.replace('_', '-')}"
+                    #         if isinstance(param_value, bool) and param_value:
+                    #             cmd.append(flag)
+                    #         elif not isinstance(param_value, bool):
+                    #             cmd.extend([flag, str(param_value)])
+                    #     else:
+                    #         print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
+
+                    # print(f"    Running: {' '.join(cmd)}")
+                    # try:
+                    #     result = subprocess.run(
+                    #         cmd,
+                    #         cwd=self.root,
+                    #         capture_output=True,
+                    #         text=True,
+                    #         encoding='utf-8',
+                    #         timeout=300
+                    #     )
+
                     cmd = [sys.executable, str(script_path)]
 
-                    # Add static flags from the capability
-                    cmd.extend(cap.get('flags', []))
-
-                    # Add parameters based on capability's 'parameters' declaration
-                    declared_params = cap.get('parameters', {})
-                    for param_name, param_value in inputs.items():
-                        print(f"    debug: param '{param_name}' = {param_value}")
-                        if param_name in declared_params:
-                            flag = f"--{param_name.replace('_', '-')}"
-                            if isinstance(param_value, bool) and param_value:
-                                cmd.append(flag)
-                            elif not isinstance(param_value, bool):
-                                cmd.extend([flag, str(param_value)])
-                        else:
-                            print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
+                    # Check if this capability expects JSON input
+                    if cap.get('input_format') == 'json':
+                        # Pass the entire inputs dict as a JSON string
+                        cmd.append(json.dumps(inputs))
+                    else:
+                        # Add static flags from the capability
+                        cmd.extend(cap.get('flags', []))
+                        # Add parameters based on capability's 'parameters' declaration
+                        declared_params = cap.get('parameters', {})
+                        for param_name, param_value in inputs.items():
+                            print(f"    debug: param '{param_name}' = {param_value}")
+                            if param_name in declared_params:
+                                flag = f"--{param_name.replace('_', '-')}"
+                                if isinstance(param_value, bool) and param_value:
+                                    cmd.append(flag)
+                                elif not isinstance(param_value, bool):
+                                    cmd.extend([flag, str(param_value)])
+                            else:
+                                print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
 
                     print(f"    Running: {' '.join(cmd)}")
                     try:
@@ -274,8 +307,9 @@ class CapabilityResolver:
                             capture_output=True,
                             text=True,
                             encoding='utf-8',
-                            timeout=300
+                            timeout=300   # increased timeout
                         )
+
                         if result.returncode != 0:
                             print(f"    ❌ CLI tool failed (code {result.returncode})")
                             if result.stderr:

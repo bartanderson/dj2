@@ -5,6 +5,7 @@ path: tools/tool_analyzer/run.py   # <-- corrected
 
 provides:
   - action: analyze.tool_ecosystem
+    input_format: json
     description: Complete analysis of all tools using multiple data sources
     outputs:
       - name: inventory
@@ -15,6 +16,7 @@ provides:
       - name: recommendations
   
   - action: report.tool_landscape
+    input_format: json
     description: Generate human-readable landscape report
     inputs:
       - name: analysis_data

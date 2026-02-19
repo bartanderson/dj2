@@ -88,7 +88,6 @@ def scan_python_files(root):
         if not full_path.exists():
             continue
 
-        full_path = root / "tools/tool_analyzer"
         for py_file in full_path.rglob('*.py'):
             if '__pycache__' in str(py_file):
                 continue
