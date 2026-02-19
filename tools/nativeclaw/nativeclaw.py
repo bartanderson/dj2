@@ -678,17 +678,23 @@ def main():
         
         if execute == 'y':
             # Start a session
+            print("debug 681")
             session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
+            print("debug 683")
             branch = session.start()
+            print("debug 685")
             resolver.set_session(session)
+            print("debug 687")
             
             try:
                 # Execute the plan
                 outputs = resolver.execute_plan(result, session)
+                print("debug 692")
                 
                 # Save review
                 archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
                 archive_dir.mkdir(parents=True, exist_ok=True)
+                print("debug 697")
                 
                 state = {
                     'branch_name': branch,
@@ -696,23 +702,25 @@ def main():
                     'goal_name': goal.get('name'),
                     'timestamp': datetime.now().isoformat()
                 }
+                print("debug 705")
+
                 with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
                     json.dump(state, f, indent=2)
-                print("697")
+                print("debug 709")
                 
                 with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "diff", f"{session.original_branch}..{branch}"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
-                print("704")
+                print("debug 716")
                 
                 with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
                     subprocess.run(
                         ["git", "ls-tree", "-r", branch, "--name-only"],
                         cwd=PROJECT_ROOT, stdout=f, text=True
                     )
-                print("711")
+                print("debug 723")
                 
                 resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Goal: {goal.get('name', 'unknown')}
@@ -723,11 +731,12 @@ To resume this review:
 """
                 with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
                     f.write(resume_instructions)
-                print("722")
+                print("debug 734")
                 
                 print("\n" + "="*70)
                 print(f"✅ Review saved to: {archive_dir}")
                 print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
+                print("debug 739")
                 
                 input("\nPress Enter when ready to approve/reject...")
                 resp = input("Approve? [Y]es [N]o: ").strip().upper()
