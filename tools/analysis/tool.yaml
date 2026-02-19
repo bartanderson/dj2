@@ -1,7 +1,7 @@
 name: ast_analyzer
 description: Core AST analysis engine for the project
 path: tools/analysis/ast_analyzer.py
-
+execution: cli
 capabilities:
   provides:
     - action: analyze.ast.parse

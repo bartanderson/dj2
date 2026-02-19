@@ -1,7 +1,7 @@
 name: tool_analyzer
 description: Multi-source analysis of all tools - combines descriptions, git history, and code structure
 execution: cli
-path: tools/tool_analyzer/run.py   # <-- corrected
+path: tools/tool_analyzer/run.py
 
 provides:
   - action: analyze.tool_ecosystem
