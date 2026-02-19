@@ -1,6 +1,7 @@
 name: findings_reporter
 description: Formats and displays findings
-
+execution: cli
+path: tools/reporter/run.py
 provides:
   - action: report.findings
     description: Generate human-readable report

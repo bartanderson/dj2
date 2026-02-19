@@ -1,6 +1,7 @@
 name: coverage_analyzer
 description: Analyzes test coverage of source files
-
+execution: cli
+path: tools/coverage_analyzer/run.py 
 provides:
   - action: analyze.coverage
     description: Compare source files against test files
