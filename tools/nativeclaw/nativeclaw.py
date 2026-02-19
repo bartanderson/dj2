@@ -208,26 +208,19 @@ class CapabilityResolver:
             
             print(f"    Inputs: {inputs}")
 
-            # ===== NEW: CLI EXECUTION BRANCH =====
+            # After inputs are prepared, before the entry-point search
             if item['selected'] and item['capability']:
                 tool = item['selected']
                 cap = item['capability']
-                
-                # Check if tool uses CLI execution (default to cli if not specified)
-                execution = tool.capabilities.get('execution', 'cli')
-                if execution == 'cli':
-                    # Determine script path
-                    script_path = self.root / tool.capabilities.get('path', f"{tool.name}.py")
-                    if not script_path.exists():
-                        # Fallback: maybe the tool name is the path
-                        script_path = self.root / tool.name
-                    
+
+                # Check if this tool uses CLI execution
+                if tool.capabilities.get('execution') == 'cli':
+                    script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
                     if not script_path.exists():
                         print(f"    ❌ Script not found: {script_path}")
                         result_data = {'error': 'script not found', 'status': 'failed'}
                         failed_steps.append(action)
                     else:
-                        # Build command
                         cmd = [sys.executable, str(script_path)]
                         # Add static flags from capability
                         cmd.extend(cap.get('flags', []))
@@ -241,11 +234,9 @@ class CapabilityResolver:
                                 elif not isinstance(param_value, bool):
                                     cmd.extend([flag, str(param_value)])
                             else:
-                                # Undeclared parameter – warn but still pass?
+                                # Undeclared parameter – warn but pass as flag? We'll warn only.
                                 print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
-                                flag = f"--{param_name.replace('_', '-')}"
-                                cmd.extend([flag, str(param_value)])
-                        
+
                         print(f"    Running: {' '.join(cmd)}")
                         try:
                             result = subprocess.run(
@@ -288,15 +279,14 @@ class CapabilityResolver:
                             print(f"    ❌ Error running CLI tool: {e}")
                             failed_steps.append(action)
                             result_data = {'error': str(e), 'status': 'failed'}
-                    
+
                     # Store result and skip the rest of the loop for this step
                     step_name = step.get('as', action)
                     context[step_name] = result_data
                     results[action] = result_data
                     output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
                     print(f"    Output: {output_preview}")
-                    continue  # Skip to next step
-            # ===== END NEW BRANCH =====
+                    continue  # Important: skip the later entry‑point logic
             
             # Find the tool's entry point
             tool_entry = None
