@@ -1,0 +1,13 @@
+name: "Comprehensive Tool Analysis"
+description: "Run tool_analyzer to inventory all tools and identify hotspots, orphans, duplicates"
+
+steps:
+  - action: analyze.tool_ecosystem
+    with: {}
+    as: ecosystem_data
+
+  - action: report.tool_landscape
+    with:
+      analysis_data: previous.ecosystem_data
+      format: "summary"
+    as: landscape_report
