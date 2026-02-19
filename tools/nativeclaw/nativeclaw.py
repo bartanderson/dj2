@@ -157,6 +157,7 @@ class CapabilityResolver:
                 'step': step,
                 'tools': tools,
                 'selected': tool,
+                'capability': capability,
                 'status': 'found'
             })
         
