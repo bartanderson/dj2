@@ -1,0 +1,8 @@
+name: "Test arch_recon scan"
+description: "Run a scout scan"
+
+steps:
+  - action: arch.scan_project
+    with:
+      # No parameters needed for scout
+    as: scan_result
