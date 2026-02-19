@@ -2,7 +2,6 @@ name: arch_recon
 description: Architecture reconnaissance - scan, analyze, generate context, consult AI, create tests
 path: tools/analysis/arch_recon.py
 execution: cli
-
 provides:
   - action: arch.scan_project
     description: Full project scan to populate database
