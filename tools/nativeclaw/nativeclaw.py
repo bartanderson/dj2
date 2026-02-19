@@ -176,27 +176,31 @@ class CapabilityResolver:
         """Execute the resolved plan by running actual tools."""
         if session:
             self.session = session
-            
+
         results = {}
         context = {}
         failed_steps = []
-        
+
         print("\n📋 Executing capability plan:")
         print("="*60)
-        
+
         for i, item in enumerate(plan['plan']):
             if item['status'] == 'missing':
                 print(f"  ❌ Step {i+1}: {item['step'].get('action', 'unknown')} - NO TOOL")
                 failed_steps.append(item['step'].get('action', 'unknown'))
                 continue
-                
+
             tool = item['selected']
             step = item['step']
             action = step.get('action')
-            
+
             print(f"\n  Step {i+1}: {action}")
             print(f"    Using: {tool.name}")
-            
+
+            # --- DEBUG: show tool capabilities ---
+            print(f"    [DEBUG] tool.capabilities keys: {list(tool.capabilities.keys())}")
+            print(f"    [DEBUG] execution flag: {tool.capabilities.get('execution')}")
+
             # Prepare inputs - resolve from context
             inputs = {}
             for key, value in step.get('with', {}).items():
@@ -209,26 +213,17 @@ class CapabilityResolver:
                         inputs[key] = None
                 else:
                     inputs[key] = value
-            
+
+            # --- DEBUG: show inputs ---
             print(f"    Inputs: {inputs}")
-            # Debug: check execution flag and inputs
-            print(f"    [DEBUG] execution = {tool.capabilities.get('execution')}")
-            print(f"    [DEBUG] inputs type = {type(inputs)}")
             if inputs is None:
                 inputs = {}
-                print(f"    [DEBUG] inputs was None, set to empty dict")
-            if inputs is None:
-                inputs = {}
-                print("    ⚠️  inputs was None, replaced with empty dict")
+                print("    [DEBUG] inputs was None, set to empty dict")
+            print(f"    [DEBUG] inputs type: {type(inputs)}")
 
-            # After inputs are prepared, before the entry-point search
-            if item['selected'] and item['capability']:
-                tool = item['selected']
-                cap = item['capability']
-
-            # Check if this tool uses CLI execution
+            # --- CLI EXECUTION BRANCH ---
             if tool.capabilities.get('execution') == 'cli':
-                print(f"    [DEBUG] Starting CLI execution for {action}")
+                print(f"    [DEBUG] Entering CLI execution branch")
                 script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
                 if not script_path.exists():
                     print(f"    ❌ Script not found: {script_path}")
@@ -236,24 +231,17 @@ class CapabilityResolver:
                     failed_steps.append(action)
                 else:
                     cmd = [sys.executable, str(script_path)]
+
                     # Add static flags from capability
-                    flags = cap.get('flags', [])
+                    flags = item['capability'].get('flags', [])
                     if flags is None:
                         flags = []
                     cmd.extend(flags)
 
-                    # Get parameters definition – ensure it's a dict
-                    params = cap.get('parameters')
+                    # Get parameter definitions
+                    params = item['capability'].get('parameters', {})
                     if params is None:
                         params = {}
-                        print(f"    [DEBUG] No parameters defined for this capability, using empty dict")
-                    else:
-                        print(f"    [DEBUG] Parameters defined: {params}")
-
-                    # Ensure inputs is a dict
-                    if not isinstance(inputs, dict):
-                        print(f"    [DEBUG] inputs is not a dict: {inputs}, resetting to empty")
-                        inputs = {}
 
                     # Add parameters from inputs
                     for param_name, param_value in inputs.items():
@@ -315,9 +303,10 @@ class CapabilityResolver:
                 results[action] = result_data
                 output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
                 print(f"    Output: {output_preview}")
-                continue
-            
-            # Find the tool's entry point
+                continue  # Skip the rest of the loop
+
+            # --- (The rest of the method – entry‑point search, simulation, etc.) ---
+            # Find the tool's entry point - try common patterns
             tool_entry = None
             possible_entries = [
                 tool.path / "run.py",
@@ -326,27 +315,27 @@ class CapabilityResolver:
                 tool.path / f"{tool.name}.py",
                 tool.path / "exec.py"
             ]
-            
+
             for entry in possible_entries:
                 if entry.exists():
                     tool_entry = entry
                     break
-            
+
             if tool_entry and tool_entry.exists():
                 cmd = [sys.executable, str(tool_entry)]
                 cmd.append(json.dumps(inputs))
-                
+
                 print(f"    Running: {' '.join(cmd)}")
-                
+
                 try:
                     result = subprocess.run(
-                        cmd, 
+                        cmd,
                         cwd=self.root,
-                        capture_output=True, 
+                        capture_output=True,
                         text=True,
                         timeout=60
                     )
-                    
+
                     if result.returncode != 0:
                         print(f"    ❌ Tool failed (code {result.returncode})")
                         if result.stderr:
@@ -372,21 +361,21 @@ class CapabilityResolver:
                                 'note': 'non-JSON output'
                             }
                             print(f"    ⚠️  Tool output not JSON")
-                    
+
                     if result.stderr:
                         print(f"    stderr: {result.stderr[:200]}")
-                        
+
                 except subprocess.TimeoutExpired:
-                    print(f"    ❌ Tool timed out")
+                    print(f"    ❌ Tool timed out after 60 seconds")
                     failed_steps.append(action)
                     result_data = {'error': 'timeout', 'status': 'failed'}
                 except Exception as e:
-                    print(f"    ❌ Error: {e}")
+                    print(f"    ❌ Error running tool: {e}")
                     failed_steps.append(action)
                     result_data = {'error': str(e), 'status': 'failed'}
             else:
-                print(f"    ⚠️  No entry point, simulating")
-                # Simulation fallbacks
+                print(f"    ⚠️  No entry point found for {tool.name}, simulating")
+                # Fall back to simulation based on action type
                 if action == 'scan.files':
                     result_data = {
                         'files': ['arch_recon.py', 'scanner.py', 'intent_matcher.py'],
@@ -411,25 +400,25 @@ class CapabilityResolver:
                     }
                 else:
                     result_data = {'status': 'simulated', 'action': action}
-            
+
             if self.session and result_data.get('created_files'):
                 for f in result_data['created_files']:
                     self.session.track_created(f)
-            
+
             step_name = step.get('as', action)
             context[step_name] = result_data
             results[action] = result_data
-            
+
             output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
             print(f"    Output: {output_preview}")
-        
+
         print("\n" + "="*60)
-        
+
         if failed_steps:
             print(f"⚠️  Plan completed with failures: {list(set(failed_steps))}")
         else:
             print("✅ Plan execution complete")
-        
+
         return results
 
 class Session:
