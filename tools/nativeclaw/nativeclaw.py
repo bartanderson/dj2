@@ -202,24 +202,31 @@ class CapabilityResolver:
             print(f"    [DEBUG] execution flag: {tool.capabilities.get('execution')}")
 
             # Prepare inputs - resolve from context
+            print("    [DEBUG] Starting inputs preparation")
             inputs = {}
-            for key, value in step.get('with', {}).items():
-                if isinstance(value, str) and value.startswith('previous.'):
-                    ref = value.split('.')[1]
-                    if ref in context:
-                        inputs[key] = context[ref]
+            try:
+                with_dict = step.get('with')
+                print(f"    [DEBUG] step.get('with') = {with_dict}")
+                if with_dict is None:
+                    with_dict = {}
+                    print("    [DEBUG] with_dict was None, using empty dict")
+                for key, value in with_dict.items():
+                    print(f"    [DEBUG] processing key={key}, value={value}")
+                    if isinstance(value, str) and value.startswith('previous.'):
+                        ref = value.split('.')[1]
+                        if ref in context:
+                            inputs[key] = context[ref]
+                            print(f"    [DEBUG] resolved {ref} to {context[ref]}")
+                        else:
+                            print(f"    ⚠️  Missing reference: {ref}")
+                            inputs[key] = None
                     else:
-                        print(f"    ⚠️  Missing reference: {ref}")
-                        inputs[key] = None
-                else:
-                    inputs[key] = value
+                        inputs[key] = value
+            except Exception as e:
+                print(f"    [DEBUG] Exception during inputs preparation: {e}")
+                raise
 
-            # --- DEBUG: show inputs ---
-            print(f"    Inputs: {inputs}")
-            if inputs is None:
-                inputs = {}
-                print("    [DEBUG] inputs was None, set to empty dict")
-            print(f"    [DEBUG] inputs type: {type(inputs)}")
+            print(f"    [DEBUG] inputs after preparation: {inputs}")
 
             # --- CLI EXECUTION BRANCH ---
             if tool.capabilities.get('execution') == 'cli':
