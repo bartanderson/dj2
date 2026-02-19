@@ -650,6 +650,7 @@ def main():
     parser = argparse.ArgumentParser(description="NativeClaw - Native Windows goal runner")
     parser.add_argument("command", choices=["semantic", "resume", "doctor", "list-capabilities"])
     parser.add_argument("goal_or_review", nargs="?", help="Path to goal YAML file or review folder")
+    parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
     
     args = parser.parse_args()
     
@@ -726,9 +727,10 @@ def main():
             return
         
         print(f"\n✅ Goal can be fulfilled!")
-        execute = input("\nExecute plan? [y/N]: ").strip().lower()
-        
-        if execute == 'y':
+        if not args.yes:
+            execute = input("\nExecute plan? [y/N]: ").strip().lower()
+            if execute != 'y':
+                return
             # Start a session
             session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
             branch = session.start()
