@@ -30,6 +30,31 @@ from reporters import (
 )
 from intent_matcher import _get_top_files_for_intent
 
+def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
+                    project_root: str = '.', ignore_dirs: List[str] = None, verbose: bool = False):
+    """Check if DB exists/prompt to scan. Returns True if ready, False if cancelled."""
+    if db_path.exists() and not force:
+        # Optional: check age (e.g., older than 1 day)
+        age = datetime.now() - datetime.fromtimestamp(db_path.stat().st_mtime)
+        if age.days >= 1 and not no_prompt:
+            print(f"≡ƒòÆ Scout DB is {age.days} day(s) old.")
+            answer = input("Rescan now? (Y/n): ").strip().lower()
+            if answer != 'n':
+                force = True
+        # else proceed
+    if not db_path.exists() and not no_prompt:
+        print("Γ¥î Scout DB not found.")
+        answer = input("Run a full scout scan now? (Y/n): ").strip().lower()
+        if answer != 'n':
+            force = True
+        else:
+            return False
+
+    if force:
+        print("≡ƒöä Running scout scan...")
+        run_scout(project_root, str(db_path), force=True, ignore_dirs=ignore_dirs, verbose=verbose)
+    return True
+    
 def main():
     parser = argparse.ArgumentParser(
     description='Architecture Reconnaissance – Scout + Recon + Ask + Context + Consult + Test',
