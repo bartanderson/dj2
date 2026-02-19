@@ -216,96 +216,96 @@ class CapabilityResolver:
                 tool = item['selected']
                 cap = item['capability']
 
-                # Check if this tool uses CLI execution
-                if tool.capabilities.get('execution') == 'cli':
-                    print(f"    [DEBUG] Starting CLI execution for {action}")
-                    script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
-                    if not script_path.exists():
-                        print(f"    ❌ Script not found: {script_path}")
-                        result_data = {'error': 'script not found', 'status': 'failed'}
-                        failed_steps.append(action)
+            # Check if this tool uses CLI execution
+            if tool.capabilities.get('execution') == 'cli':
+                print(f"    [DEBUG] Starting CLI execution for {action}")
+                script_path = self.root / tool.capabilities.get('path', tool.name + '.py')
+                if not script_path.exists():
+                    print(f"    ❌ Script not found: {script_path}")
+                    result_data = {'error': 'script not found', 'status': 'failed'}
+                    failed_steps.append(action)
+                else:
+                    cmd = [sys.executable, str(script_path)]
+                    # Add static flags from capability
+                    flags = cap.get('flags', [])
+                    if flags is None:
+                        flags = []
+                    cmd.extend(flags)
+
+                    # Get parameters definition – ensure it's a dict
+                    params = cap.get('parameters')
+                    if params is None:
+                        params = {}
+                        print(f"    [DEBUG] No parameters defined for this capability, using empty dict")
                     else:
-                        cmd = [sys.executable, str(script_path)]
-                        # Add static flags from capability
-                        flags = cap.get('flags', [])
-                        if flags is None:
-                            flags = []
-                        cmd.extend(flags)
+                        print(f"    [DEBUG] Parameters defined: {params}")
 
-                        # Get parameters definition – ensure it's a dict
-                        params = cap.get('parameters')
-                        if params is None:
-                            params = {}
-                            print(f"    [DEBUG] No parameters defined for this capability, using empty dict")
+                    # Ensure inputs is a dict
+                    if not isinstance(inputs, dict):
+                        print(f"    [DEBUG] inputs is not a dict: {inputs}, resetting to empty")
+                        inputs = {}
+
+                    # Add parameters from inputs
+                    for param_name, param_value in inputs.items():
+                        if param_name in params:
+                            flag = f"--{param_name.replace('_', '-')}"
+                            if isinstance(param_value, bool) and param_value:
+                                cmd.append(flag)
+                            elif not isinstance(param_value, bool):
+                                cmd.extend([flag, str(param_value)])
                         else:
-                            print(f"    [DEBUG] Parameters defined: {params}")
+                            print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
 
-                        # Ensure inputs is a dict
-                        if not isinstance(inputs, dict):
-                            print(f"    [DEBUG] inputs is not a dict: {inputs}, resetting to empty")
-                            inputs = {}
-
-                        # Add parameters from inputs
-                        for param_name, param_value in inputs.items():
-                            if param_name in params:
-                                flag = f"--{param_name.replace('_', '-')}"
-                                if isinstance(param_value, bool) and param_value:
-                                    cmd.append(flag)
-                                elif not isinstance(param_value, bool):
-                                    cmd.extend([flag, str(param_value)])
-                            else:
-                                print(f"    ⚠️  Undeclared parameter '{param_name}' for {action}")
-
-                        print(f"    Running: {' '.join(cmd)}")
-                        try:
-                            result = subprocess.run(
-                                cmd,
-                                cwd=self.root,
-                                capture_output=True,
-                                text=True,
-                                timeout=60
-                            )
-                            if result.returncode != 0:
-                                print(f"    ❌ CLI tool failed (code {result.returncode})")
-                                if result.stderr:
-                                    print(f"    Error: {result.stderr[:200]}")
-                                failed_steps.append(action)
+                    print(f"    Running: {' '.join(cmd)}")
+                    try:
+                        result = subprocess.run(
+                            cmd,
+                            cwd=self.root,
+                            capture_output=True,
+                            text=True,
+                            timeout=60
+                        )
+                        if result.returncode != 0:
+                            print(f"    ❌ CLI tool failed (code {result.returncode})")
+                            if result.stderr:
+                                print(f"    Error: {result.stderr[:200]}")
+                            failed_steps.append(action)
+                            result_data = {
+                                'error': result.stderr,
+                                'status': 'failed',
+                                'returncode': result.returncode
+                            }
+                        else:
+                            # Try to parse JSON output
+                            try:
+                                if result.stdout.strip():
+                                    result_data = json.loads(result.stdout)
+                                    result_data['status'] = 'success'
+                                else:
+                                    result_data = {'status': 'success', 'message': 'No output'}
+                            except json.JSONDecodeError:
                                 result_data = {
-                                    'error': result.stderr,
-                                    'status': 'failed',
-                                    'returncode': result.returncode
+                                    'output': result.stdout.strip(),
+                                    'status': 'success',
+                                    'note': 'non-JSON output'
                                 }
-                            else:
-                                # Try to parse JSON output
-                                try:
-                                    if result.stdout.strip():
-                                        result_data = json.loads(result.stdout)
-                                        result_data['status'] = 'success'
-                                    else:
-                                        result_data = {'status': 'success', 'message': 'No output'}
-                                except json.JSONDecodeError:
-                                    result_data = {
-                                        'output': result.stdout.strip(),
-                                        'status': 'success',
-                                        'note': 'non-JSON output'
-                                    }
-                                print(f"    ✅ CLI tool succeeded")
-                        except subprocess.TimeoutExpired:
-                            print(f"    ❌ CLI tool timed out")
-                            failed_steps.append(action)
-                            result_data = {'error': 'timeout', 'status': 'failed'}
-                        except Exception as e:
-                            print(f"    ❌ Error running CLI tool: {e}")
-                            failed_steps.append(action)
-                            result_data = {'error': str(e), 'status': 'failed'}
+                            print(f"    ✅ CLI tool succeeded")
+                    except subprocess.TimeoutExpired:
+                        print(f"    ❌ CLI tool timed out")
+                        failed_steps.append(action)
+                        result_data = {'error': 'timeout', 'status': 'failed'}
+                    except Exception as e:
+                        print(f"    ❌ Error running CLI tool: {e}")
+                        failed_steps.append(action)
+                        result_data = {'error': str(e), 'status': 'failed'}
 
-                    # Store result and skip the rest of the loop for this step
-                    step_name = step.get('as', action)
-                    context[step_name] = result_data
-                    results[action] = result_data
-                    output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
-                    print(f"    Output: {output_preview}")
-                    continue
+                # Store result and skip the rest of the loop for this step
+                step_name = step.get('as', action)
+                context[step_name] = result_data
+                results[action] = result_data
+                output_preview = str(result_data)[:100] + "..." if len(str(result_data)) > 100 else str(result_data)
+                print(f"    Output: {output_preview}")
+                continue
             
             # Find the tool's entry point
             tool_entry = None
