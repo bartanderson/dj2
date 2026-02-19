@@ -46,7 +46,7 @@ def analyze_ecosystem():
     print(f"Found {len(all_py_files)} files")
     print("Getting git history...")
     # Source 2: Git history
-    git_stats = get_git_history(project_root, all_py_files)
+    git_stats = {} # get_git_history(project_root, all_py_files)
     # Source 3: Import analysis
     print("Analyzing imports...")
     import_graph = analyze_imports(project_root, all_py_files)
@@ -84,16 +84,21 @@ def analyze_ecosystem():
     }
 
 def scan_python_files(root):
-    """Find all Python files and basic metadata."""
     files = []
-    
-    # Directories to scan (avoid __pycache__, .git, etc.)
-    scan_dirs = ['tools', 'scripts', '.']
-    
+    # Only scan these directories – add any others you need
+    scan_dirs = ['tools', 'scripts']   # you can add 'world', 'dungeon_neo', etc. later
     for scan_dir in scan_dirs:
         full_path = root / scan_dir
         if not full_path.exists():
             continue
+        for root_dir, dirs, filenames in os.walk(full_path):
+            # Prune ignored directories (like __pycache__, .git, etc.)
+            dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root_dir, d))]
+            for file in filenames:
+                if file.endswith('.py'):
+                    py_file = Path(root_dir) / file
+                    if should_ignore(py_file):
+                        continue
 
         for py_file in full_path.rglob('*.py'):
             if should_ignore(py_file):
