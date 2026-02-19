@@ -4,6 +4,7 @@ execution: cli
 path: tools/scanner/run.py
 provides:
   - action: scan.files
+    input_format: json
     description: List files matching pattern
     inputs:
       - name: path
