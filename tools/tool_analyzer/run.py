@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import ast
 import re
+import os
 
 IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
 
