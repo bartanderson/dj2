@@ -12,6 +12,12 @@ from datetime import datetime, timedelta
 import ast
 import re
 
+IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
+
+def should_ignore(path):
+    path_str = str(path).lower()
+    return any(p in path_str for p in IGNORE_PATTERNS)
+
 def main():
     inputs = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
     action = inputs.get('action', 'analyze.tool_ecosystem')
@@ -30,6 +36,7 @@ def main():
 # ============================================================================
 
 def analyze_ecosystem():
+    print("DEBUG: analyze_ecosystem started")
     """Multi-source analysis of all tools."""
     project_root = Path(__file__).parent.parent.parent
     
@@ -89,7 +96,7 @@ def scan_python_files(root):
             continue
 
         for py_file in full_path.rglob('*.py'):
-            if '__pycache__' in str(py_file):
+            if should_ignore(py_file):
                 continue
                 
             rel_path = str(py_file.relative_to(root))
