@@ -1,0 +1,12 @@
+name: phase_checker
+description: Detect phase mixing violations (Input, Interpretation, Authority, Mutation, Consequence, Persistence, View)
+execution: cli
+path: tools/phase_checker/run.py
+
+provides:
+  - action: phase.check
+    description: Scan for phase boundary violations
+    parameters:
+      path: "string (optional, default: .)"
+      json: "boolean (optional)"
+    input_format: json

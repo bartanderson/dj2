@@ -114,7 +114,7 @@ def phase_check_command(args):
     print("🔍 Running Phase Compliance Check...")
     
     project_root = Path(__file__).parent.parent.parent.parent.parent
-    tool_path = project_root / "tools" / "analysis" / "phase_checker.py"
+    tool_path = project_root / "tools" / "phase_checker" / "run.py"
     
     if not tool_path.exists():
         print(f"Error: phase-checker tool not found at {tool_path}")
