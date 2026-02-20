@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 import json
+import sqlite
 
 def safe_read_file(file_path, max_lines=100):
     """Safely read a file with multiple encoding fallbacks"""
@@ -82,32 +83,41 @@ def check_ai_contract():
                             "message": f"Phase violation: {parts[3].strip()}"
                         })
             
-            # Also check for direct SessionSystem calls in AI files
-            print("Checking for direct state mutations in AI files...")
-            ai_files_cmd = [sys.executable, "ai.py", "search", "ai", "--group", "python", "--limit", "20"]
-            ai_result = subprocess.run(ai_files_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
-            
-            if ai_result.returncode == 0:
-                import re
-                for line in ai_result.stdout.split('\n'):
-                    if '.py' in line and 'score' in line:
-                        # Extract filename
-                        match = re.search(r'\d+\.\s+(.+?)\s+\(score:', line)
-                        if match:
-                            file_path = match.group(1)
-                            try:
-                                content = safe_read_file(file_path)
-                                if 'SessionSystem' in content and ('save' in content.lower() or 'update' in content.lower()):
-                                    violations.append({
-                                        "type": "STATE_OWNERSHIP_VIOLATION",
-                                        "rule": "AI NEVER owns state",
-                                        "file": file_path,
-                                        "line": "multiple",
-                                        "message": "AI file directly accesses SessionSystem"
-                                    })
-                            except Exception as e:
-                                print(f"  Warning: Could not check {file_path}: {e}")
-                                continue
+            # Check for direct SessionSystem calls in AI files using scout.db
+            print("Checking for direct state mutations in AI files (from scout.db)...")
+            db_path = Path.cwd() / "ai_context" / "scout.db"
+            ai_files = []
+            if db_path.exists():
+                try:
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    # Get files where layer is 'ai' (adjust column name if different)
+                    cursor.execute("SELECT path FROM files WHERE layer = 'ai'")
+                    ai_files = [row[0] for row in cursor.fetchall()]
+                    conn.close()
+                except Exception as e:
+                    print(f"  Warning: Could not query scout.db: {e}")
+            else:
+                print("  Warning: scout.db not found – run arch_recon --scout to populate")
+
+            for file_path in ai_files:
+                full_path = Path.cwd() / file_path
+                if not full_path.exists():
+                    continue
+                try:
+                    content = safe_read_file(str(full_path))
+                    # Simple check – can be improved later with AST
+                    if 'SessionSystem' in content and ('save' in content.lower() or 'update' in content.lower()):
+                        violations.append({
+                            "type": "STATE_OWNERSHIP_VIOLATION",
+                            "rule": "AI NEVER owns state",
+                            "file": file_path,
+                            "line": "multiple",
+                            "message": "AI file directly accesses SessionSystem"
+                        })
+                except Exception as e:
+                    print(f"  Warning: Could not check {file_path}: {e}")
+                    continue
             
             # Report results
             if violations:
