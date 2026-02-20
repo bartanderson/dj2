@@ -166,6 +166,9 @@ def check_phase_compliance(quiet=False):
     with open(results_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
+    # Always record the saved file (even if empty)
+    saved_files = [str(results_file.relative_to(project_root))]
+
     if not quiet:
         print(f"\n📁 Results saved to: {results_file}")
     
@@ -173,7 +176,7 @@ def check_phase_compliance(quiet=False):
     if quiet:
         return {
             "status": "success",
-            "saved_files": [str(results_file.relative_to(project_root))] if (phase_violations or phase_mixing) else [],
+            "saved_files": saved_files,
             "data": {
                 "phase_violations": len(phase_violations),
                 "phase_mixing": len(phase_mixing),

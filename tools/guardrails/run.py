@@ -169,7 +169,7 @@ def check_ai_contract(project_root=None, quiet=False):
             if quiet:
                 return {
                     "status": "success",
-                    "saved_files": [str(violations_file.relative_to(project_root))] if violations else [],
+                    "saved_files": [str(violations_file.relative_to(project_root))],
                     "data": {
                         "violation_count": len(violations),
                         "summary": f"Found {len(violations)} violations" if violations else "No violations"
