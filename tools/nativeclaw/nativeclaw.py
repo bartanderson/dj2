@@ -685,9 +685,139 @@ def main():
             tool_names = [t.name for t in tools]
             print(f"  {cap}: {', '.join(tool_names)}")
         return
+
+    print("just before consult")
+    print(args.command)
+    
+    if args.command == "consult":
+        print("DEBUG: Entered consult handler")
+        file_path = Path(args.file)
+        print(f"DEBUG: file_path = {file_path}")
+        if not file_path.is_absolute():
+            file_path = PROJECT_ROOT / file_path
+            print(f"DEBUG: after resolving: {file_path}")
+        if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
+            sys.exit(1)
+        print("DEBUG: file exists")
+
+        prompt = args.prompt
+        print(f"DEBUG: prompt = '{prompt}'")
+
+        bridge_tool = PROJECT_ROOT / "tools" / "deepseek_bridge" / "run.py"
+        print(f"DEBUG: bridge_tool path = {bridge_tool}")
+        if not bridge_tool.exists():
+            print(f"❌ Bridge tool not found at {bridge_tool}")
+            sys.exit(1)
+        print("DEBUG: bridge tool exists")
+
+        input_json = json.dumps({"file": str(file_path), "prompt": prompt})
+        print(f"DEBUG: input_json = {input_json}")
+
+        print("Calling bridge tool...")
+        result = subprocess.run(
+            [sys.executable, str(bridge_tool), input_json],
+            capture_output=True, text=True, encoding='utf-8'
+        )
+        print(f"DEBUG: subprocess returncode = {result.returncode}")
+        if result.returncode != 0:
+            print(f"❌ Bridge tool failed with code {result.returncode}")
+            if result.stderr:
+                print(f"stderr: {result.stderr}")
+            sys.exit(1)
+
+        print("DEBUG: subprocess stdout length =", len(result.stdout))
+        if result.stdout:
+            print("DEBUG: stdout preview:", result.stdout[:200])
+        try:
+            response = json.loads(result.stdout)
+            print("DEBUG: JSON parsed successfully")
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON from bridge: {e}")
+            print(f"Raw stdout: {result.stdout}")
+            sys.exit(1)
+
+        if response.get("status") == "success":
+            print("\n" + response["data"])
+        else:
+            print(f"❌ Error: {response.get('error', 'Unknown error')}")
+            sys.exit(1)
+
+    
+    if args.command == "resume":
+        if not args.review_folder:
+            print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
+            sys.exit(1)
+        
+        review_path = Path(args.review_folder)
+        if not review_path.exists():
+            review_path = PROJECT_ROOT / args.review_folder
+        
+        if not review_path.exists():
+            print(f"ERROR: Review folder not found: {review_path}")
+            sys.exit(1)
+        
+        # Load state
+        state_file = review_path / "state.json"
+        if not state_file.exists():
+            print("ERROR: No state.json in review folder")
+            sys.exit(1)
+        
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        
+        branch_name = state.get('branch_name')
+        original_branch = state.get('original_branch', 'master')
+        goal_name = state.get('goal_name')
+        
+        print(f"\n📋 Resuming review: {goal_name}")
+        print(f"  Branch: {branch_name}")
+        
+        # Show diff
+        diff_file = review_path / "changes.diff"
+        if diff_file.exists():
+            print("\n" + "="*50)
+            print("CHANGES TO REVIEW:")
+            print("="*50)
+            with open(diff_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                print(content[:1000])
+                if len(content) > 1000:
+                    print("\n... (truncated)")
+        
+        # Ask for decision
+        while True:
+            print("\n" + "-"*40)
+            print("Review commands:")
+            print("  Y - Approve and merge")
+            print("  N - Reject and delete branch")
+            print("  Q - Quit (leave branch for later)")
+            print("-"*40)
+            
+            response = input("Choice: ").strip().upper()
+            
+            if response == 'Y':
+                subprocess.run(["git", "checkout", original_branch], cwd=PROJECT_ROOT, check=True)
+                subprocess.run(["git", "merge", branch_name], cwd=PROJECT_ROOT, check=True)
+                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
+                with open(review_path / "approved.txt", 'w') as f:
+                    f.write(f"Approved at: {datetime.now().isoformat()}")
+                print("✅ Changes approved and merged")
+                break
+                
+            elif response == 'N':
+                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
+                with open(review_path / "rejected.txt", 'w') as f:
+                    f.write(f"Rejected at: {datetime.now().isoformat()}")
+                print("❌ Changes rejected, branch deleted")
+                break
+                
+            elif response == 'Q':
+                print("Exiting, branch left untouched")
+                break
     
     if args.command == "semantic":
-        if not args.goal_or_review:
+        if not args.goal_file:
             print("ERROR: Need goal file. Example: nativeclaw.py semantic goals/semantic_test.yaml")
             sys.exit(1)
         
@@ -804,132 +934,6 @@ Scripts\\nativeclaw.bat resume {archive_dir}
             session.restore()
             print("✅ Session restored to original state")
     return
-    
-    if args.command == "resume":
-        if not args.goal_or_review:
-            print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
-            sys.exit(1)
-        
-        review_path = Path(args.review_folder)
-        if not review_path.exists():
-            review_path = PROJECT_ROOT / args.review_folder
-        
-        if not review_path.exists():
-            print(f"ERROR: Review folder not found: {review_path}")
-            sys.exit(1)
-        
-        # Load state
-        state_file = review_path / "state.json"
-        if not state_file.exists():
-            print("ERROR: No state.json in review folder")
-            sys.exit(1)
-        
-        with open(state_file, 'r', encoding='utf-8') as f:
-            state = json.load(f)
-        
-        branch_name = state.get('branch_name')
-        original_branch = state.get('original_branch', 'master')
-        goal_name = state.get('goal_name')
-        
-        print(f"\n📋 Resuming review: {goal_name}")
-        print(f"  Branch: {branch_name}")
-        
-        # Show diff
-        diff_file = review_path / "changes.diff"
-        if diff_file.exists():
-            print("\n" + "="*50)
-            print("CHANGES TO REVIEW:")
-            print("="*50)
-            with open(diff_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                print(content[:1000])
-                if len(content) > 1000:
-                    print("\n... (truncated)")
-        
-        # Ask for decision
-        while True:
-            print("\n" + "-"*40)
-            print("Review commands:")
-            print("  Y - Approve and merge")
-            print("  N - Reject and delete branch")
-            print("  Q - Quit (leave branch for later)")
-            print("-"*40)
-            
-            response = input("Choice: ").strip().upper()
-            
-            if response == 'Y':
-                subprocess.run(["git", "checkout", original_branch], cwd=PROJECT_ROOT, check=True)
-                subprocess.run(["git", "merge", branch_name], cwd=PROJECT_ROOT, check=True)
-                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
-                with open(review_path / "approved.txt", 'w') as f:
-                    f.write(f"Approved at: {datetime.now().isoformat()}")
-                print("✅ Changes approved and merged")
-                break
-                
-            elif response == 'N':
-                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
-                with open(review_path / "rejected.txt", 'w') as f:
-                    f.write(f"Rejected at: {datetime.now().isoformat()}")
-                print("❌ Changes rejected, branch deleted")
-                break
-                
-            elif response == 'Q':
-                print("Exiting, branch left untouched")
-                break
-
-    elif args.command == "consult":
-        print("DEBUG: Entered consult handler")
-        file_path = Path(args.file)
-        print(f"DEBUG: file_path = {file_path}")
-        if not file_path.is_absolute():
-            file_path = PROJECT_ROOT / file_path
-            print(f"DEBUG: after resolving: {file_path}")
-        if not file_path.exists():
-            print(f"❌ File not found: {file_path}")
-            sys.exit(1)
-        print("DEBUG: file exists")
-
-        prompt = args.prompt
-        print(f"DEBUG: prompt = '{prompt}'")
-
-        bridge_tool = PROJECT_ROOT / "tools" / "deepseek_bridge" / "run.py"
-        print(f"DEBUG: bridge_tool path = {bridge_tool}")
-        if not bridge_tool.exists():
-            print(f"❌ Bridge tool not found at {bridge_tool}")
-            sys.exit(1)
-        print("DEBUG: bridge tool exists")
-
-        input_json = json.dumps({"file": str(file_path), "prompt": prompt})
-        print(f"DEBUG: input_json = {input_json}")
-
-        print("Calling bridge tool...")
-        result = subprocess.run(
-            [sys.executable, str(bridge_tool), input_json],
-            capture_output=True, text=True, encoding='utf-8'
-        )
-        print(f"DEBUG: subprocess returncode = {result.returncode}")
-        if result.returncode != 0:
-            print(f"❌ Bridge tool failed with code {result.returncode}")
-            if result.stderr:
-                print(f"stderr: {result.stderr}")
-            sys.exit(1)
-
-        print("DEBUG: subprocess stdout length =", len(result.stdout))
-        if result.stdout:
-            print("DEBUG: stdout preview:", result.stdout[:200])
-        try:
-            response = json.loads(result.stdout)
-            print("DEBUG: JSON parsed successfully")
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid JSON from bridge: {e}")
-            print(f"Raw stdout: {result.stdout}")
-            sys.exit(1)
-
-        if response.get("status") == "success":
-            print("\n" + response["data"])
-        else:
-            print(f"❌ Error: {response.get('error', 'Unknown error')}")
-            sys.exit(1)
 
 if __name__ == "__main__":
     main()
