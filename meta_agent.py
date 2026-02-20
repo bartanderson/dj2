@@ -6,6 +6,7 @@ Meta‑agent: uses DeepSeek via the persistent session to improve tools.
 import socket
 import json
 import time
+import re
 import sys
 from pathlib import Path
 
@@ -35,6 +36,48 @@ def consult_deepseek(file_path, prompt):
     }
     return send_command(cmd)
 
+def extract_actions(text):
+    """Extract action blocks from AI response. Handles [ACTION]...[/ACTION] and also bare [ACTION] lines."""
+    actions = []
+    # First try the standard pattern with closing tag
+    standard = re.findall(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
+    for match in standard:
+        try:
+            actions.append(json.loads(match.strip()))
+        except json.JSONDecodeError:
+            print(f"Warning: could not parse action JSON: {match[:100]}")
+    if standard:
+        return actions
+
+    # If no standard blocks, look for lines starting with [ACTION] and then a JSON object
+    lines = text.split('\n')
+    i = 0
+    while i < len(lines):
+        if '[ACTION]' in lines[i]:
+            # Collect following lines until we find a line that looks like the end of a JSON object
+            block = []
+            j = i + 1
+            while j < len(lines) and not lines[j].strip().startswith('[') and not lines[j].strip().startswith(']'):
+                block.append(lines[j])
+                j += 1
+            if block:
+                json_str = '\n'.join(block).strip()
+                try:
+                    actions.append(json.loads(json_str))
+                except json.JSONDecodeError:
+                    # Try to find JSON by looking for braces
+                    full_text = '\n'.join(lines[i:j])
+                    brace_match = re.search(r'\{.*\}', full_text, re.DOTALL)
+                    if brace_match:
+                        try:
+                            actions.append(json.loads(brace_match.group()))
+                        except:
+                            pass
+            i = j
+        else:
+            i += 1
+    return actions
+
 def main():
     print("Meta‑agent started. Connecting to session server...")
     # Optionally start session if not running (you could call `nativeclaw session start` here)
@@ -48,7 +91,12 @@ You are an AI tasked with bringing all tools in this project into compliance wit
 - apply_plan: apply a change plan (safe, creates a session for review)
 - consult: send a file and prompt to DeepSeek (your own interface)
 
-Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/output, etc. You may propose changes by outputting [ACTION] blocks containing JSON commands. After each action, you will receive the result. You may also ask the user for input if needed.
+Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/output, etc. You may propose changes by outputting an [ACTION] block containing a JSON command. Always use the exact format:
+[ACTION]
+{ "operation": "...", ... }
+[/ACTION]
+
+After each action, you will receive the result. You may also ask the user for input if needed.
 
 Proceed step by step. Start by listing all tools and their current status.
 """
@@ -64,32 +112,21 @@ Proceed step by step. Start by listing all tools and their current status.
     ai_message = response["data"]
     print("AI:", ai_message)
 
-    # Main loop: parse [ACTION] blocks and execute
-    import re
-    while True:
-        # Extract action blocks
-        actions = re.findall(r'\[ACTION\](.*?)\[/ACTION\]', ai_message, re.DOTALL)
-        if not actions:
-            print("No action blocks found. Waiting for user input or exit.")
-            # Could break or ask user
-            break
+    # Main loop: extract and execute actions
+    actions = extract_actions(ai_message)
+    if not actions:
+        print("No action blocks found. You can manually enter a command or let the AI try again.")
+        # Optionally, you could send a follow‑up prompt asking for proper formatting
+        # For now, exit.
+        return
 
-        for action_json in actions:
-            try:
-                action = json.loads(action_json)
-                print(f"Executing: {action}")
-                result = send_command(action)
-                print(f"Result: {result}")
-                # Feed result back to AI via another consult
-                # We need to append result to conversation context
-                # For simplicity, we'll just print and continue; a full agent would maintain context.
-                # This is a minimal skeleton – you'd normally send the result back in a follow‑up prompt.
-            except Exception as e:
-                print(f"Error executing action: {e}")
-
-        # In a real agent, you'd now send the results back to DeepSeek to continue.
-        # For now, we'll break after first batch.
-        break
+    for action in actions:
+        print(f"Executing: {action}")
+        try:
+            result = send_command(action)
+            print(f"Result: {json.dumps(result, indent=2)}")
+        except Exception as e:
+            print(f"Error executing action: {e}")
 
 if __name__ == "__main__":
     main()

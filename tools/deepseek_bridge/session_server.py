@@ -43,7 +43,7 @@ def handle_client(conn, addr):
         cmd = json.loads(data.decode('utf-8'))
         cmd_id = cmd.get('id', 'unknown')
         op = cmd.get('operation')
-        print(f"Received command {cmd_id}: {op}")
+        print(f"Received command: {cmd}, Cmd_id: {cmd_id}: operation: {op}")
 
         if op == 'consult':
             file_path = cmd.get('file')
