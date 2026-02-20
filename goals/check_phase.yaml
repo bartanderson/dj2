@@ -1,0 +1,8 @@
+name: "Check Phase Violations"
+description: "Run phase_checker to find architectural violations"
+
+steps:
+  - action: phase.check
+    with:
+      json: true
+    as: phase_report

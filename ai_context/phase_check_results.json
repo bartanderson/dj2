@@ -1,16 +1,5 @@
 {
   "phase_violations": [],
-  "phase_mixing": [
-    {
-      "file": "C:\\Users\\bartl\\dev\\dj2\\engine\\phases.py",
-      "phases_detected": [
-        "input",
-        "interpretation",
-        "authority",
-        "mutation"
-      ],
-      "message": "Possible phase mixing: 4 phases in one file"
-    }
-  ],
-  "total_issues": 1
+  "phase_mixing": [],
+  "total_issues": 0
 }
