@@ -165,14 +165,14 @@ def check_ai_contract(project_root=None):
         return -1
 
 def main():
-    """Command-line entry point"""
-    # Accept JSON input if provided
+    # Accept JSON input from concatenated arguments (if any)
     if len(sys.argv) > 1:
+        # Join all arguments after the first – Windows may split the JSON
+        input_str = ' '.join(sys.argv[1:])
         try:
-            params = json.loads(sys.argv[1])
+            params = json.loads(input_str)
             json_output = params.get('json', False)
             save_output = params.get('save', False)
-            # Optionally, we could also allow a custom project root
             project_root = params.get('project_root', None)
         except json.JSONDecodeError:
             # Fallback to argparse for backward compatibility

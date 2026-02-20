@@ -1,0 +1,9 @@
+name: "Check AI Contract Guardrails"
+description: "Run guardrails tool to find violations"
+
+steps:
+  - action: guardrails.check
+    with:
+      json: true
+      save: true
+    as: violations
