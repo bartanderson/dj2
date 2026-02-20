@@ -248,35 +248,6 @@ class CapabilityResolver:
                     failed_steps.append(action)
                 else:
                     print("    Script found")
-                    # cmd = [sys.executable, str(script_path)]
-
-                    # # Add static flags from the capability
-                    # cmd.extend(cap.get('flags', []))
-
-                    # # Add parameters based on capability's 'parameters' declaration
-                    # declared_params = cap.get('parameters', {})
-                    # for param_name, param_value in inputs.items():
-                    #     print(f"    debug: param '{param_name}' = {param_value}")
-                    #     if param_name in declared_params:
-                    #         flag = f"--{param_name.replace('_', '-')}"
-                    #         if isinstance(param_value, bool) and param_value:
-                    #             cmd.append(flag)
-                    #         elif not isinstance(param_value, bool):
-                    #             cmd.extend([flag, str(param_value)])
-                    #     else:
-                    #         print(f"    ⚠️  Undeclared parameter '{param_name}' passed to {action}")
-
-                    # print(f"    Running: {' '.join(cmd)}")
-                    # try:
-                    #     result = subprocess.run(
-                    #         cmd,
-                    #         cwd=self.root,
-                    #         capture_output=True,
-                    #         text=True,
-                    #         encoding='utf-8',
-                    #         timeout=300
-                    #     )
-
                     cmd = [sys.executable, str(script_path)]
 
                     # Check if this capability expects JSON input
@@ -731,77 +702,77 @@ def main():
             execute = input("\nExecute plan? [y/N]: ").strip().lower()
             if execute != 'y':
                 return
-            # Start a session
-            session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
-            branch = session.start()
-            resolver.set_session(session)
+        # Start a session
+        session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
+        branch = session.start()
+        resolver.set_session(session)
+        
+        try:
+            # Execute the plan
+            outputs = resolver.execute_plan(result, session)
+
+            # Check if any files were changed
+            diff_output = subprocess.run(
+                ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
+                cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
+            )
+            if not diff_output.stdout.strip():
+                print("\n✅ No files were changed – nothing to review.")
+                session.abort()   # or just delete the branch
+                return
             
-            try:
-                # Execute the plan
-                outputs = resolver.execute_plan(result, session)
+            # Save review
+            archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            
+            state = {
+                'branch_name': branch,
+                'original_branch': session.original_branch,
+                'goal_name': goal.get('name'),
+                'timestamp': datetime.now().isoformat()
+            }
 
-                # Check if any files were changed
-                diff_output = subprocess.run(
-                    ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
-                    cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
+            with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+            
+            with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
+                subprocess.run(
+                    ["git", "diff", f"{session.original_branch}..{branch}"],
+                    cwd=PROJECT_ROOT, stdout=f, text=True
                 )
-                if not diff_output.stdout.strip():
-                    print("\n✅ No files were changed – nothing to review.")
-                    session.abort()   # or just delete the branch
-                    return
-                
-                # Save review
-                archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
-                archive_dir.mkdir(parents=True, exist_ok=True)
-                
-                state = {
-                    'branch_name': branch,
-                    'original_branch': session.original_branch,
-                    'goal_name': goal.get('name'),
-                    'timestamp': datetime.now().isoformat()
-                }
-
-                with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
-                    json.dump(state, f, indent=2)
-                
-                with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
-                    subprocess.run(
-                        ["git", "diff", f"{session.original_branch}..{branch}"],
-                        cwd=PROJECT_ROOT, stdout=f, text=True
-                    )
-                
-                with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
-                    subprocess.run(
-                        ["git", "ls-tree", "-r", branch, "--name-only"],
-                        cwd=PROJECT_ROOT, stdout=f, text=True
-                    )
-                
-                resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            
+            with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
+                subprocess.run(
+                    ["git", "ls-tree", "-r", branch, "--name-only"],
+                    cwd=PROJECT_ROOT, stdout=f, text=True
+                )
+            
+            resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 Goal: {goal.get('name', 'unknown')}
 Branch: {branch}
 
 To resume this review:
-  Scripts\\nativeclaw.bat resume {archive_dir}
+Scripts\\nativeclaw.bat resume {archive_dir}
 """
-                with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
-                    f.write(resume_instructions)              
-                
-                print("\n" + "="*70)
-                print(f"✅ Review saved to: {archive_dir}")
-                print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
-                
-                input("\nPress Enter when ready to approve/reject...")
-                resp = input("Approve? [Y]es [N]o: ").strip().upper()
-                if resp == 'Y':
-                    session.approve()
-                else:
-                    session.restore()
-                    
-            except Exception as e:
-                print(f"\n❌ Error during execution: {e}")
+            with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
+                f.write(resume_instructions)              
+            
+            print("\n" + "="*70)
+            print(f"✅ Review saved to: {archive_dir}")
+            print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
+            
+            input("\nPress Enter when ready to approve/reject...")
+            resp = input("Approve? [Y]es [N]o: ").strip().upper()
+            if resp == 'Y':
+                session.approve()
+            else:
                 session.restore()
-                print("✅ Session restored to original state")
-        return
+                
+        except Exception as e:
+            print(f"\n❌ Error during execution: {e}")
+            session.restore()
+            print("✅ Session restored to original state")
+    return
     
     if args.command == "resume":
         if not args.goal_or_review:
