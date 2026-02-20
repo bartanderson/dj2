@@ -14,6 +14,7 @@ import os
 import re
 from pathlib import Path
 from datetime import datetime
+import time
 
 # Get paths relative to this file
 NATIVECLAW_DIR = Path(__file__).parent
@@ -706,125 +707,6 @@ def main():
             print(f"  {cap}: {', '.join(tool_names)}")
         return
         
-    elif args.command == "semantic":
-        if not args.goal_file:
-            print("ERROR: Need goal file. Example: nativeclaw.py semantic goals/semantic_test.yaml")
-            sys.exit(1)
-        
-        goal_path = Path(args.goal_file)
-        if not goal_path.exists():
-            goal_path = PROJECT_ROOT / args.goal_file
-        
-        if not goal_path.exists():
-            print(f"ERROR: Goal file not found: {goal_path}")
-            sys.exit(1)
-        
-        goal = yaml.safe_load(goal_path.read_text(encoding='utf-8'))
-        print(f"\n🎯 Semantic Goal: {goal.get('name', 'unnamed')}")
-        
-        registry = ToolRegistry(PROJECT_ROOT)
-        resolver = CapabilityResolver(registry, PROJECT_ROOT)
-        
-        result = resolver.resolve(goal.get('steps', []))
-        
-        if not result['success']:
-            print(f"\n❌ Cannot fulfill goal. Missing capabilities:")
-            for cap in result['missing']:
-                print(f"   - {cap}")
-            print("\nAvailable capabilities:")
-            for cap in registry.list_all_capabilities():
-                print(f"   - {cap}")
-            return
-        
-        print(f"\n✅ Goal can be fulfilled!")
-        if not args.yes:
-            execute = input("\nExecute plan? [y/N]: ").strip().lower()
-            if execute != 'y':
-                return
-        # Start a session
-        session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
-        branch = session.start()
-        resolver.set_session(session)
-        
-        try:
-            # Execute the plan
-            outputs = resolver.execute_plan(result, session)
-
-            # Check if any files were changed
-            diff_output = subprocess.run(
-                ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
-                cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
-            )
-            # After execute_plan, collect saved_files from step outputs
-            saved_files = []
-            for step_name, step_result in outputs.items():
-                if isinstance(step_result, dict):
-                    files = step_result.get('saved_files', [])
-                    if files:
-                        saved_files.extend(files)
-
-            if saved_files:
-                print("\n📁 Artifacts saved in this session:")
-                for f in saved_files:
-                    print(f"  - {f}")
-            if not diff_output.stdout.strip():
-                print("\n✅ No files were changed – nothing to review.")
-                session.abort()   # or just delete the branch
-                return
-            
-            # Save review
-            archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            
-            state = {
-                'branch_name': branch,
-                'original_branch': session.original_branch,
-                'goal_name': goal.get('name'),
-                'timestamp': datetime.now().isoformat()
-            }
-
-            with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
-                json.dump(state, f, indent=2)
-            
-            with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
-                subprocess.run(
-                    ["git", "diff", f"{session.original_branch}..{branch}"],
-                    cwd=PROJECT_ROOT, stdout=f, text=True
-                )
-            
-            with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
-                subprocess.run(
-                    ["git", "ls-tree", "-r", branch, "--name-only"],
-                    cwd=PROJECT_ROOT, stdout=f, text=True
-                )
-            
-            resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Goal: {goal.get('name', 'unknown')}
-Branch: {branch}
-
-To resume this review:
-Scripts\\nativeclaw.bat resume {archive_dir}
-"""
-            with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
-                f.write(resume_instructions)              
-            
-            print("\n" + "="*70)
-            print(f"✅ Review saved to: {archive_dir}")
-            print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
-            
-            input("\nPress Enter when ready to approve/reject...")
-            resp = input("Approve? [Y]es [N]o: ").strip().upper()
-            if resp == 'Y':
-                session.approve()
-            else:
-                session.restore()
-                
-        except Exception as e:
-            print(f"\n❌ Error during execution: {e}")
-            session.restore()
-            print("✅ Session restored to original state")
-    return
-
     elif args.command == "resume":
         if not args.review_folder:
             print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
@@ -993,40 +875,43 @@ Scripts\\nativeclaw.bat resume {archive_dir}
                 else:
                     print("Warning: PID file not found. Server may not have started correctly.")
 
-        elif args.session_command == "stop":
-            if not pid_file.exists():
-                print("Session server not running.")
-                sys.exit(1)
-            with open(pid_file, 'r') as f:
-                pid = int(f.read().strip())
-            try:
-                os.kill(pid, signal.SIGTERM)
-                print("Stop signal sent.")
-                # Wait for PID file to be removed
-                for _ in range(10):
-                    if not pid_file.exists():
-                        break
-                    time.sleep(1)
-                if pid_file.exists():
-                    print("Warning: Server did not shut down cleanly.")
-                else:
-                    print("Server stopped.")
-            except ProcessLookupError:
-                print("Process not found. Removing stale PID file.")
-                pid_file.unlink()
-
         elif args.session_command == "status":
             if not pid_file.exists():
                 print("Session server not running.")
                 sys.exit(1)
             with open(pid_file, 'r') as f:
                 pid = f.read().strip()
-            try:
-                os.kill(int(pid), 0)
+            # Check if process is still running using tasklist (simple)
+            import subprocess
+            result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True)
+            if str(pid) in result.stdout:
                 print(f"Session server running (PID: {pid})")
-            except (ProcessLookupError, ValueError):
+            else:
                 print("Session server not running (stale PID file).")
                 pid_file.unlink()
+
+        elif args.session_command == "stop":
+            if not pid_file.exists():
+                print("Session server not running.")
+                sys.exit(1)
+            with open(pid_file, 'r') as f:
+                pid = f.read().strip()
+            # Use taskkill to terminate the process tree
+            try:
+                subprocess.run(['taskkill', '/F', '/T', '/PID', pid], check=True, capture_output=True)
+                print("Stop signal sent.")
+            except subprocess.CalledProcessError as e:
+                print(f"Error stopping process: {e.stderr}")
+            # Wait for PID file to be removed
+            for _ in range(10):
+                if not pid_file.exists():
+                    break
+                time.sleep(1)
+            if pid_file.exists():
+                print("Warning: Server did not shut down cleanly; removing stale PID file.")
+                pid_file.unlink()
+            else:
+                print("Server stopped.")
 
         elif args.session_command == "consult":
             if not pid_file.exists():
@@ -1062,6 +947,125 @@ Scripts\\nativeclaw.bat resume {archive_dir}
                 time.sleep(1)
             print(f"Timeout waiting for response after {timeout} seconds.")
             sys.exit(1)
+
+    elif args.command == "semantic":
+        if not args.goal_file:
+            print("ERROR: Need goal file. Example: nativeclaw.py semantic goals/semantic_test.yaml")
+            sys.exit(1)
+        
+        goal_path = Path(args.goal_file)
+        if not goal_path.exists():
+            goal_path = PROJECT_ROOT / args.goal_file
+        
+        if not goal_path.exists():
+            print(f"ERROR: Goal file not found: {goal_path}")
+            sys.exit(1)
+        
+        goal = yaml.safe_load(goal_path.read_text(encoding='utf-8'))
+        print(f"\n🎯 Semantic Goal: {goal.get('name', 'unnamed')}")
+        
+        registry = ToolRegistry(PROJECT_ROOT)
+        resolver = CapabilityResolver(registry, PROJECT_ROOT)
+        
+        result = resolver.resolve(goal.get('steps', []))
+        
+        if not result['success']:
+            print(f"\n❌ Cannot fulfill goal. Missing capabilities:")
+            for cap in result['missing']:
+                print(f"   - {cap}")
+            print("\nAvailable capabilities:")
+            for cap in registry.list_all_capabilities():
+                print(f"   - {cap}")
+            return
+        
+        print(f"\n✅ Goal can be fulfilled!")
+        if not args.yes:
+            execute = input("\nExecute plan? [y/N]: ").strip().lower()
+            if execute != 'y':
+                return
+        # Start a session
+        session = Session(f"semantic_{goal.get('name', 'run')}", PROJECT_ROOT)
+        branch = session.start()
+        resolver.set_session(session)
+        
+        try:
+            # Execute the plan
+            outputs = resolver.execute_plan(result, session)
+
+            # Check if any files were changed
+            diff_output = subprocess.run(
+                ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
+                cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
+            )
+            # After execute_plan, collect saved_files from step outputs
+            saved_files = []
+            for step_name, step_result in outputs.items():
+                if isinstance(step_result, dict):
+                    files = step_result.get('saved_files', [])
+                    if files:
+                        saved_files.extend(files)
+
+            if saved_files:
+                print("\n📁 Artifacts saved in this session:")
+                for f in saved_files:
+                    print(f"  - {f}")
+            if not diff_output.stdout.strip():
+                print("\n✅ No files were changed – nothing to review.")
+                session.abort()   # or just delete the branch
+                return
+            
+            # Save review
+            archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            
+            state = {
+                'branch_name': branch,
+                'original_branch': session.original_branch,
+                'goal_name': goal.get('name'),
+                'timestamp': datetime.now().isoformat()
+            }
+
+            with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2)
+            
+            with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
+                subprocess.run(
+                    ["git", "diff", f"{session.original_branch}..{branch}"],
+                    cwd=PROJECT_ROOT, stdout=f, text=True
+                )
+            
+            with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
+                subprocess.run(
+                    ["git", "ls-tree", "-r", branch, "--name-only"],
+                    cwd=PROJECT_ROOT, stdout=f, text=True
+                )
+            
+            resume_instructions = f"""REVIEW SAVED: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Goal: {goal.get('name', 'unknown')}
+Branch: {branch}
+
+To resume this review:
+Scripts\\nativeclaw.bat resume {archive_dir}
+"""
+            with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
+                f.write(resume_instructions)              
+            
+            print("\n" + "="*70)
+            print(f"✅ Review saved to: {archive_dir}")
+            print(f"📄 Resume instructions: {archive_dir / 'RESUME.txt'}")
+            
+            input("\nPress Enter when ready to approve/reject...")
+            resp = input("Approve? [Y]es [N]o: ").strip().upper()
+            if resp == 'Y':
+                session.approve()
+            else:
+                session.restore()
+                
+        except Exception as e:
+            print(f"\n❌ Error during execution: {e}")
+            session.restore()
+            print("✅ Session restored to original state")
+    return
 
 if __name__ == "__main__":
     main()
