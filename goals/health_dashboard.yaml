@@ -1,0 +1,25 @@
+name: "Health Dashboard"
+description: "Run all health checks and display results"
+
+steps:
+  - action: guardrails.check
+    with:
+      json: true
+    as: guardrails_out
+
+  - action: phase.check
+    with:
+      json: true
+    as: phase_out
+
+  - action: file.display
+    with:
+      path: "ai_context/guardrail_violations.json"
+      format: "json"
+    as: guardrails_display
+
+  - action: file.display
+    with:
+      path: "ai_context/phase_check_results.json"
+      format: "json"
+    as: phase_display
