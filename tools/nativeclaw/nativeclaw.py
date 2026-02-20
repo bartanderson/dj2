@@ -859,7 +859,6 @@ Scripts\\nativeclaw.bat resume {archive_dir}
                 break
 
     elif args.command == "consult":
-        import argparse
         # We need a subparser for consult's own arguments
         consult_parser = argparse.ArgumentParser()
         consult_parser.add_argument("--file", required=True, help="Path to context file")
