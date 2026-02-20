@@ -4,7 +4,7 @@ execution: cli
 path: tools/reporter/run.py
 provides:
   - action: report.findings
-  input_format: json
+    input_format: json
     description: Generate human-readable report
     inputs:
       - name: data
