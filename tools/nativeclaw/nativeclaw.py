@@ -716,6 +716,18 @@ def main():
                 ["git", "diff", f"{session.original_branch}..{branch}", "--name-only"],
                 cwd=PROJECT_ROOT, capture_output=True, text=True, encoding='utf-8'
             )
+            # After execute_plan, collect saved_files from step outputs
+            saved_files = []
+            for step_name, step_result in outputs.items():
+                if isinstance(step_result, dict):
+                    files = step_result.get('saved_files', [])
+                    if files:
+                        saved_files.extend(files)
+
+            if saved_files:
+                print("\n📁 Artifacts saved in this session:")
+                for f in saved_files:
+                    print(f"  - {f}")
             if not diff_output.stdout.strip():
                 print("\n✅ No files were changed – nothing to review.")
                 session.abort()   # or just delete the branch
