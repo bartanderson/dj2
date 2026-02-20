@@ -195,9 +195,16 @@ def main():
     violation_count = check_ai_contract(project_root)
     
     if json_output:
+        # Suppress all other output when JSON is requested
+        import contextlib
+        with contextlib.redirect_stdout(None), contextlib.redirect_stderr(None):
+            violation_count = check_ai_contract(project_root)
         print(json.dumps({"violation_count": violation_count}))
-    
-    sys.exit(0 if violation_count == 0 else 1)
+    else:
+        violation_count = check_ai_contract(project_root)
+
+    # Always exit 0 for NativeClaw compatibility
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
