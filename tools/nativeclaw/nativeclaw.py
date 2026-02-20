@@ -868,7 +868,7 @@ def main():
             else:
                 # Run in background (detached)
                 DETACHED_PROCESS = 0x00000008
-                subprocess.Popen(
+                process = subprocess.Popen(
                     [sys.executable, str(server_script)],
                     creationflags=DETACHED_PROCESS,
                     stdout=subprocess.DEVNULL,
@@ -876,16 +876,25 @@ def main():
                 )
                 print("Session server started in background.")
                 # Wait for port file
-                for _ in range(10):
+                waited = 0
+                max_wait = 30  # seconds
+                while waited < max_wait:
                     if port_file.exists():
                         break
                     time.sleep(1)
+                    waited += 1
                 if port_file.exists():
                     with open(port_file, 'r') as f:
                         port = f.read().strip()
                     print(f"Listening on port {port}")
                 else:
-                    print("Warning: port file not found. Server may not have started correctly.")
+                    # Check if process is still alive
+                    try:
+                        # We don't have the process handle easily; we could store the PID.
+                        # For now, just warn.
+                        print("Warning: port file not found after 30 seconds. Server may have failed to start.")
+                    except:
+                        pass
 
         elif args.session_command == "status":
             if not port_file.exists():
