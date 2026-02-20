@@ -834,24 +834,33 @@ def main():
             sys.exit(1)
 
     elif args.command == "session":
+        import socket
+        import json
+        import time
+        import subprocess
+        import uuid
+        from pathlib import Path
+
         session_dir = PROJECT_ROOT / "ai_context" / "session"
-        cmd_file = session_dir / "cmd.json"
-        resp_dir = session_dir / "responses"
-        pid_file = session_dir / "server.pid"
+        port_file = session_dir / "port.txt"
 
         if args.session_command == "start":
-            if pid_file.exists():
-                # Check if process is still running
+            # Check if already running by trying to connect to port file
+            if port_file.exists():
                 try:
-                    with open(pid_file, 'r') as f:
-                        pid = int(f.read().strip())
-                    os.kill(pid, 0)  # Test if process exists
+                    with open(port_file, 'r') as f:
+                        old_port = int(f.read().strip())
+                    # Try a quick connection
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(2)
+                    s.connect(('localhost', old_port))
+                    s.close()
                     print("Session server already running.")
                     sys.exit(1)
-                except (ProcessLookupError, ValueError, OSError):
-                    # Stale PID file, remove it
-                    pid_file.unlink()
-            # Start server
+                except:
+                    # Stale port file, remove it
+                    port_file.unlink()
+
             server_script = PROJECT_ROOT / "tools" / "deepseek_bridge" / "session_server.py"
             if args.foreground:
                 # Run in foreground (for debugging)
@@ -866,59 +875,80 @@ def main():
                     stderr=subprocess.DEVNULL
                 )
                 print("Session server started in background.")
-                # Wait a moment for PID file to appear
-                time.sleep(2)
-                if pid_file.exists():
-                    with open(pid_file, 'r') as f:
-                        pid = f.read().strip()
-                    print(f"PID: {pid}")
+                # Wait for port file
+                for _ in range(10):
+                    if port_file.exists():
+                        break
+                    time.sleep(1)
+                if port_file.exists():
+                    with open(port_file, 'r') as f:
+                        port = f.read().strip()
+                    print(f"Listening on port {port}")
                 else:
-                    print("Warning: PID file not found. Server may not have started correctly.")
+                    print("Warning: port file not found. Server may not have started correctly.")
 
         elif args.session_command == "status":
-            if not pid_file.exists():
+            if not port_file.exists():
                 print("Session server not running.")
                 sys.exit(1)
-            with open(pid_file, 'r') as f:
-                pid = f.read().strip()
-            # Check if process is still running using tasklist (simple)
-            import subprocess
-            result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True)
-            if str(pid) in result.stdout:
-                print(f"Session server running (PID: {pid})")
-            else:
-                print("Session server not running (stale PID file).")
-                pid_file.unlink()
+            with open(port_file, 'r') as f:
+                port = int(f.read().strip())
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect(('localhost', port))
+                s.close()
+                print(f"Session server running on port {port}")
+            except Exception:
+                print("Session server not running (stale port file).")
+                port_file.unlink()
+                sys.exit(1)
 
         elif args.session_command == "stop":
-            if not pid_file.exists():
+            if not port_file.exists():
                 print("Session server not running.")
                 sys.exit(1)
-            with open(pid_file, 'r') as f:
-                pid = f.read().strip()
-            # Use taskkill to terminate the process tree
+            with open(port_file, 'r') as f:
+                port = int(f.read().strip())
             try:
-                subprocess.run(['taskkill', '/F', '/T', '/PID', pid], check=True, capture_output=True)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect(('localhost', port))
+                cmd = {"operation": "stop"}
+                s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
+                # Wait for response (optional)
+                data = s.recv(1024)
                 print("Stop signal sent.")
-            except subprocess.CalledProcessError as e:
-                print(f"Error stopping process: {e.stderr}")
-            # Wait for PID file to be removed
-            for _ in range(10):
-                if not pid_file.exists():
-                    break
-                time.sleep(1)
-            if pid_file.exists():
-                print("Warning: Server did not shut down cleanly; removing stale PID file.")
-                pid_file.unlink()
-            else:
-                print("Server stopped.")
+                s.close()
+                # Wait for port file to disappear
+                for _ in range(10):
+                    if not port_file.exists():
+                        break
+                    time.sleep(1)
+                if port_file.exists():
+                    print("Warning: Server may not have shut down cleanly.")
+                else:
+                    print("Server stopped.")
+            except Exception as e:
+                print(f"Error stopping server: {e}")
+                # Remove stale port file
+                port_file.unlink()
 
         elif args.session_command == "consult":
-            if not pid_file.exists():
+            if not port_file.exists():
                 print("Session server not running. Start it first with 'session start'.")
                 sys.exit(1)
-            # Generate unique command ID
-            import uuid
+            with open(port_file, 'r') as f:
+                port = int(f.read().strip())
+            # Connect to server
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(args.timeout)
+                s.connect(('localhost', port))
+            except Exception as e:
+                print(f"Cannot connect to session server: {e}")
+                sys.exit(1)
+
+            # Prepare command
             cmd_id = str(uuid.uuid4())
             cmd = {
                 "id": cmd_id,
@@ -926,27 +956,25 @@ def main():
                 "file": args.file,
                 "prompt": args.prompt
             }
-            # Write command
-            with open(cmd_file, 'w', encoding='utf-8') as f:
-                json.dump(cmd, f)
-            # Wait for response
-            resp_file = resp_dir / f"resp_{cmd_id}.json"
-            timeout = args.timeout
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                if resp_file.exists():
-                    with open(resp_file, 'r', encoding='utf-8') as f:
-                        response = json.load(f)
-                    # Clean up
-                    resp_file.unlink()
-                    if response.get("status") == "success":
-                        print(response["data"])
-                    else:
-                        print(f"Error: {response.get('error', 'Unknown error')}")
-                    sys.exit(0 if response.get("status") == "success" else 1)
-                time.sleep(1)
-            print(f"Timeout waiting for response after {timeout} seconds.")
-            sys.exit(1)
+            s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
+
+            # Receive response
+            try:
+                data = s.recv(65536)  # Larger buffer for potentially long responses
+                response = json.loads(data.decode('utf-8'))
+                if response.get("status") == "success":
+                    print(response["data"])
+                else:
+                    print(f"Error: {response.get('error', 'Unknown error')}")
+                    sys.exit(1)
+            except socket.timeout:
+                print(f"Timeout waiting for response after {args.timeout} seconds.")
+                sys.exit(1)
+            except Exception as e:
+                print(f"Error receiving response: {e}")
+                sys.exit(1)
+            finally:
+                s.close()
 
     elif args.command == "semantic":
         if not args.goal_file:

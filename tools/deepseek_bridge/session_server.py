@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Persistent DeepSeek session server.
-Listens for commands via a file and executes them, keeping browser open.
-Session files stored in ai_context/session/.
+Persistent DeepSeek session server (socket version).
+Listens on a local TCP port, accepts JSON commands, and returns JSON responses.
+Browser stays open between commands.
 """
 
 import sys
 import json
+import socket
+import threading
 import time
 import os
 import signal
@@ -22,82 +24,114 @@ from tools.bridge.unified_core import BridgeCore
 # Session directory
 SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
+PORT_FILE = SESSION_DIR / "port.txt"
 
-CMD_FILE = SESSION_DIR / "cmd.json"
-RESP_DIR = SESSION_DIR / "responses"
-RESP_DIR.mkdir(exist_ok=True)
-PID_FILE = SESSION_DIR / "server.pid"
+# Global driver and running flag
+core = None
+running = True
+
+def handle_client(conn, addr):
+    """Handle one client connection: read command, execute, send response."""
+    global core
+    print(f"Connection from {addr}")
+    try:
+        data = conn.recv(8192)
+        if not data:
+            return
+        cmd = json.loads(data.decode('utf-8'))
+        cmd_id = cmd.get('id', 'unknown')
+        op = cmd.get('operation')
+        print(f"Received command {cmd_id}: {op}")
+
+        if op == 'consult':
+            file_path = cmd.get('file')
+            prompt = cmd.get('prompt', '')
+            if not file_path:
+                response = {"status": "error", "error": "Missing 'file'"}
+            else:
+                path = Path(file_path)
+                if not path.is_absolute():
+                    path = PROJECT_ROOT / path
+                if not path.exists():
+                    response = {"status": "error", "error": f"File not found: {path}"}
+                else:
+                    try:
+                        # Use the already open browser
+                        resp_text = consult(core.driver, path, prompt)
+                        response = {"status": "success", "data": resp_text}
+                    except Exception as e:
+                        response = {"status": "error", "error": str(e)}
+        elif op == 'stop':
+            response = {"status": "success", "data": "Shutting down"}
+            # Send response before stopping
+            conn.sendall((json.dumps(response) + '\n').encode('utf-8'))
+            conn.close()
+            # Signal main loop to exit
+            global running
+            running = False
+            return
+        else:
+            response = {"status": "error", "error": f"Unknown operation: {op}"}
+
+        # Send response
+        conn.sendall((json.dumps(response) + '\n').encode('utf-8'))
+    except Exception as e:
+        print(f"Error handling client: {e}")
+    finally:
+        conn.close()
 
 def main():
-    poll_interval = 2  # seconds
-
+    global core, running
     # Start browser
     core = BridgeCore(verbose=False)
     if not core.connect():
         print("Failed to connect to DeepSeek", file=sys.stderr)
         sys.exit(1)
 
+    # Create socket server
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('localhost', 0))  # Let OS choose port
+    port = server_socket.getsockname()[1]
+    server_socket.listen(5)
+    print(f"Session server listening on port {port}")
+
+    # Write port to file
+    with open(PORT_FILE, 'w') as f:
+        f.write(str(port))
+
     print(f"Session server started. PID: {os.getpid()}")
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
 
-    running = True
-    processed_ids = set()
-
+    # Handle shutdown signals
     def signal_handler(sig, frame):
-        nonlocal running
+        global running
         print("Shutting down...")
         running = False
-
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    # Main loop: accept connections and spawn threads
     while running:
-        if CMD_FILE.exists():
-            try:
-                with open(CMD_FILE, 'r', encoding='utf-8') as f:
-                    cmd = json.load(f)
-                cmd_id = cmd.get('id')
-                if cmd_id and cmd_id not in processed_ids:
-                    processed_ids.add(cmd_id)
-                    op = cmd.get('operation')
-                    if op == 'consult':
-                        file_path = cmd.get('file')
-                        prompt = cmd.get('prompt', '')
-                        if not file_path:
-                            error = "Missing 'file'"
-                            response_data = {"status": "error", "error": error}
-                        else:
-                            path = Path(file_path)
-                            if not path.is_absolute():
-                                path = PROJECT_ROOT / path
-                            if not path.exists():
-                                error = f"File not found: {path}"
-                                response_data = {"status": "error", "error": error}
-                            else:
-                                try:
-                                    response_text = consult(core.driver, path, prompt)
-                                    response_data = {"status": "success", "data": response_text}
-                                except Exception as e:
-                                    response_data = {"status": "error", "error": str(e)}
-                        # Write response
-                        resp_file = RESP_DIR / f"resp_{cmd_id}.json"
-                        with open(resp_file, 'w', encoding='utf-8') as f:
-                            json.dump(response_data, f)
-                    elif op == 'stop':
-                        running = False
-                    else:
-                        resp_file = RESP_DIR / f"resp_{cmd_id}.json"
-                        with open(resp_file, 'w', encoding='utf-8') as f:
-                            json.dump({"status": "error", "error": f"Unknown operation: {op}"}, f)
-                CMD_FILE.unlink()
-            except Exception as e:
-                print(f"Error processing command: {e}", file=sys.stderr)
-        time.sleep(poll_interval)
+        try:
+            server_socket.settimeout(1.0)
+            conn, addr = server_socket.accept()
+            # Handle each client in a new thread (so server can still accept others)
+            client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+            client_thread.daemon = True
+            client_thread.start()
+        except socket.timeout:
+            continue
+        except Exception as e:
+            if running:
+                print(f"Server error: {e}")
+            break
 
-    core.close()
+    # Cleanup
+    server_socket.close()
+    if core:
+        core.close()
+    # Remove port file
     try:
-        PID_FILE.unlink()
+        PORT_FILE.unlink()
     except:
         pass
     print("Session server stopped.")
