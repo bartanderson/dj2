@@ -226,7 +226,7 @@ def get_known_descriptions():
         'tools/analysis/embedding_model.py': 'all-MiniLM-L6-v2 for text embeddings',
         'tools/analysis/extractors.py': 'Extract imports, dict access, method params',
         'tools/analysis/generate_test.py': 'Generate tests for intents using full context',
-        'tools/analysis/guardrails.py': 'Real guardrails using AST analyzer',
+        'tools/guardrails/run.py': 'Real guardrails using AST analyzer',
         'tools/analysis/intent_matcher.py': 'Find files for intent using embeddings',
         'tools/analysis/phase_checker.py': 'Phase compliance checking',
         'tools/analysis/populate_imports.py': 'Populate imports table after scout scan',

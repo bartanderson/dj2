@@ -80,7 +80,7 @@ def guardrails_command(args):
     print("🔍 Running AI Contract Guardrails...")
     
     project_root = Path(__file__).parent.parent.parent.parent.parent
-    tool_path = project_root / "tools" / "analysis" / "guardrails.py"
+    tool_path = project_root / "tools" / "guardrails" / "run.py"
     
     if not tool_path.exists():
         print(f"Error: guardrails tool not found at {tool_path}")
