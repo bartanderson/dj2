@@ -1,4 +1,4 @@
-# tools/analysis/guardrails.py
+#!/usr/bin/env python3
 """
 Real guardrails implementation using your existing AST analyzer
 Validates code against AI Contract rules
@@ -6,8 +6,8 @@ Validates code against AI Contract rules
 
 import subprocess
 import sys
-from pathlib import Path
 import json
+from pathlib import Path
 import sqlite3
 
 def safe_read_file(file_path, max_lines=100):
@@ -32,9 +32,12 @@ def safe_read_file(file_path, max_lines=100):
     except Exception as e:
         return f"[ERROR reading file: {e}]"
 
-def check_ai_contract():
+def check_ai_contract(project_root=None):
     """Check AI contract violations using existing ast_analyzer"""
-    project_root = Path.cwd()
+    if project_root is None:
+        project_root = Path.cwd()
+    else:
+        project_root = Path(project_root)
     
     print("🔍 Checking AI Contract Guardrails...")
     print("Rule 1: AI NEVER owns state")
@@ -42,9 +45,13 @@ def check_ai_contract():
     print("Rule 3: AI ONLY requests actions via interfaces")
     print("-" * 50)
     
-    # Use your existing ast_analyzer in violations mode
-    cmd = [sys.executable, "tools/analysis/ast_analyzer.py", ".", 
-           "--mode", "violations"]
+    # Use ast_analyzer in violations mode
+    ast_analyzer = project_root / "tools" / "analysis" / "ast_analyzer.py"
+    if not ast_analyzer.exists():
+        print(f"❌ ast_analyzer not found at {ast_analyzer}")
+        return -1
+    
+    cmd = [sys.executable, str(ast_analyzer), ".", "--mode", "violations"]
     
     try:
         result = subprocess.run(
@@ -84,14 +91,13 @@ def check_ai_contract():
                             "message": f"Phase violation: {parts[3].strip()}"
                         })
             
-            # ===== MOVED BLOCK STARTS HERE =====
             # Check for direct SessionSystem calls in AI files using scout.db (path‑based layers)
             print("Checking for direct state mutations in AI files (via path prefixes)...")
             db_path = project_root / "ai_context" / "scout.db"
             ai_files = []
             if db_path.exists():
                 try:
-                    conn = sqlite3.connect(db_path)
+                    conn = sqlite3.connect(str(db_path))
                     cursor = conn.cursor()
                     # Layers considered AI: world, dungeon_neo, engine, ai
                     layers = ['world', 'dungeon_neo', 'engine', 'ai']
@@ -127,7 +133,6 @@ def check_ai_contract():
                 except Exception as e:
                     print(f"  Warning: Could not check {file_path}: {e}")
                     continue
-            # ===== MOVED BLOCK ENDS HERE =====
 
             # Report results
             if violations:
@@ -140,6 +145,7 @@ def check_ai_contract():
                 
                 # Save to JSON for context system
                 violations_file = project_root / "ai_context" / "guardrail_violations.json"
+                violations_file.parent.mkdir(parents=True, exist_ok=True)
                 with open(violations_file, 'w', encoding='utf-8') as f:
                     json.dump(violations, f, indent=2, ensure_ascii=False)
                 print(f"\n📁 Violations saved to: {violations_file}")
@@ -149,7 +155,7 @@ def check_ai_contract():
             return len(violations)
             
         else:
-            print(f"❌ Error running guardrails: {result.stderr}")
+            print(f"❌ Error running ast_analyzer: {result.stderr}")
             return -1
             
     except Exception as e:
@@ -160,17 +166,33 @@ def check_ai_contract():
 
 def main():
     """Command-line entry point"""
-    import argparse
+    # Accept JSON input if provided
+    if len(sys.argv) > 1:
+        try:
+            params = json.loads(sys.argv[1])
+            json_output = params.get('json', False)
+            save_output = params.get('save', False)
+            # Optionally, we could also allow a custom project root
+            project_root = params.get('project_root', None)
+        except json.JSONDecodeError:
+            # Fallback to argparse for backward compatibility
+            import argparse
+            parser = argparse.ArgumentParser(description="AI Contract Guardrails Check")
+            parser.add_argument("--json", "-j", action="store_true", help="Output JSON")
+            parser.add_argument("--save", "-s", action="store_true", help="Save to file")
+            parser.add_argument("--project-root", help="Project root directory")
+            args = parser.parse_args()
+            json_output = args.json
+            save_output = args.save
+            project_root = args.project_root
+    else:
+        json_output = False
+        save_output = False
+        project_root = None
     
-    parser = argparse.ArgumentParser(description="AI Contract Guardrails Check")
-    parser.add_argument("--json", "-j", action="store_true", help="Output JSON")
-    parser.add_argument("--save", "-s", action="store_true", help="Save to file")
+    violation_count = check_ai_contract(project_root)
     
-    args = parser.parse_args()
-    
-    violation_count = check_ai_contract()
-    
-    if args.json:
+    if json_output:
         print(json.dumps({"violation_count": violation_count}))
     
     sys.exit(0 if violation_count == 0 else 1)

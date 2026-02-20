@@ -1,0 +1,16 @@
+[
+  {
+    "type": "STATE_OWNERSHIP_VIOLATION",
+    "rule": "AI NEVER owns state",
+    "file": "world\\dm_chat_handler.py",
+    "line": "multiple",
+    "message": "AI file directly accesses SessionSystem"
+  },
+  {
+    "type": "STATE_OWNERSHIP_VIOLATION",
+    "rule": "AI NEVER owns state",
+    "file": "world\\session_system.py",
+    "line": "multiple",
+    "message": "AI file directly accesses SessionSystem"
+  }
+]

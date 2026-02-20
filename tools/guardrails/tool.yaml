@@ -1,0 +1,12 @@
+name: guardrails
+description: Check AI Contract violations using AST analysis
+execution: cli
+path: tools/guardrails/run.py
+
+provides:
+  - action: guardrails.check
+    description: Scan AI‑layer files for contract violations
+    parameters:
+      json: "boolean (optional)"
+      save: "boolean (optional)"
+    input_format: json
