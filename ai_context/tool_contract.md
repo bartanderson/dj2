@@ -187,7 +187,6 @@ In main():
 If JSON mode is detected (via input\_format: json), call check\_ai\_contract(quiet=True), then print a JSON object with status, saved\_files, and data.
 
 
-
 Otherwise, call it with quiet=False (allowing prints) and after execution, print a human‑readable message including the saved file location.
 
 
@@ -200,7 +199,7 @@ bash
 
 python tools/nativeclaw/nativeclaw.py semantic goals/check\_guardrails.yaml
 
-
+saved_files: Always include the paths of any files the tool creates or modifies, even if the file is empty. This allows the system to reliably track and display artifacts. If the tool does not write any files, the list can be omitted or empty.
 
 \# After execution, even though no files changed, you'll be prompted:
 

@@ -1,0 +1,11 @@
+name: deepseek_bridge
+description: Send context to DeepSeek via Selenium and get response
+execution: cli
+path: tools/deepseek_bridge/run.py
+provides:
+  - action: deepseek.consult
+    description: Upload a file and prompt, return AI response
+    parameters:
+      file: string
+      prompt: string (optional)
+    input_format: json

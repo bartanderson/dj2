@@ -619,7 +619,7 @@ class Session:
 
 def main():
     parser = argparse.ArgumentParser(description="NativeClaw - Native Windows goal runner")
-    parser.add_argument("command", choices=["semantic", "resume", "doctor", "list-capabilities"])
+    parser.add_argument("command", choices=["semantic", "resume", "doctor", "list-capabilities", "consult"])
     parser.add_argument("goal_or_review", nargs="?", help="Path to goal YAML file or review folder")
     parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
     
@@ -857,6 +857,52 @@ Scripts\\nativeclaw.bat resume {archive_dir}
             elif response == 'Q':
                 print("Exiting, branch left untouched")
                 break
+
+    elif args.command == "consult":
+        import argparse
+        # We need a subparser for consult's own arguments
+        consult_parser = argparse.ArgumentParser()
+        consult_parser.add_argument("--file", required=True, help="Path to context file")
+        consult_parser.add_argument("--prompt", default="", help="Optional prompt")
+        # Parse only the remaining arguments (after 'consult')
+        consult_args = consult_parser.parse_args(sys.argv[2:])
+        
+        file_path = Path(consult_args.file)
+        if not file_path.is_absolute():
+            file_path = PROJECT_ROOT / file_path
+        if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
+            sys.exit(1)
+        
+        bridge_tool = PROJECT_ROOT / "tools" / "deepseek_bridge" / "run.py"
+        if not bridge_tool.exists():
+            print(f"❌ Bridge tool not found at {bridge_tool}")
+            sys.exit(1)
+        
+        input_json = json.dumps({"file": str(file_path), "prompt": consult_args.prompt})
+        print(f"Consulting DeepSeek with file {file_path}...")
+        result = subprocess.run(
+            [sys.executable, str(bridge_tool), input_json],
+            capture_output=True, text=True, encoding='utf-8'
+        )
+        
+        if result.returncode != 0:
+            print(f"❌ Bridge tool failed with code {result.returncode}")
+            if result.stderr:
+                print(f"stderr: {result.stderr}")
+            sys.exit(1)
+        
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            print(f"❌ Invalid JSON from bridge: {result.stdout}")
+            sys.exit(1)
+        
+        if response.get("status") == "success":
+            print("\n" + response["data"])
+        else:
+            print(f"❌ Error: {response.get('error', 'Unknown error')}")
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
