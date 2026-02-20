@@ -641,7 +641,27 @@ def main():
     consult_parser.add_argument("--file", required=True, help="Path to context file")
     consult_parser.add_argument("--prompt", default="", help="Optional prompt")
     consult_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")  # for consistency
-    
+
+    # --- session command ---
+    session_parser = subparsers.add_parser("session", help="Manage persistent DeepSeek session")
+    session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)
+
+    # --- session start ---
+    start_parser = session_subparsers.add_parser("start", help="Start session server in background")
+    start_parser.add_argument("--foreground", action="store_true", help="Run in foreground (for debugging)")
+
+    # --- session stop ---
+    session_subparsers.add_parser("stop", help="Stop session server")
+
+    # --- session status ---
+    session_subparsers.add_parser("status", help="Check if session server is running")
+
+    # --- session consult ---
+    consult_session_parser = session_subparsers.add_parser("consult", help="Send consult request to running session")
+    consult_session_parser.add_argument("--file", required=True, help="Path to context file")
+    consult_session_parser.add_argument("--prompt", default="", help="Optional prompt")
+    consult_session_parser.add_argument("--timeout", type=int, default=120, help="Response timeout (seconds)")
+
     args = parser.parse_args()
     
     if args.command == "doctor":
@@ -676,7 +696,7 @@ def main():
                     print(f"  Scripts\\nativeclaw.bat resume .nativeclaw\\archive\\{p}\\")
         return
     
-    if args.command == "list-capabilities":
+    elif args.command == "list-capabilities":
         registry = ToolRegistry(PROJECT_ROOT)
         caps = registry.list_all_capabilities()
         print("\n📋 All capabilities provided by tools:")
@@ -685,138 +705,8 @@ def main():
             tool_names = [t.name for t in tools]
             print(f"  {cap}: {', '.join(tool_names)}")
         return
-
-    print("just before consult")
-    print(args.command)
-    
-    if args.command == "consult":
-        print("DEBUG: Entered consult handler")
-        file_path = Path(args.file)
-        print(f"DEBUG: file_path = {file_path}")
-        if not file_path.is_absolute():
-            file_path = PROJECT_ROOT / file_path
-            print(f"DEBUG: after resolving: {file_path}")
-        if not file_path.exists():
-            print(f"❌ File not found: {file_path}")
-            sys.exit(1)
-        print("DEBUG: file exists")
-
-        prompt = args.prompt
-        print(f"DEBUG: prompt = '{prompt}'")
-
-        bridge_tool = PROJECT_ROOT / "tools" / "deepseek_bridge" / "run.py"
-        print(f"DEBUG: bridge_tool path = {bridge_tool}")
-        if not bridge_tool.exists():
-            print(f"❌ Bridge tool not found at {bridge_tool}")
-            sys.exit(1)
-        print("DEBUG: bridge tool exists")
-
-        input_json = json.dumps({"file": str(file_path), "prompt": prompt})
-        print(f"DEBUG: input_json = {input_json}")
-
-        print("Calling bridge tool...")
-        result = subprocess.run(
-            [sys.executable, str(bridge_tool), input_json],
-            capture_output=True, text=True, encoding='utf-8'
-        )
-        print(f"DEBUG: subprocess returncode = {result.returncode}")
-        if result.returncode != 0:
-            print(f"❌ Bridge tool failed with code {result.returncode}")
-            if result.stderr:
-                print(f"stderr: {result.stderr}")
-            sys.exit(1)
-
-        print("DEBUG: subprocess stdout length =", len(result.stdout))
-        if result.stdout:
-            print("DEBUG: stdout preview:", result.stdout[:200])
-        try:
-            response = json.loads(result.stdout)
-            print("DEBUG: JSON parsed successfully")
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid JSON from bridge: {e}")
-            print(f"Raw stdout: {result.stdout}")
-            sys.exit(1)
-
-        if response.get("status") == "success":
-            print("\n" + response["data"])
-        else:
-            print(f"❌ Error: {response.get('error', 'Unknown error')}")
-            sys.exit(1)
-
-    
-    if args.command == "resume":
-        if not args.review_folder:
-            print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
-            sys.exit(1)
         
-        review_path = Path(args.review_folder)
-        if not review_path.exists():
-            review_path = PROJECT_ROOT / args.review_folder
-        
-        if not review_path.exists():
-            print(f"ERROR: Review folder not found: {review_path}")
-            sys.exit(1)
-        
-        # Load state
-        state_file = review_path / "state.json"
-        if not state_file.exists():
-            print("ERROR: No state.json in review folder")
-            sys.exit(1)
-        
-        with open(state_file, 'r', encoding='utf-8') as f:
-            state = json.load(f)
-        
-        branch_name = state.get('branch_name')
-        original_branch = state.get('original_branch', 'master')
-        goal_name = state.get('goal_name')
-        
-        print(f"\n📋 Resuming review: {goal_name}")
-        print(f"  Branch: {branch_name}")
-        
-        # Show diff
-        diff_file = review_path / "changes.diff"
-        if diff_file.exists():
-            print("\n" + "="*50)
-            print("CHANGES TO REVIEW:")
-            print("="*50)
-            with open(diff_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                print(content[:1000])
-                if len(content) > 1000:
-                    print("\n... (truncated)")
-        
-        # Ask for decision
-        while True:
-            print("\n" + "-"*40)
-            print("Review commands:")
-            print("  Y - Approve and merge")
-            print("  N - Reject and delete branch")
-            print("  Q - Quit (leave branch for later)")
-            print("-"*40)
-            
-            response = input("Choice: ").strip().upper()
-            
-            if response == 'Y':
-                subprocess.run(["git", "checkout", original_branch], cwd=PROJECT_ROOT, check=True)
-                subprocess.run(["git", "merge", branch_name], cwd=PROJECT_ROOT, check=True)
-                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
-                with open(review_path / "approved.txt", 'w') as f:
-                    f.write(f"Approved at: {datetime.now().isoformat()}")
-                print("✅ Changes approved and merged")
-                break
-                
-            elif response == 'N':
-                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
-                with open(review_path / "rejected.txt", 'w') as f:
-                    f.write(f"Rejected at: {datetime.now().isoformat()}")
-                print("❌ Changes rejected, branch deleted")
-                break
-                
-            elif response == 'Q':
-                print("Exiting, branch left untouched")
-                break
-    
-    if args.command == "semantic":
+    elif args.command == "semantic":
         if not args.goal_file:
             print("ERROR: Need goal file. Example: nativeclaw.py semantic goals/semantic_test.yaml")
             sys.exit(1)
@@ -934,6 +824,244 @@ Scripts\\nativeclaw.bat resume {archive_dir}
             session.restore()
             print("✅ Session restored to original state")
     return
+
+    elif args.command == "resume":
+        if not args.review_folder:
+            print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
+            sys.exit(1)
+        
+        review_path = Path(args.review_folder)
+        if not review_path.exists():
+            review_path = PROJECT_ROOT / args.review_folder
+        
+        if not review_path.exists():
+            print(f"ERROR: Review folder not found: {review_path}")
+            sys.exit(1)
+        
+        # Load state
+        state_file = review_path / "state.json"
+        if not state_file.exists():
+            print("ERROR: No state.json in review folder")
+            sys.exit(1)
+        
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        
+        branch_name = state.get('branch_name')
+        original_branch = state.get('original_branch', 'master')
+        goal_name = state.get('goal_name')
+        
+        print(f"\n📋 Resuming review: {goal_name}")
+        print(f"  Branch: {branch_name}")
+        
+        # Show diff
+        diff_file = review_path / "changes.diff"
+        if diff_file.exists():
+            print("\n" + "="*50)
+            print("CHANGES TO REVIEW:")
+            print("="*50)
+            with open(diff_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                print(content[:1000])
+                if len(content) > 1000:
+                    print("\n... (truncated)")
+        
+        # Ask for decision
+        while True:
+            print("\n" + "-"*40)
+            print("Review commands:")
+            print("  Y - Approve and merge")
+            print("  N - Reject and delete branch")
+            print("  Q - Quit (leave branch for later)")
+            print("-"*40)
+            
+            response = input("Choice: ").strip().upper()
+            
+            if response == 'Y':
+                subprocess.run(["git", "checkout", original_branch], cwd=PROJECT_ROOT, check=True)
+                subprocess.run(["git", "merge", branch_name], cwd=PROJECT_ROOT, check=True)
+                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
+                with open(review_path / "approved.txt", 'w') as f:
+                    f.write(f"Approved at: {datetime.now().isoformat()}")
+                print("✅ Changes approved and merged")
+                break
+                
+            elif response == 'N':
+                subprocess.run(["git", "branch", "-D", branch_name], cwd=PROJECT_ROOT, check=True)
+                with open(review_path / "rejected.txt", 'w') as f:
+                    f.write(f"Rejected at: {datetime.now().isoformat()}")
+                print("❌ Changes rejected, branch deleted")
+                break
+                
+            elif response == 'Q':
+                print("Exiting, branch left untouched")
+                break
+
+    elif args.command == "consult":
+        print("DEBUG: Entered consult handler")
+        file_path = Path(args.file)
+        print(f"DEBUG: file_path = {file_path}")
+        if not file_path.is_absolute():
+            file_path = PROJECT_ROOT / file_path
+            print(f"DEBUG: after resolving: {file_path}")
+        if not file_path.exists():
+            print(f"❌ File not found: {file_path}")
+            sys.exit(1)
+        print("DEBUG: file exists")
+
+        prompt = args.prompt
+        print(f"DEBUG: prompt = '{prompt}'")
+
+        bridge_tool = PROJECT_ROOT / "tools" / "deepseek_bridge" / "run.py"
+        print(f"DEBUG: bridge_tool path = {bridge_tool}")
+        if not bridge_tool.exists():
+            print(f"❌ Bridge tool not found at {bridge_tool}")
+            sys.exit(1)
+        print("DEBUG: bridge tool exists")
+
+        input_json = json.dumps({"file": str(file_path), "prompt": prompt})
+        print(f"DEBUG: input_json = {input_json}")
+
+        print("Calling bridge tool...")
+        result = subprocess.run(
+            [sys.executable, str(bridge_tool), input_json],
+            capture_output=True, text=True, encoding='utf-8'
+        )
+        print(f"DEBUG: subprocess returncode = {result.returncode}")
+        if result.returncode != 0:
+            print(f"❌ Bridge tool failed with code {result.returncode}")
+            if result.stderr:
+                print(f"stderr: {result.stderr}")
+            sys.exit(1)
+
+        print("DEBUG: subprocess stdout length =", len(result.stdout))
+        if result.stdout:
+            print("DEBUG: stdout preview:", result.stdout[:200])
+        try:
+            response = json.loads(result.stdout)
+            print("DEBUG: JSON parsed successfully")
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON from bridge: {e}")
+            print(f"Raw stdout: {result.stdout}")
+            sys.exit(1)
+
+        if response.get("status") == "success":
+            print("\n" + response["data"])
+        else:
+            print(f"❌ Error: {response.get('error', 'Unknown error')}")
+            sys.exit(1)
+
+    elif args.command == "session":
+        session_dir = PROJECT_ROOT / "ai_context" / "session"
+        cmd_file = session_dir / "cmd.json"
+        resp_dir = session_dir / "responses"
+        pid_file = session_dir / "server.pid"
+
+        if args.session_command == "start":
+            if pid_file.exists():
+                # Check if process is still running
+                try:
+                    with open(pid_file, 'r') as f:
+                        pid = int(f.read().strip())
+                    os.kill(pid, 0)  # Test if process exists
+                    print("Session server already running.")
+                    sys.exit(1)
+                except (ProcessLookupError, ValueError, OSError):
+                    # Stale PID file, remove it
+                    pid_file.unlink()
+            # Start server
+            server_script = PROJECT_ROOT / "tools" / "deepseek_bridge" / "session_server.py"
+            if args.foreground:
+                # Run in foreground (for debugging)
+                subprocess.run([sys.executable, str(server_script)])
+            else:
+                # Run in background (detached)
+                DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(
+                    [sys.executable, str(server_script)],
+                    creationflags=DETACHED_PROCESS,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                print("Session server started in background.")
+                # Wait a moment for PID file to appear
+                time.sleep(2)
+                if pid_file.exists():
+                    with open(pid_file, 'r') as f:
+                        pid = f.read().strip()
+                    print(f"PID: {pid}")
+                else:
+                    print("Warning: PID file not found. Server may not have started correctly.")
+
+        elif args.session_command == "stop":
+            if not pid_file.exists():
+                print("Session server not running.")
+                sys.exit(1)
+            with open(pid_file, 'r') as f:
+                pid = int(f.read().strip())
+            try:
+                os.kill(pid, signal.SIGTERM)
+                print("Stop signal sent.")
+                # Wait for PID file to be removed
+                for _ in range(10):
+                    if not pid_file.exists():
+                        break
+                    time.sleep(1)
+                if pid_file.exists():
+                    print("Warning: Server did not shut down cleanly.")
+                else:
+                    print("Server stopped.")
+            except ProcessLookupError:
+                print("Process not found. Removing stale PID file.")
+                pid_file.unlink()
+
+        elif args.session_command == "status":
+            if not pid_file.exists():
+                print("Session server not running.")
+                sys.exit(1)
+            with open(pid_file, 'r') as f:
+                pid = f.read().strip()
+            try:
+                os.kill(int(pid), 0)
+                print(f"Session server running (PID: {pid})")
+            except (ProcessLookupError, ValueError):
+                print("Session server not running (stale PID file).")
+                pid_file.unlink()
+
+        elif args.session_command == "consult":
+            if not pid_file.exists():
+                print("Session server not running. Start it first with 'session start'.")
+                sys.exit(1)
+            # Generate unique command ID
+            import uuid
+            cmd_id = str(uuid.uuid4())
+            cmd = {
+                "id": cmd_id,
+                "operation": "consult",
+                "file": args.file,
+                "prompt": args.prompt
+            }
+            # Write command
+            with open(cmd_file, 'w', encoding='utf-8') as f:
+                json.dump(cmd, f)
+            # Wait for response
+            resp_file = resp_dir / f"resp_{cmd_id}.json"
+            timeout = args.timeout
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if resp_file.exists():
+                    with open(resp_file, 'r', encoding='utf-8') as f:
+                        response = json.load(f)
+                    # Clean up
+                    resp_file.unlink()
+                    if response.get("status") == "success":
+                        print(response["data"])
+                    else:
+                        print(f"Error: {response.get('error', 'Unknown error')}")
+                    sys.exit(0 if response.get("status") == "success" else 1)
+                time.sleep(1)
+            print(f"Timeout waiting for response after {timeout} seconds.")
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()

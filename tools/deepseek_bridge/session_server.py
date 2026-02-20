@@ -2,6 +2,7 @@
 """
 Persistent DeepSeek session server.
 Listens for commands via a file and executes them, keeping browser open.
+Session files stored in ai_context/session/.
 """
 
 import sys
@@ -18,10 +19,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from tools.deepseek_bridge.bridge_lib import consult
 from tools.bridge.unified_core import BridgeCore
 
+# Session directory
+SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
+SESSION_DIR.mkdir(parents=True, exist_ok=True)
+
+CMD_FILE = SESSION_DIR / "cmd.json"
+RESP_DIR = SESSION_DIR / "responses"
+RESP_DIR.mkdir(exist_ok=True)
+PID_FILE = SESSION_DIR / "server.pid"
+
 def main():
-    cmd_file = Path("session_cmd.json")
-    resp_dir = Path("session_responses")
-    resp_dir.mkdir(exist_ok=True)
     poll_interval = 2  # seconds
 
     # Start browser
@@ -31,8 +38,7 @@ def main():
         sys.exit(1)
 
     print(f"Session server started. PID: {os.getpid()}")
-    # Write PID file for management
-    with open("session_server.pid", "w") as f:
+    with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
 
     running = True
@@ -47,9 +53,9 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     while running:
-        if cmd_file.exists():
+        if CMD_FILE.exists():
             try:
-                with open(cmd_file, 'r', encoding='utf-8') as f:
+                with open(CMD_FILE, 'r', encoding='utf-8') as f:
                     cmd = json.load(f)
                 cmd_id = cmd.get('id')
                 if cmd_id and cmd_id not in processed_ids:
@@ -75,28 +81,23 @@ def main():
                                 except Exception as e:
                                     response_data = {"status": "error", "error": str(e)}
                         # Write response
-                        resp_file = resp_dir / f"resp_{cmd_id}.json"
+                        resp_file = RESP_DIR / f"resp_{cmd_id}.json"
                         with open(resp_file, 'w', encoding='utf-8') as f:
                             json.dump(response_data, f)
                     elif op == 'stop':
                         running = False
                     else:
-                        # unknown operation
-                        resp_file = resp_dir / f"resp_{cmd_id}.json"
+                        resp_file = RESP_DIR / f"resp_{cmd_id}.json"
                         with open(resp_file, 'w', encoding='utf-8') as f:
                             json.dump({"status": "error", "error": f"Unknown operation: {op}"}, f)
-                # Remove command file after processing
-                cmd_file.unlink()
+                CMD_FILE.unlink()
             except Exception as e:
                 print(f"Error processing command: {e}", file=sys.stderr)
-                # Optionally write error response
-                # For simplicity, just log and continue
         time.sleep(poll_interval)
 
     core.close()
-    # Clean up PID file
     try:
-        os.unlink("session_server.pid")
+        PID_FILE.unlink()
     except:
         pass
     print("Session server stopped.")
