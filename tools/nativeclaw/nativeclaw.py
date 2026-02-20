@@ -619,9 +619,28 @@ class Session:
 
 def main():
     parser = argparse.ArgumentParser(description="NativeClaw - Native Windows goal runner")
-    parser.add_argument("command", choices=["semantic", "resume", "doctor", "list-capabilities", "consult"])
-    parser.add_argument("goal_or_review", nargs="?", help="Path to goal YAML file or review folder")
-    parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
+    subparsers = parser.add_subparsers(dest="command", required=True, help="Subcommands")
+
+    # --- semantic command ---
+    semantic_parser = subparsers.add_parser("semantic", help="Run a semantic goal")
+    semantic_parser.add_argument("goal_file", help="Path to goal YAML file")
+    semantic_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
+
+    # --- resume command ---
+    resume_parser = subparsers.add_parser("resume", help="Resume a review")
+    resume_parser.add_argument("review_folder", help="Path to review folder")
+
+    # --- doctor command ---
+    subparsers.add_parser("doctor", help="Health check")
+
+    # --- list-capabilities command ---
+    subparsers.add_parser("list-capabilities", help="List all capabilities")
+
+    # --- consult command ---
+    consult_parser = subparsers.add_parser("consult", help="Consult DeepSeek with a file")
+    consult_parser.add_argument("--file", required=True, help="Path to context file")
+    consult_parser.add_argument("--prompt", default="", help="Optional prompt")
+    consult_parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")  # for consistency
     
     args = parser.parse_args()
     
@@ -672,9 +691,9 @@ def main():
             print("ERROR: Need goal file. Example: nativeclaw.py semantic goals/semantic_test.yaml")
             sys.exit(1)
         
-        goal_path = Path(args.goal_or_review)
+        goal_path = Path(args.goal_file)
         if not goal_path.exists():
-            goal_path = PROJECT_ROOT / args.goal_or_review
+            goal_path = PROJECT_ROOT / args.goal_file
         
         if not goal_path.exists():
             print(f"ERROR: Goal file not found: {goal_path}")
@@ -791,9 +810,9 @@ Scripts\\nativeclaw.bat resume {archive_dir}
             print("ERROR: Need review folder. Example: nativeclaw.py resume .nativeclaw/archive/20260217_153000/")
             sys.exit(1)
         
-        review_path = Path(args.goal_or_review)
+        review_path = Path(args.review_folder)
         if not review_path.exists():
-            review_path = PROJECT_ROOT / args.goal_or_review
+            review_path = PROJECT_ROOT / args.review_folder
         
         if not review_path.exists():
             print(f"ERROR: Review folder not found: {review_path}")
