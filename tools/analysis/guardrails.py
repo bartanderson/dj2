@@ -56,10 +56,11 @@ def check_ai_contract():
             errors='replace'
         )
         
+        violations = []  # initialize here
+        
         if result.returncode == 0:
             # Parse output for AI contract violations
             lines = result.stdout.split('\n')
-            violations = []
             
             for line in lines:
                 if 'DIRECT_AI_CALL' in line:
@@ -83,49 +84,51 @@ def check_ai_contract():
                             "message": f"Phase violation: {parts[3].strip()}"
                         })
             
-                # Check for direct SessionSystem calls in AI files using scout.db (path‑based layers)
-                print("Checking for direct state mutations in AI files (via path prefixes)...")
-                db_path = Path.cwd() / "ai_context" / "scout.db"
-                ai_files = []
-                if db_path.exists():
-                    try:
-                        conn = sqlite3.connect(db_path)
-                        cursor = conn.cursor()
-                        # Layers considered AI: world, dungeon_neo, engine, ai
-                        layers = ['world', 'dungeon_neo', 'engine', 'ai']
-                        conditions = []
-                        for layer in layers:
-                            # Use REPLACE to handle Windows backslashes
-                            conditions.append(f"REPLACE(path, '\\', '/') LIKE '{layer}/%'")
-                        sql = "SELECT path FROM files WHERE " + " OR ".join(conditions)
-                        cursor.execute(sql)
-                        ai_files = [row[0] for row in cursor.fetchall()]
-                        conn.close()
-                        print(f"  Found {len(ai_files)} AI-layer files in DB")
-                    except Exception as e:
-                        print(f"  Warning: Could not query scout.db: {e}")
-                else:
-                    print("  Warning: scout.db not found – run arch_recon --scout first")
+            # ===== MOVED BLOCK STARTS HERE =====
+            # Check for direct SessionSystem calls in AI files using scout.db (path‑based layers)
+            print("Checking for direct state mutations in AI files (via path prefixes)...")
+            db_path = project_root / "ai_context" / "scout.db"
+            ai_files = []
+            if db_path.exists():
+                try:
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    # Layers considered AI: world, dungeon_neo, engine, ai
+                    layers = ['world', 'dungeon_neo', 'engine', 'ai']
+                    conditions = []
+                    for layer in layers:
+                        # Use REPLACE to handle Windows backslashes
+                        conditions.append(f"REPLACE(path, '\\', '/') LIKE '{layer}/%'")
+                    sql = "SELECT path FROM files WHERE " + " OR ".join(conditions)
+                    cursor.execute(sql)
+                    ai_files = [row[0] for row in cursor.fetchall()]
+                    conn.close()
+                    print(f"  Found {len(ai_files)} AI-layer files in DB")
+                except Exception as e:
+                    print(f"  Warning: Could not query scout.db: {e}")
+            else:
+                print("  Warning: scout.db not found – run arch_recon --scout first")
 
-                # Perform the checks
-                for file_path in ai_files:
-                    full_path = Path.cwd() / file_path
-                    if not full_path.exists():
-                        continue
-                    try:
-                        content = safe_read_file(str(full_path))
-                        if 'SessionSystem' in content and ('save' in content.lower() or 'update' in content.lower()):
-                            violations.append({
-                                "type": "STATE_OWNERSHIP_VIOLATION",
-                                "rule": "AI NEVER owns state",
-                                "file": file_path,
-                                "line": "multiple",
-                                "message": "AI file directly accesses SessionSystem"
-                            })
-                    except Exception as e:
-                        print(f"  Warning: Could not check {file_path}: {e}")
-                        continue
-            
+            # Perform the checks
+            for file_path in ai_files:
+                full_path = project_root / file_path
+                if not full_path.exists():
+                    continue
+                try:
+                    content = safe_read_file(str(full_path))
+                    if 'SessionSystem' in content and ('save' in content.lower() or 'update' in content.lower()):
+                        violations.append({
+                            "type": "STATE_OWNERSHIP_VIOLATION",
+                            "rule": "AI NEVER owns state",
+                            "file": file_path,
+                            "line": "multiple",
+                            "message": "AI file directly accesses SessionSystem"
+                        })
+                except Exception as e:
+                    print(f"  Warning: Could not check {file_path}: {e}")
+                    continue
+            # ===== MOVED BLOCK ENDS HERE =====
+
             # Report results
             if violations:
                 print(f"⚠️  Found {len(violations)} AI contract violations:")
