@@ -13,6 +13,8 @@ import time
 import os
 import signal
 from pathlib import Path
+import subprocess
+from tools.nativeclaw.nativeclaw import Session, PROJECT_ROOT  # ensure PROJECT_ROOT is defined or passed
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -70,6 +72,96 @@ def handle_client(conn, addr):
             global running
             running = False
             return
+        elif op == 'run_nativeclaw':
+            subcmd = cmd.get('subcommand')
+            args_list = cmd.get('args', [])
+            if not subcmd:
+                response = {"status": "error", "error": "Missing 'subcommand'"}
+            else:
+                try:
+                    nativeclaw_script = PROJECT_ROOT / "tools" / "nativeclaw" / "nativeclaw.py"
+                    cmd_line = [sys.executable, str(nativeclaw_script), subcmd] + args_list
+                    result = subprocess.run(
+                        cmd_line,
+                        cwd=PROJECT_ROOT,
+                        capture_output=True,
+                        text=True,
+                        encoding='utf-8',
+                        timeout=120
+                    )
+                    response = {
+                        "status": "success",
+                        "returncode": result.returncode,
+                        "stdout": result.stdout,
+                        "stderr": result.stderr
+                    }
+                except subprocess.TimeoutExpired:
+                    response = {"status": "error", "error": "Timeout"}
+                except Exception as e:
+                    response = {"status": "error", "error": str(e)}
+
+        elif op == 'get_file':
+            file_path = cmd.get('file')
+            if not file_path:
+                response = {"status": "error", "error": "Missing 'file'"}
+            else:
+                path = Path(file_path)
+                if not path.is_absolute():
+                    path = PROJECT_ROOT / path
+                if not path.exists():
+                    response = {"status": "error", "error": f"File not found: {path}"}
+                else:
+                    try:
+                        content = path.read_text(encoding='utf-8')
+                        response = {"status": "success", "content": content}
+                    except Exception as e:
+                        response = {"status": "error", "error": str(e)}
+
+        elif op == 'apply_plan':
+            plan = cmd.get('plan')
+            if not plan:
+                response = {"status": "error", "error": "Missing 'plan'"}
+            else:
+                try:
+                    from datetime import datetime
+                    session = Session("auto_apply", PROJECT_ROOT)
+                    branch = session.start()
+                    for change in plan.get('changes', []):
+                        file_path = PROJECT_ROOT / change['file']
+                        op = change['operation']
+                        if op in ('create', 'modify'):
+                            file_path.parent.mkdir(parents=True, exist_ok=True)
+                            file_path.write_text(change['content'], encoding='utf-8')
+                            session.track_created(str(file_path.relative_to(PROJECT_ROOT)))
+                        elif op == 'delete':
+                            if file_path.exists():
+                                file_path.unlink()
+                    # Save review
+                    archive_dir = PROJECT_ROOT / ".nativeclaw" / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
+                    archive_dir.mkdir(parents=True, exist_ok=True)
+                    state = {
+                        'branch_name': branch,
+                        'original_branch': session.original_branch,
+                        'goal_name': 'auto_apply',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    with open(archive_dir / "state.json", 'w', encoding='utf-8') as f:
+                        json.dump(state, f, indent=2)
+                    with open(archive_dir / "changes.diff", 'w', encoding='utf-8') as f:
+                        subprocess.run(
+                            ["git", "diff", f"{session.original_branch}..{branch}"],
+                            cwd=PROJECT_ROOT, stdout=f, text=True
+                        )
+                    with open(archive_dir / "files.txt", 'w', encoding='utf-8') as f:
+                        subprocess.run(
+                            ["git", "ls-tree", "-r", branch, "--name-only"],
+                            cwd=PROJECT_ROOT, stdout=f, text=True
+                        )
+                    with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
+                        f.write(f"Resume with: nativeclaw resume {archive_dir}\n")
+                    response = {"status": "success", "review_path": str(archive_dir)}
+                except Exception as e:
+                    response = {"status": "error", "error": str(e)}
         else:
             response = {"status": "error", "error": f"Unknown operation: {op}"}
 
