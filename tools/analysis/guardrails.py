@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 import json
-import sqlite
+import sqlite3
 
 def safe_read_file(file_path, max_lines=100):
     """Safely read a file with multiple encoding fallbacks"""
