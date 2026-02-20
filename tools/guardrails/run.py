@@ -165,6 +165,8 @@ def check_ai_contract(project_root=None):
         return -1
 
 def main():
+    import sys
+    print("DEBUG ARGV:", sys.argv, file=sys.stderr)
     # Accept JSON input from concatenated arguments (if any)
     if len(sys.argv) > 1:
         # Join all arguments after the first – Windows may split the JSON
