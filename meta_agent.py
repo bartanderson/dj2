@@ -16,43 +16,49 @@ SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 PORT_FILE = SESSION_DIR / "port.txt"
 MAX_ITERATIONS = 20  # safety limit
 
-def send_command(cmd):
+def send_command(cmd, timeout=600):  # 10 minutes total
     """Send a JSON command to the session server and return the response."""
     if not PORT_FILE.exists():
         raise Exception("Session server not running. Start with 'nativeclaw session start'.")
     with open(PORT_FILE, 'r') as f:
         port = int(f.read().strip())
+    
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('localhost', port))
-    s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
-    s.shutdown(socket.SHUT_WR)
-
-    # Read length prefix (4 bytes)
-    len_bytes = s.recv(4)
-    if not len_bytes:
-        raise Exception("Server closed connection without sending length")
-    expected_len = int.from_bytes(len_bytes, 'big')
-
-    # Read exactly expected_len bytes
-    data_parts = []
-    remaining = expected_len
-    while remaining > 0:
-        chunk = s.recv(min(65536, remaining))
-        if not chunk:
-            break
-        data_parts.append(chunk)
-        remaining -= len(chunk)
-    s.close()
-
-    if remaining != 0:
-        raise Exception(f"Incomplete response: expected {expected_len} bytes, got {expected_len - remaining}")
-
-    full_data = b''.join(data_parts).decode('utf-8')
+    s.settimeout(timeout)
     try:
+        s.connect(('localhost', port))
+        s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
+        s.shutdown(socket.SHUT_WR)
+
+        # Read length prefix (4 bytes)
+        len_bytes = s.recv(4)
+        if not len_bytes:
+            raise Exception("Server closed connection without sending length")
+        expected_len = int.from_bytes(len_bytes, 'big')
+        print(f"Expecting {expected_len} bytes from server...")
+
+        # Read exactly expected_len bytes
+        data_parts = []
+        remaining = expected_len
+        while remaining > 0:
+            chunk = s.recv(min(65536, remaining))
+            if not chunk:
+                break
+            data_parts.append(chunk)
+            remaining -= len(chunk)
+            print(f"Received {len(chunk)} bytes, {remaining} remaining", end='\r')
+        s.close()
+        print()  # newline after progress
+
+        if remaining != 0:
+            raise Exception(f"Incomplete response: expected {expected_len} bytes, got {expected_len - remaining}")
+
+        full_data = b''.join(data_parts).decode('utf-8')
         return json.loads(full_data)
-    except json.JSONDecodeError as e:
-        print(f"Invalid JSON response: {e}")
-        print(f"Response preview: {full_data[:500]}")
+    except socket.timeout:
+        raise Exception(f"Timeout after {timeout} seconds while waiting for response. The server may still be processing.")
+    except Exception as e:
+        s.close()
         raise
 
 def consult_deepseek(file_path, prompt):

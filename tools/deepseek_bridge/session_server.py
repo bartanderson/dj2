@@ -48,6 +48,8 @@ def send_response(conn, response):
     """Send a JSON response with a 4‑byte length prefix."""
     response_json = json.dumps(response)
     data = response_json.encode('utf-8')
+    print(f"Sending response of length {len(data)} bytes")  # debug
+    sys.stdout.flush()
     conn.sendall(len(data).to_bytes(4, 'big'))
     conn.sendall(data)
     
