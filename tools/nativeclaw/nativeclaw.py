@@ -840,7 +840,6 @@ def main():
         import time
         import subprocess
         import uuid
-        from pathlib import Path
 
         session_dir = PROJECT_ROOT / "ai_context" / "session"
         port_file = session_dir / "port.txt"
