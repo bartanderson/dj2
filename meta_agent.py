@@ -25,9 +25,22 @@ def send_command(cmd):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', port))
     s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
-    data = s.recv(65536)
+    s.shutdown(socket.SHUT_WR)  # Signal we're done sending
+
+    data_parts = []
+    while True:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        data_parts.append(chunk)
     s.close()
-    return json.loads(data.decode('utf-8'))
+    full_data = b''.join(data_parts).decode('utf-8')
+    try:
+        return json.loads(full_data)
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON response: {e}")
+        print(f"Response preview: {full_data[:500]}")
+        raise
 
 def consult_deepseek(file_path, prompt):
     """Send a consult request to the session server."""
@@ -132,15 +145,15 @@ Proceed step by step. Start by listing all tools and their current status.
         # Extract and execute actions
         actions = extract_actions(ai_message)
         if not actions:
-            print("No action blocks found. Assuming done or asking for input.")
-            # Optionally ask user
-            user_input = input("Enter response to AI (or 'quit' to stop): ")
-            if user_input.lower() == 'quit':
+            print("No action blocks found. Checking if AI is done...")
+            if "DONE" in ai_message.upper():
+                print("AI indicates completion. Stopping.")
                 break
-            # Append user input to context and continue
-            with open(context_file, 'a', encoding='utf-8') as f:
-                f.write(f"\n[User]: {user_input}\n")
-            continue
+            else:
+                print("Automatically continuing...")
+                with open(context_file, 'a', encoding='utf-8') as f:
+                    f.write("\n[System]: No action blocks detected. Please provide the next step or indicate DONE.\n")
+                continue
 
         # Execute actions and collect results
         results_summary = []

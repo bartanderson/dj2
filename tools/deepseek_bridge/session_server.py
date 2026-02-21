@@ -4,9 +4,10 @@ Persistent DeepSeek session server (socket version).
 Listens on a local TCP port, accepts JSON commands, and returns JSON responses.
 Browser stays open between commands.
 """
-
+import re
 import sys
 import json
+import base64
 import socket
 import threading
 import time
@@ -31,6 +32,17 @@ PORT_FILE = SESSION_DIR / "port.txt"
 # Global driver and running flag
 core = None
 running = True
+
+def maybe_decode_base64(content):
+    """If content is valid base64, decode and return as utf-8 string; otherwise return as is."""
+    try:
+        # Check if it looks like base64 (only allowed chars, length multiple of 4)
+        if re.match(r'^[A-Za-z0-9+/=]+$', content) and len(content) % 4 == 0:
+            decoded = base64.b64decode(content).decode('utf-8')
+            return decoded
+    except:
+        pass
+    return content
 
 def handle_client(conn, addr):
     """Handle one client connection: read command, execute, send response."""
@@ -126,14 +138,18 @@ def handle_client(conn, addr):
                     from datetime import datetime
                     session = Session("auto_apply", PROJECT_ROOT)
                     branch = session.start()
-                    for change in plan.get('changes', []):
+                    for change in plan:  # assuming plan is a list
                         file_path = PROJECT_ROOT / change['file']
-                        op = change['operation']
-                        if op in ('create', 'modify'):
+                        op_type = change['operation']
+                        if 'content' in change:
+                            # Decode if base64
+                            decoded = maybe_decode_base64(change['content'])
+                            change['content'] = decoded
+                        if op_type in ('create', 'modify'):
                             file_path.parent.mkdir(parents=True, exist_ok=True)
                             file_path.write_text(change['content'], encoding='utf-8')
                             session.track_created(str(file_path.relative_to(PROJECT_ROOT)))
-                        elif op == 'delete':
+                        elif op_type == 'delete':
                             if file_path.exists():
                                 file_path.unlink()
                     # Save review
