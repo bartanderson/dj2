@@ -37,6 +37,8 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s'
 )
+logging.getLogger('selenium').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 # Global driver and running flag
 core = None
@@ -102,35 +104,52 @@ def handle_client(conn, addr):
                         response = {"status": "success", "data": resp_text}
                     except Exception as e:
                         response = {"status": "error", "error": str(e)}
+
         elif op == 'run_nativeclaw':
             subcmd = cmd.get('subcommand')
             args_list = cmd.get('args', [])
             if not subcmd:
                 response = {"status": "error", "error": "Missing 'subcommand'"}
+                logging.error("run_nativeclaw: missing subcommand")
             else:
-                try:
-                    nativeclaw_script = PROJECT_ROOT / "tools" / "nativeclaw" / "nativeclaw.py"
+                nativeclaw_script = PROJECT_ROOT / "tools" / "nativeclaw" / "nativeclaw.py"
+                if not nativeclaw_script.exists():
+                    error_msg = f"nativeclaw script not found at {nativeclaw_script}"
+                    logging.error(error_msg)
+                    response = {"status": "error", "error": error_msg}
+                else:
                     cmd_line = [sys.executable, str(nativeclaw_script), subcmd] + args_list
+                    logging.info(f"run_nativeclaw: executing {cmd_line}")
                     action_start = time.time()
-                    result = subprocess.run(
-                        cmd_line,
-                        cwd=PROJECT_ROOT,
-                        capture_output=True,
-                        text=True,
-                        encoding='utf-8',
-                        timeout=120
-                    )
-                    logging.info(f"run_nativeclaw took {time.time()-action_start:.2f}s")
-                    response = {
-                        "status": "success",
-                        "returncode": result.returncode,
-                        "stdout": result.stdout,
-                        "stderr": result.stderr
-                    }
-                except subprocess.TimeoutExpired:
-                    response = {"status": "error", "error": "Timeout"}
-                except Exception as e:
-                    response = {"status": "error", "error": str(e)}
+                    try:
+                        result = subprocess.run(
+                            cmd_line,
+                            cwd=PROJECT_ROOT,
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            timeout=120
+                        )
+                        elapsed = time.time() - action_start
+                        logging.info(f"run_nativeclaw completed in {elapsed:.2f}s, returncode {result.returncode}")
+                        response = {
+                            "status": "success",
+                            "returncode": result.returncode,
+                            "stdout": result.stdout,
+                            "stderr": result.stderr
+                        }
+                    except subprocess.TimeoutExpired as e:
+                        elapsed = time.time() - action_start
+                        logging.error(f"run_nativeclaw timed out after {elapsed:.2f}s: {e}")
+                        response = {"status": "error", "error": f"Timeout after {elapsed:.2f}s"}
+                    except Exception as e:
+                        elapsed = time.time() - action_start
+                        logging.error(f"run_nativeclaw exception after {elapsed:.2f}s: {e}", exc_info=True)
+                        response = {"status": "error", "error": str(e)}
+            # Send response for this branch
+            logging.info(f"run_nativeclaw: sending response")
+            send_response(conn, response)
+
         elif op == 'get_file':
             file_path = cmd.get('file')
             if not file_path:
