@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Meta‑agent: uses DeepSeek via the persistent session to improve tools.
+Now with iterative loop.
 """
 
 import socket
@@ -13,6 +14,7 @@ from pathlib import Path
 PROJECT_ROOT = Path.cwd()
 SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 PORT_FILE = SESSION_DIR / "port.txt"
+MAX_ITER = 10  # safety limit
 
 def send_command(cmd):
     """Send a JSON command to the session server and return the response."""
@@ -37,54 +39,23 @@ def consult_deepseek(file_path, prompt):
     return send_command(cmd)
 
 def extract_actions(text):
-    """Extract action blocks from AI response. Handles [ACTION]...[/ACTION] and also bare [ACTION] lines."""
+    """Extract action blocks from AI response. Handles [ACTION]...[/ACTION]."""
     actions = []
-    print("raw")
-    print(text)
-    # First try the standard pattern with closing tag
+    # Standard pattern
     standard = re.findall(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
     for match in standard:
         try:
             actions.append(json.loads(match.strip()))
         except json.JSONDecodeError:
             print(f"Warning: could not parse action JSON: {match[:100]}")
-    if standard:
-        return actions
-
-    # If no standard blocks, look for lines starting with [ACTION] and then a JSON object
-    lines = text.split('\n')
-    i = 0
-    while i < len(lines):
-        if '[ACTION]' in lines[i]:
-            # Collect following lines until we find a line that looks like the end of a JSON object
-            block = []
-            j = i + 1
-            while j < len(lines) and not lines[j].strip().startswith('[') and not lines[j].strip().startswith(']'):
-                block.append(lines[j])
-                j += 1
-            if block:
-                json_str = '\n'.join(block).strip()
-                try:
-                    actions.append(json.loads(json_str))
-                except json.JSONDecodeError:
-                    # Try to find JSON by looking for braces
-                    full_text = '\n'.join(lines[i:j])
-                    brace_match = re.search(r'\{.*\}', full_text, re.DOTALL)
-                    if brace_match:
-                        try:
-                            actions.append(json.loads(brace_match.group()))
-                        except:
-                            pass
-            i = j
-        else:
-            i += 1
     return actions
 
 def main():
     print("Meta‑agent started. Connecting to session server...")
-    # Optionally start session if not running (you could call `nativeclaw session start` here)
+    iteration = 0
+    conversation_history = []
 
-    # Initial system prompt
+    # Initial system prompt (we'll reuse this)
     system_prompt = """
 You are an AI tasked with bringing all tools in this project into compliance with a standard contract. You have access to the following operations via the session server:
 
@@ -99,37 +70,54 @@ Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/outp
 { "operation": "run_nativeclaw", "subcommand": "list-capabilities" }
 [/ACTION]
 
-Make sure these tags appear in your final response as plain text, not as code blocks. After each action, you will receive the result. You may also ask the user for input if needed.
+Make sure these tags appear in your final response as plain text. After each action, you will receive the result. You may also ask the user for input if needed.
 
 Proceed step by step. Start by listing all tools and their current status.
 """
-    # Write system prompt to a temp file
-    temp_file = PROJECT_ROOT / "ai_context" / "meta_prompt.txt"
-    temp_file.write_text(system_prompt, encoding='utf-8')
+    # Write system prompt to a temp file (we'll reuse this file for each consult)
+    prompt_file = PROJECT_ROOT / "ai_context" / "meta_prompt.txt"
+    prompt_file.write_text(system_prompt, encoding='utf-8')
 
-    # Send initial consult
-    response = consult_deepseek(str(temp_file), "Please begin.")
-    if response.get("status") != "success":
-        print(f"Initial consult failed: {response}")
-        return
-    ai_message = response["data"]
-    print("AI:", ai_message)
+    # Initial user message
+    user_message = "Please begin."
 
-    # Main loop: extract and execute actions
-    actions = extract_actions(ai_message)
-    if not actions:
-        print("No action blocks found. You can manually enter a command or let the AI try again.")
-        # Optionally, you could send a follow‑up prompt asking for proper formatting
-        # For now, exit.
-        return
+    while iteration < MAX_ITER:
+        iteration += 1
+        print(f"\n--- Iteration {iteration} ---")
 
-    for action in actions:
-        print(f"Executing: {action}")
-        try:
-            result = send_command(action)
-            print(f"Result: {json.dumps(result, indent=2)}")
-        except Exception as e:
-            print(f"Error executing action: {e}")
+        # Combine history? For simplicity, we'll just send the current user message.
+        # A more sophisticated agent would maintain a conversation history.
+        response = consult_deepseek(str(prompt_file), user_message)
+        if response.get("status") != "success":
+            print(f"Consult failed: {response}")
+            break
+        ai_message = response["data"]
+        print("\nAI:", ai_message)
+
+        actions = extract_actions(ai_message)
+        if not actions:
+            print("No action blocks found. Assuming done or asking for input.")
+            break
+
+        for action in actions:
+            print(f"\nExecuting: {action}")
+            try:
+                result = send_command(action)
+                print(f"Result: {json.dumps(result, indent=2)}")
+                # Append result to conversation? We'll incorporate it into the next user message.
+                # For now, we'll just store it and continue.
+            except Exception as e:
+                print(f"Error executing action: {e}")
+                break
+
+        # Prepare next user message – could be as simple as "Continue." or we could include results.
+        # To keep context, we'll append the results to the prompt file? That's messy.
+        # Instead, we'll use a simple "Continue." and rely on the AI to remember conversation.
+        # A better approach is to maintain a conversation log and send it as a file each time.
+        # For simplicity, we'll just send "Continue." and see if the AI remembers.
+        user_message = "Continue."
+
+    print("\nMeta‑agent finished.")
 
 if __name__ == "__main__":
     main()
