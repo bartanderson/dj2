@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Meta‑agent: uses DeepSeek via the persistent session to improve tools.
-Now with iterative loop.
+Maintains a conversation loop, feeding results back to the AI.
 """
 
 import socket
@@ -14,7 +14,7 @@ from pathlib import Path
 PROJECT_ROOT = Path.cwd()
 SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 PORT_FILE = SESSION_DIR / "port.txt"
-MAX_ITER = 10  # safety limit
+MAX_ITERATIONS = 20  # safety limit
 
 def send_command(cmd):
     """Send a JSON command to the session server and return the response."""
@@ -39,23 +39,49 @@ def consult_deepseek(file_path, prompt):
     return send_command(cmd)
 
 def extract_actions(text):
-    """Extract action blocks from AI response. Handles [ACTION]...[/ACTION]."""
+    """Extract action blocks from AI response."""
     actions = []
-    # Standard pattern
+    # Standard pattern with closing tag
     standard = re.findall(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
     for match in standard:
         try:
             actions.append(json.loads(match.strip()))
         except json.JSONDecodeError:
             print(f"Warning: could not parse action JSON: {match[:100]}")
+    if standard:
+        return actions
+
+    # If no standard blocks, look for lines starting with [ACTION] and then a JSON object
+    lines = text.split('\n')
+    i = 0
+    while i < len(lines):
+        if '[ACTION]' in lines[i]:
+            block = []
+            j = i + 1
+            while j < len(lines) and not lines[j].strip().startswith('[') and not lines[j].strip().startswith(']'):
+                block.append(lines[j])
+                j += 1
+            if block:
+                json_str = '\n'.join(block).strip()
+                try:
+                    actions.append(json.loads(json_str))
+                except json.JSONDecodeError:
+                    full_text = '\n'.join(lines[i:j])
+                    brace_match = re.search(r'\{.*\}', full_text, re.DOTALL)
+                    if brace_match:
+                        try:
+                            actions.append(json.loads(brace_match.group()))
+                        except:
+                            pass
+            i = j
+        else:
+            i += 1
     return actions
 
 def main():
     print("Meta‑agent started. Connecting to session server...")
-    iteration = 0
-    conversation_history = []
 
-    # Initial system prompt (we'll reuse this)
+    # Initial system prompt
     system_prompt = """
 You are an AI tasked with bringing all tools in this project into compliance with a standard contract. You have access to the following operations via the session server:
 
@@ -70,54 +96,73 @@ Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/outp
 { "operation": "run_nativeclaw", "subcommand": "list-capabilities" }
 [/ACTION]
 
-Make sure these tags appear in your final response as plain text. After each action, you will receive the result. You may also ask the user for input if needed.
+Make sure these tags appear in your final response as plain text. After each action, you will receive the result. You may also ask the user for input if needed. When you are finished, include the word "DONE" in your response.
 
 Proceed step by step. Start by listing all tools and their current status.
 """
-    # Write system prompt to a temp file (we'll reuse this file for each consult)
+    # Write system prompt to a temp file
     prompt_file = PROJECT_ROOT / "ai_context" / "meta_prompt.txt"
     prompt_file.write_text(system_prompt, encoding='utf-8')
 
-    # Initial user message
-    user_message = "Please begin."
+    # Conversation history as a list of (role, content) pairs
+    # We'll simulate by storing prompts and responses, but since we use files,
+    # we need to accumulate context in a single file or pass it as a multi‑turn prompt.
+    # For simplicity, we'll maintain a context file that grows.
+    context_file = PROJECT_ROOT / "ai_context" / "meta_context.txt"
+    context_file.write_text(system_prompt + "\n\nNow begin.\n", encoding='utf-8')
 
-    while iteration < MAX_ITER:
+    iteration = 0
+    while iteration < MAX_ITERATIONS:
         iteration += 1
         print(f"\n--- Iteration {iteration} ---")
 
-        # Combine history? For simplicity, we'll just send the current user message.
-        # A more sophisticated agent would maintain a conversation history.
-        response = consult_deepseek(str(prompt_file), user_message)
+        # Send consult with the current context file
+        response = consult_deepseek(str(context_file), "Continue with your plan.")
         if response.get("status") != "success":
             print(f"Consult failed: {response}")
             break
         ai_message = response["data"]
-        print("\nAI:", ai_message)
+        print("AI:", ai_message)
 
+        # Check for termination condition
+        if "DONE" in ai_message:
+            print("AI indicates completion. Stopping.")
+            break
+
+        # Extract and execute actions
         actions = extract_actions(ai_message)
         if not actions:
             print("No action blocks found. Assuming done or asking for input.")
-            break
+            # Optionally ask user
+            user_input = input("Enter response to AI (or 'quit' to stop): ")
+            if user_input.lower() == 'quit':
+                break
+            # Append user input to context and continue
+            with open(context_file, 'a', encoding='utf-8') as f:
+                f.write(f"\n[User]: {user_input}\n")
+            continue
 
+        # Execute actions and collect results
+        results_summary = []
         for action in actions:
-            print(f"\nExecuting: {action}")
+            print(f"Executing: {action}")
             try:
                 result = send_command(action)
                 print(f"Result: {json.dumps(result, indent=2)}")
-                # Append result to conversation? We'll incorporate it into the next user message.
-                # For now, we'll just store it and continue.
+                results_summary.append(f"Action: {action}\nResult: {json.dumps(result)}")
             except Exception as e:
                 print(f"Error executing action: {e}")
-                break
+                results_summary.append(f"Action: {action}\nError: {e}")
 
-        # Prepare next user message – could be as simple as "Continue." or we could include results.
-        # To keep context, we'll append the results to the prompt file? That's messy.
-        # Instead, we'll use a simple "Continue." and rely on the AI to remember conversation.
-        # A better approach is to maintain a conversation log and send it as a file each time.
-        # For simplicity, we'll just send "Continue." and see if the AI remembers.
-        user_message = "Continue."
+        # Append results to context
+        with open(context_file, 'a', encoding='utf-8') as f:
+            f.write(f"\n[AI]: {ai_message}\n")
+            f.write("[Actions executed]:\n")
+            for s in results_summary:
+                f.write(s + "\n")
+            f.write("\n[Continue]\n")
 
-    print("\nMeta‑agent finished.")
+    print("Meta‑agent finished.")
 
 if __name__ == "__main__":
     main()
