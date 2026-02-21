@@ -39,6 +39,8 @@ def consult_deepseek(file_path, prompt):
 def extract_actions(text):
     """Extract action blocks from AI response. Handles [ACTION]...[/ACTION] and also bare [ACTION] lines."""
     actions = []
+    print("raw")
+    print(text)
     # First try the standard pattern with closing tag
     standard = re.findall(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
     for match in standard:
@@ -91,12 +93,13 @@ You are an AI tasked with bringing all tools in this project into compliance wit
 - apply_plan: apply a change plan (safe, creates a session for review)
 - consult: send a file and prompt to DeepSeek (your own interface)
 
-Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/output, etc. You may propose changes by outputting an [ACTION] block containing a JSON command. Always use the exact format:
+Your goal: improve tools by ensuring they have proper tool.yaml, JSON input/output, etc. To request an action, you must output the exact tags [ACTION] and [/ACTION] surrounding a JSON command. For example:
+
 [ACTION]
-{ "operation": "...", ... }
+{ "operation": "run_nativeclaw", "subcommand": "list-capabilities" }
 [/ACTION]
 
-After each action, you will receive the result. You may also ask the user for input if needed.
+Make sure these tags appear in your final response as plain text, not as code blocks. After each action, you will receive the result. You may also ask the user for input if needed.
 
 Proceed step by step. Start by listing all tools and their current status.
 """
