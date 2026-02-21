@@ -12,6 +12,7 @@ import shutil
 import tempfile
 import os
 import re
+import requests
 from pathlib import Path
 from datetime import datetime
 import time
@@ -845,31 +846,33 @@ def main():
         port_file = session_dir / "port.txt"
 
         if args.session_command == "start":
-            # Check if already running by trying to connect to port file
+            port_file = PROJECT_ROOT / "ai_context" / "session" / "port.txt"
+            
+            # Check if already running
             if port_file.exists():
                 try:
                     with open(port_file, 'r') as f:
-                        old_port = int(f.read().strip())
-                    # Try a quick connection
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.settimeout(2)
-                    s.connect(('localhost', old_port))
-                    s.close()
-                    print("Session server already running.")
-                    sys.exit(1)
+                        old_port = f.read().strip()
+                    # Try health check
+                    r = requests.get(f"http://localhost:{old_port}/health", timeout=2)
+                    if r.status_code == 200:
+                        print("Session server already running.")
+                        sys.exit(1)
                 except:
                     # Stale port file, remove it
                     port_file.unlink()
 
-            server_script = PROJECT_ROOT / "tools" / "deepseek_bridge" / "session_server.py"
+            service_script = PROJECT_ROOT / "tools" / "deepseek_bridge" / "deepseek_service.py"
+            cdp_url = os.getenv("DEEPSEEK_CDP_URL", "")
+            
             if args.foreground:
                 # Run in foreground (for debugging)
-                subprocess.run([sys.executable, str(server_script)])
+                subprocess.run([sys.executable, str(service_script), "--cdp-url", cdp_url])
             else:
                 # Run in background (detached)
                 DETACHED_PROCESS = 0x00000008
                 process = subprocess.Popen(
-                    [sys.executable, str(server_script)],
+                    [sys.executable, str(service_script), "--cdp-url", cdp_url],
                     creationflags=DETACHED_PROCESS,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
@@ -888,13 +891,7 @@ def main():
                         port = f.read().strip()
                     print(f"Listening on port {port}")
                 else:
-                    # Check if process is still alive
-                    try:
-                        # We don't have the process handle easily; we could store the PID.
-                        # For now, just warn.
-                        print("Warning: port file not found after 30 seconds. Server may have failed to start.")
-                    except:
-                        pass
+                    print("Warning: port file not found after 30 seconds. Server may have failed to start.")
 
         elif args.session_command == "status":
             if not port_file.exists():

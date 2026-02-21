@@ -1,11 +1,12 @@
 name: deepseek_bridge
-description: Send context to DeepSeek via Selenium and get response
+description: Send context to DeepSeek via conversation service and get response
 execution: cli
-path: tools/deepseek_bridge/run.py
+path: tools/deepseek_bridge/run.py  # Same path, new behavior
 provides:
   - action: deepseek.consult
-    description: Upload a file and prompt, return AI response
+    description: Upload a file and prompt, return AI response (conversation-aware)
     parameters:
       file: string
       prompt: string (optional)
     input_format: json
+    # Note: This now maintains session state across calls within a goal
