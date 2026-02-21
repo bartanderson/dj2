@@ -835,12 +835,6 @@ def main():
             sys.exit(1)
 
     elif args.command == "session":
-        import socket
-        import json
-        import time
-        import subprocess
-        import uuid
-
         session_dir = PROJECT_ROOT / "ai_context" / "session"
         port_file = session_dir / "port.txt"
 
