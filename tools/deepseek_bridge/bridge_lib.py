@@ -122,7 +122,7 @@ def wait_for_response(driver, timeout: int = 180) -> str:
     return last_response if last_response else ""
 
 def _get_response_text(driver) -> str:
-    """Extract response text from page with debug prints."""
+    """Extract response text from page. Returns raw text without filtering."""
     try:
         selectors = [
             ".ds-markdown",
@@ -136,26 +136,14 @@ def _get_response_text(driver) -> str:
                 for element in reversed(elements):
                     if element.is_displayed():
                         text = element.text.strip()
-                        if text and len(text) > 20:
-                            print(f"DEBUG: _get_response_text using selector {selector} returned {len(text)} chars", file=sys.stderr)
-                            print(f"DEBUG: first 200 chars: {repr(text[:200])}", file=sys.stderr)
-                            lines = text.split('\n')
-                            content_lines = [line for line in lines
-                                           if len(line) > 10
-                                           and not line.strip().isdigit()]
-                            return '\n'.join(content_lines)
-            except Exception as e:
-                print(f"DEBUG: selector {selector} failed: {e}", file=sys.stderr)
+                        if text:
+                            # Return raw text without filtering short lines
+                            return text
+            except:
                 continue
-        # Fallback
+        # Fallback – return full body text
         body_text = driver.find_element("tag name", "body").text
-        print(f"DEBUG: _get_response_text using fallback, body text length {len(body_text)}", file=sys.stderr)
-        print(f"DEBUG: first 200 chars: {repr(body_text[:200])}", file=sys.stderr)
-        lines = [line.strip() for line in body_text.split('\n') if line.strip()]
-        for line in reversed(lines):
-            if len(line) > 50 and not line.startswith('http'):
-                return line
-        return ""
+        return body_text
     except Exception as e:
-        print(f"DEBUG: error in _get_response_text: {e}", file=sys.stderr)
+        print(f"Error in _get_response_text: {e}", file=sys.stderr)
         return ""
