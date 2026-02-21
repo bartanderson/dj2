@@ -4,21 +4,19 @@ Persistent DeepSeek session server (socket version).
 Listens on a local TCP port, accepts JSON commands, and returns JSON responses.
 Browser stays open between commands.
 """
-import re
+
 import sys
 import json
-import base64
 import socket
 import threading
 import time
 import os
 import signal
-from pathlib import Path
-import subprocess
-from tools.nativeclaw.nativeclaw import Session, PROJECT_ROOT  # ensure PROJECT_ROOT is defined or passed
-import traceback
 import logging
-logging.basicConfig(filename='server.log', level=logging.DEBUG, format='%(asctime)s %(message)s')
+import traceback
+import base64
+import re
+from pathlib import Path
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -26,11 +24,19 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from tools.deepseek_bridge.bridge_lib import consult
 from tools.bridge.unified_core import BridgeCore
+from tools.nativeclaw.nativeclaw import Session
 
 # Session directory
 SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
 PORT_FILE = SESSION_DIR / "port.txt"
+
+# Logging
+logging.basicConfig(
+    filename='session_server.log',
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
 
 # Global driver and running flag
 core = None
@@ -39,7 +45,6 @@ running = True
 def maybe_decode_base64(content):
     """If content is valid base64, decode and return as utf-8 string; otherwise return as is."""
     try:
-        # Check if it looks like base64 (only allowed chars, length multiple of 4)
         if re.match(r'^[A-Za-z0-9+/=]+$', content) and len(content) % 4 == 0:
             decoded = base64.b64decode(content).decode('utf-8')
             return decoded
@@ -52,32 +57,31 @@ def send_response(conn, response):
     try:
         response_json = json.dumps(response)
         data = response_json.encode('utf-8')
-        print(f"Sending response of length {len(data)} bytes")
-        sys.stdout.flush()
-        logging.info(f"Preparing response of length {len(data)} bytes")
+        logging.info(f"Sending response of length {len(data)} bytes")
         conn.sendall(len(data).to_bytes(4, 'big'))
         conn.sendall(data)
         logging.info("Response sent")
     except (BrokenPipeError, ConnectionResetError) as e:
-        print(f"Client disconnected while sending response: {e}")
+        logging.error(f"Client disconnected while sending response: {e}")
     except Exception as e:
-        print(f"Error sending response: {e}")
-    
+        logging.error(f"Error sending response: {e}")
+
 def handle_client(conn, addr):
     """Handle one client connection: read command, execute, send response."""
     global core
-    print(f"Connection from {addr}")
-    logging.info(f"Handling client from {addr}")
+    client_start = time.time()
+    logging.info(f"Handling client from {addr} at {client_start}")
+    conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # enable keepalive
     try:
         data = conn.recv(8192)
         if not data:
             logging.warning("Empty data received")
             return
         cmd = json.loads(data.decode('utf-8'))
-        logging.info(f"Received command: {cmd}")
+        logging.info(f"Received command after {time.time()-client_start:.2f}s: {cmd}")
         cmd_id = cmd.get('id', 'unknown')
         op = cmd.get('operation')
-        print(f"Received command: {cmd}, Cmd_id: {cmd_id}: operation: {op}")
+        logging.info(f"Operation: {op}")
 
         if op == 'consult':
             file_path = cmd.get('file')
@@ -92,20 +96,12 @@ def handle_client(conn, addr):
                     response = {"status": "error", "error": f"File not found: {path}"}
                 else:
                     try:
-                        # Use the already open browser
+                        action_start = time.time()
                         resp_text = consult(core.driver, path, prompt)
+                        logging.info(f"Consult took {time.time()-action_start:.2f}s")
                         response = {"status": "success", "data": resp_text}
                     except Exception as e:
                         response = {"status": "error", "error": str(e)}
-        elif op == 'stop':
-            response = {"status": "success", "data": "Shutting down"}
-            # Send response before stopping
-            send_response(conn, response)
-            conn.close()
-            # Signal main loop to exit
-            global running
-            running = False
-            return
         elif op == 'run_nativeclaw':
             subcmd = cmd.get('subcommand')
             args_list = cmd.get('args', [])
@@ -115,6 +111,7 @@ def handle_client(conn, addr):
                 try:
                     nativeclaw_script = PROJECT_ROOT / "tools" / "nativeclaw" / "nativeclaw.py"
                     cmd_line = [sys.executable, str(nativeclaw_script), subcmd] + args_list
+                    action_start = time.time()
                     result = subprocess.run(
                         cmd_line,
                         cwd=PROJECT_ROOT,
@@ -123,6 +120,7 @@ def handle_client(conn, addr):
                         encoding='utf-8',
                         timeout=120
                     )
+                    logging.info(f"run_nativeclaw took {time.time()-action_start:.2f}s")
                     response = {
                         "status": "success",
                         "returncode": result.returncode,
@@ -133,7 +131,6 @@ def handle_client(conn, addr):
                     response = {"status": "error", "error": "Timeout"}
                 except Exception as e:
                     response = {"status": "error", "error": str(e)}
-
         elif op == 'get_file':
             file_path = cmd.get('file')
             if not file_path:
@@ -146,11 +143,12 @@ def handle_client(conn, addr):
                     response = {"status": "error", "error": f"File not found: {path}"}
                 else:
                     try:
+                        action_start = time.time()
                         content = path.read_text(encoding='utf-8')
+                        logging.info(f"get_file took {time.time()-action_start:.2f}s")
                         response = {"status": "success", "content": content}
                     except Exception as e:
                         response = {"status": "error", "error": str(e)}
-
         elif op == 'apply_plan':
             plan = cmd.get('plan')
             if not plan:
@@ -158,13 +156,13 @@ def handle_client(conn, addr):
             else:
                 try:
                     from datetime import datetime
+                    action_start = time.time()
                     session = Session("auto_apply", PROJECT_ROOT)
                     branch = session.start()
-                    for change in plan:  # assuming plan is a list
+                    for change in plan:
                         file_path = PROJECT_ROOT / change['file']
                         op_type = change['operation']
                         if 'content' in change:
-                            # Decode if base64
                             decoded = maybe_decode_base64(change['content'])
                             change['content'] = decoded
                         if op_type in ('create', 'modify'):
@@ -197,20 +195,28 @@ def handle_client(conn, addr):
                         )
                     with open(archive_dir / "RESUME.txt", 'w', encoding='utf-8') as f:
                         f.write(f"Resume with: nativeclaw resume {archive_dir}\n")
+                    logging.info(f"apply_plan took {time.time()-action_start:.2f}s")
                     response = {"status": "success", "review_path": str(archive_dir)}
                 except Exception as e:
                     response = {"status": "error", "error": str(e)}
+        elif op == 'stop':
+            response = {"status": "success", "data": "Shutting down"}
+            send_response(conn, response)
+            conn.close()
+            global running
+            running = False
+            return
         else:
             response = {"status": "error", "error": f"Unknown operation: {op}"}
 
-        # Send response
-        logging.info(f"Sending response for operation {cmd.get('operation')}")
         send_response(conn, response)
+        logging.info(f"Total handler time for {op}: {time.time()-client_start:.2f}s")
     except Exception as e:
         logging.error(f"Unhandled exception in handle_client: {e}\n{traceback.format_exc()}")
-        print(f"Error handling client: {e}")
-    finally:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
 
 def main():
     global core, running
@@ -218,6 +224,7 @@ def main():
     core = BridgeCore(verbose=False)
     if not core.connect():
         print("Failed to connect to DeepSeek", file=sys.stderr)
+        logging.error("Failed to connect to DeepSeek")
         sys.exit(1)
 
     # Create socket server
@@ -226,30 +233,32 @@ def main():
     port = server_socket.getsockname()[1]
     server_socket.listen(5)
     print(f"Session server listening on port {port}")
+    logging.info(f"Session server listening on port {port}")
 
     # Write port to file
     with open(PORT_FILE, 'w') as f:
         f.write(str(port))
 
     print(f"Session server started. PID: {os.getpid()}")
+    logging.info(f"Session server started. PID: {os.getpid()}")
 
     # Handle shutdown signals
     def signal_handler(sig, frame):
         global running
         print("Shutting down...")
+        logging.info("Shutdown signal received")
         running = False
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Main loop: accept connections and spawn threads
+    # Main loop
     while running:
         try:
             server_socket.settimeout(1.0)
-            print(f"Waiting for connection on port {port}")
-            logging.info(f"Waiting for connection on port {port}")
             conn, addr = server_socket.accept()
+            conn.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
             logging.info(f"Accepted connection from {addr}")
-            # Handle each client in a new thread (so server can still accept others)
+            # Handle each client in a new thread
             client_thread = threading.Thread(target=handle_client, args=(conn, addr))
             client_thread.daemon = True
             client_thread.start()
@@ -257,7 +266,7 @@ def main():
             continue
         except Exception as e:
             if running:
-                print(f"Server error: {e}")
+                logging.error(f"Server error: {e}")
             break
 
     # Cleanup
@@ -269,6 +278,7 @@ def main():
         PORT_FILE.unlink()
     except:
         pass
+    logging.info("Session server stopped.")
     print("Session server stopped.")
 
 if __name__ == "__main__":

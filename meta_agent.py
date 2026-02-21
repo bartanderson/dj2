@@ -9,57 +9,76 @@ import json
 import time
 import re
 import sys
+import logging
 from pathlib import Path
 
 PROJECT_ROOT = Path.cwd()
 SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 PORT_FILE = SESSION_DIR / "port.txt"
-MAX_ITERATIONS = 20  # safety limit
+MAX_ITERATIONS = 100
 
-def send_command(cmd, timeout=7200):  # 2 hours
+# Logging
+logging.basicConfig(
+    filename='meta_agent.log',
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+
+def send_command(cmd, timeout=14400):  # 4 hours
     """Send a JSON command to the session server and return the response."""
     if not PORT_FILE.exists():
         raise Exception("Session server not running. Start with 'nativeclaw session start'.")
     with open(PORT_FILE, 'r') as f:
         port = int(f.read().strip())
-    
+
+    client_start = time.time()
+    logging.info(f"send_command started at {client_start}, command: {cmd}")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # enable keepalive
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
     try:
         s.connect(('localhost', port))
+        logging.info(f"Connected after {time.time()-client_start:.2f}s")
         s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
         s.shutdown(socket.SHUT_WR)
+        logging.info(f"Command sent after {time.time()-client_start:.2f}s")
 
         # Read length prefix (4 bytes)
-        print("Waiting for response from server (timeout: 2 hours)...")
+        logging.info("Waiting for response from server (timeout: 4 hours)...")
+        recv_start = time.time()
         len_bytes = s.recv(4)
         if not len_bytes:
             raise Exception("Server closed connection without sending length")
         expected_len = int.from_bytes(len_bytes, 'big')
-        print(f"Expecting {expected_len} bytes...")
+        logging.info(f"Length prefix received after {time.time()-recv_start:.2f}s, expecting {expected_len} bytes")
 
         # Read exactly expected_len bytes
         data_parts = []
         remaining = expected_len
+        last_log = time.time()
         while remaining > 0:
             chunk = s.recv(min(65536, remaining))
             if not chunk:
                 break
             data_parts.append(chunk)
             remaining -= len(chunk)
-            print(f"Received {len(chunk)} bytes, {remaining} remaining", end='\r')
+            now = time.time()
+            if now - last_log > 10:
+                logging.info(f"Received {len(chunk)} bytes, {remaining} remaining after {time.time()-client_start:.2f}s")
+                last_log = now
         s.close()
-        print()  # newline after progress
 
         if remaining != 0:
             raise Exception(f"Incomplete response: expected {expected_len} bytes, got {expected_len - remaining}")
 
         full_data = b''.join(data_parts).decode('utf-8')
+        logging.info(f"Full response received after {time.time()-client_start:.2f}s, length {len(full_data)}")
         return json.loads(full_data)
     except socket.timeout:
-        raise Exception(f"Timeout after {timeout} seconds while waiting for response. The server may still be processing.")
+        logging.error(f"Timeout after {time.time()-client_start:.2f}s")
+        raise Exception(f"Timeout after {timeout} seconds while waiting for response")
     except Exception as e:
+        logging.error(f"Error in send_command after {time.time()-client_start:.2f}s: {e}")
         s.close()
         raise
 
@@ -81,7 +100,7 @@ def extract_actions(text):
         try:
             actions.append(json.loads(match.strip()))
         except json.JSONDecodeError:
-            print(f"Warning: could not parse action JSON: {match[:100]}")
+            logging.warning(f"Could not parse action JSON: {match[:100]}")
     if standard:
         return actions
 
@@ -113,6 +132,7 @@ def extract_actions(text):
     return actions
 
 def main():
+    logging.info("Meta‑agent started")
     print("Meta‑agent started. Connecting to session server...")
 
     # Initial system prompt
@@ -134,14 +154,9 @@ Make sure these tags appear in your final response as plain text. After each act
 
 Proceed step by step. Start by listing all tools and their current status.
 """
-    # Write system prompt to a temp file
     prompt_file = PROJECT_ROOT / "ai_context" / "meta_prompt.txt"
     prompt_file.write_text(system_prompt, encoding='utf-8')
 
-    # Conversation history as a list of (role, content) pairs
-    # We'll simulate by storing prompts and responses, but since we use files,
-    # we need to accumulate context in a single file or pass it as a multi‑turn prompt.
-    # For simplicity, we'll maintain a context file that grows.
     context_file = PROJECT_ROOT / "ai_context" / "meta_context.txt"
     context_file.write_text(system_prompt + "\n\nNow begin.\n", encoding='utf-8')
 
@@ -149,21 +164,22 @@ Proceed step by step. Start by listing all tools and their current status.
     while iteration < MAX_ITERATIONS:
         iteration += 1
         print(f"\n--- Iteration {iteration} ---")
+        logging.info(f"--- Iteration {iteration} ---")
 
-        # Send consult with the current context file
         response = consult_deepseek(str(context_file), "Continue with your plan.")
         if response.get("status") != "success":
+            logging.error(f"Consult failed: {response}")
             print(f"Consult failed: {response}")
             break
         ai_message = response["data"]
-        print("AI:", ai_message)
+        print("AI:", ai_message[:500] + "..." if len(ai_message) > 500 else ai_message)
+        logging.info(f"AI response: {ai_message[:500]}...")
 
-        # Check for termination condition
-        if "DONE" in ai_message:
+        if "DONE" in ai_message.upper():
             print("AI indicates completion. Stopping.")
+            logging.info("AI DONE received, stopping.")
             break
 
-        # Extract and execute actions
         actions = extract_actions(ai_message)
         if not actions:
             print("No action blocks found. Checking if AI is done...")
@@ -176,19 +192,20 @@ Proceed step by step. Start by listing all tools and their current status.
                     f.write("\n[System]: No action blocks detected. Please provide the next step or indicate DONE.\n")
                 continue
 
-        # Execute actions and collect results
         results_summary = []
         for action in actions:
             print(f"Executing: {action}")
+            logging.info(f"Executing action: {action}")
             try:
                 result = send_command(action)
                 print(f"Result: {json.dumps(result, indent=2)}")
+                logging.info(f"Result: {json.dumps(result)}")
                 results_summary.append(f"Action: {action}\nResult: {json.dumps(result)}")
             except Exception as e:
                 print(f"Error executing action: {e}")
+                logging.error(f"Action execution error: {e}")
                 results_summary.append(f"Action: {action}\nError: {e}")
 
-        # Append results to context
         with open(context_file, 'a', encoding='utf-8') as f:
             f.write(f"\n[AI]: {ai_message}\n")
             f.write("[Actions executed]:\n")
@@ -196,6 +213,7 @@ Proceed step by step. Start by listing all tools and their current status.
                 f.write(s + "\n")
             f.write("\n[Continue]\n")
 
+    logging.info("Meta‑agent finished.")
     print("Meta‑agent finished.")
 
 if __name__ == "__main__":
