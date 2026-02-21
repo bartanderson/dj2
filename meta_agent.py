@@ -25,15 +25,28 @@ def send_command(cmd):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect(('localhost', port))
     s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
-    s.shutdown(socket.SHUT_WR)  # Signal we're done sending
+    s.shutdown(socket.SHUT_WR)
 
+    # Read length prefix (4 bytes)
+    len_bytes = s.recv(4)
+    if not len_bytes:
+        raise Exception("Server closed connection without sending length")
+    expected_len = int.from_bytes(len_bytes, 'big')
+
+    # Read exactly expected_len bytes
     data_parts = []
-    while True:
-        chunk = s.recv(65536)
+    remaining = expected_len
+    while remaining > 0:
+        chunk = s.recv(min(65536, remaining))
         if not chunk:
             break
         data_parts.append(chunk)
+        remaining -= len(chunk)
     s.close()
+
+    if remaining != 0:
+        raise Exception(f"Incomplete response: expected {expected_len} bytes, got {expected_len - remaining}")
+
     full_data = b''.join(data_parts).decode('utf-8')
     try:
         return json.loads(full_data)
