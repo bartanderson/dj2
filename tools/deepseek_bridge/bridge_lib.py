@@ -15,7 +15,7 @@ from selenium.webdriver.common.keys import Keys
 # Import the core driver and helper functions (we'll restructure unified_core later)
 # For now, we'll assume we have a driver object passed in.
 
-def wait_for_upload_complete(driver, filename: str, timeout: int = 60) -> bool:
+def wait_for_upload_complete(driver, filename: str, timeout: int = 180) -> bool:
     """Wait for file upload to complete."""
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -57,7 +57,7 @@ def send_instruction(driver, instruction: str) -> bool:
         print(f"Error sending instruction: {e}", file=sys.stderr)
         return False
 
-def consult(driver, file_path: Path, prompt: str, timeout: int = 180) -> str:
+def consult(driver, file_path: Path, prompt: str, timeout: int = 7200) -> str:
     """
     Perform a full consultation:
     - Upload the file
@@ -81,7 +81,7 @@ def consult(driver, file_path: Path, prompt: str, timeout: int = 180) -> str:
         file_input.send_keys(temp_path)
 
         # Wait for upload to appear
-        wait_for_upload_complete(driver, file_path.name, timeout=60)
+        wait_for_upload_complete(driver, file_path.name, timeout=360)
 
         time.sleep(2)
 
@@ -100,7 +100,7 @@ def consult(driver, file_path: Path, prompt: str, timeout: int = 180) -> str:
         except:
             pass
 
-def wait_for_response(driver, timeout: int = 180) -> str:
+def wait_for_response(driver, timeout: int = 3600) -> str:
     """Wait for and extract response text."""
     start_time = time.time()
     last_response = ""

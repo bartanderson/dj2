@@ -17,6 +17,7 @@ import traceback
 import base64
 import re
 from pathlib import Path
+import subprocess
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
