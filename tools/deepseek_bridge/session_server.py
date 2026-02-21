@@ -44,6 +44,13 @@ def maybe_decode_base64(content):
         pass
     return content
 
+def send_response(conn, response):
+    """Send a JSON response with a 4‑byte length prefix."""
+    response_json = json.dumps(response)
+    data = response_json.encode('utf-8')
+    conn.sendall(len(data).to_bytes(4, 'big'))
+    conn.sendall(data)
+    
 def handle_client(conn, addr):
     """Handle one client connection: read command, execute, send response."""
     global core
@@ -78,7 +85,7 @@ def handle_client(conn, addr):
         elif op == 'stop':
             response = {"status": "success", "data": "Shutting down"}
             # Send response before stopping
-            conn.sendall((json.dumps(response) + '\n').encode('utf-8'))
+            send_response(conn, response)
             conn.close()
             # Signal main loop to exit
             global running
@@ -182,7 +189,7 @@ def handle_client(conn, addr):
             response = {"status": "error", "error": f"Unknown operation: {op}"}
 
         # Send response
-        conn.sendall((json.dumps(response) + '\n').encode('utf-8'))
+        send_response(conn, response)
     except Exception as e:
         print(f"Error handling client: {e}")
     finally:
