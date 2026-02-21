@@ -16,7 +16,7 @@ SESSION_DIR = PROJECT_ROOT / "ai_context" / "session"
 PORT_FILE = SESSION_DIR / "port.txt"
 MAX_ITERATIONS = 20  # safety limit
 
-def send_command(cmd, timeout=600):  # 10 minutes total
+def send_command(cmd, timeout=7200):  # 2 hours
     """Send a JSON command to the session server and return the response."""
     if not PORT_FILE.exists():
         raise Exception("Session server not running. Start with 'nativeclaw session start'.")
@@ -25,17 +25,19 @@ def send_command(cmd, timeout=600):  # 10 minutes total
     
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(timeout)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)  # enable keepalive
     try:
         s.connect(('localhost', port))
         s.sendall((json.dumps(cmd) + '\n').encode('utf-8'))
         s.shutdown(socket.SHUT_WR)
 
         # Read length prefix (4 bytes)
+        print("Waiting for response from server (timeout: 2 hours)...")
         len_bytes = s.recv(4)
         if not len_bytes:
             raise Exception("Server closed connection without sending length")
         expected_len = int.from_bytes(len_bytes, 'big')
-        print(f"Expecting {expected_len} bytes from server...")
+        print(f"Expecting {expected_len} bytes...")
 
         # Read exactly expected_len bytes
         data_parts = []

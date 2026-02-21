@@ -16,6 +16,9 @@ import signal
 from pathlib import Path
 import subprocess
 from tools.nativeclaw.nativeclaw import Session, PROJECT_ROOT  # ensure PROJECT_ROOT is defined or passed
+import traceback
+import logging
+logging.basicConfig(filename='server.log', level=logging.DEBUG, format='%(asctime)s %(message)s')
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -46,22 +49,32 @@ def maybe_decode_base64(content):
 
 def send_response(conn, response):
     """Send a JSON response with a 4‑byte length prefix."""
-    response_json = json.dumps(response)
-    data = response_json.encode('utf-8')
-    print(f"Sending response of length {len(data)} bytes")  # debug
-    sys.stdout.flush()
-    conn.sendall(len(data).to_bytes(4, 'big'))
-    conn.sendall(data)
+    try:
+        response_json = json.dumps(response)
+        data = response_json.encode('utf-8')
+        print(f"Sending response of length {len(data)} bytes")
+        sys.stdout.flush()
+        logging.info(f"Preparing response of length {len(data)} bytes")
+        conn.sendall(len(data).to_bytes(4, 'big'))
+        conn.sendall(data)
+        logging.info("Response sent")
+    except (BrokenPipeError, ConnectionResetError) as e:
+        print(f"Client disconnected while sending response: {e}")
+    except Exception as e:
+        print(f"Error sending response: {e}")
     
 def handle_client(conn, addr):
     """Handle one client connection: read command, execute, send response."""
     global core
     print(f"Connection from {addr}")
+    logging.info(f"Handling client from {addr}")
     try:
         data = conn.recv(8192)
         if not data:
+            logging.warning("Empty data received")
             return
         cmd = json.loads(data.decode('utf-8'))
+        logging.info(f"Received command: {cmd}")
         cmd_id = cmd.get('id', 'unknown')
         op = cmd.get('operation')
         print(f"Received command: {cmd}, Cmd_id: {cmd_id}: operation: {op}")
@@ -191,8 +204,10 @@ def handle_client(conn, addr):
             response = {"status": "error", "error": f"Unknown operation: {op}"}
 
         # Send response
+        logging.info(f"Sending response for operation {cmd.get('operation')}")
         send_response(conn, response)
     except Exception as e:
+        logging.error(f"Unhandled exception in handle_client: {e}\n{traceback.format_exc()}")
         print(f"Error handling client: {e}")
     finally:
         conn.close()
@@ -230,7 +245,10 @@ def main():
     while running:
         try:
             server_socket.settimeout(1.0)
+            print(f"Waiting for connection on port {port}")
+            logging.info(f"Waiting for connection on port {port}")
             conn, addr = server_socket.accept()
+            logging.info(f"Accepted connection from {addr}")
             # Handle each client in a new thread (so server can still accept others)
             client_thread = threading.Thread(target=handle_client, args=(conn, addr))
             client_thread.daemon = True
