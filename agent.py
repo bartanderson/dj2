@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Simple AI agent that uses tools to answer questions about your codebase.
-Usage: python agent.py "your goal here"
+Interactive AI agent that uses tools to answer questions about your codebase.
+Usage: python agent.py  (then type goals interactively)
 """
-import re
+
 import sys
 import json
+import re
 from agent_tools import (
     analyze_tools,
     deepseek_consult,
@@ -90,17 +91,17 @@ def extract_json_array(text):
     return None
 
 def call_deepseek_for_plan(goal, max_retries=3):
+    """Ask DeepSeek for a plan, with aggressive cleaning and correction."""
     system_prompt = """You are a strict JSON generator. You output only valid JSON arrays.
-    A JSON array starts with '[' and ends with ']' and contains a list of objects.
-    Never include explanations, markdown, or any other text."""
+A JSON array starts with '[' and ends with ']' and contains a list of objects.
+Never include explanations, markdown, or any other text."""
     example = """
-    Example of valid output (note the outer brackets):
-    [
-      {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
-      {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
-    ]
+Example of valid output (note the outer brackets):
+[
+  {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
+  {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
+]
 """
-
     user_prompt = f"""{system_prompt}
 
 Available tools:
@@ -114,8 +115,8 @@ Now output only the JSON array for the user's goal (no other text):"""
 
     for attempt in range(max_retries):
         raw_response = deepseek_consult(prompt=user_prompt)
-        print(f"DEBUG: Raw response from DeepSeek:\n{raw_response}")
-        # --- NEW EXTRACTION LOGIC ---
+        print(f"\nDEBUG: Raw response (attempt {attempt+1}):\n{raw_response}\n")
+
         json_str = extract_json_array(raw_response)
         if json_str:
             try:
@@ -123,8 +124,7 @@ Now output only the JSON array for the user's goal (no other text):"""
                 if isinstance(plan, list):
                     return plan
             except json.JSONDecodeError:
-                pass  # fall through to retry
-        # --- end new logic ---
+                pass
 
         print(f"Attempt {attempt+1} failed to extract valid JSON.")
         if attempt < max_retries - 1:
@@ -133,13 +133,13 @@ Now output only the JSON array for the user's goal (no other text):"""
 {raw_response}
 
 Please output ONLY a JSON array for the goal: "{goal}"
-Follow this exact format:
+The array must start with '[' and end with ']' and contain objects with fields "tool", "arguments", and optionally "store_as".
+Example:
 [
-  {{"tool": "tool_name", "arguments": {{}}, "store_as": "var"}}
+  {{"tool": "analyze_tools", "arguments": {{}}, "store_as": "analysis"}}
 ]
 No other text, no markdown, no explanation."""
         else:
-            print(f"Final raw response:\n{raw_response}")
             return []
     return []
 
@@ -154,7 +154,6 @@ def execute_tool(tool_name, args, context):
         else:
             resolved[k] = v
 
-    # Dispatch
     if tool_name == 'analyze_tools':
         return analyze_tools(**resolved)
     elif tool_name == 'deepseek_consult':
@@ -172,19 +171,14 @@ def execute_tool(tool_name, args, context):
     else:
         raise ValueError(f"Unknown tool: {tool_name}")
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: agent.py <goal>")
-        sys.exit(1)
-    goal = sys.argv[1]
-
-    print(f"Goal: {goal}\n")
-
+def process_goal(goal):
+    """Process a single goal and return True if successful."""
+    print(f"\nGoal: {goal}\n")
     print("Planning...")
     plan = call_deepseek_for_plan(goal)
     if not plan:
         print("Could not generate a plan.")
-        return
+        return False
 
     print("\nExecuting plan:")
     context = {}
@@ -209,6 +203,23 @@ def main():
     if final:
         print("\n=== Final Answer ===")
         print(final)
+    return True
+
+def main():
+    print("Interactive AI Agent. Type your goals, or 'exit' to quit.")
+    while True:
+        try:
+            goal = input("\n🎯 Goal: ").strip()
+            if goal.lower() in ('exit', 'quit', 'q'):
+                break
+            if not goal:
+                continue
+            process_goal(goal)
+        except KeyboardInterrupt:
+            print("\nExiting.")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
 
 if __name__ == '__main__':
     main()
