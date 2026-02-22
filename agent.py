@@ -87,24 +87,18 @@ def call_deepseek_for_plan(goal, max_retries=3):
     """Ask DeepSeek for a plan, with aggressive cleaning and correction."""
     system_prompt = """You are a strict JSON generator. You output only valid JSON arrays.
 A JSON array starts with '[' and ends with ']' and contains a list of objects.
-Never include explanations, markdown, or any other text."""
-    example = """
-Example of valid output (note the outer brackets):
-[
-  {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
-  {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
-]
-"""
-    user_prompt = f"""{system_prompt}
+Never include explanations, markdown, or any other text.
+
+IMPORTANT RULES:
+- DeepSeek cannot directly read files. If file contents are needed, you MUST use the 'read_file' or 'read_files' tool first.
+- When you have a list of file paths from a previous step, you cannot pass them directly to deepseek_consult and expect DeepSeek to read them. Instead, first use 'read_files' to get the content, then include that content in the prompt to deepseek_consult (e.g., as data).
+- If a step's output is needed later, store it with "store_as".
+- You may chain multiple tool calls to achieve the goal.
 
 Available tools:
-{TOOL_DESCRIPTIONS}
+{descriptions}
 
-The user's goal: "{goal}"
-
-{example}
-
-Now output only the JSON array for the user's goal (no other text):"""
+Now output a JSON array for the user's goal."""
 
     for attempt in range(max_retries):
         raw_response = deepseek_consult(prompt=user_prompt)
