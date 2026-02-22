@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 import ast
 import re
 import os
-import datetime
 
 IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
 
@@ -110,44 +109,36 @@ def analyze_ecosystem():
 
 def scan_python_files(root):
     files = []
-    # Only scan these directories – add any others you need
-    scan_dirs = ['tools', 'scripts']   # you can add 'world', 'dungeon_neo', etc. later
+    scan_dirs = ['tools', 'scripts']  # adjust as needed
     for scan_dir in scan_dirs:
         full_path = root / scan_dir
-        if not full_path.exists():
+        if not full_path.is_dir():
             continue
-        for root_dir, dirs, filenames in os.walk(full_path):
-            # Prune ignored directories (like __pycache__, .git, etc.)
-            dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root_dir, d))]
-            for file in filenames:
-                if file.endswith('.py'):
-                    py_file = Path(root_dir) / file
-                    if should_ignore(py_file):
-                        continue
-
         for py_file in full_path.rglob('*.py'):
             if should_ignore(py_file):
                 continue
-                
-            rel_path = str(py_file.relative_to(root))
-            stat = py_file.stat()
-            
-            # Parse imports
             try:
-                with open(py_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                imports = extract_imports(content)
-            except:
-                imports = []
-            
-            files.append({
-                'path': rel_path.replace('\\', '/'),
-                'size': stat.st_size,
-                'modified': datetime.fromtimestamp(stat.st_mtime),
-                'imports': imports,
-                'has_tool_yaml': (py_file.parent / 'tool.yaml').exists()
-            })
-    
+                rel_path = str(py_file.relative_to(root))
+                stat = py_file.stat()
+                # Parse imports
+                try:
+                    with open(py_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    imports = extract_imports(content)
+                except Exception as e:
+                    print(f"Warning: Could not parse {py_file}: {e}", file=sys.stderr)
+                    imports = []
+                
+                files.append({
+                    'path': rel_path.replace('\\', '/'),
+                    'size': stat.st_size,
+                    'modified': datetime.fromtimestamp(stat.st_mtime),  # works if import is correct
+                    'imports': imports,
+                    'has_tool_yaml': (py_file.parent / 'tool.yaml').exists()
+                })
+            except Exception as e:
+                print(f"Warning: Skipping {py_file} due to error: {e}", file=sys.stderr)
+                continue
     return files
 
 def extract_imports(content):
