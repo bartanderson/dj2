@@ -448,19 +448,35 @@ def generate_recommendations(inventory, import_graph):
 # ============================================================================
 
 def generate_report(inputs):
-    """Generate human-readable landscape report, optionally from a file."""
-    # If analysis_data_file is given, load it
+    """Generate human-readable landscape report, optionally from a file, and save to disk."""
+    # --- Data loading (new) ---
     if 'analysis_data_file' in inputs:
         file_path = Path(inputs['analysis_data_file'])
         if not file_path.is_absolute():
             file_path = Path.cwd() / file_path
-        try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    elif 'analysis_data' in inputs:
+        data_input = inputs['analysis_data']
+        if isinstance(data_input, str):
+            # data_input is a file path
+            file_path = Path(data_input)
+            if not file_path.is_absolute():
+                file_path = Path.cwd() / file_path
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-        except Exception as e:
-            return {'error': f"Cannot load data file: {e}"}
+        elif isinstance(data_input, dict) and 'data_file' in data_input:
+            # legacy pointer object from older versions
+            file_path = Path(data_input['data_file'])
+            if not file_path.is_absolute():
+                file_path = Path.cwd() / file_path
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        else:
+            # assume data_input is the actual data
+            data = data_input
     else:
-        data = inputs.get('analysis_data', {})
+        return {'error': 'Missing analysis_data or analysis_data_file'}
     
     format_type = inputs.get('format', 'summary')
     
