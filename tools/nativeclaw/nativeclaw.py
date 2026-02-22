@@ -212,11 +212,18 @@ class CapabilityResolver:
 
             for key, value in with_value.items():
                 if isinstance(value, str) and value.startswith('previous.'):
-                    ref = value.split('.')[1]
-                    if ref in context:
-                        inputs[key] = context[ref]
+                    parts = value.split('.')[1:]  # e.g., ['ecosystem_data', 'data_file']
+                    current = context
+                    for part in parts:
+                        if isinstance(current, dict) and part in current:
+                            current = current[part]
+                        else:
+                            current = None
+                            break
+                    if current is not None:
+                        inputs[key] = current
                     else:
-                        print(f"    ⚠️  Missing reference: {ref}")
+                        print(f"    ⚠️  Missing reference: {value}")
                         inputs[key] = None
                 else:
                     inputs[key] = value
