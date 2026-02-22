@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import ast
 import re
 import os
+import datetime
 
 IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
 
@@ -21,21 +22,23 @@ def get_session_dir():
     session_dir = os.environ.get('NATIVECLAW_SESSION_DIR')
     return Path(session_dir) if session_dir else None
 
+def get_reports_dir():
+    """Return path to persistent reports folder (create if needed)."""
+    reports_dir = Path(__file__).parent.parent.parent / 'ai_context' / 'reports'
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    return reports_dir
+
 def should_ignore(path):
     path_str = str(path).lower()
     return any(p in path_str for p in IGNORE_PATTERNS)
 
 def main():
     inputs = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {}
-    action = inputs.get('action', 'analyze.tool_ecosystem')
-    
-    if action == 'analyze.tool_ecosystem':
-        result = analyze_ecosystem()
-    elif action == 'report.tool_landscape':
+    # Determine which action to perform based on input keys
+    if 'analysis_data' in inputs or 'analysis_data_file' in inputs:
         result = generate_report(inputs)
     else:
-        result = {'error': f'Unknown action: {action}'}
-    
+        result = analyze_ecosystem()
     print(json.dumps(result, indent=2, default=str))
 
 # ============================================================================
@@ -527,7 +530,50 @@ def generate_report(inputs):
     
     report += "="*70 + "\n"
     
-    return {'report': report, 'format': format_type}
+    reports_dir = get_reports_dir()
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    base = f"landscape_report_{timestamp}"
+    
+    # Write plain text
+    txt_path = reports_dir / f"{base}.txt"
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write(report)
+    
+    # Write HTML (with dark theme)
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Tool Ecosystem Landscape Report</title>
+    <style>
+        body {{ background: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospace; padding: 20px; }}
+        pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+    </style>
+</head>
+<body>
+<pre>{report}</pre>
+</body>
+</html>"""
+    html_path = reports_dir / f"{base}.html"
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    # Return relative paths from project root (for clickability)
+    cwd = Path.cwd()
+    try:
+        rel_txt = txt_path.relative_to(cwd)
+        rel_html = html_path.relative_to(cwd)
+    except ValueError:
+        rel_txt = txt_path
+        rel_html = html_path
+    
+    # Include the paths in the return dictionary
+    return {
+        'report': report,
+        'format': format_type,
+        'report_txt': str(rel_txt),
+        'report_html': str(rel_html)
+    }
 
 if __name__ == '__main__':
     main()
