@@ -20,4 +20,8 @@ provides:
     description: Generate human-readable landscape report
     inputs:
       - name: analysis_data
+      - name: analysis_data_file    # <-- new optional parameter
+      - name: format
+    outputs:
+      - name: report
       - name: format

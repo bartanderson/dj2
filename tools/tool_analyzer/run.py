@@ -433,8 +433,20 @@ def generate_recommendations(inventory, import_graph):
 # ============================================================================
 
 def generate_report(inputs):
-    """Generate human-readable landscape report."""
-    data = inputs.get('analysis_data', {})
+    """Generate human-readable landscape report, optionally from a file."""
+    # If analysis_data_file is given, load it
+    if 'analysis_data_file' in inputs:
+        file_path = Path(inputs['analysis_data_file'])
+        if not file_path.is_absolute():
+            file_path = Path.cwd() / file_path
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception as e:
+            return {'error': f"Cannot load data file: {e}"}
+    else:
+        data = inputs.get('analysis_data', {})
+    
     format_type = inputs.get('format', 'summary')
     
     report = "\n" + "="*70 + "\n"
@@ -446,7 +458,7 @@ def generate_report(inputs):
     report += f"📊 OVERVIEW\n"
     report += f"   Total Python files: {summary.get('total_files', 0)}\n"
     report += f"   With tool.yaml: {summary.get('files_with_tool_yaml', 0)} ({summary.get('coverage_percent', 0):.1f}%)\n\n"
-    
+     
     # Hotspots
     hotspots = data.get('hotspots', [])
     if hotspots:

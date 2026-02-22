@@ -274,9 +274,14 @@ class CapabilityResolver:
 
                     print(f"    Running: {' '.join(cmd)}")
                     try:
+                        env = os.environ.copy()
+                        if self.session:
+                            env['NATIVECLAW_SESSION_DIR'] = str(self.session.session_dir)
+                            
                         result = subprocess.run(
                             cmd,
                             cwd=self.root,
+                            env=env,
                             capture_output=True,
                             text=True,
                             encoding='utf-8',
