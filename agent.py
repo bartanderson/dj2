@@ -44,7 +44,6 @@ Only output the JSON list, nothing else.
 """
     result = deepseek_consult(prompt=prompt)
     try:
-        # The bridge returns a string that may be JSON
         plan = json.loads(result)
         if not isinstance(plan, list):
             raise ValueError("Plan is not a list")
@@ -64,7 +63,7 @@ def execute_tool(tool_name, args, context):
         else:
             resolved[k] = v
 
-    # Dispatch to the appropriate function
+    # Dispatch
     if tool_name == 'analyze_tools':
         return analyze_tools(**resolved)
     elif tool_name == 'deepseek_consult':
@@ -90,16 +89,14 @@ def main():
 
     print(f"Goal: {goal}\n")
 
-    # Get plan from DeepSeek
     print("Planning...")
     plan = call_deepseek_for_plan(goal)
     if not plan:
         print("Could not generate a plan.")
         return
 
-    # Execute plan step by step
-    context = {}
     print("\nExecuting plan:")
+    context = {}
     for i, step in enumerate(plan):
         tool = step.get('tool')
         args = step.get('arguments', {})
@@ -109,17 +106,14 @@ def main():
             result = execute_tool(tool, args, context)
             if store:
                 context[store] = result
-            # Show a preview
             preview = str(result)[:200] + "..." if len(str(result)) > 200 else str(result)
             print(f"  Result: {preview}")
         except Exception as e:
             print(f"  Error: {e}")
-            # Ask user whether to continue
             cont = input("Continue? (y/n): ").strip().lower()
             if cont != 'y':
                 break
 
-    # If the plan stored a final answer, print it
     final = context.get('final_answer') or context.get('result')
     if final:
         print("\n=== Final Answer ===")

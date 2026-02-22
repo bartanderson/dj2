@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Tools for the agent. Each function is a tool the AI can call.
+Tools for the agent – each function is a callable tool.
+Uses your existing bridge and analyzer.
 """
 
 import subprocess
@@ -8,18 +9,19 @@ import json
 import sys
 from pathlib import Path
 
-# Get project root (where agent.py lives)
+_deepseek_bridge = None
+import atexit
+
 PROJECT_ROOT = Path(__file__).parent
 
 # ----------------------------------------------------------------------
-# Analysis tool – uses your existing tool_analyzer
+# Analysis tool – calls your existing tool_analyzer
 # ----------------------------------------------------------------------
 def analyze_tools():
-    """Run the existing tool_analyzer and return the full analysis dict."""
+    """Run the tool_analyzer and return the full analysis dict."""
     tool_path = PROJECT_ROOT / 'tools' / 'tool_analyzer' / 'run.py'
     if not tool_path.exists():
         raise Exception(f"Analyzer not found at {tool_path}")
-    # The tool expects a JSON argument, even if empty
     result = subprocess.run(
         [sys.executable, str(tool_path), "{}"],
         capture_output=True, text=True,
@@ -30,29 +32,57 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
-# DeepSeek consultation – uses your bridge
+# DeepSeek consultation – uses your reliable Selenium bridge
 # ----------------------------------------------------------------------
+# Global persistent bridge instance
+
+
+def _close_bridge():
+    global _deepseek_bridge
+    if _deepseek_bridge is not None:
+        try:
+            if hasattr(_deepseek_bridge, 'close'):
+                _deepseek_bridge.close()
+        except:
+            pass
+        _deepseek_bridge = None
+
+atexit.register(_close_bridge)
+
 def deepseek_consult(prompt, file=None, data=None):
-    """Send a prompt and optional context to DeepSeek. Returns response text."""
-    bridge = PROJECT_ROOT / 'tools' / 'deepseek_bridge' / 'run.py'
-    if not bridge.exists():
-        raise Exception(f"DeepSeek bridge not found at {bridge}")
-    payload = {'prompt': prompt}
+    """
+    Send a prompt and optional context to DeepSeek using a persistent bridge.
+    The bridge stays open across calls and is closed when the process exits.
+    """
+    global _deepseek_bridge
+    if _deepseek_bridge is None:
+        # Import here to avoid circular imports
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent))
+        from tools.bridge.bridge_controller import BridgeController
+        _deepseek_bridge = BridgeController()
+
+    # Build full prompt with context
+    full_prompt = prompt
     if file:
-        # file can be a Path or string
-        payload['file'] = str(file)
+        file_path = Path(file)
+        if not file_path.is_absolute():
+            file_path = Path(__file__).parent / file_path
+        if file_path.exists():
+            file_content = file_path.read_text(encoding='utf-8')
+            full_prompt = f"File content:\n{file_content}\n\n{full_prompt}"
     if data:
-        payload['data'] = data
-    result = subprocess.run(
-        [sys.executable, str(bridge), json.dumps(payload)],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        raise Exception(f"DeepSeek bridge error: {result.stderr}")
-    output = json.loads(result.stdout)
-    if output.get('status') != 'success':
-        raise Exception(f"DeepSeek error: {output.get('error')}")
-    return output.get('data', '')
+        if isinstance(data, dict):
+            data_str = json.dumps(data, indent=2)
+        else:
+            data_str = str(data)
+        full_prompt = f"Data:\n{data_str}\n\n{full_prompt}"
+
+    response = _deepseek_bridge.ask_deepseek(full_prompt, use_tools=False)
+    if response is None:
+        raise Exception("DeepSeek returned no response")
+    return response
 
 # ----------------------------------------------------------------------
 # File operations
@@ -65,7 +95,7 @@ def read_file(path):
     return full_path.read_text(encoding='utf-8')
 
 def write_file(path, content):
-    """Write content to file (relative path). Creates a backup (.bak) if file exists."""
+    """Write content to file. Creates a backup (.bak) if file exists."""
     full_path = PROJECT_ROOT / path
     if full_path.exists():
         backup = full_path.with_suffix('.bak')
@@ -75,10 +105,10 @@ def write_file(path, content):
     return f"Written {path}"
 
 # ----------------------------------------------------------------------
-# Git operations (from nativeclaw)
+# Git operations (from your nativeclaw code)
 # ----------------------------------------------------------------------
 def create_branch(branch_name):
-    """Create a new git branch and switch to it."""
+    """Create and switch to a new git branch."""
     subprocess.run(['git', 'checkout', '-b', branch_name], cwd=PROJECT_ROOT, check=True)
     return f"Switched to branch {branch_name}"
 
