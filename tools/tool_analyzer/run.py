@@ -539,7 +539,7 @@ def generate_report(inputs):
         report += "="*70 + "\n"
         
         reports_dir = get_reports_dir()
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         base = f"landscape_report_{timestamp}"
         
         # Write plain text
