@@ -12,6 +12,7 @@ from agent_tools import (
     deepseek_consult,
     read_file,
     write_file,
+    search_files,
     create_branch,
     commit_changes,
     show_diff
@@ -163,6 +164,8 @@ def execute_tool(tool_name, args, context):
         return read_file(**resolved)
     elif tool_name == 'write_file':
         return write_file(**resolved)
+    elif tool_name == 'search_files':
+        return search_files(**resolved)
     elif tool_name == 'create_branch':
         return create_branch(**resolved)
     elif tool_name == 'commit_changes':
