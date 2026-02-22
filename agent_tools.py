@@ -138,6 +138,31 @@ def write_file(path, content):
     full_path.write_text(content, encoding='utf-8')
     return f"Written {path}"
 
+def search_files(query, limit=10, group=None):
+    """
+    Search for files using ai.py search command.
+    Returns a list of file paths (relative to project root) matching the query.
+    """
+    import subprocess
+    from pathlib import Path
+
+    cmd = [sys.executable, 'ai.py', 'search', query, '--limit', str(limit)]
+    if group:
+        cmd.extend(['--group', group])
+
+    result = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        raise Exception(f"Search failed: {result.stderr}")
+
+    # Parse output: assume one file path per line, ignore empty lines
+    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return files
+
 # ----------------------------------------------------------------------
 # Git operations (from your nativeclaw code)
 # ----------------------------------------------------------------------

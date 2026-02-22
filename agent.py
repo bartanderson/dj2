@@ -22,6 +22,7 @@ TOOL_DESCRIPTIONS = """
 - deepseek_consult(prompt, file=None, data=None): send a prompt and optional context to DeepSeek, returns response.
 - read_file(path): returns content of file as string (path relative to project root).
 - write_file(path, content): writes content to file (creates backup). Use with caution.
+- search_files(query, limit=10, group=None): returns a list of file paths (relative to project root) matching the query. Uses the existing ai.py search command.
 - create_branch(branch_name): creates a new git branch and switches to it.
 - commit_changes(message): commits all changes with message.
 - show_diff(): returns git diff of current changes.
