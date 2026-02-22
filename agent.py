@@ -26,6 +26,33 @@ TOOL_DESCRIPTIONS = """
 - show_diff(): returns git diff of current changes.
 """
 
+def extract_json_array(text):
+    """Extract the first valid JSON array from text, ignoring surrounding content."""
+    # Remove markdown code fences first
+    text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
+    text = re.sub(r'\s*```$', '', text)
+    # Find the first '[' and the matching closing ']'
+    stack = []
+    start = -1
+    for i, ch in enumerate(text):
+        if ch == '[':
+            if not stack:
+                start = i
+            stack.append(ch)
+        elif ch == ']':
+            if stack:
+                stack.pop()
+                if not stack:
+                    # Found a complete JSON array
+                    candidate = text[start:i+1]
+                    try:
+                        json.loads(candidate)  # validate
+                        return candidate
+                    except json.JSONDecodeError:
+                        # Not valid, continue searching
+                        pass
+    return None
+
 def call_deepseek_for_plan(goal, max_retries=3):
     """Ask DeepSeek for a plan, with aggressive cleaning and correction."""
     system_prompt = """You are a strict JSON generator. You output only valid JSON arrays.
@@ -50,28 +77,21 @@ Now output only the JSON array for the user's goal (no other text):"""
 
     for attempt in range(max_retries):
         raw_response = deepseek_consult(prompt=user_prompt)
-        # Clean the response: remove markdown fences, leading/trailing text
-        cleaned = re.sub(r'^```json\s*', '', raw_response.strip(), flags=re.IGNORECASE)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        # Find the first '[' and last ']'
-        start = cleaned.find('[')
-        end = cleaned.rfind(']')
-        if start != -1 and end != -1 and end > start:
-            json_str = cleaned[start:end+1]
-        else:
-            json_str = cleaned  # fallback
+        # --- NEW EXTRACTION LOGIC ---
+        json_str = extract_json_array(raw_response)
+        if json_str:
+            try:
+                plan = json.loads(json_str)
+                if isinstance(plan, list):
+                    return plan
+            except json.JSONDecodeError:
+                pass  # fall through to retry
+        # --- end new logic ---
 
-        try:
-            plan = json.loads(json_str)
-            if isinstance(plan, list):
-                return plan
-            else:
-                raise ValueError("Not a list")
-        except Exception as e:
-            print(f"Attempt {attempt+1} failed: {e}")
-            if attempt < max_retries - 1:
-                # Send corrective prompt
-                user_prompt = f"""Your previous response was not valid JSON. It was:
+        print(f"Attempt {attempt+1} failed to extract valid JSON.")
+        if attempt < max_retries - 1:
+            # Send corrective prompt
+            user_prompt = f"""Your previous response was not valid JSON. It was:
 {raw_response}
 
 Please output ONLY a JSON array for the goal: "{goal}"
@@ -79,10 +99,10 @@ Follow this exact format:
 [
   {{"tool": "tool_name", "arguments": {{}}, "store_as": "var"}}
 ]
-No other text."""
-            else:
-                print(f"Final raw response:\n{raw_response}")
-                return []
+No other text, no markdown, no explanation."""
+        else:
+            print(f"Final raw response:\n{raw_response}")
+            return []
     return []
 
 def execute_tool(tool_name, args, context):

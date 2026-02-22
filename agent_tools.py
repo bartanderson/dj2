@@ -41,13 +41,35 @@ def _close_bridge():
     global _deepseek_bridge
     if _deepseek_bridge is not None:
         try:
-            if hasattr(_deepseek_bridge, 'close'):
-                _deepseek_bridge.close()
+            _deepseek_bridge.close()  # your existing close
         except:
             pass
+        # Also kill any lingering chrome processes with this profile?
+        # Optional: subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'], capture_output=True)
+        # But that would kill all Chrome instances – not ideal.
         _deepseek_bridge = None
 
 atexit.register(_close_bridge)
+
+def _ensure_bridge_alive():
+    global _deepseek_bridge
+    if _deepseek_bridge is None:
+        from tools.bridge.bridge_controller import BridgeController
+        _deepseek_bridge = BridgeController()
+    else:
+        # Optional: check if browser is still responsive
+        try:
+            # A simple ping – maybe check if driver is still connected
+            _deepseek_bridge.bridge.driver.current_url  # or similar
+        except:
+            # Assume dead, recreate
+            try:
+                _deepseek_bridge.close()
+            except:
+                pass
+            from tools.bridge.bridge_controller import BridgeController
+            _deepseek_bridge = BridgeController()
+    return _deepseek_bridge
 
 def deepseek_consult(prompt, file=None, data=None):
     """
@@ -78,6 +100,8 @@ def deepseek_consult(prompt, file=None, data=None):
         else:
             data_str = str(data)
         full_prompt = f"Data:\n{data_str}\n\n{full_prompt}"
+
+    _ensure_bridge_alive()
 
     response = _deepseek_bridge.ask_deepseek(full_prompt, use_tools=False)
     if response is None:
