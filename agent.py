@@ -28,42 +28,79 @@ TOOL_DESCRIPTIONS = """
 
 def extract_json_array(text):
     """Extract the first valid JSON array from text, ignoring surrounding content."""
-    # Remove markdown code fences first
+    # Remove markdown fences first
     text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
-    # Find the first '[' and the matching closing ']'
+
+    # Strategy 1: raw_decode
+    try:
+        decoder = json.JSONDecoder()
+        idx = 0
+        while idx < len(text):
+            while idx < len(text) and text[idx].isspace():
+                idx += 1
+            if idx >= len(text):
+                break
+            try:
+                obj, end = decoder.raw_decode(text, idx)
+                if isinstance(obj, list):
+                    return text[idx:end]
+                idx = end
+            except json.JSONDecodeError:
+                idx += 1
+    except Exception:
+        pass
+
+    # Strategy 2: bracket matching with retry
     stack = []
     start = -1
-    for i, ch in enumerate(text):
-        if ch == '[':
-            if not stack:
-                start = i
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '[' and not stack:
+            start = i
             stack.append(ch)
-        elif ch == ']':
-            if stack:
-                stack.pop()
-                if not stack:
-                    # Found a complete JSON array
-                    candidate = text[start:i+1]
-                    try:
-                        json.loads(candidate)  # validate
-                        return candidate
-                    except json.JSONDecodeError:
-                        # Not valid, continue searching
-                        pass
+        elif ch == '[' and stack:
+            stack.append(ch)
+        elif ch == ']' and stack:
+            stack.pop()
+            if not stack:
+                candidate = text[start:i+1]
+                try:
+                    json.loads(candidate)
+                    return candidate
+                except json.JSONDecodeError:
+                    i = start + 1
+                    stack = []
+                    start = -1
+                    continue
+        i += 1
+
+    # Strategy 3: Fallback for missing outer brackets (comma‑separated objects)
+    # Regex: optional whitespace, then { ... }, then comma, then { ... }, etc.
+    if re.match(r'^\s*\{.*\}\s*,\s*\{.*\}\s*$', text, re.DOTALL):
+        candidate = f"[{text}]"
+        try:
+            json.loads(candidate)
+            print("DEBUG: Added missing brackets, valid JSON")
+            return candidate
+        except:
+            pass
+
     return None
 
 def call_deepseek_for_plan(goal, max_retries=3):
-    """Ask DeepSeek for a plan, with aggressive cleaning and correction."""
     system_prompt = """You are a strict JSON generator. You output only valid JSON arrays.
-Never include explanations, markdown, or any other text."""
+    A JSON array starts with '[' and ends with ']' and contains a list of objects.
+    Never include explanations, markdown, or any other text."""
     example = """
-Example of valid output:
-[
-  {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
-  {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
-]
+    Example of valid output (note the outer brackets):
+    [
+      {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
+      {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
+    ]
 """
+
     user_prompt = f"""{system_prompt}
 
 Available tools:
@@ -77,6 +114,7 @@ Now output only the JSON array for the user's goal (no other text):"""
 
     for attempt in range(max_retries):
         raw_response = deepseek_consult(prompt=user_prompt)
+        print(f"DEBUG: Raw response from DeepSeek:\n{raw_response}")
         # --- NEW EXTRACTION LOGIC ---
         json_str = extract_json_array(raw_response)
         if json_str:

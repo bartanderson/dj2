@@ -52,24 +52,31 @@ def _close_bridge():
 atexit.register(_close_bridge)
 
 def _ensure_bridge_alive():
+    """Return a working bridge instance, recreating if dead."""
     global _deepseek_bridge
+    print("DEBUG: _ensure_bridge_alive called")
     if _deepseek_bridge is None:
+        print("DEBUG: bridge is None, creating new")
         from tools.bridge.bridge_controller import BridgeController
         _deepseek_bridge = BridgeController()
-    else:
-        # Optional: check if browser is still responsive
+        return _deepseek_bridge
+
+    # Health check – try to access the driver via the correct chain
+    try:
+        # BridgeController.bridge is DeepSeekBridgeReact, which has _core with driver
+        driver = _deepseek_bridge.bridge._core.driver
+        _ = driver.current_url  # will raise if dead
+        print("DEBUG: bridge is alive")
+        return _deepseek_bridge
+    except Exception as e:
+        print(f"DEBUG: bridge dead ({e}), recreating")
         try:
-            # A simple ping – maybe check if driver is still connected
-            _deepseek_bridge.bridge.driver.current_url  # or similar
+            _deepseek_bridge.close()
         except:
-            # Assume dead, recreate
-            try:
-                _deepseek_bridge.close()
-            except:
-                pass
-            from tools.bridge.bridge_controller import BridgeController
-            _deepseek_bridge = BridgeController()
-    return _deepseek_bridge
+            pass
+        from tools.bridge.bridge_controller import BridgeController
+        _deepseek_bridge = BridgeController()
+        return _deepseek_bridge
 
 def deepseek_consult(prompt, file=None, data=None):
     """
@@ -77,6 +84,9 @@ def deepseek_consult(prompt, file=None, data=None):
     The bridge stays open across calls and is closed when the process exits.
     """
     global _deepseek_bridge
+    print(f"DEBUG: deepseek_consult called, bridge exists: {_deepseek_bridge is not None}")
+    bridge = _ensure_bridge_alive()
+    print(f"DEBUG: after _ensure_bridge_alive, bridge: {bridge}")
     if _deepseek_bridge is None:
         # Import here to avoid circular imports
         import sys
