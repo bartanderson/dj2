@@ -4,6 +4,7 @@ tool_analyzer.py - Multi-source tool analysis
 Combines: your descriptions, git history, import analysis, and file metadata
 """
 
+import secrets
 import sys
 import json
 import subprocess
@@ -14,6 +15,11 @@ import re
 import os
 
 IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
+
+def get_session_dir():
+    """Return Path to session directory if env var is set, else None."""
+    session_dir = os.environ.get('NATIVECLAW_SESSION_DIR')
+    return Path(session_dir) if session_dir else None
 
 def should_ignore(path):
     path_str = str(path).lower()
@@ -37,24 +43,21 @@ def main():
 # ============================================================================
 
 def analyze_ecosystem():
-    print("DEBUG: analyze_ecosystem started")
+    # Redirect debug output to stderr
+    print("DEBUG: analyze_ecosystem started", file=sys.stderr)
     """Multi-source analysis of all tools."""
     project_root = Path(__file__).parent.parent.parent
     
-    # Source 1: File system scan
-    print("Scanning files...")
+    print("Scanning files...", file=sys.stderr)
     all_py_files = scan_python_files(project_root)
-    print(f"Found {len(all_py_files)} files")
-    print("Getting git history...")
-    # Source 2: Git history
+    print(f"Found {len(all_py_files)} files", file=sys.stderr)
+    print("Getting git history...", file=sys.stderr)
     git_stats = {} # get_git_history(project_root, all_py_files)
-    # Source 3: Import analysis
-    print("Analyzing imports...")
+    print("Analyzing imports...", file=sys.stderr)
     import_graph = analyze_imports(project_root, all_py_files)
-    # Source 4: Your descriptions (hardcoded from our session)
-    print("Getting descriptions...")
+    print("Getting descriptions...", file=sys.stderr)
     descriptions = get_known_descriptions()
-    print("Combining data...")    
+    print("Combining data...", file=sys.stderr)    
     # Combine sources
     inventory = []
     for file_info in all_py_files:
@@ -73,8 +76,8 @@ def analyze_ecosystem():
         })
     
     # Analysis
-    print("Returning data...")
-    return {
+    print("Returning data...", file=sys.stderr)
+    full_result = {
         'inventory': inventory,
         'summary': summarize_inventory(inventory),
         'hotspots': find_hotspots(inventory, import_graph),
@@ -83,6 +86,24 @@ def analyze_ecosystem():
         'dependencies': import_graph,
         'recommendations': generate_recommendations(inventory, import_graph)
     }
+    
+    # --- NEW: if session directory exists, write to file and return path ---
+    session_dir = get_session_dir()
+    if session_dir:
+        filename = f"ecosystem_data_{secrets.token_hex(4)}.json"
+        file_path = session_dir / filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(full_result, f, indent=2, default=str)
+        # Return relative path (for use in subsequent steps)
+        cwd = Path.cwd()
+        try:
+            rel_path = file_path.relative_to(cwd)
+        except ValueError:
+            rel_path = file_path
+        return {"data_file": str(rel_path)}
+    else:
+        # No session: return full result (original behavior)
+        return full_result
 
 def scan_python_files(root):
     files = []

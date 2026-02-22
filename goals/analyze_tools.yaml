@@ -5,15 +5,9 @@ steps:
   - action: analyze.tool_ecosystem
     with: {}
     as: ecosystem_data
-
-  - action: data.store
-    with:
-      data: previous.ecosystem_data
-      _step_name: "ecosystem"
-    as: stored_data
   
   - action: report.tool_landscape
     with:
-      analysis_data: previous.ecosystem_data
+      analysis_data: previous.ecosystem_data.data_file
       format: "summary"
     as: landscape_report
