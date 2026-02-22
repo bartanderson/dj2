@@ -575,17 +575,12 @@ def generate_report(inputs):
             rel_txt = txt_path
             rel_html = html_path
 
-        # Print clickable paths to stderr (visible in console)
-        print(f"\n📄 Report files created:", file=sys.stderr)
-        print(f"   TXT: {rel_txt}", file=sys.stderr)
-        print(f"   HTML: {rel_html}\n", file=sys.stderr)
-            
         # Include the paths in the return dictionary
         return {
-            'report': report,
-            'format': format_type,
             'report_txt': str(rel_txt),
-            'report_html': str(rel_html)
+            'report_html': str(rel_html),
+            'report': report,
+            'format': format_type
         }
     except Exception as e:
         import traceback
