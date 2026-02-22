@@ -15,7 +15,8 @@ from agent_tools import (
     search_files,
     create_branch,
     commit_changes,
-    show_diff
+    show_diff,
+    log_event
 )
 
 TOOL_DESCRIPTIONS = """
@@ -138,7 +139,6 @@ No other text, no markdown, no explanation."""
     return []
 
 def execute_tool(tool_name, args, context):
-    """Call the actual Python function with resolved arguments."""
     # Resolve any $var references in args
     resolved = {}
     for k, v in args.items():
@@ -148,24 +148,38 @@ def execute_tool(tool_name, args, context):
         else:
             resolved[k] = v
 
-    if tool_name == 'analyze_tools':
-        return analyze_tools(**resolved)
-    elif tool_name == 'deepseek_consult':
-        return deepseek_consult(**resolved)
-    elif tool_name == 'read_file':
-        return read_file(**resolved)
-    elif tool_name == 'write_file':
-        return write_file(**resolved)
-    elif tool_name == 'search_files':
-        return search_files(**resolved)
-    elif tool_name == 'create_branch':
-        return create_branch(**resolved)
-    elif tool_name == 'commit_changes':
-        return commit_changes(**resolved)
-    elif tool_name == 'show_diff':
-        return show_diff(**resolved)
-    else:
-        raise ValueError(f"Unknown tool: {tool_name}")
+    # Log the tool call
+    log_event('tool-call', {'tool': tool_name, 'args': resolved})
+
+    # Dispatch to the appropriate function
+    try:
+        if tool_name == 'analyze_tools':
+            result = analyze_tools(**resolved)
+        elif tool_name == 'deepseek_consult':
+            result = deepseek_consult(**resolved)
+        elif tool_name == 'read_file':
+            result = read_file(**resolved)
+        elif tool_name == 'read_files':
+            result = read_files(**resolved)
+        elif tool_name == 'write_file':
+            result = write_file(**resolved)
+        elif tool_name == 'search_files':
+            result = search_files(**resolved)
+        elif tool_name == 'create_branch':
+            result = create_branch(**resolved)
+        elif tool_name == 'commit_changes':
+            result = commit_changes(**resolved)
+        elif tool_name == 'show_diff':
+            result = show_diff(**resolved)
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
+
+        # Log the result
+        log_event('tool-result', {'tool': tool_name, 'result': result})
+        return result
+    except Exception as e:
+        log_event('error', f"Tool {tool_name} failed: {e}")
+        raise
 
 def process_goal(goal):
     """Process a single goal and return True if successful."""

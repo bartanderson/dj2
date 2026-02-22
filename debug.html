@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Log Viewer</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        .event { border-bottom: 1px solid #333; margin-bottom: 10px; padding: 5px; }
+        .timestamp { color: #888; font-size: 0.9em; }
+        .type { font-weight: bold; display: inline-block; width: 80px; }
+        .prompt { background: #2a2a2a; }
+        .response { background: #2a2a2a; }
+        .tool-call { background: #1e3a3a; }
+        .tool-result { background: #3a2a1e; }
+        .error { background: #4a2a2a; }
+        pre { white-space: pre-wrap; word-wrap: break-word; background: #000; padding: 10px; border-radius: 5px; }
+        button { margin: 5px; padding: 5px 10px; background: #333; color: white; border: none; cursor: pointer; }
+        button:hover { background: #555; }
+        .controls { margin-bottom: 20px; }
+        .summary { color: #aaa; }
+    </style>
+</head>
+<body>
+    <h1>Agent Log Viewer</h1>
+    <div class="controls">
+        <button onclick="loadLog()">Refresh</button>
+        <button onclick="autoRefresh = !autoRefresh; this.innerText = autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'">Auto-refresh OFF</button>
+        <label><input type="checkbox" id="scroll" checked> Auto-scroll</label>
+    </div>
+    <div id="log"></div>
+
+    <script>
+        let autoRefresh = false;
+        let lastTimestamp = 0;
+
+        async function loadLog() {
+            try {
+                const response = await fetch('agent_log.jsonl');
+                const text = await response.text();
+                const lines = text.trim().split('\n').filter(l => l.trim());
+                const events = lines.map(l => JSON.parse(l));
+                renderLog(events);
+                if (events.length > 0) {
+                    lastTimestamp = events[events.length-1].timestamp;
+                }
+            } catch (e) {
+                document.getElementById('log').innerHTML = `<div class="error">Error loading log: ${e}</div>`;
+            }
+        }
+
+        function renderLog(events) {
+            const container = document.getElementById('log');
+            container.innerHTML = '';
+            events.forEach(event => {
+                const div = document.createElement('div');
+                div.className = `event ${event.type}`;
+                const time = new Date(event.timestamp).toLocaleTimeString();
+                let summary = '';
+                if (event.type === 'prompt') {
+                    summary = `Prompt (${event.data.length} chars)`;
+                } else if (event.type === 'response') {
+                    summary = `Response (${event.data.length} chars)`;
+                } else if (event.type === 'tool-call') {
+                    summary = `Tool call: ${event.data.tool}`;
+                } else if (event.type === 'tool-result') {
+                    summary = `Tool result: ${event.data.tool}`;
+                } else if (event.type === 'error') {
+                    summary = `Error: ${event.data}`;
+                }
+                div.innerHTML = `
+                    <div>
+                        <span class="timestamp">${time}</span>
+                        <span class="type">${event.type}</span>
+                        <span class="summary">${summary}</span>
+                    </div>
+                    <pre style="display: none;">${escapeHtml(JSON.stringify(event.data, null, 2))}</pre>
+                `;
+                div.addEventListener('click', () => {
+                    const pre = div.querySelector('pre');
+                    pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
+                });
+                container.appendChild(div);
+            });
+            if (document.getElementById('scroll').checked) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        setInterval(() => {
+            if (autoRefresh) loadLog();
+        }, 3000);
+
+        window.onload = loadLog;
+    </script>
+</body>
+</html>

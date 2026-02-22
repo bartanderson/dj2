@@ -12,7 +12,21 @@ from pathlib import Path
 _deepseek_bridge = None
 import atexit
 
+import json
+from datetime import datetime
+
 PROJECT_ROOT = Path(__file__).parent
+LOG_FILE = PROJECT_ROOT / 'agent_log.jsonl'
+
+def log_event(event_type, data):
+    """Append an event to the log file."""
+    entry = {
+        'timestamp': datetime.now().isoformat(timespec='milliseconds'),
+        'type': event_type,
+        'data': data
+    }
+    with open(LOG_FILE, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(entry) + '\n')
 
 # ----------------------------------------------------------------------
 # Analysis tool – calls your existing tool_analyzer
@@ -111,11 +125,15 @@ def deepseek_consult(prompt, file=None, data=None):
             data_str = str(data)
         full_prompt = f"Data:\n{data_str}\n\n{full_prompt}"
 
+    log_event('prompt', full_prompt)
+
     _ensure_bridge_alive()
 
     response = _deepseek_bridge.ask_deepseek(full_prompt, use_tools=False)
     if response is None:
+        log_event('response', "DeepSeek returned no response")
         raise Exception("DeepSeek returned no response")
+    log_event('response', response)
     return response
 
 # ----------------------------------------------------------------------
