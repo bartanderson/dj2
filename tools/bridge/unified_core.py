@@ -33,9 +33,26 @@ class BridgeCore:
         if self.verbose:
             timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
             print(f"[{timestamp}] {message}")
-    
+
     def connect(self) -> bool:
-        """Connect to DeepSeek"""
+        """Ensure we have a live connection. If already connected and alive, return True."""
+        if self._connected and self.driver:
+            try:
+                # Quick health check – try to access current_url
+                self.driver.current_url
+                self._log("Already connected and alive")
+                return True
+            except Exception:
+                self._log("Driver lost, will reconnect")
+                self._connected = False
+                # Try to quit the old driver if it still exists
+                try:
+                    self.driver.quit()
+                except:
+                    pass
+                self.driver = None
+
+        # Create new driver
         try:
             options = Options()
             options.add_argument("--log-level=3") #disable most logs but thats fine with me (gets rid of gcm deprecated errors)
@@ -49,7 +66,7 @@ class BridgeCore:
         except Exception as e:
             self._log(f"❌ Connection failed: {e}")
             return False
-    
+
     def upload_file(self, content: str, filename: str = "context.txt") -> bool:
         """
         Upload content as a file AND send instruction to analyze it
