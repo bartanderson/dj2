@@ -582,7 +582,7 @@ def generate_report(inputs):
             'report_txt': str(rel_txt),
             'report_html': str(rel_html)
         }
-    except Exception e:
+    except Exception as e:
         import traceback
         traceback.print_exc(file=sys.stderr)
         return {'error': str(e)}
