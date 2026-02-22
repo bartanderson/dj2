@@ -449,105 +449,106 @@ def generate_recommendations(inventory, import_graph):
 
 def generate_report(inputs):
     """Generate human-readable landscape report, optionally from a file, and save to disk."""
+    try:
     # --- Data loading (new) ---
-    if 'analysis_data_file' in inputs:
-        file_path = Path(inputs['analysis_data_file'])
-        if not file_path.is_absolute():
-            file_path = Path.cwd() / file_path
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    elif 'analysis_data' in inputs:
-        data_input = inputs['analysis_data']
-        if isinstance(data_input, str):
-            # data_input is a file path
-            file_path = Path(data_input)
+        if 'analysis_data_file' in inputs:
+            file_path = Path(inputs['analysis_data_file'])
             if not file_path.is_absolute():
                 file_path = Path.cwd() / file_path
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-        elif isinstance(data_input, dict) and 'data_file' in data_input:
-            # legacy pointer object from older versions
-            file_path = Path(data_input['data_file'])
-            if not file_path.is_absolute():
-                file_path = Path.cwd() / file_path
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+        elif 'analysis_data' in inputs:
+            data_input = inputs['analysis_data']
+            if isinstance(data_input, str):
+                # data_input is a file path
+                file_path = Path(data_input)
+                if not file_path.is_absolute():
+                    file_path = Path.cwd() / file_path
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            elif isinstance(data_input, dict) and 'data_file' in data_input:
+                # legacy pointer object from older versions
+                file_path = Path(data_input['data_file'])
+                if not file_path.is_absolute():
+                    file_path = Path.cwd() / file_path
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            else:
+                # assume data_input is the actual data
+                data = data_input
         else:
-            # assume data_input is the actual data
-            data = data_input
-    else:
-        return {'error': 'Missing analysis_data or analysis_data_file'}
-    
-    format_type = inputs.get('format', 'summary')
-    
-    report = "\n" + "="*70 + "\n"
-    report += "🔧 TOOL ECOSYSTEM LANDSCAPE\n"
-    report += "="*70 + "\n\n"
-    
-    # Summary
-    summary = data.get('summary', {})
-    report += f"📊 OVERVIEW\n"
-    report += f"   Total Python files: {summary.get('total_files', 0)}\n"
-    report += f"   With tool.yaml: {summary.get('files_with_tool_yaml', 0)} ({summary.get('coverage_percent', 0):.1f}%)\n\n"
-     
-    # Hotspots
-    hotspots = data.get('hotspots', [])
-    if hotspots:
-        report += "🔥 HOTSPOTS (most important files)\n"
-        for h in hotspots[:10]:
-            report += f"   {h['name']} (score: {h['score']})\n"
-            report += f"     {h['description'][:60]}\n"
-            report += f"     {' '.join(h['reasons'][:3])}\n"
-        report += "\n"
-    
-    # Orphans
-    orphans = data.get('orphans', [])
-    if orphans:
-        report += "👻 ORPHANS (not imported by anything)\n"
-        for o in orphans[:10]:
-            status_icon = "⚠️" if o['status'] == 'active but isolated' else "💤"
-            report += f"   {status_icon} {o['name']} - {o['status']}\n"
-            report += f"     {o['description'][:60]}\n"
-        report += "\n"
-    
-    # Duplicates
-    duplicates = data.get('duplicates', [])
-    if duplicates:
-        report += "🔄 POTENTIAL DUPLICATES\n"
-        for d in duplicates[:5]:
-            report += f"   {d['stem']} appears in:\n"
-            for f in d['files']:
-                report += f"     - {f['folder']}/{f['name']}\n"
-        report += "\n"
-    
-    # Recommendations
-    recs = data.get('recommendations', [])
-    if recs:
-        report += "💡 RECOMMENDATIONS\n"
-        for r in recs:
-            priority_icon = "🔴" if r['priority'] == 'high' else "🟡" if r['priority'] == 'medium' else "🟢"
-            report += f"   {priority_icon} {r['message']}\n"
-        report += "\n"
-    
-    # By folder breakdown
-    by_folder = summary.get('by_folder', {})
-    report += "📁 FOLDER BREAKDOWN\n"
-    for folder, info in sorted(by_folder.items()):
-        report += f"   {folder}: {info['count']} files\n"
-    
-    report += "="*70 + "\n"
-    
-    reports_dir = get_reports_dir()
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    base = f"landscape_report_{timestamp}"
-    
-    # Write plain text
-    txt_path = reports_dir / f"{base}.txt"
-    with open(txt_path, 'w', encoding='utf-8') as f:
-        f.write(report)
-    
-    # Write HTML (with dark theme)
-    html_content = f"""<!DOCTYPE html>
+            return {'error': 'Missing analysis_data or analysis_data_file'}
+        
+        format_type = inputs.get('format', 'summary')
+        
+        report = "\n" + "="*70 + "\n"
+        report += "🔧 TOOL ECOSYSTEM LANDSCAPE\n"
+        report += "="*70 + "\n\n"
+        
+        # Summary
+        summary = data.get('summary', {})
+        report += f"📊 OVERVIEW\n"
+        report += f"   Total Python files: {summary.get('total_files', 0)}\n"
+        report += f"   With tool.yaml: {summary.get('files_with_tool_yaml', 0)} ({summary.get('coverage_percent', 0):.1f}%)\n\n"
+         
+        # Hotspots
+        hotspots = data.get('hotspots', [])
+        if hotspots:
+            report += "🔥 HOTSPOTS (most important files)\n"
+            for h in hotspots[:10]:
+                report += f"   {h['name']} (score: {h['score']})\n"
+                report += f"     {h['description'][:60]}\n"
+                report += f"     {' '.join(h['reasons'][:3])}\n"
+            report += "\n"
+        
+        # Orphans
+        orphans = data.get('orphans', [])
+        if orphans:
+            report += "👻 ORPHANS (not imported by anything)\n"
+            for o in orphans[:10]:
+                status_icon = "⚠️" if o['status'] == 'active but isolated' else "💤"
+                report += f"   {status_icon} {o['name']} - {o['status']}\n"
+                report += f"     {o['description'][:60]}\n"
+            report += "\n"
+        
+        # Duplicates
+        duplicates = data.get('duplicates', [])
+        if duplicates:
+            report += "🔄 POTENTIAL DUPLICATES\n"
+            for d in duplicates[:5]:
+                report += f"   {d['stem']} appears in:\n"
+                for f in d['files']:
+                    report += f"     - {f['folder']}/{f['name']}\n"
+            report += "\n"
+        
+        # Recommendations
+        recs = data.get('recommendations', [])
+        if recs:
+            report += "💡 RECOMMENDATIONS\n"
+            for r in recs:
+                priority_icon = "🔴" if r['priority'] == 'high' else "🟡" if r['priority'] == 'medium' else "🟢"
+                report += f"   {priority_icon} {r['message']}\n"
+            report += "\n"
+        
+        # By folder breakdown
+        by_folder = summary.get('by_folder', {})
+        report += "📁 FOLDER BREAKDOWN\n"
+        for folder, info in sorted(by_folder.items()):
+            report += f"   {folder}: {info['count']} files\n"
+        
+        report += "="*70 + "\n"
+        
+        reports_dir = get_reports_dir()
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        base = f"landscape_report_{timestamp}"
+        
+        # Write plain text
+        txt_path = reports_dir / f"{base}.txt"
+        with open(txt_path, 'w', encoding='utf-8') as f:
+            f.write(report)
+        
+        # Write HTML (with dark theme)
+        html_content = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -561,26 +562,30 @@ def generate_report(inputs):
 <pre>{report}</pre>
 </body>
 </html>"""
-    html_path = reports_dir / f"{base}.html"
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-    
-    # Return relative paths from project root (for clickability)
-    cwd = Path.cwd()
-    try:
-        rel_txt = txt_path.relative_to(cwd)
-        rel_html = html_path.relative_to(cwd)
-    except ValueError:
-        rel_txt = txt_path
-        rel_html = html_path
-    
-    # Include the paths in the return dictionary
-    return {
-        'report': report,
-        'format': format_type,
-        'report_txt': str(rel_txt),
-        'report_html': str(rel_html)
-    }
+        html_path = reports_dir / f"{base}.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        
+        # Return relative paths from project root (for clickability)
+        cwd = Path.cwd()
+        try:
+            rel_txt = txt_path.relative_to(cwd)
+            rel_html = html_path.relative_to(cwd)
+        except ValueError:
+            rel_txt = txt_path
+            rel_html = html_path
+        
+        # Include the paths in the return dictionary
+        return {
+            'report': report,
+            'format': format_type,
+            'report_txt': str(rel_txt),
+            'report_html': str(rel_html)
+        }
+    except Exception e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return {'error': str(e)}
 
 if __name__ == '__main__':
     main()
