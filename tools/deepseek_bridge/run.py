@@ -70,14 +70,14 @@ def main():
     file_path = params.get('file')
     prompt = params.get('prompt', '')
 
-    if not file_path:
-        print(json.dumps({"status": "error", "error": "Missing 'file'"}))
-        return 1
+    #if not file_path:
+    #    print(json.dumps({"status": "error", "error": "Missing 'file'"}))
+    #    return 1
 
-    path = Path(file_path)
-    if not path.is_absolute():
+    path = Path(file_path) if file_path else None
+    if file_path and not path.is_absolute():
         path = PROJECT_ROOT / path
-    if not path.exists():
+    if file_path and not path.exists():
         print(json.dumps({"status": "error", "error": f"File not found: {path}"}))
         return 1
 
