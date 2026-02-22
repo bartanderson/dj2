@@ -78,13 +78,13 @@ def main():
     if not path.is_absolute():
         path = PROJECT_ROOT / path
     if not path.exists():
-        print(json.dumps({"status": "error", "error": f"File not found: {path}"}}))
+        print(json.dumps({"status": "error", "error": f"File not found: {path}"}))
         return 1
 
     try:
         ensure_service()
     except Exception as e:
-        print(json.dumps({"status": "error", "error": f"Service failed: {e}"}}))
+        print(json.dumps({"status": "error", "error": f"Service failed: {e}"}))
         return 1
 
     try:
