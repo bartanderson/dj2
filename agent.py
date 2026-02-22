@@ -26,31 +26,64 @@ TOOL_DESCRIPTIONS = """
 - show_diff(): returns git diff of current changes.
 """
 
-def call_deepseek_for_plan(goal):
-    """Ask DeepSeek to create a plan (list of tool calls)."""
-    prompt = f"""
-You are an assistant that helps with software analysis and refactoring.
-You have access to these tools:
+def call_deepseek_for_plan(goal, max_retries=3):
+    """Ask DeepSeek for a plan, with aggressive cleaning and correction."""
+    system_prompt = """You are a strict JSON generator. You output only valid JSON arrays.
+Never include explanations, markdown, or any other text."""
+    example = """
+Example of valid output:
+[
+  {"tool": "analyze_tools", "arguments": {}, "store_as": "analysis"},
+  {"tool": "deepseek_consult", "arguments": {"prompt": "Summarize", "data": "$analysis"}, "store_as": "summary"}
+]
+"""
+    user_prompt = f"""{system_prompt}
+
+Available tools:
 {TOOL_DESCRIPTIONS}
 
 The user's goal: "{goal}"
 
-Decide a sequence of tool calls to fulfill this goal. Output a JSON list where each item has:
-- "tool": name of the tool
-- "arguments": dict of argument names and values (values can be literal or references like "$previous_result_name")
-- "store_as": a variable name to store the result (optional)
+{example}
 
-Only output the JSON list, nothing else.
-"""
-    result = deepseek_consult(prompt=prompt)
-    try:
-        plan = json.loads(result)
-        if not isinstance(plan, list):
-            raise ValueError("Plan is not a list")
-        return plan
-    except Exception as e:
-        print(f"Failed to parse plan: {e}\nRaw response:\n{result}")
-        return []
+Now output only the JSON array for the user's goal (no other text):"""
+
+    for attempt in range(max_retries):
+        raw_response = deepseek_consult(prompt=user_prompt)
+        # Clean the response: remove markdown fences, leading/trailing text
+        cleaned = re.sub(r'^```json\s*', '', raw_response.strip(), flags=re.IGNORECASE)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
+        # Find the first '[' and last ']'
+        start = cleaned.find('[')
+        end = cleaned.rfind(']')
+        if start != -1 and end != -1 and end > start:
+            json_str = cleaned[start:end+1]
+        else:
+            json_str = cleaned  # fallback
+
+        try:
+            plan = json.loads(json_str)
+            if isinstance(plan, list):
+                return plan
+            else:
+                raise ValueError("Not a list")
+        except Exception as e:
+            print(f"Attempt {attempt+1} failed: {e}")
+            if attempt < max_retries - 1:
+                # Send corrective prompt
+                user_prompt = f"""Your previous response was not valid JSON. It was:
+{raw_response}
+
+Please output ONLY a JSON array for the goal: "{goal}"
+Follow this exact format:
+[
+  {{"tool": "tool_name", "arguments": {{}}, "store_as": "var"}}
+]
+No other text."""
+            else:
+                print(f"Final raw response:\n{raw_response}")
+                return []
+    return []
 
 def execute_tool(tool_name, args, context):
     """Call the actual Python function with resolved arguments."""

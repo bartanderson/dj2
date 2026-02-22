@@ -81,7 +81,7 @@ class BridgeCore:
                 # Continue anyway - sometimes the detection fails but upload worked
             
             # Wait a moment for UI to settle
-            time.sleep(2)
+            time.sleep(5)
             
             # CRITICAL FIX: Send instruction to analyze the file
             instruction_sent = self._send_instruction("Please analyze the uploaded file and provide recommendations.")
@@ -97,44 +97,40 @@ class BridgeCore:
             return False
 
     def _send_instruction(self, instruction: str) -> bool:
-        """Send text instruction via textarea with proper timing"""
-        try:
-            # Find the textarea
-            textarea = self.driver.find_element(By.TAG_NAME, "textarea")
-            
-            # Clear any existing text
-            textarea.clear()
-            time.sleep(1)  # Wait for clear to register
-            
-            # Type the instruction slowly (like human typing)
-            self._log(f"Typing instruction: {len(instruction)} chars")
-            for char in instruction:
-                textarea.send_keys(char)
-                time.sleep(0.02)  # Slightly slower typing
-            
-            self._log("Instruction typed")
-            time.sleep(0.5)  # Brief pause
-            
-            # Press Enter to send
-            textarea.send_keys(Keys.RETURN)
-            self._log("✅ Instruction sent (Enter pressed)")
-            
-            # Wait longer for the send to process and AI to start thinking
-            time.sleep(5)  # Increased from 2 seconds to 5 seconds
-            
-            # Check if the textarea cleared (message was sent)
-            if textarea.get_attribute('value') == '':
-                self._log("✅ Message sent successfully")
-                return True
-            else:
-                self._log("⚠️ Textarea not cleared, pressing Enter again")
+        """Send text instruction, re‑finding textarea each time."""
+        from selenium.common.exceptions import StaleElementReferenceException
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                textarea = self.driver.find_element(By.TAG_NAME, "textarea")
+                textarea.clear()
+                time.sleep(1)
+                for char in instruction:
+                    textarea.send_keys(char)
+                    time.sleep(0.02)
+                time.sleep(0.5)
                 textarea.send_keys(Keys.RETURN)
-                time.sleep(3)
-                return True  # Assume sent after second attempt
-                
-        except Exception as e:
-            self._log(f"Failed to send instruction: {e}")
-            return False
+                self._log(f"Instruction sent (attempt {attempt+1})")
+                time.sleep(5)
+                # Re-find to check if cleared
+                textarea = self.driver.find_element(By.TAG_NAME, "textarea")
+                if textarea.get_attribute('value') == '':
+                    self._log("✅ Message sent successfully")
+                    return True
+                else:
+                    self._log("⚠️ Textarea not cleared, pressing Enter again")
+                    textarea.send_keys(Keys.RETURN)
+                    time.sleep(3)
+                    return True
+            except StaleElementReferenceException:
+                self._log(f"Stale element, retrying ({attempt+1}/{max_attempts})")
+                time.sleep(2)
+                continue
+            except Exception as e:
+                self._log(f"Error sending instruction: {e}")
+                return False
+        self._log("Failed to send instruction after retries")
+        return False
     
     def _wait_for_upload_complete(self, filename: str, timeout: int = 60) -> bool:
         """Wait for file upload to complete"""
