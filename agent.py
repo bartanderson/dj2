@@ -3,7 +3,7 @@
 Simple AI agent that uses tools to answer questions about your codebase.
 Usage: python agent.py "your goal here"
 """
-
+import re
 import sys
 import json
 from agent_tools import (
