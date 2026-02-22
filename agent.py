@@ -30,65 +30,55 @@ TOOL_DESCRIPTIONS = """
 """
 
 def extract_json_array(text):
-    """Extract the first valid JSON array from text, ignoring surrounding content."""
-    # Remove markdown fences first
+    """
+    Extract a JSON array or object from text. If a single object is found,
+    it will be wrapped in an array. Returns the JSON string or None.
+    """
+    # Remove markdown fences and strip
     text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
+    text = text.strip()
 
-    # Strategy 1: raw_decode
+    # Strategy 1: Try to parse the whole text as JSON
     try:
-        decoder = json.JSONDecoder()
-        idx = 0
-        while idx < len(text):
-            while idx < len(text) and text[idx].isspace():
-                idx += 1
-            if idx >= len(text):
-                break
-            try:
-                obj, end = decoder.raw_decode(text, idx)
-                if isinstance(obj, list):
-                    return text[idx:end]
-                idx = end
-            except json.JSONDecodeError:
-                idx += 1
-    except Exception:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return text
+        elif isinstance(parsed, dict):
+            # Single object – wrap in array
+            return f"[{text}]"
+    except json.JSONDecodeError:
         pass
 
-    # Strategy 2: bracket matching with retry
+    # Strategy 2: Find first '[' and matching ']'
     stack = []
     start = -1
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch == '[' and not stack:
-            start = i
-            stack.append(ch)
-        elif ch == '[' and stack:
-            stack.append(ch)
-        elif ch == ']' and stack:
-            stack.pop()
+    for i, ch in enumerate(text):
+        if ch == '[':
             if not stack:
-                candidate = text[start:i+1]
-                try:
-                    json.loads(candidate)
-                    return candidate
-                except json.JSONDecodeError:
-                    i = start + 1
-                    stack = []
-                    start = -1
-                    continue
-        i += 1
-
-    # Strategy 3: Fallback for missing outer brackets (comma‑separated objects)
-    # Regex: optional whitespace, then { ... }, then comma, then { ... }, etc.
-    if re.match(r'^\s*\{.*\}\s*,\s*\{.*\}\s*$', text, re.DOTALL):
-        candidate = f"[{text}]"
-        try:
-            json.loads(candidate)
-            print("DEBUG: Added missing brackets, valid JSON")
-            return candidate
-        except:
-            pass
+                start = i
+            stack.append(ch)
+        elif ch == ']':
+            if stack:
+                stack.pop()
+                if not stack:
+                    candidate = text[start:i+1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except json.JSONDecodeError:
+                        # Not valid, continue
+                        pass
+    # Strategy 3: Look for a single object (starts with '{')
+    # Use raw_decode to find the first JSON object
+    try:
+        decoder = json.JSONDecoder()
+        obj, end = decoder.raw_decode(text)
+        if isinstance(obj, dict):
+            # Found a single object, wrap it
+            return f"[{text[:end]}]"
+    except:
+        pass
 
     return None
 
@@ -123,6 +113,8 @@ Now output only the JSON array for the user's goal (no other text):"""
         if json_str:
             try:
                 plan = json.loads(json_str)
+                if isinstance(plan, dict):
+                    plan = [plan]  # wrap single object
                 if isinstance(plan, list):
                     return plan
             except json.JSONDecodeError:

@@ -159,9 +159,18 @@ def search_files(query, limit=10, group=None):
     if result.returncode != 0:
         raise Exception(f"Search failed: {result.stderr}")
 
-    # Parse output: assume one file path per line, ignore empty lines
-    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    return files
+    lines = result.stdout.splitlines()
+    file_paths = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip debug lines
+        if line.startswith('[DEBUG]') or line.startswith('Found '):
+            continue
+        # Assume it's a file path
+        file_paths.append(line)
+    return file_paths
 
 # ----------------------------------------------------------------------
 # Git operations (from your nativeclaw code)
