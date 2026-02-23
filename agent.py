@@ -57,36 +57,62 @@ def get_plan_from_deepseek(prompt, max_retries=3):
     return []
     
 def extract_json_array(text):
+    """Extract JSON by trimming leading text to first '{' or '[' and trailing text after last '}' or ']'. Then try to parse, adding outer brackets if needed."""
     # Remove markdown fences
     text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
     text = text.strip()
 
-    # Try to find the first '[' and last ']'
-    start = text.find('[')
-    end = text.rfind(']')
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start:end+1]
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, list):
-                return candidate
-            elif isinstance(parsed, dict):
-                return f"[{candidate}]"
-        except:
-            pass
+    # Find first '{' or '['
+    start = -1
+    for i, ch in enumerate(text):
+        if ch in '{[':
+            start = i
+            break
+    if start == -1:
+        return None
 
-    # Try to find a single object
-    start = text.find('{')
-    end = text.rfind('}')
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start:end+1]
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                return f"[{candidate}]"
-        except:
-            pass
+    # Find last '}' or ']'
+    end = -1
+    for i in range(len(text)-1, -1, -1):
+        if text[i] in '}]':
+            end = i
+            break
+    if end == -1 or end <= start:
+        return None
+
+    candidate = text[start:end+1]
+
+    # Try parsing as is
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, list):
+            return candidate
+        elif isinstance(parsed, dict):
+            # Single object, wrap in array
+            return f"[{candidate}]"
+    except json.JSONDecodeError:
+        pass
+
+    # Try adding outer brackets
+    try:
+        parsed = json.loads('[' + candidate + ']')
+        if isinstance(parsed, list):
+            return '[' + candidate + ']'
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: use raw_decode to find the first JSON value
+    try:
+        decoder = json.JSONDecoder()
+        obj, end = decoder.raw_decode(text)
+        if isinstance(obj, dict):
+            # Found a single object, wrap it
+            return f"[{text[:end]}]"
+        elif isinstance(obj, list):
+            return text[:end]
+    except:
+        pass
 
     return None
 
