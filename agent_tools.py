@@ -159,7 +159,7 @@ def write_file(path, content):
     return f"Written {path}"
 
 # ----------------------------------------------------------------------
-# Search tool using ai.py search
+# Search tool using ai.py search and return valid paths
 # ----------------------------------------------------------------------
 def search_files(query, limit=10, group=None):
     """
@@ -188,10 +188,23 @@ def search_files(query, limit=10, group=None):
         # Skip debug lines
         if line.startswith('[DEBUG]') or line.startswith('Found '):
             continue
-        # Ignore .nativeclaw paths
-        if '.nativeclaw' in line.replace('\\', '/'):
-            continue
-        file_paths.append(line)
+
+        # Extract the file path from lines like "1. world\\ai_dungeon_master.py (score: 33.973)"
+        if '. ' in line:
+            parts = line.split('. ', 1)
+            if len(parts) == 2:
+                rest = parts[1]
+                # Remove the score part if present
+                if ' (score:' in rest:
+                    path = rest.split(' (score:', 1)[0]
+                else:
+                    path = rest
+                file_paths.append(path.strip())
+            else:
+                # Fallback to whole line if format unexpected
+                file_paths.append(line)
+        else:
+            file_paths.append(line)
     return file_paths
 
 # ----------------------------------------------------------------------
