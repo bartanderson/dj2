@@ -33,54 +33,36 @@ TOOL_DESCRIPTIONS = """
 """
 
 def extract_json_array(text):
-    """
-    Extract a JSON array or object from text. If a single object is found,
-    it will be wrapped in an array. Returns the JSON string or None.
-    """
-    # Remove markdown fences and strip
+    # Remove markdown fences
     text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
     text = re.sub(r'\s*```$', '', text)
     text = text.strip()
 
-    # Strategy 1: Try to parse the whole text as JSON
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return text
-        elif isinstance(parsed, dict):
-            # Single object – wrap in array
-            return f"[{text}]"
-    except json.JSONDecodeError:
-        pass
+    # Try to find the first '[' and last ']'
+    start = text.find('[')
+    end = text.rfind(']')
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start:end+1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, list):
+                return candidate
+            elif isinstance(parsed, dict):
+                return f"[{candidate}]"
+        except:
+            pass
 
-    # Strategy 2: Find first '[' and matching ']'
-    stack = []
-    start = -1
-    for i, ch in enumerate(text):
-        if ch == '[':
-            if not stack:
-                start = i
-            stack.append(ch)
-        elif ch == ']':
-            if stack:
-                stack.pop()
-                if not stack:
-                    candidate = text[start:i+1]
-                    try:
-                        json.loads(candidate)
-                        return candidate
-                    except json.JSONDecodeError:
-                        # Not valid, continue
-                        pass
-    # Strategy 3: Use raw_decode to find the first JSON object
-    try:
-        decoder = json.JSONDecoder()
-        obj, end = decoder.raw_decode(text)
-        if isinstance(obj, dict):
-            # Found a single object, wrap it
-            return f"[{text[:end]}]"
-    except:
-        pass
+    # Try to find a single object
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start:end+1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return f"[{candidate}]"
+        except:
+            pass
 
     return None
 
