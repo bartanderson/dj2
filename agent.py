@@ -110,7 +110,17 @@ Example of valid output (note the outer brackets):
     user_prompt = base_prompt.format(descriptions=TOOL_DESCRIPTIONS) + f"\n\nThe user's goal: \"{goal}\""
 
     for attempt in range(max_retries):
-        raw_response = deepseek_consult(prompt=user_prompt)
+        try:
+            raw_response = deepseek_consult(prompt=user_prompt)
+        except Exception as e:
+            log_event('deepseek_consult_failed', {'error': str(e), 'attempt': attempt})
+            print(f"DeepSeek consult failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+                continue
+            else:
+                return []
+
         print(f"\nDEBUG: Raw response (attempt {attempt+1}):\n{raw_response}\n")
         log_event('raw_plan_response', raw_response)
 
@@ -130,6 +140,7 @@ Example of valid output (note the outer brackets):
                     return plan
             except Exception as e:
                 log_event('plan_parse_error', {'error': str(e), 'json_str': json_str})
+                # fall through to retry
 
         print(f"Attempt {attempt+1} failed to extract valid JSON.")
         if attempt < max_retries - 1:
