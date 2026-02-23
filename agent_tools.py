@@ -7,17 +7,18 @@ Uses your existing bridge and analyzer.
 import subprocess
 import json
 import sys
-from pathlib import Path
-
-_deepseek_bridge = None
+import os
 import atexit
-
-import json
+import time
+from pathlib import Path
 from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).parent
 LOG_FILE = PROJECT_ROOT / 'agent_log.jsonl'
 
+# ----------------------------------------------------------------------
+# Logging
+# ----------------------------------------------------------------------
 def log_event(event_type, data):
     """Append an event to the log file."""
     entry = {
@@ -25,8 +26,11 @@ def log_event(event_type, data):
         'type': event_type,
         'data': data
     }
-    with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(json.dumps(entry) + '\n')
+    try:
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry) + '\n')
+    except:
+        pass
 
 # ----------------------------------------------------------------------
 # Analysis tool – calls your existing tool_analyzer
@@ -46,44 +50,28 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
-# DeepSeek consultation – uses your reliable Selenium bridge
+# DeepSeek consultation – persistent bridge
 # ----------------------------------------------------------------------
-# Global persistent bridge instance
-
-
-def _close_bridge():
-    global _deepseek_bridge
-    if _deepseek_bridge is not None:
-        try:
-            _deepseek_bridge.close()  # your existing close
-        except:
-            pass
-        # Also kill any lingering chrome processes with this profile?
-        # Optional: subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'], capture_output=True)
-        # But that would kill all Chrome instances – not ideal.
-        _deepseek_bridge = None
-
-atexit.register(_close_bridge)
+_deepseek_bridge = None
 
 def _ensure_bridge_alive():
     """Return a working bridge instance, recreating if dead."""
     global _deepseek_bridge
-    print("DEBUG: _ensure_bridge_alive called")
     if _deepseek_bridge is None:
-        print("DEBUG: bridge is None, creating new")
         from tools.bridge.bridge_controller import BridgeController
         _deepseek_bridge = BridgeController()
+        log_event('bridge', 'created new bridge')
         return _deepseek_bridge
 
-    # Health check – try to access the driver via the correct chain
+    # Health check – try to access driver via the correct chain
     try:
         # BridgeController.bridge is DeepSeekBridgeReact, which has _core with driver
         driver = _deepseek_bridge.bridge._core.driver
-        _ = driver.current_url  # will raise if dead
-        print("DEBUG: bridge is alive")
+        _ = driver.current_url
+        log_event('bridge', 'bridge is alive')
         return _deepseek_bridge
     except Exception as e:
-        print(f"DEBUG: bridge dead ({e}), recreating")
+        log_event('bridge', f'bridge dead ({e}), recreating')
         try:
             _deepseek_bridge.close()
         except:
@@ -92,29 +80,33 @@ def _ensure_bridge_alive():
         _deepseek_bridge = BridgeController()
         return _deepseek_bridge
 
+def _close_bridge():
+    global _deepseek_bridge
+    if _deepseek_bridge is not None:
+        try:
+            _deepseek_bridge.close()
+        except:
+            pass
+        _deepseek_bridge = None
+        log_event('bridge', 'closed')
+
+atexit.register(_close_bridge)
+
 def deepseek_consult(prompt, file=None, data=None):
     """
     Send a prompt and optional context to DeepSeek using a persistent bridge.
-    The bridge stays open across calls and is closed when the process exits.
+    file: path to a file (relative to project root) whose content will be prepended.
+    data: any extra data (dict/string) to include.
+    Returns response string.
     """
-    global _deepseek_bridge
-    print(f"DEBUG: deepseek_consult called, bridge exists: {_deepseek_bridge is not None}")
     bridge = _ensure_bridge_alive()
-    print(f"DEBUG: after _ensure_bridge_alive, bridge: {bridge}")
-    if _deepseek_bridge is None:
-        # Import here to avoid circular imports
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent))
-        from tools.bridge.bridge_controller import BridgeController
-        _deepseek_bridge = BridgeController()
 
     # Build full prompt with context
     full_prompt = prompt
     if file:
         file_path = Path(file)
         if not file_path.is_absolute():
-            file_path = Path(__file__).parent / file_path
+            file_path = PROJECT_ROOT / file_path
         if file_path.exists():
             file_content = file_path.read_text(encoding='utf-8')
             full_prompt = f"File content:\n{file_content}\n\n{full_prompt}"
@@ -126,12 +118,8 @@ def deepseek_consult(prompt, file=None, data=None):
         full_prompt = f"Data:\n{data_str}\n\n{full_prompt}"
 
     log_event('prompt', full_prompt)
-
-    _ensure_bridge_alive()
-
-    response = _deepseek_bridge.ask_deepseek(full_prompt, use_tools=False)
+    response = bridge.ask_deepseek(full_prompt, use_tools=False)
     if response is None:
-        log_event('response', "DeepSeek returned no response")
         raise Exception("DeepSeek returned no response")
     log_event('response', response)
     return response
@@ -146,6 +134,20 @@ def read_file(path):
         raise Exception(f"File not found: {path}")
     return full_path.read_text(encoding='utf-8')
 
+def read_files(file_paths):
+    """
+    Read multiple files and return a dictionary mapping file path to content.
+    file_paths: list of paths (relative to project root).
+    """
+    contents = {}
+    for path in file_paths:
+        full_path = PROJECT_ROOT / path
+        if full_path.exists():
+            contents[path] = full_path.read_text(encoding='utf-8')
+        else:
+            contents[path] = f"File not found: {path}"
+    return contents
+
 def write_file(path, content):
     """Write content to file. Creates a backup (.bak) if file exists."""
     full_path = PROJECT_ROOT / path
@@ -156,14 +158,14 @@ def write_file(path, content):
     full_path.write_text(content, encoding='utf-8')
     return f"Written {path}"
 
+# ----------------------------------------------------------------------
+# Search tool using ai.py search
+# ----------------------------------------------------------------------
 def search_files(query, limit=10, group=None):
     """
     Search for files using ai.py search command.
     Returns a list of file paths (relative to project root) matching the query.
     """
-    import subprocess
-    from pathlib import Path
-
     cmd = [sys.executable, 'ai.py', 'search', query, '--limit', str(limit)]
     if group:
         cmd.extend(['--group', group])

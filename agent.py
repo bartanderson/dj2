@@ -11,6 +11,7 @@ from agent_tools import (
     analyze_tools,
     deepseek_consult,
     read_file,
+    read_files,
     write_file,
     search_files,
     create_branch,
@@ -23,6 +24,7 @@ TOOL_DESCRIPTIONS = """
 - analyze_tools(): returns a dictionary with analysis of all tools (capabilities, imports, hotspots, orphans, duplicates, etc.)
 - deepseek_consult(prompt, file=None, data=None): send a prompt and optional context to DeepSeek, returns response.
 - read_file(path): returns content of file as string (path relative to project root).
+- read_files(file_paths): takes a list of file paths and returns a dict of path -> content.
 - write_file(path, content): writes content to file (creates backup). Use with caution.
 - search_files(query, limit=10, group=None): returns a list of file paths (relative to project root) matching the query. Uses the existing ai.py search command.
 - create_branch(branch_name): creates a new git branch and switches to it.
@@ -70,8 +72,7 @@ def extract_json_array(text):
                     except json.JSONDecodeError:
                         # Not valid, continue
                         pass
-    # Strategy 3: Look for a single object (starts with '{')
-    # Use raw_decode to find the first JSON object
+    # Strategy 3: Use raw_decode to find the first JSON object
     try:
         decoder = json.JSONDecoder()
         obj, end = decoder.raw_decode(text)
@@ -111,6 +112,7 @@ Example of valid output (note the outer brackets):
     for attempt in range(max_retries):
         raw_response = deepseek_consult(prompt=user_prompt)
         print(f"\nDEBUG: Raw response (attempt {attempt+1}):\n{raw_response}\n")
+        log_event('raw_plan_response', raw_response)
 
         json_str = extract_json_array(raw_response)
         if json_str:
@@ -119,9 +121,15 @@ Example of valid output (note the outer brackets):
                 if isinstance(plan, dict):
                     plan = [plan]  # wrap single object
                 if isinstance(plan, list):
+                    # Validate each step has required fields
+                    for step in plan:
+                        if 'tool' not in step:
+                            raise ValueError(f"Step missing 'tool': {step}")
+                        if 'arguments' not in step:
+                            step['arguments'] = {}  # default empty
                     return plan
-            except json.JSONDecodeError:
-                pass
+            except Exception as e:
+                log_event('plan_parse_error', {'error': str(e), 'json_str': json_str})
 
         print(f"Attempt {attempt+1} failed to extract valid JSON.")
         if attempt < max_retries - 1:
@@ -141,6 +149,7 @@ No other text, no markdown, no explanation."""
     return []
 
 def execute_tool(tool_name, args, context):
+    """Call the actual Python function with resolved arguments."""
     # Resolve any $var references in args
     resolved = {}
     for k, v in args.items():
@@ -153,7 +162,6 @@ def execute_tool(tool_name, args, context):
     # Log the tool call
     log_event('tool-call', {'tool': tool_name, 'args': resolved})
 
-    # Dispatch to the appropriate function
     try:
         if tool_name == 'analyze_tools':
             result = analyze_tools(**resolved)
@@ -176,24 +184,24 @@ def execute_tool(tool_name, args, context):
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        # Log the result
         log_event('tool-result', {'tool': tool_name, 'result': result})
         return result
     except Exception as e:
         log_event('error', f"Tool {tool_name} failed: {e}")
         raise
 
-def process_goal(goal):
-    """Process a single goal and return True if successful."""
+def process_goal(goal, session_context):
+    """Process a single goal, update session_context, return new session_context."""
     print(f"\nGoal: {goal}\n")
     print("Planning...")
     plan = call_deepseek_for_plan(goal)
     if not plan:
         print("Could not generate a plan.")
-        return False
+        return session_context
 
     print("\nExecuting plan:")
-    context = {}
+    # Start with session context, will be updated with step results
+    context = session_context.copy()
     for i, step in enumerate(plan):
         tool = step.get('tool')
         args = step.get('arguments', {})
@@ -203,22 +211,48 @@ def process_goal(goal):
             result = execute_tool(tool, args, context)
             if store:
                 context[store] = result
-            preview = str(result)[:200] + "..." if len(str(result)) > 200 else str(result)
-            print(f"  Result: {preview}")
+                print(f"  Stored as '{store}'")
+            # Display result
+            result_str = str(result)
+            print(f"  Result length: {len(result_str)} chars")
+            if len(result_str) > 500:
+                save = input("Result is long. Save to file? (y/n): ").strip().lower()
+                if save == 'y':
+                    from datetime import datetime
+                    filename = f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        f.write(result_str)
+                    print(f"  Saved to {filename}")
+                else:
+                    print(f"  Preview (first 500 chars):\n{result_str[:500]}")
+            else:
+                print(f"  Result:\n{result_str}")
         except Exception as e:
             print(f"  Error: {e}")
             cont = input("Continue? (y/n): ").strip().lower()
             if cont != 'y':
                 break
 
+    # After plan, check for a final answer
     final = context.get('final_answer') or context.get('result')
     if final:
         print("\n=== Final Answer ===")
-        print(final)
-    return True
+        final_str = str(final)
+        print(final_str)
+        if len(final_str) > 500:
+            save = input("Final answer is long. Save to file? (y/n): ").strip().lower()
+            if save == 'y':
+                from datetime import datetime
+                filename = f"final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(final_str)
+                print(f"Saved to {filename}")
+
+    return context
 
 def main():
     print("Interactive AI Agent. Type your goals, or 'exit' to quit.")
+    session_context = {}
     while True:
         try:
             goal = input("\n🎯 Goal: ").strip()
@@ -226,12 +260,13 @@ def main():
                 break
             if not goal:
                 continue
-            process_goal(goal)
+            session_context = process_goal(goal, session_context)
         except KeyboardInterrupt:
             print("\nExiting.")
             break
         except Exception as e:
             print(f"Error: {e}")
+            log_event('fatal_error', str(e))
 
 if __name__ == '__main__':
     main()
