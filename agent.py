@@ -276,8 +276,9 @@ def main():
             print("\nExiting.")
             break
         except Exception as e:
-            print(f"Error: {e}")
-            log_event('fatal_error', str(e))
+            import traceback
+            traceback.print_exc()
+            log_event('fatal_error', {'message': str(e), 'traceback': traceback.format_exc()})
 
 if __name__ == '__main__':
     main()
