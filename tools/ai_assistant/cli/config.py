@@ -20,7 +20,7 @@ class AIConfig:
         'dist', 'build', '*.egg-info', 'site-packages',
         'Lib', 'Scripts', 'Include',  # Python installation
         'archive', 'backups', 'snapshots', 'temp', 'tmp',
-        '.whoosh_index',  # Our own index directory
+        '.nativeclaw','.whoosh_index',  # Our own index directory
     }
 
     # File type groups for smart filtering

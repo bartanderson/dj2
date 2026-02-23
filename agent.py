@@ -191,62 +191,105 @@ def execute_tool(tool_name, args, context):
         raise
 
 def process_goal(goal, session_context):
-    """Process a single goal, update session_context, return new session_context."""
+    """Process a goal with user approval at each step."""
     print(f"\nGoal: {goal}\n")
-    print("Planning...")
-    plan = call_deepseek_for_plan(goal)
-    if not plan:
-        print("Could not generate a plan.")
-        return session_context
-
-    print("\nExecuting plan:")
-    # Start with session context, will be updated with step results
+    max_iterations = 10  # safety
+    iteration = 0
+    current_goal = goal
     context = session_context.copy()
-    for i, step in enumerate(plan):
-        tool = step.get('tool')
-        args = step.get('arguments', {})
-        store = step.get('store_as')
-        print(f"\nStep {i+1}: {tool} with {args}")
-        try:
-            result = execute_tool(tool, args, context)
-            if store:
-                context[store] = result
-                print(f"  Stored as '{store}'")
-            # Display result
-            result_str = str(result)
-            print(f"  Result length: {len(result_str)} chars")
-            if len(result_str) > 500:
-                save = input("Result is long. Save to file? (y/n): ").strip().lower()
-                if save == 'y':
-                    from datetime import datetime
-                    filename = f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(result_str)
-                    print(f"  Saved to {filename}")
-                else:
-                    print(f"  Preview (first 500 chars):\n{result_str[:500]}")
-            else:
-                print(f"  Result:\n{result_str}")
-        except Exception as e:
-            print(f"  Error: {e}")
-            cont = input("Continue? (y/n): ").strip().lower()
-            if cont != 'y':
-                break
 
-    # After plan, check for a final answer
-    final = context.get('final_answer') or context.get('result')
-    if final:
-        print("\n=== Final Answer ===")
-        final_str = str(final)
-        print(final_str)
-        if len(final_str) > 500:
-            save = input("Final answer is long. Save to file? (y/n): ").strip().lower()
+    while iteration < max_iterations:
+        iteration += 1
+        print(f"\n--- Iteration {iteration} ---")
+        print("Planning...")
+        plan = call_deepseek_for_plan(current_goal)
+        if not plan:
+            print("Could not generate a plan.")
+            break
+
+        print("\nProposed plan:")
+        for i, step in enumerate(plan):
+            print(f"  {i+1}. {step['tool']} with args {step.get('arguments', {})}")
+            if 'store_as' in step:
+                print(f"     → store as '{step['store_as']}'")
+
+        response = input("\nExecute this plan? (y/n/modify/stop): ").strip().lower()
+        if response == 'stop':
+            break
+        elif response == 'modify':
+            # Let user type a new plan (JSON) or natural language instruction
+            print("Enter new plan as JSON array, or type 'auto' to let AI regenerate:")
+            new_plan_input = input("> ").strip()
+            if new_plan_input == 'auto':
+                continue  # will regenerate in next loop iteration
+            try:
+                # Try to parse as JSON
+                plan = json.loads(new_plan_input)
+                if not isinstance(plan, list):
+                    plan = [plan]
+                # Validate basic structure
+                for step in plan:
+                    if 'tool' not in step:
+                        raise ValueError("Step missing 'tool'")
+                    if 'arguments' not in step:
+                        step['arguments'] = {}
+            except Exception as e:
+                print(f"Invalid JSON: {e}. Using original plan.")
+                # fall back to original plan
+        elif response != 'y':
+            print("Skipping plan.")
+            break
+
+        # Execute the plan
+        print("\nExecuting plan:")
+        for i, step in enumerate(plan):
+            tool = step.get('tool')
+            args = step.get('arguments', {})
+            store = step.get('store_as')
+            print(f"\nStep {i+1}: {tool} with {args}")
+            try:
+                result = execute_tool(tool, args, context)
+                if store:
+                    context[store] = result
+                    print(f"  Stored as '{store}'")
+                # Show result summary
+                result_str = str(result)
+                print(f"  Result length: {len(result_str)} chars")
+                if len(result_str) > 500:
+                    preview = result_str[:500]
+                    print(f"  Preview: {preview}...")
+                else:
+                    print(f"  Result: {result_str}")
+            except Exception as e:
+                print(f"  Error: {e}")
+                cont = input("Continue with next steps? (y/n): ").strip().lower()
+                if cont != 'y':
+                    break
+
+        # After execution, ask if we're done or need more steps
+        final = context.get('final_answer') or context.get('result')
+        if final:
+            print("\n=== Final Answer ===")
+            print(final)
+            # Optionally save
+            save = input("Save final answer to file? (y/n): ").strip().lower()
             if save == 'y':
                 from datetime import datetime
                 filename = f"final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                 with open(filename, 'w', encoding='utf-8') as f:
-                    f.write(final_str)
+                    f.write(str(final))
                 print(f"Saved to {filename}")
+            break
+
+        # Ask if we should continue with the same goal or a new one
+        cont = input("\nContinue working on this goal? (y/new goal/stop): ").strip().lower()
+        if cont == 'stop':
+            break
+        elif cont.startswith('new'):
+            # User wants to set a new goal
+            current_goal = input("Enter new goal: ").strip()
+            # Reset context? Keep it for now.
+        # else continue with same goal
 
     return context
 
@@ -262,12 +305,13 @@ def main():
                 continue
             session_context = process_goal(goal, session_context)
         except KeyboardInterrupt:
-            print("\nExiting.")
-            break
+            print("\nInterrupted.")
+            cont = input("Continue? (y/n): ").strip().lower()
+            if cont != 'y':
+                break
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            log_event('fatal_error', {'message': str(e), 'traceback': traceback.format_exc()})
+            print(f"Error: {e}")
+            log_event('fatal_error', str(e))
 
 if __name__ == '__main__':
     main()

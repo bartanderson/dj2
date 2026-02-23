@@ -188,7 +188,9 @@ def search_files(query, limit=10, group=None):
         # Skip debug lines
         if line.startswith('[DEBUG]') or line.startswith('Found '):
             continue
-        # Assume it's a file path
+        # Ignore .nativeclaw paths
+        if '.nativeclaw' in line.replace('\\', '/'):
+            continue
         file_paths.append(line)
     return file_paths
 
