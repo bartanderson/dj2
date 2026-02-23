@@ -32,6 +32,30 @@ TOOL_DESCRIPTIONS = """
 - show_diff(): returns git diff of current changes.
 """
 
+def get_plan_from_deepseek(prompt, max_retries=3):
+    """Send a custom prompt to DeepSeek and return a list of tool calls."""
+    for attempt in range(max_retries):
+        raw = deepseek_consult(prompt=prompt)
+        json_str = extract_json_array(raw)
+        if json_str:
+            try:
+                plan = json.loads(json_str)
+                if isinstance(plan, dict):
+                    plan = [plan]
+                if isinstance(plan, list):
+                    # Validate each step
+                    for step in plan:
+                        if 'tool' not in step:
+                            raise ValueError("Step missing 'tool'")
+                        if 'arguments' not in step:
+                            step['arguments'] = {}
+                    return plan
+            except Exception as e:
+                log_event('plan_parse_error', {'error': str(e), 'json_str': json_str})
+        if attempt < max_retries - 1:
+            prompt = f"Your previous response was not valid JSON. Please output a JSON array of tool calls. Raw: {raw}"
+    return []
+    
 def extract_json_array(text):
     # Remove markdown fences
     text = re.sub(r'^```json\s*', '', text.strip(), flags=re.IGNORECASE)
@@ -173,43 +197,49 @@ def execute_tool(tool_name, args, context):
         raise
 
 def process_goal(goal, session_context):
-    """Process a goal with user approval at each step."""
+    """Process a goal with user approval at each step. After each plan, automatically asks DeepSeek for next steps."""
     print(f"\nGoal: {goal}\n")
-    max_iterations = 10  # safety
+    max_iterations = 10
     iteration = 0
-    current_goal = goal
+    original_goal = goal
     context = session_context.copy()
+    next_plan = None  # plan for next iteration, if any
 
     while iteration < max_iterations:
         iteration += 1
         print(f"\n--- Iteration {iteration} ---")
-        print("Planning...")
-        plan = call_deepseek_for_plan(current_goal)
-        if not plan:
-            print("Could not generate a plan.")
-            break
 
+        # Determine the plan for this iteration
+        if next_plan is not None:
+            plan = next_plan
+            next_plan = None
+        else:
+            print("Planning...")
+            plan = call_deepseek_for_plan(original_goal)
+            if not plan:
+                print("Could not generate a plan.")
+                break
+
+        # Show proposed plan
         print("\nProposed plan:")
         for i, step in enumerate(plan):
             print(f"  {i+1}. {step['tool']} with args {step.get('arguments', {})}")
             if 'store_as' in step:
                 print(f"     → store as '{step['store_as']}'")
 
+        # Ask for approval
         response = input("\nExecute this plan? (y/n/modify/stop): ").strip().lower()
         if response == 'stop':
             break
         elif response == 'modify':
-            # Let user type a new plan (JSON) or natural language instruction
             print("Enter new plan as JSON array, or type 'auto' to let AI regenerate:")
             new_plan_input = input("> ").strip()
             if new_plan_input == 'auto':
                 continue  # will regenerate in next loop iteration
             try:
-                # Try to parse as JSON
                 plan = json.loads(new_plan_input)
                 if not isinstance(plan, list):
                     plan = [plan]
-                # Validate basic structure
                 for step in plan:
                     if 'tool' not in step:
                         raise ValueError("Step missing 'tool'")
@@ -217,7 +247,6 @@ def process_goal(goal, session_context):
                         step['arguments'] = {}
             except Exception as e:
                 print(f"Invalid JSON: {e}. Using original plan.")
-                # fall back to original plan
         elif response != 'y':
             print("Skipping plan.")
             break
@@ -238,8 +267,7 @@ def process_goal(goal, session_context):
                 result_str = str(result)
                 print(f"  Result length: {len(result_str)} chars")
                 if len(result_str) > 500:
-                    preview = result_str[:500]
-                    print(f"  Preview: {preview}...")
+                    print(f"  Preview: {result_str[:500]}...")
                 else:
                     print(f"  Result: {result_str}")
             except Exception as e:
@@ -248,12 +276,11 @@ def process_goal(goal, session_context):
                 if cont != 'y':
                     break
 
-        # After execution, ask if we're done or need more steps
+        # After execution, check if we have a final answer
         final = context.get('final_answer') or context.get('result')
         if final:
             print("\n=== Final Answer ===")
             print(final)
-            # Optionally save
             save = input("Save final answer to file? (y/n): ").strip().lower()
             if save == 'y':
                 from datetime import datetime
@@ -263,15 +290,13 @@ def process_goal(goal, session_context):
                 print(f"Saved to {filename}")
             break
 
-        # Ask if we should continue with the same goal or a new one
-        cont = input("\nContinue working on this goal? (y/new goal/stop): ").strip().lower()
-        if cont == 'stop':
+        # No final answer yet – ask DeepSeek for the next step
+        print("\nDetermining next step...")
+        next_plan_prompt = f"The original goal is: '{original_goal}'. The current results are stored in these variables: {list(context.keys())}. Based on these, what is the next logical step to achieve the original goal? Output a JSON array of tool calls."
+        next_plan = get_plan_from_deepseek(next_plan_prompt)
+        if not next_plan:
+            print("Could not determine next step. Stopping.")
             break
-        elif cont.startswith('new'):
-            # User wants to set a new goal
-            current_goal = input("Enter new goal: ").strip()
-            # Reset context? Keep it for now.
-        # else continue with same goal
 
     return context
 
