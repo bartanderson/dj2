@@ -875,41 +875,6 @@ def get_starting_equipment(class_name):
     equipment = world_controller.get_starting_equipment_options(class_name)
     return jsonify(equipment)
 
-# @app.route('/api/create-character', methods=['POST'])
-# def create_character():
-#     data = request.get_json()
-#     user_id = session.get('user_id', 'default_user')
-    
-#     # Create character using new system
-#     character = world_controller.create_character(user_id, data)
-    
-#     # Generate avatar
-#     avatar_prompt = (
-#         f"Fantasy portrait: {character.race} {character.classs.name} "
-#         f"{character.background.name}, {character.ai_personality['traits']}"
-#     )
-#     try:
-#         avatar_filename = t2i.generate_image(avatar_prompt, output_dir=avatar_dir)
-#         character.avatar_url = f"/static/character_avatars/{avatar_filename}"
-#     except Exception as e:
-#         print(f"Avatar generation failed: {e}")
-#         character.avatar_url = "/static/images/default_avatar.png"
-    
-#     # Add character to world controller
-#     world_controller.characters[character.id] = character
-    
-#     # Add to session party
-#     party = session.get('party', [])
-#     if len(party) < 4:  # Maintain party size limit
-#         party.append(character.id)
-#         session['party'] = party
-    
-#     return jsonify({
-#         "success": True,
-#         "character": character.to_dict(),
-#         "party_size": len(party)
-#     })
-
 @app.route('/api/create-character', methods=['POST'])
 def create_character():
     try:
@@ -918,20 +883,52 @@ def create_character():
         
         # Get or create player for this session
         player = app.world_controller.get_or_create_player(session_id)
+        if not player:
+            return jsonify({'error': 'Unable to create or retrieve player'}), 500
 
-        # Create character using your world controller
-        character = app.world_controller.create_character(player_id, data)
+        # Validate required fields
+        required_fields = ['name', 'race', 'class']
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            return jsonify({'error': f'Missing required fields: {missing}'}), 400
 
-        # Associate character with player
-        app.world_controller.associate_character_with_player(player.id, character.id)
-        
+        # Prepare intent for AuthoritySystem validation
+        intent = {
+            "intent": "character_creation",
+            "parameters": {"character_data": data}
+        }
+        context = {"player_id": player.id}
+        validation = app.world_controller.authority_system.validate_action(intent, context)
+        if not validation.get("valid"):
+            return jsonify({'error': validation.get('message', 'Invalid character data')}), 400
+
+        # Create character using CharacterManager
+        character = app.world_controller.character_manager.create_character(player.id, data)
+
+        # Assign character to player (updates player's active character and caches)
+        app.world_controller.character_manager.assign_character_to_player(player.id, character.id)
+
+        # Optional: Generate a narrative event (e.g., for the DM chat)
+        # This could be used to inform the player that the character was created.
+        # If you have a consequence engine, you might call it here.
+        if hasattr(app.world_controller, 'consequence_engine'):
+            tool_result = {
+                "action_type": "character_created",
+                "success": True,
+                "action_data": {"character": character}
+            }
+            app.world_controller.consequence_engine.generate_response_for_action(tool_result, context)
+
         return jsonify({
             'success': True,
             'character': character.to_dict(),
             'player_id': player.id
         })
-        
+
     except Exception as e:
+        print(f"Error in create_character: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/generate-personal-item', methods=['POST'])

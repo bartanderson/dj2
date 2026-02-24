@@ -28,7 +28,7 @@ class DMChatAI(AIBoundary):
         Player says: "{player_input}"
         
         Conversation Context:
-        - Recent topics: {context.get('recent_topics', [])}
+        - Recent dialogs: {context.get('recent_dialogs', [])}
         - Character creation state: {context.get('creation_state', 'not_started')}
         - Awaiting confirmation: {context.get('awaiting_confirmation', False)}
         
@@ -62,7 +62,8 @@ class DMChatAI(AIBoundary):
         except Exception as e:
             # Fallback to simpler classification
             return self._fallback_dm_intent_classification(player_input)
-    
+
+    # DEPRECATED: Will be removed when AI is reliable enough to always succeed.    
     def _fallback_dm_intent_classification(self, text: str) -> Dict[str, Any]:
         """Fallback intent classification for DM chat"""
         text_lower = text.lower()
@@ -92,6 +93,27 @@ class DMChatAI(AIBoundary):
             "parameters": {},
             "reasoning": "Fallback keyword matching"
         }
+
+    def extract_action_parameters(self, message: str, intent: str) -> Dict[str, Any]:
+        """
+        Extract structured parameters for a given intent from the message.
+        For example, for an action_request, extract the action verb and target.
+        """
+        prompt = f"""
+        Extract structured parameters from this player message for intent "{intent}".
+        
+        Message: "{message}"
+        
+        Return a JSON object with relevant parameters. For an action_request, include
+        "action" (the action verb), "target" (optional), "details" (any additional info).
+        For character_creation, you can call extract_character_data instead.
+        """
+        try:
+            return self.ai_system.generate_structured_data(prompt, {
+                "parameters": "dict"
+            }).get("parameters", {})
+        except Exception:
+            return {}
     
     def extract_character_data(self, message: str, existing_data: Dict = None) -> Dict[str, Any]:
         """Extract character creation information from natural language"""

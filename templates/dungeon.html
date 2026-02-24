@@ -240,33 +240,46 @@
     </div>
 
     <script>
-        // Initialize variables
+        // ===== INITIALIZATION =====
+        // Parse game_id from URL (if present)
+        const urlParams = new URLSearchParams(window.location.search);
+        window.gameId = urlParams.get('game_id');
+        
         let debugMode = false;
         const chatLog = document.getElementById('chat-log');
         const chatInput = document.getElementById('chat-text');
         
-        // Initialize the map
+        // ===== MAP FUNCTIONS =====
         function updateMap() {
             const map = document.getElementById('dungeon-map');
             const now = Date.now();
-            map.src = `/api/dungeon-image?debug=${debugMode}&t=${now}`;
+            let url = `/dungeon-image?debug=${debugMode}&t=${now}`;
+            if (window.gameId) {
+                url += `&game_id=${window.gameId}`;
+            }
+            map.src = url;
         }
         
-        // Function to move party
+        // ===== MOVEMENT =====
         function move(direction) {
             const map = document.getElementById('dungeon-map');
             map.style.opacity = '0.7';
             
+            const body = {direction: direction, steps: 1};
+            if (window.gameId) {
+                body.game_id = window.gameId;
+            }
+            
             fetch('/api/move', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({direction: direction, steps: 1})
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     document.getElementById('position').textContent = 
-                        `${data.new_position[0]}, ${data.new_position[1]}`; // swap display coords to match map
+                        `${data.new_position[0]}, ${data.new_position[1]}`;
                     updateMap();
                 }
                 addToChatLog(data.message, data.success ? 'system' : 'error');
@@ -275,27 +288,28 @@
                 setTimeout(() => map.style.opacity = '1', 300);
             });
         }
-
         
-        // Function to send chat messages
+        // ===== CHAT =====
         function sendChat() {
             const message = chatInput.value.trim();
             if (!message) return;
             
-            // Add user message to chat
             addToChatLog(message, 'user');
             chatInput.value = '';
             
-            // Disable send button during processing
             const sendBtn = document.getElementById('send-chat');
             sendBtn.disabled = true;
             sendBtn.textContent = 'Sending...';
             
-            // Send to AI command processor
+            const body = {command: message};
+            if (window.gameId) {
+                body.game_id = window.gameId;
+            }
+            
             fetch('/api/ai-command', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: message})
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -303,17 +317,9 @@
                     addToChatLog(`AI: ${data.message}`, 'ai');
                     updateMap();
                 } else {
-                    // Enhanced error display
                     let errorMsg = `Error: ${data.message}`;
-                    
-                    if (data.traceback) {
-                        errorMsg += `\n\nTechnical Details:\n${data.traceback}`;
-                    }
-                    
-                    if (data.ai_response) {
-                        errorMsg += `\n\nAI Response:\n${data.ai_response}`;
-                    }
-                    
+                    if (data.traceback) errorMsg += `\n\nTechnical Details:\n${data.traceback}`;
+                    if (data.ai_response) errorMsg += `\n\nAI Response:\n${data.ai_response}`;
                     addToChatLog(errorMsg, 'error');
                 }
             })
@@ -325,79 +331,18 @@
                 sendBtn.textContent = 'Send';
             });
         }
-                
-        // Add messages to chat log
-        function addToChatLog(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', sender);
-            messageDiv.textContent = text;
-            chatLog.appendChild(messageDiv);
-            
-            // Auto-scroll to bottom
-            chatLog.scrollTop = chatLog.scrollHeight;
-        }
-
-        function initMovementControls() {
-            // Setup direction buttons
-            const directions = [
-                'north', 'south', 'east', 'west',
-                'northeast', 'northwest', 'southeast', 'southwest'
-            ];
-            
-            directions.forEach(dir => {
-                const btn = document.getElementById(dir);
-                if (btn) {
-                    btn.addEventListener('click', () => move(dir));
-                }
-            });
-            
-            // Setup wait button
-            const waitBtn = document.getElementById('wait');
-            if (waitBtn) {
-                waitBtn.addEventListener('click', () => {
-                    addToChatLog("Party waits and observes", 'system');
-                    updateMap();  // Refresh visibility
-                });
+        
+        // ===== DEBUG GRID =====
+        document.getElementById('debug-grid').addEventListener('click', () => {
+            const body = {command: "!debug grid"};
+            if (window.gameId) {
+                body.game_id = window.gameId;
             }
             
-            // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
-                // Add this check to ignore when focused on input/textarea
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-                    return;
-                }
-                const key = e.key.toLowerCase();
-                const mapping = {
-                    'w': 'north',
-                    's': 'south',
-                    'a': 'west',
-                    'd': 'east',
-                    'q': 'northwest',
-                    'e': 'northeast',
-                    'z': 'southwest',
-                    'c': 'southeast',
-                    'x': 'south',
-                    ' ': 'wait'  // Space for wait
-                };
-                
-                if (mapping[key]) {
-                    if (mapping[key] === 'wait') {
-                        addToChatLog("Party waits and observes", 'system');
-                        updateMap();
-                    } else {
-                        move(mapping[key]);
-                    }
-                    e.preventDefault();  // Prevent scrolling on space
-                }
-            });
-        }
-
-
-        document.getElementById('debug-grid').addEventListener('click', () => {
             fetch('/api/ai-command', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: "!debug grid"})
+                body: JSON.stringify(body)
             })
             .then(response => response.json())
             .then(data => {
@@ -420,8 +365,53 @@
                 }
             });
         });
-
         
+        // ===== UTILITY =====
+        function addToChatLog(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender);
+            messageDiv.textContent = text;
+            chatLog.appendChild(messageDiv);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+        
+        function initMovementControls() {
+            const directions = ['north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'];
+            directions.forEach(dir => {
+                const btn = document.getElementById(dir);
+                if (btn) btn.addEventListener('click', () => move(dir));
+            });
+            
+            const waitBtn = document.getElementById('wait');
+            if (waitBtn) {
+                waitBtn.addEventListener('click', () => {
+                    addToChatLog("Party waits and observes", 'system');
+                    updateMap();
+                });
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                const key = e.key.toLowerCase();
+                const mapping = {
+                    'w': 'north', 's': 'south', 'a': 'west', 'd': 'east',
+                    'q': 'northwest', 'e': 'northeast', 'z': 'southwest', 'c': 'southeast',
+                    'x': 'south', ' ': 'wait'
+                };
+                if (mapping[key]) {
+                    if (mapping[key] === 'wait') {
+                        addToChatLog("Party waits and observes", 'system');
+                        updateMap();
+                    } else {
+                        move(mapping[key]);
+                    }
+                    e.preventDefault();
+                }
+            });
+        }
+        
+        // ===== EVENT LISTENERS =====
         document.getElementById('debug-toggle').addEventListener('click', () => {
             debugMode = !debugMode;
             updateMap();
@@ -435,11 +425,10 @@
             }
         });
         
-        // Initialize on load
         window.addEventListener('load', () => {
             updateMap();
             chatInput.focus();
-            initMovementControls();  // Initialize movement controls
+            initMovementControls();
         });
     </script>
 </body>

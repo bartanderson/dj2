@@ -11,6 +11,7 @@ import math
 import random
 import uuid
 import numpy as np
+from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
 
 from dnd_character import CLASSES
@@ -26,16 +27,16 @@ from world.dm_chat_ai import DMChatAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
 from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
-# this is new integration
 from engine.game_engine import GameEngine, GamePhase
-
 from .terrain import TerrainGenerator
 from .paths import PathGenerator
 from .map_utils import MapUtils
-
 from .party_manager import PartyManager
 from .quest_manager import QuestManager
 from .character_manager import CharacterManager
+from world.dm_chat_handler import DMChatHandler
+from world.player import Player           # Moved to top
+from world.consequence_engine import ConsequenceEngine   # Add import
 
 import warnings
 warnings.filterwarnings("ignore", message=".*Triton.*")
@@ -81,13 +82,28 @@ class WorldController:
         self.path_generator = PathGenerator(seed)
         self.map_utils = MapUtils(seed)
         self.world_map = WorldMap()
-        # We need to create dm_chat_ai FIRST, then pass it to NarrativeSystem
-        self.dm_chat_ai = DMChatAI(ai_system)  # Create this BEFORE narrative_system
+        
+        # Create dm_chat_ai FIRST (needed by many systems)
+        self.dm_chat_ai = DMChatAI(ai_system)
+
+        # Create ConsequenceEngine immediately after dm_chat_ai
+        self.consequence_engine = ConsequenceEngine(
+            world_controller=self,
+            dm_chat_ai=self.dm_chat_ai
+        )
+
+        # For backward compatibility, point dungeon_master to the new engine
+        self.dungeon_master = self.consequence_engine
+
+        # Now create other systems that depend on dm_chat_ai or consequence_engine
+
         self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
         self.character_builder = CharacterBuilder(ai_system)
+        
         # Register character builder tools for AI use
         if hasattr(ai_system, 'tool_registry'):
             ai_system.tool_registry.register_from_class(self.character_builder)
+        
         self.ai_system = ai_system
         self.terrain_types = self.terrain_generator.terrain_types
         self.fog_of_war = True
@@ -99,7 +115,7 @@ class WorldController:
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
         
-        # Set core game state via campaign_state (REPLACE OLD FIELDS)
+        # Set core game state via campaign_state
         self.campaign_state.time = 0
         self.campaign_state.time_factor = 1  
         self.campaign_state.game_started = False
@@ -108,7 +124,6 @@ class WorldController:
 
         # Initialize players
         self.players: Dict[str, Player] = {}
-        self.players: Dict[str, Player] = {}  # Add this for player management
         self.session_players: Dict[str, str] = {}  # session_id -> player_id
         
         # Initialize world manager and load world data
@@ -119,10 +134,7 @@ class WorldController:
         self.setup_world(self.world_data)
         
         # Set starting location
-        #starting_id = self.world_data.get("starting_location_id", "starting_tavern")
-
         starting_location = None
-        # Initialize with default values
         self.campaign_state.starting_location_id = None
         for location in self.world_map.locations.values():
             if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
@@ -146,14 +158,18 @@ class WorldController:
         self.party_manager = PartyManager(self.campaign_state.starting_location_id)
         self.character_manager = CharacterManager(self.character_builder)
 
-        # Transfer existing quests from world data to quest manager
-        for quest_id, quest in self.quest_manager.quests.items():
-            self.quest_manager.quests[quest_id] = quest
-        self.quest_manager.quests = {}  # Clear old quests dict
+        # Give character_manager a reference to this world controller
+        self.character_manager.set_world_controller(self)
 
-        # Transfer existing characters to character manager
-        self.character_manager.characters = self.character_manager.characters
-        self.character_manager.characters = {}  # Clear old characters dict
+        # What was this trying to do. Is there an equivalent or is this unneeded?
+        # # Transfer existing quests from world data to quest manager
+        # for quest_id, quest in self.quest_manager.quests.items():
+        #     self.quest_manager.quests[quest_id] = quest
+        # self.quest_manager.quests = {}  # Clear old quests dict
+
+        # # Transfer existing characters to character manager
+        # self.character_manager.characters = self.character_manager.characters
+        # self.character_manager.characters = {}  # Clear old characters dict
 
         # Initialize GameEngine for phase compliance
         try:
@@ -172,17 +188,16 @@ class WorldController:
         self.world_ai = WorldAI(campaign_state=self)
         self.dungeon_ai = None  # Will be initialized when entering dungeon
         self.session_manager = SessionManager()
-        self.dungeon_master = AIDungeonMaster(
-            world_controller=self,
-            dm_chat_ai=self.dm_chat_ai,
-            character_builder=self.character_builder,
-            character_manager=self.character_manager,
-            players=self.players
-        )
+
+        # No need to create AIDungeonMaster here; we already have consequence_engine.
+        # But if some legacy code still expects dungeon_master to be an AIDungeonMaster instance,
+        # we could keep it, but we've already set dungeon_master = consequence_engine.
+        # We'll leave it as is.
+
+        # Finally, create DMChatHandler (needs consequence_engine, which is now available)
         self.dm_chat_handler = DMChatHandler(self)
 
-        print(f"[OK] AIDungeonMaster initialized with dm_chat_ai: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
-
+        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
@@ -488,7 +503,7 @@ class WorldController:
         return self.current_location.to_dict()
 
     def move_character(self, char_id, new_position):
-        char = self.character_manager.characters.get(char_id)
+        char = self.character_manager.get_character(char_id)
         if char:
             char.position = new_position
             # Update world map representation
@@ -510,7 +525,7 @@ class WorldController:
 
     def get_player_inventory(self, player_id):
         """Get narrative-focused inventory description"""
-        character = self.characters.get(player_id)
+        character = self.character_manager.characters.get(player_id)
         if not character:
             return {"error": "Character not found"}
         
@@ -546,7 +561,7 @@ class WorldController:
         })
         
         # Add to character
-        character = self.characters[player_id]
+        character = self.character_manager.get_character(player_id)
         character.inventory.append(item_data)
         
         # Narrative event
@@ -560,10 +575,10 @@ class WorldController:
     def get_inventory_rules(self):
         """Get campaign-specific inventory rules"""
         rules = {
-            "currency": self.campaign_data.get("currency", "gold pieces"),
-            "weight_units": self.campaign_data.get("weight", "stones"),
-            "restricted": self.campaign_data.get("restricted_items", []),
-            "special": self.campaign_data.get("special_items", [])
+            "currency": self.campaign_state.get("currency", "gold pieces"),
+            "weight_units": self.campaign_state.get("weight", "stones"),
+            "restricted": self.campaign_state.get("restricted_items", []),
+            "special": self.campaign_state.get("special_items", [])
         }
         return rules
 
@@ -945,36 +960,37 @@ class WorldController:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    def complete_dungeon(self, success: bool, rewards: dict = None):
-        """Handle dungeon completion"""
-        location_id = self.game_state.dungeon_location
-        location = self.world_map.get_location(location_id)
+    # complete_dungeon was a hypothetical way to complete exploring the dungeon but maybe we should  just use leave_dungeon and complete_quest
+    # def complete_dungeon(self, success: bool, rewards: dict = None):
+    #     """Handle dungeon completion"""
+    #     location_id = self.game_state.dungeon_location
+    #     location = self.world_map.get_location(location_id)
         
-        if success:
-            # Apply rewards
-            self.party_system.apply_rewards(rewards)
+    #     if success:
+    #         # Apply rewards
+    #         self.party_system.apply_rewards(rewards)
             
-            # Complete related quests
-            for quest in location.quests:
-                if quest.dungeon_required and not quest.completed:
-                    quest.completed = True
-                    self.narrative.on_quest_complete(quest)
+    #         # Complete related quests
+    #         for quest in location.quests:
+    #             if quest.dungeon_required and not quest.completed:
+    #                 quest.completed = True
+    #                 self.narrative.on_quest_complete(quest)
         
-        # Return to world
-        self.game_state.set_mode('world')
-        self.game_state.current_dungeon = None
-        self.pacing.on_dungeon_complete(success)
+    #     # Return to world
+    #     self.game_state.set_mode('world')
+    #     self.game_state.current_dungeon = None
+    #     self.pacing.on_dungeon_complete(success)
         
-        # Call narrative system for pacing
-        if hasattr(self, 'narrative_system'):
-            self.narrative_system.on_dungeon_completed(success)
+    #     # Call narrative system for pacing
+    #     if hasattr(self, 'narrative_system'):
+    #         self.narrative_system.on_dungeon_completed(success)
         
-        # Handle rewards if provided
-        if rewards:
-            # Your reward distribution logic
-            pass
+    #     # Handle rewards if provided
+    #     if rewards:
+    #         # Your reward distribution logic
+    #         pass
             
-        return {"status": "success", "completed": success}
+    #     return {"status": "success", "completed": success}
 
 
     def get_or_create_player(self, session_id, player_name=None):
@@ -1125,6 +1141,3 @@ class WorldController:
         location = self.world_map.get_location(location_id)
         scene_desc = f"{location.name}: {location.description}"
         self.narrative_system.set_current_scene(scene_desc)
-
-from world.dm_chat_handler import DMChatHandler
-from world.player import Player

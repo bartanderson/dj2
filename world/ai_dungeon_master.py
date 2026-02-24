@@ -66,7 +66,7 @@ class Dialog:
         else:
             return f"{self.speaker}: {self.content}"
 
-class PlayerAction:
+class PlayerAction: # legacy and will be refactored.
     def __init__(self, player_id: str, character_name: str, action_description: str, 
                  intended_outcome: str = "", is_creative: bool = False):
         self.player_id = player_id
@@ -96,7 +96,7 @@ class ConsequenceTracker:
         """Record how player actions changed the world"""
         self.world_changes.append(change)
 
-class ResponseGenerator:
+class ResponseGenerator: # legacy and will be refactored.
     """Handles the 7 invisible forces for better DM responses"""
     
     def __init__(self):
@@ -125,84 +125,9 @@ class ResponseGenerator:
         ]
         return random.choice(complications)
     
-    def create_micro_recognition(self, character: Character, detail: str) -> str:
+    def create_micro_recognition(self, character: 'Character', detail: str) -> str:
         """Build on small character details players reveal"""
         return f"Your character's {detail} becomes relevant here because..."
-
-class CharacterCreationState:
-    def __init__(self, ai_system):  # ✅ NEW - takes ai_system directly
-        self.ai_system = ai_system
-        self.active = False
-        self.concept_description = ""
-        self.collected_info = {}
-        self.conversation_history = []
-        self.ready_for_creation = False
-        self.missing_info = {"race", "class", "background", "abilities", "personality"}
-        
-    def update_from_conversation(self, message: str, dm_response: str):
-        """Extract character information from natural conversation"""
-        prompt = f"""
-        Extract character creation information from this exchange:
-        Player: {message}
-        DM: {dm_response}
-        
-        Extract any mentioned: race, class, background, abilities, personality traits.
-        Return as JSON with any found information.
-        """
-        
-        try:
-            new_info = self._ai_generate_structured(prompt, {
-                "race": "string", "class": "string", "background": "string", 
-                "abilities": "list", "personality": "string"
-            })
-            
-            # Update collected information
-            for key, value in new_info.items():
-                if value and value not in ["", "unknown", "none"]:
-                    self.collected_info[key] = value
-                    self.missing_info.discard(key)
-                    
-        except:
-            pass  # Silently fail - we'll gather info through direct questions
-            
-    def should_suggest_creation(self):
-        """Check if we have enough information to suggest finalizing"""
-        # Require at least race, class, and some abilities/personality
-        required_fields = ["race", "class"]
-        has_required = all(field in self.collected_info and 
-                          self.collected_info[field] not in [None, ""] 
-                          for field in required_fields)
-        
-        # Also need some descriptive elements
-        has_description = any(field in self.collected_info and 
-                             self.collected_info[field] not in [None, ""]
-                             for field in ["abilities", "personality", "magic_type"])
-        
-        return has_required and has_description
-        
-    def get_character_summary(self):
-        """Generate a natural language summary of the character"""
-        prompt = f"""
-        Create a compelling character summary based on these details:
-        {json.dumps(self.collected_info, indent=2)}
-        
-        Make it engaging and highlight what makes this character unique and interesting.
-        """
-        
-        try:
-            return self._ai_generate_text(prompt)
-        except:
-            # Fallback summary
-            parts = []
-            if "race" in self.collected_info:
-                parts.append(f"a {self.collected_info['race']}")
-            if "class" in self.collected_info:
-                parts.append(self.collected_info['class'])
-            if "abilities" in self.collected_info:
-                parts.append(f"with {self.collected_info['abilities']}")
-                
-            return " ".join(parts) if parts else "this character"
-
 
 class AIDungeonMaster:
     def __init__(self, world_controller=None, dm_chat_ai=None, character_builder=None, 
@@ -224,15 +149,11 @@ class AIDungeonMaster:
         self.players = players
 
         # Initialize other attributes    
-        self.characters = {}
         self.game_state = GameState()
         self.consequence_tracker = ConsequenceTracker()
         self.response_generator = ResponseGenerator()
         self.dialog_history = []
-        self.choice_timer = 0  # For respecting choice timing
         self.world_id = None  # Current world ID
-        self.character_contexts = {} # character_id -> context
-        self.character_creation_states = {}
 
         # Debug logging
         if self.dm_chat_ai:
@@ -247,7 +168,8 @@ class AIDungeonMaster:
     def log_context(self, world_id, player_id, context_type, content):
         embedding = None
         if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-            embedding = self.dm_chat_ai.generate_embedding(text)
+            content_str = json.dumps(content) if isinstance(content, dict) else str(content)
+            embedding = self.dm_chat_ai.generate_embedding(content_str)
         
         conn = Database.get_connection()
         try:
@@ -316,825 +238,64 @@ class AIDungeonMaster:
                 conn.close()
 
     def process_player_input(self, player_id: str, message: str, character_context: Dict = None) -> List[Dialog]:
-        """Main method to process any player input and generate appropriate responses"""
-        responses = []
+        """
+        Process player input by first classifying intent via DMChatAI.
+        For character creation intents, delegate to DMChatHandler.
+        For other intents, produce narrative responses (Consequence phase).
+        """
+        if not self.dm_chat_ai:
+            return [Dialog("DM", "I'm not ready to converse yet.", "system")]
 
-        if character_context:
-            self.character_context = character_context
+        # Build context for intent classification
+        context = {
+            "player_id": player_id,
+            "character_context": character_context or {},
+            "has_character": bool(character_context),
+            "recent_dialogs": [str(d) for d in self.dialog_history[-3:]],
+        }
+        intent_result = self.dm_chat_ai.classify_intent(message, context)
+        intent = intent_result.get("intent", "unknown")
+        confidence = intent_result.get("confidence", 0.0)
 
-        # Check if we're in an active character creation
-        if player_id in self.character_creation_states:
-            state = self.character_creation_states[player_id]
-            
-            if state.ready_for_creation:
-                return self._handle_creation_confirmation(player_id, message)
-            elif state.active:
-                return self._continue_character_creation(player_id, message)
-        
-        # Check if this describes a character concept
-        recent_dialogs = self.dialog_history[-5:] if hasattr(self, 'dialog_history') else []
-        if self._detect_character_concept(message, recent_dialogs):
-            return self._suggest_character_creation(player_id, message)
-        
-        # Original processing for other types of messages
-        # Check if this is a question (contains question words or ends with ?)
-        is_question = (any(word in message.lower() for word in 
-                          ["what", "how", "why", "when", "where", "who", "which", "can you", "is there", "are there"]) 
-                       or message.endswith('?'))
-        
-        # If it's a question, handle it with the AI system
-        if is_question:
-            return self._handle_general_input(player_id, message)
-        
-        # Determine if this is an action, dialog, or other general input
-        if self._is_action_attempt(message):
-            action = self._parse_action(player_id, message)
-            responses.extend(self._handle_action(action))
-        elif self._is_character_dialog(message):
-            responses.extend(self._handle_character_dialog(player_id, message))
-        else:
-            # For non-question general input, still use the AI system
-            return self._handle_general_input(player_id, message)
-
-        return responses
-
-    def _ai_generate_text(self, prompt):
-        """Generate text using appropriate AI system"""
-        try:
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                return self.dm_chat_ai.generate_text(prompt)
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                return self._ai_generate_text(prompt)
-            return "Unable to generate response."
-        except Exception as e:
-            print(f"AI text generation failed: {e}")
-            return "I encountered an error."
-
-    def _ai_generate_structured(self, prompt, response_format):
-        """Generate structured data using appropriate AI system"""
-        try:
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                return self.dm_chat_ai.generate_structured_data(prompt, response_format)
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                return self._ai_generate_structured(prompt, response_format)
-            return {}
-        except Exception as e:
-            print(f"AI structured generation failed: {e}")
-            return {}
-
-    def _is_action_attempt(self, message: str) -> bool:
-        """Detect if player is attempting an action"""
-        action_keywords = ['try to', 'attempt', 'roll', 'check', 'i want to', 'can i', 'i use']
-        return any(keyword in message.lower() for keyword in action_keywords)
-    
-    def _is_character_dialog(self, message: str) -> bool:
-        """Detect if player is speaking in character"""
-        dialog_indicators = ['"', "'", 'says', 'tells', 'whispers', 'shouts']
-        return any(indicator in message.lower() for indicator in dialog_indicators)
-    
-    def _parse_action(self, player_id: str, message: str) -> PlayerAction:
-        """Parse player message into structured action"""
-        character = self.characters.get(player_id)
-        
-        # Use character context if available
-        if hasattr(self, 'character_context') and self.character_context:
-            char_name = self.character_context.get('character_name', f"Player{player_id}")
-        elif character:
-            char_name = character.name
-        else:
-            char_name = f"Player{player_id}"
-        
-        # Detect creativity in the approach
-        is_creative = self._detect_creative_attempt(message)
-        
-        return PlayerAction(
-            player_id=player_id,
-            character_name=char_name,
-            action_description=message,
-            is_creative=is_creative
-        )
-    
-    def _detect_creative_attempt(self, message: str) -> bool:
-        """Detect if player is trying something creative vs. standard"""
-        creative_indicators = ['unusual', 'creative', 'different', 'instead', 'what if']
-        return any(indicator in message.lower() for indicator in creative_indicators)
-    
-    def _handle_action(self, action: PlayerAction) -> List[Dialog]:
-        """Handle player actions with the 7 invisible forces in mind"""
-        responses = []
-        
-        # 1. Real Agency - Don't create fake choices
-        if self._requires_choice(action):
-            choices = self._generate_real_choices(action)
-            responses.append(Dialog("DM", f"You have several options: {self._format_choices(choices)}", "narration"))
-            
-        # 2. Safe Risk-Taking - Make failure interesting
-        if self._requires_roll(action):
-            roll_result = random.randint(1, 20)
-            if roll_result < 10:  # Failure
-                complication = self.response_generator.transform_failure_to_complication(action, roll_result)
-                responses.append(Dialog("DM", complication, "narration"))
-                # Ask follow-up to let them respond to the complication
-                responses.append(Dialog("DM", "What do you do now?", "narration"))
-            else:  # Success
-                responses.append(Dialog("DM", self._generate_success_response(action), "narration"))
-        
-        # 3. Emotional Recognition - Notice character moments
-        if self._is_character_moment(action):
-            recognition = self._generate_recognition_response(action)
-            responses.append(Dialog("DM", recognition, "narration"))
-            
-        # 4. Respect Timing - Don't rush important choices
-        if self._is_important_choice(action):
-            responses.append(Dialog("DM", "Take your time thinking about this...", "system"))
-            
-        # 5. Use Backstory - Make character history relevant
-        if self._can_use_backstory(action):
-            backstory_response = self._integrate_backstory(action)
-            responses.append(Dialog("DM", backstory_response, "narration"))
-            
-        # 6. Collaborative Worldbuilding - Let players contribute
-        if self._opportunity_for_collaboration(action):
-            collaboration_prompt = self._create_collaboration_prompt(action)
-            responses.append(Dialog("DM", collaboration_prompt, "narration"))
-            
-        # 7. Lasting Consequences - Make choices matter long-term
-        self.consequence_tracker.add_unpaid_choice({
-            'action': action.action_description,
-            'character': action.character_name,
-            'session': len(self.dialog_history)
-        })
-        
-        return responses
-    
-    def _requires_choice(self, action: PlayerAction) -> bool:
-        """Determine if action should present multiple options"""
-        choice_keywords = ['how should', 'what way', 'approach', 'options']
-        return any(keyword in action.action_description.lower() for keyword in choice_keywords)
-
-    def _requires_tool_execution(self, message: str) -> bool:
-        """Determine if the response indicates tool usage is needed"""
-        # Simple heuristic - you might want to improve this
-        tool_indicators = [
-            "roll", "check", "attack", "cast", "use", "travel", "move",
-            "inspect", "search", "look", "ask about", "tell", "give", "take"
-        ]
-        return any(indicator in message.lower() for indicator in tool_indicators)
-    
-    def _generate_real_choices(self, action: PlayerAction) -> List[Choice]:
-        """Generate choices that lead to meaningfully different outcomes"""
-        return [
-            Choice("Direct approach", ActionType.TACTICAL, 12),
-            Choice("Social approach", ActionType.SOCIAL, 10), 
-            Choice("Creative solution", ActionType.NARRATIVE, 15)
-        ]
-    
-    def _format_choices(self, choices: List[Choice]) -> str:
-        """Format choices for presentation"""
-        return " | ".join([f"{i+1}. {choice.description}" for i, choice in enumerate(choices)])
-    
-    def _requires_roll(self, action: PlayerAction) -> bool:
-        """Determine if action needs a dice roll"""
-        return "roll" in action.action_description.lower() or action.is_creative
-    
-    def _generate_success_response(self, action: PlayerAction) -> str:
-        """Generate response for successful actions"""
-        # Use character context if available
-        if hasattr(self, 'character_context') and self.character_context:
-            char_name = self.character_context.get('character_name', action.character_name)
-        else:
-            char_name = action.character_name
-            
-        return f"{char_name}'s {action.action_description} succeeds! Here's what happens next..."
-    
-    def _is_character_moment(self, action: PlayerAction) -> bool:
-        """Detect when player is having a character development moment"""
-        character_keywords = ['feel', 'remember', 'think about', 'backstory', 'past']
-        return any(keyword in action.action_description.lower() for keyword in character_keywords)
-    
-    def _generate_recognition_response(self, action: PlayerAction) -> str:
-        """Generate response that recognizes character development"""
-        return f"I can see this means something important to {action.character_name}..."
-    
-    def _is_important_choice(self, action: PlayerAction) -> bool:
-        """Identify choices that deserve time and consideration"""
-        important_keywords = ['decide', 'choose', 'major', 'important', 'life or death']
-        return any(keyword in action.action_description.lower() for keyword in important_keywords)
-    
-    def _can_use_backstory(self, action: PlayerAction) -> bool:
-        """Check if character backstory is relevant to current action"""
-        character = self.characters.get(action.player_id)
-        if not character:
-            return False
-        return any(trait in action.action_description.lower() 
-                  for trait in character.backstory.keys())
-    
-    def _integrate_backstory(self, action: PlayerAction) -> str:
-        """Integrate character backstory into the current situation"""
-        character = self.characters.get(action.player_id)
-        relevant_backstory = "your past experience"  # Would be more specific in real implementation
-        return f"Because of {relevant_backstory}, you recognize something others might miss..."
-    
-    def _opportunity_for_collaboration(self, action: PlayerAction) -> bool:
-        """Identify when to invite player worldbuilding contribution"""
-        return "describe" in action.action_description.lower() or "what do I see" in action.action_description.lower()
-    
-    def _create_collaboration_prompt(self, action: PlayerAction) -> str:
-        """Create a prompt that invites player collaboration in worldbuilding"""
-        return f"{action.character_name}, what detail about this place catches your attention first?"
-    
-    def _handle_character_dialog(self, player_id: str, message: str) -> List[Dialog]:
-        """Handle in-character speech"""
-        # Use character context if available
-        if hasattr(self, 'character_context') and self.character_context:
-            char_name = self.character_context.get('character_name', f"Player{player_id}")
-        else:
-            character = self.characters.get(player_id)
-            char_name = character.name if character else f"Player{player_id}"
-        
-        responses = []
-        responses.append(Dialog(char_name, message, "character"))
-        
-        # Generate NPC response or environmental reaction
-        npc_response = self._generate_npc_response(message)
-        if npc_response:
-            responses.append(Dialog("NPC", npc_response, "npc"))
-            
-        return responses
-    
-    def _generate_npc_response(self, player_dialog: str) -> Optional[str]:
-        """Generate appropriate NPC response to player dialog"""
-        if "?" in player_dialog:
-            return "The NPC considers your question carefully before responding..."
-        return None
-
-    def _handle_general_input(self, player_id: str, message: str) -> List[Dialog]:
-        """Handle all types of questions and general input with robust error handling"""
-        responses = []
-        
-        # Early validation to prevent exceptions
-        if not self.world_controller and not self.dm_chat_ai:
-            print("No AI system available for response")
-            return [Dialog("DM", "The world is still taking shape. Please try again in a moment.", "system")]
-        
-        # Get context safely
-        current_location = {}
-        player_character = None
-        
-        try:
-            # Get location context if world_controller exists
-            if self.world_controller and hasattr(self.world_controller, 'get_current_location_data'):
-                current_location = self.world_controller.get_current_location_data() or {}
-            
-            # Get character context if world_controller exists
-            if (self.world_controller and 
-                hasattr(self.world_controller, 'characters') and 
-                player_id in self.world_controller.characters):
-                player_character = self.world_controller.characters[player_id]
-        except Exception as e:
-            print(f"Error getting context: {e}")
-            # Continue without context rather than failing
-        
-        # Create prompt with safe context access
-        location_name = current_location.get('name', 'an unknown location')
-        character_name = player_character.name if player_character else 'a brave adventurer'
-        
-        prompt = f"""As a helpful Dungeon Master, answer this question from {character_name}: "{message}"
-
-    We're currently at {location_name}. 
-
-    Please provide a helpful, accurate response. If this is about game rules, be precise.
-    If this is about our world, use your knowledge creatively.
-    If this is general knowledge, provide a helpful answer.
-
-    Keep your response concise and immersive."""
-
-        # Generate response with error handling
-        try:
-            # Try to use DMChatAI first if available
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                print(f"↻ Using DMChatAI for DM response to: '{message[:50]}...'")
-                ai_response = self.dm_chat_ai.generate_text(prompt)
-                print(f"✓ DMChatAI response generated ({len(ai_response)} chars)")
-                responses.append(Dialog("DM", ai_response, "narration"))
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                print(f"↻ Using legacy AI system for DM response")
-                ai_response = self._ai_generate_text(prompt)
-                responses.append(Dialog("DM", ai_response, "narration"))
+        # If it's a character creation intent and no active character, delegate to DMChatHandler
+        if intent == "character_creation" and not character_context:
+            # Note: for character creation, dialog history is managed by SessionSystem, not by the DM’s internal list.
+            if self.world_controller and hasattr(self.world_controller, 'dm_chat_handler'):
+                # Forward the message to the session-based handler
+                # We need a session_id – for simplicity, use player_id as session_id
+                handler_result = self.world_controller.dm_chat_handler.process_message(
+                    session_id=player_id, # TODO: Replace with actual session_id from request
+                    message=message,
+                    character_id=None
+                )
+                # Convert handler's narrative Dialog objects into our Dialog list
+                return handler_result.get("narrative", [])
             else:
-                print(f"✗ No AI system available")
-                responses.append(Dialog("DM", "My arcane knowledge is currently unavailable. Let's focus on our adventure for now.", "system"))
-                
-        except Exception as e:
-            print(f"AI response generation failed: {e}")
-            # Context-aware fallback without hardcoding
-            fallback = self._generate_contextual_fallback(message, location_name, character_name)
-            responses.append(Dialog("DM", fallback, "narration"))
-        
-        return responses
+                return [Dialog("DM", "Character creation is not available right now.", "system")]
 
-    def _generate_contextual_fallback(self, message: str, location_name: str, character_name: str) -> str:
-        """Generate a contextual fallback response without hardcoding specific answers"""
-        # Analyze the message to provide a relevant fallback
-        message_lower = message.lower()
-        
-        if any(word in message_lower for word in ["how", "what", "why", "when", "where", "who"]):
-            # It's a question
-            return f"That's an excellent question, {character_name}. The answer might reveal itself as we explore {location_name} further."
-        elif any(word in message_lower for word in ["can i", "should i", "would it"]):
-            # It's a request for advice
-            return f"Only you can decide that, {character_name}. Trust your instincts as we navigate the challenges of {location_name}."
-        else:
-            # Generic statement or observation
-            return f"I hear you, {character_name}. Let's see how that insight serves us here in {location_name}."
-        
-    def _generate_scene_description(self) -> str:
-        """Generate dynamic scene description"""
-        return f"You find yourself in {self.game_state.current_scene}. What catches your attention?"
+        # For other intents, generate narrative responses (the original consequence logic)
+        # We'll keep the existing consequence generation (the 7 forces), but we should
+        # simplify it – for now, just call a method that returns generic responses.
+        # (In a full migration, this would become the ConsequenceEngine.)
+        self.dialog_history.append(Dialog("Player", message, "character"))
+        # For all other intents, generate narrative
+        narrative = self._generate_narrative_response(intent, message, character_context)
+        self.dialog_history.extend(narrative)
+        return narrative
+
+    def _generate_narrative_response(self, intent: str, message: str, character_context: dict) -> List[Dialog]:
+        """Simplified narrative generation – to be expanded later."""
+        # Placeholder – eventually this will use the response generator and track consequences.
+        return [Dialog("DM", f"(You said: {message}) The world responds...", "narration")]
     
-    def add_character(self, player_id: str, character: Character):
-        """Add a character to the campaign"""
-        self.characters[player_id] = character
-        
+    # Remains in ConsequenceEngine    
     def get_dialog_history(self) -> List[Dialog]:
         """Get the full dialog history"""
         return self.dialog_history
     
+    # Remains (or moves to a tracker)
     def process_consequences(self):
         """Process pending consequences from past choices"""
         # This would pull from unpaid_choices and create new story complications
         # based on the three-layer approach (personal, local, ripple)
         pass
-
-    def _answer_creation_question(self, player_id: str, message: str, topic: str) -> List[Dialog]:
-        """Answer questions about character creation in a conversational way"""
-        state = self.character_creation_states[player_id]
-        
-        prompt = f"""
-        During our character creation discussion, the player said: "{message}"
-        We're currently exploring: {topic}
-
-        What we've discussed so far:
-        {json.dumps(state.collected_info, indent=2)}
-
-        Provide a helpful, engaging response that:
-        1. Addresses their comment or question about {topic}
-        2. Asks a natural follow-up question to continue developing their character concept
-        3. Keeps the process feeling like a natural conversation, not an interrogation
-
-        Make it sound like a collaborative world-building discussion.
-        """
-        
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                response = self.dm_chat_ai.generate_text(prompt)
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                response = self._ai_generate_text(prompt)
-            else:
-                response = "Let's continue developing your character concept. What aspects would you like to explore next?"
-                
-            state.conversation_history.append(f"DM: {response}")
-            return [Dialog("DM", response, "narration")]
-        except Exception as e:
-            print(f"Error generating character creation response: {e}")
-            return [Dialog("DM", 
-                          "That's an interesting aspect to consider for your character. " +
-                          "What else would you like to explore about them?",
-                          "narration")]
-
-    def _continue_character_creation(self, player_id: str, message: str) -> List[Dialog]:
-        """Continue character creation with the new organic approach"""
-        state = self.character_creation_states[player_id]
-        state.conversation_history.append(f"Player: {message}")
-        
-        # Use AI to understand what information we're discussing
-        prompt = f"""
-        We're in the middle of character creation. The player said: "{message}"
-        
-        Previous conversation:
-        {state.conversation_history[-3:]}
-        
-        What aspect of character creation is the player talking about?
-        Options: race, class, background, abilities, personality, appearance, or other.
-        
-        Also extract any specific information mentioned about that aspect.
-        
-        Respond with JSON: {{"topic": "string", "information": "string"}}
-        """
-        
-        try:
-            # Try to use DMChatAI first (note: DMChatAI has ai_system attribute)
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                analysis = self._ai_generate_structured(
-                    prompt, {"topic": "string", "information": "string"}
-                )
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                analysis = self._ai_generate_structured(
-                    prompt, {"topic": "string", "information": "string"}
-                )
-            else:
-                analysis = {"topic": "unknown", "information": message}
-            
-            # Store the information
-            if analysis["topic"] and analysis["information"]:
-                state.collected_info[analysis["topic"]] = analysis["information"]
-                
-            # Check if we have enough information to suggest finalizing
-            if self._has_sufficient_character_info(state):
-                return self._suggest_finalizing_creation(player_id)
-                
-            # Continue the natural conversation
-            return self._answer_creation_question(player_id, message, analysis["topic"])
-            
-        except Exception as e:
-            print(f"Error in character creation: {e}")
-            return [Dialog("DM", "Tell me more about your character concept.", "narration")]
-
-    # todo cleanup lists of words with AI intent replacement like in world_controller
-    def _is_general_question(self, message: str) -> bool:
-        """Detect if this is a general question about the game"""
-        question_indicators = ['what', 'how', 'why', 'when', 'where', 'who', 'which', 'can you', 'can i', 'could you', 'could i', 'would you', 'would i', 'is there', 'are there', "?"]
-        game_terms = ["rule", "mechanic", "play", "game", "dungeon", "dm", "dungeon master", 'adventure', 'adventurer', 'player', 'character', 'race', 'class', 'turn', 'roll', 'initiative', 'advantage']
-        
-        message_lower = message.lower()
-        is_question = any(indicator in message_lower for indicator in question_indicators)
-        is_about_game = any(term in message_lower for term in game_terms)
-        
-        return is_question and is_about_game
-
-    def _answer_general_question(self, message: str) -> List[Dialog]:
-        """Answer general questions about the game"""
-        prompt = f"""Player asked: "{message}"
-        
-        As a helpful Dungeon Master, provide a concise, helpful answer to their question 
-        about the game. Keep your response under 2 sentences."""
-        
-        try:
-            answer = self._ai_generate_text(prompt)
-            return [Dialog("DM", answer, "narration")]
-        except:
-            return [Dialog("DM", "That's an interesting question! As your Dungeon Master, " 
-                          "I'm here to help you explore and discover the answers through play.", "narration")]
-
-    def _has_sufficient_character_info(self, state) -> bool:
-        """Check if we have enough information to create a character"""
-        # We need at least race, class, and some defining characteristics
-        required = ["race", "class"]
-        has_required = all(field in state.collected_info and 
-                          state.collected_info[field] not in [None, ""] 
-                          for field in required)
-        
-        # Also need some descriptive elements
-        has_description = any(field in state.collected_info and 
-                             state.collected_info[field] not in [None, ""]
-                             for field in ["abilities", "personality", "background"])
-        
-        return has_required and has_description
-
-    def _suggest_finalizing_creation(self, player_id: str) -> List[Dialog]:
-        """Suggest finalizing the character creation"""
-        state = self.character_creation_states[player_id]
-        
-        prompt = f"""
-        Based on our discussion, we've developed this character concept:
-        {json.dumps(state.collected_info, indent=2)}
-
-        Create a compelling summary of this character concept and suggest moving to the final creation step.
-        Explain the different ability score generation methods in a conversational way:
-        - Standard array (balanced pre-set scores)
-        - Point buy (custom allocation within a point budget)
-        - Rolling (traditional random generation)
-
-        Make it inviting and offer to explain any of the options in more detail.
-        """
-        
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                response = self.dm_chat_ai.generate_text(prompt)
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                response = self._ai_generate_text(prompt)
-            else:
-                character_desc = f"{state.collected_info.get('race', '')} {state.collected_info.get('class', '')}"
-                response = f"Based on our conversation, we have a great {character_desc} concept. " + \
-                          "Would you like to finalize this character? " + \
-                          "We can use different methods for ability scores."
-            
-            state.ready_for_creation = True
-            state.conversation_history.append(f"DM: {response}")
-            return [Dialog("DM", response, "narration")]
-        except Exception as e:
-            print(f"Error generating finalization suggestion: {e}")
-            character_desc = f"{state.collected_info.get('race', '')} {state.collected_info.get('class', '')}"
-            return [Dialog("DM",
-                          f"Based on our conversation, we have a great {character_desc} concept. " +
-                          "Would you like to finalize this character? " +
-                          "We can use different methods for ability scores.",
-                          "narration")]
-
-    def _detect_character_concept(self, message: str, conversation_history: list) -> bool:
-        """Use AI to detect if the player is describing a character concept"""
-        prompt = f"""
-        Analyze this player message and conversation history to determine if the player
-        is describing a character concept that could lead to character creation.
-        
-        Player message: "{message}"
-        Recent conversation: {[str(d) for d in conversation_history[-3:]]}
-        
-        Look for descriptions of:
-        - Character abilities, powers, or skills
-        - Race, species, or ancestry details
-        - Class, profession, or occupation
-        - Background stories or origins
-        - Personality traits or motivations
-        
-        Respond with JSON: 
-        {{"is_character_concept": boolean, "confidence": 0.0-1.0, "concept_type": "string"}}
-        """
-        
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                result = self._ai_generate_structured(
-                    prompt,
-                    {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
-                )
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                result = self._ai_generate_structured(
-                    prompt,
-                    {"is_character_concept": "boolean", "confidence": "number", "concept_type": "string"}
-                )
-            else:
-                result = {"is_character_concept": False, "confidence": 0, "concept_type": "unknown"}
-                
-            return result.get("is_character_concept", False) and result.get("confidence", 0) > 0.6
-        except Exception as e:
-            print(f"Error detecting character concept: {e}")
-            return False
-
-    def _suggest_character_creation(self, player_id: str, message: str) -> List[Dialog]:
-        """Suggest character creation based on a described concept"""
-        prompt = f"""
-        The player has described something that sounds like a character concept: "{message}"
-
-        Create a natural, engaging response that:
-        1. Acknowledges their interesting idea
-        2. Gently suggests exploring this as a character concept
-        3. Asks if they'd like to develop this into a playable character
-
-        Keep it conversational and let them guide the direction.
-        """
-        
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                suggestion = self.dm_chat_ai.generate_text(prompt)
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                suggestion = self._ai_generate_text(prompt)
-            else:
-                suggestion = "That sounds like an interesting character concept! " + \
-                            "Would you like to create a character based on this idea?"
-            
-            # Initialize character creation state
-            if player_id not in self.character_creation_states:
-                # Get ai_system from available sources
-                ai_system = None
-                if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                    # DMChatAI has an ai_system attribute
-                    if hasattr(self.dm_chat_ai, 'ai_system'):
-                        ai_system = self.dm_chat_ai.ai_system
-                elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                    ai_system = self.world_controller.ai_system
-                
-                if ai_system:
-                    self.character_creation_states[player_id] = CharacterCreationState(ai_system)
-                else:
-                    print("Warning: No AI system available for character creation")
-                    # Create without AI system (will have limited functionality)
-                    self.character_creation_states[player_id] = CharacterCreationState(None)
-            
-            state = self.character_creation_states[player_id]
-            state.active = True
-            state.concept_description = message
-            state.conversation_history.append(f"Player: {message}")
-            
-            return [Dialog("DM", suggestion, "narration")]
-        except Exception as e:
-            print(f"Error suggesting character creation: {e}")
-            return [Dialog("DM", 
-                          "That sounds like an interesting character concept! " +
-                          "Would you like to create a character based on this idea?",
-                          "narration")]
-
-
-    def _finalize_character_creation(self, player_id: str) -> List[Dialog]:
-        """Finalize the character creation process"""
-        state = self.character_creation_states[player_id]
-        
-        # Generate character summary
-        character_summary = state.get_character_summary()
-        
-        prompt = f"""
-        Based on our conversation, we've developed this character concept:
-        {json.dumps(state.collected_info, indent=2)}
-        
-        Create a compelling summary of this character and then explain the different
-        ways we can generate their attributes:
-        
-        1. Standard Array: Balanced pre-set scores (15, 14, 13, 12, 10, 8)
-        2. Point Buy: Custom allocation with 27 points to distribute
-        3. Rolling: Traditional 4d6 drop lowest for each ability
-        
-        Explain these options conversationally and ask if they'd like to create this character.
-        """
-        
-        try:
-            final_message = self._ai_generate_text(prompt)
-            state.ready_for_creation = True
-            state.conversation_history.append(f"DM: {final_message}")
-            return [Dialog("DM", final_message, "narration")]
-        except:
-            return [Dialog("DM",
-                          f"Based on our conversation, we've created a concept for {character_summary}. " +
-                          "Would you like me to create this character for you? " +
-                          "We can use different methods for ability scores: standard array, point buy, or rolling.",
-                          "narration")]
-
-    def _handle_creation_confirmation(self, player_id: str, message: str) -> List[Dialog]:
-        """Handle the player's response to the creation suggestion"""
-        state = self.character_creation_states[player_id]
-        
-        prompt = f"""
-        The player has responded to our character creation suggestion: "{message}"
-        
-        Determine if they want to proceed with creation or have questions about the process.
-        If they want to proceed, determine which attribute generation method they prefer.
-        
-        Respond with JSON:
-        {{
-            "should_create": boolean,
-            "method": "standard_array|point_buy|rolling|null",
-            "needs_more_info": boolean,
-            "response": "string"
-        }}
-        """
-        
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                result = self._ai_generate_structured(prompt, {
-                    "should_create": "boolean",
-                    "method": "string",
-                    "needs_more_info": "boolean",
-                    "response": "string"
-                })
-            # Fallback to world_controller AI system
-            elif self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                result = self._ai_generate_structured(prompt, {
-                    "should_create": "boolean",
-                    "method": "string",
-                    "needs_more_info": "boolean",
-                    "response": "string"
-                })
-            else:
-                result = {
-                    "should_create": False,
-                    "method": None,
-                    "needs_more_info": True,
-                    "response": "I'm not sure I understand. Would you like to create this character?"
-                }
-            
-            if result.get("should_create", False):
-                # Create the character
-                return self._create_character(player_id, result.get("method", "standard_array"))
-            elif result.get("needs_more_info", False):
-                # Provide more information
-                return [Dialog("DM", result.get("response", "Let me explain the options..."), "narration")]
-            else:
-                # Continue conversation
-                return [Dialog("DM", result.get("response", "Tell me more about what you'd like."), "narration")]
-                
-        except Exception as e:
-            print(f"Error handling creation confirmation: {e}")
-            return [Dialog("DM", "I'm not sure I understand. Would you like to create this character?", "narration")]
-
-    def _create_character(self, player_id: str, method: str) -> List[Dialog]:
-        """Actually create the character using the collected information"""
-        state = self.character_creation_states[player_id]
-        
-        # Prepare character data
-        char_data = {
-            "name": state.collected_info.get("name", "Unnamed Character"),
-            "race": state.collected_info.get("race", "Human"),
-            "class": state.collected_info.get("class", "Adventurer"),
-            "background": state.collected_info.get("background", "Unknown"),
-            "personality": state.collected_info.get("personality", ""),
-            "method": method
-        }
-        
-        # Use the existing character creation system
-        try:
-            # Try to use character_manager first
-            if hasattr(self, 'character_manager') and self.character_manager:
-                character = self.character_manager.create_character(player_id, char_data)
-            # Fallback to character_builder
-            elif hasattr(self, 'character_builder') and self.character_builder:
-                character = self.character_builder.create_character(player_id, char_data)
-            # Last resort: world_controller
-            elif self.world_controller and hasattr(self.world_controller, 'character_builder'):
-                character = self.world_controller.character_builder.create_character(player_id, char_data)
-            else:
-                raise Exception("No character creation system available")
-            
-            response = f"Excellent! I've created {character.name}, a {character.race} {character.classs.name}. "
-
-            # Add some flavor based on the creation method
-            if method == "standard_array":
-                response += "The standard array provides a balanced foundation for your adventures."
-            elif method == "point_buy":
-                response += "Point buy allows you to tailor your character's strengths to your play style."
-            elif method == "rolling":
-                response += "The traditional rolling method captures the randomness of natural talent!"
-            
-            # Add character to players if available
-            if hasattr(self, 'players') and self.players and player_id in self.players:
-                player = self.players[player_id]
-                player.character_ids.append(character.id)
-                player.active_character_id = character.id
-            
-            # Clean up the creation state
-            del self.character_creation_states[player_id]
-            
-            return [Dialog("DM", response, "narration")]
-        except Exception as e:
-            print(f"Error creating character: {e}")
-            return [Dialog("DM", 
-                          "I encountered a problem creating your character. Let's try again.",
-                          "system")]
-
-    def _use_ai_for_prompt(self, prompt, method="text", response_format=None):
-        """Use appropriate AI system for prompts"""
-        try:
-            # Try to use DMChatAI first
-            if hasattr(self, 'dm_chat_ai') and self.dm_chat_ai:
-                if method == "text":
-                    return self.dm_chat_ai.generate_text(prompt)
-                elif method == "structured" and response_format:
-                    return self.dm_chat_ai.generate_structured_data(prompt, response_format)
-            
-            # Fallback to world_controller AI system
-            if self.world_controller and hasattr(self.world_controller, 'ai_system'):
-                if method == "text":
-                    return self._ai_generate_text(prompt)
-                elif method == "structured" and response_format:
-                    return self._ai_generate_structured(prompt, response_format)
-            
-            # Final fallback
-            if method == "text":
-                return "I'm unable to generate a response at the moment."
-            else:
-                return {}
-                
-        except Exception as e:
-            print(f"AI generation failed: {e}")
-            if method == "text":
-                return "I encountered an error while generating a response."
-            else:
-                return {}
-
-
-# Example usage and test
-if __name__ == "__main__":
-    # Create DM
-    dm = AIDungeonMaster()
-    
-    # Create a character
-    character = Character(
-        name="Thorin",
-        player_id="player1",
-        backstory={"grew_up": "streets", "knows": "gang_operations"},
-        traits=["street_smart", "protective"],
-        goals=["help_orphans", "stop_corruption"]
-    )
-    dm.add_character("player1", character)
-    
-    # Set initial scene
-    dm.game_state.current_scene = "the shadowy alley where you've tracked the gang"
-    
-    # Example interaction
-    responses = dm.process_player_input("player1", "I want to try talking to the guard instead of fighting")
-    for response in responses:
-        print(response)
-        
-    print("\n" + "="*50 + "\n")
-    
-    responses = dm.process_player_input("player1", "I tell him 'I know what it's like to grow up on these streets'")
-    for response in responses:
-        print(response)
