@@ -179,7 +179,7 @@ class BridgeCore:
         self._log(f"⚠️ Upload timeout after {timeout}s")
         return False
     
-    def wait_for_response(self, timeout: int = 180) -> Optional[str]:
+    def wait_for_response(self, timeout: int = 3600) -> Optional[str]: # an hour timeout should be fine
         """Wait for and extract response with better patience"""
         self._log(f"Waiting for response (timeout: {timeout}s)...")
         start_time = time.time()

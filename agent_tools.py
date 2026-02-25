@@ -136,11 +136,12 @@ def _close_bridge():
 
 atexit.register(_close_bridge)
 
-def deepseek_consult(prompt, file=None, data=None):
+def deepseek_consult(prompt, file=None, data=None, timeout=3600):
     """
     Send a prompt and optional context to DeepSeek using a persistent bridge.
     file: path to a file (relative to project root) whose content will be prepended.
     data: any extra data (dict/string) to include.
+    timeout: seconds to wait for response (default 3600). An hour for long runners
     Returns response string.
     """
     bridge = _ensure_bridge_alive()

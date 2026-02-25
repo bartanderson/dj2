@@ -25,7 +25,7 @@ TOOL_DESCRIPTIONS = """
 - analyze_tools(): returns a dictionary with analysis of all tools (capabilities, imports, hotspots, orphans, duplicates, etc.)
 - semantic_search(query, limit=5): returns a list of files relevant to the natural language query, with relevance scores. Uses the embedding index.
 - arch_context(query, level='standard'): generates a rich context package (file snippets, behavioral contracts) for the given query using arch_recon.py. The level can be 'brief', 'standard', or 'deep'. Returns JSON.
-- deepseek_consult(prompt, file=None, data=None): send a prompt and optional context to DeepSeek, returns response.
+- deepseek_consult(prompt, file=None, data=None, timeout=3600): send a prompt and optional context to DeepSeek, waits up to `timeout` seconds for response. Use a large timeout for long-running tasks. Returns response string.
 - read_file(path): returns content of file as string (path relative to project root).
 - read_files(file_paths): takes a list of file paths and returns a dict of path -> content.
 - write_file(path, content): writes content to file (creates backup). Use with caution.

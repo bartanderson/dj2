@@ -20,7 +20,7 @@ class BridgeController:
         
         self.conversation_history = []
     
-    def ask_deepseek(self, question: str, use_tools: bool = True) -> Optional[str]:
+    def ask_deepseek(self, question: str, use_tools: bool = True, timeout: int = 3600) -> Optional[str]:
         """Ask DeepSeek using file upload for reliability"""
         try:
             print(f"\n[BridgeController] Asking: {question[:50]}...")
