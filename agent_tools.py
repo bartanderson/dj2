@@ -52,7 +52,7 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
-# Semantic search using intent_matcher
+# Semantic search using intent_matcher "Here are the files that match your query."
 # ----------------------------------------------------------------------
 def semantic_search(query, limit=5):
     """
@@ -63,7 +63,7 @@ def semantic_search(query, limit=5):
     from tools.analysis.intent_matcher import _get_top_files_for_intent
 
     # Path to the embeddings database (adjust if different)
-    db_path = PROJECT_ROOT / "ai_context" / "embeddings.db"
+    db_path = PROJECT_ROOT / "ai_context" / "scout.db"
     if not db_path.exists():
         # Fallback: maybe run indexer first? For now, warn and return empty.
         print(f"Warning: Embeddings DB not found at {db_path}", file=sys.stderr)
@@ -72,6 +72,26 @@ def semantic_search(query, limit=5):
     results = _get_top_files_for_intent(query, db_path, max_files=limit)
     # results is list of (file_path, score, file_data)
     return [{"path": path, "score": score} for path, score, _ in results]
+
+# ----------------------------------------------------------------------
+# Architecture context using arch_recon Here is a concise, structured summary of the relevant code, ready for analysis."
+# ----------------------------------------------------------------------
+def arch_context(query, level='standard'):
+    """
+    Generate a context package using arch_recon.py --context.
+    Returns a JSON string with file snippets, behavioral contracts, and metadata.
+    """
+    cmd = [
+        sys.executable,
+        'tools/analysis/arch_recon.py',
+        '--context', query,
+        '--context-level', level,
+        '--format', 'json'
+    ]
+    result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(f"arch_context failed: {result.stderr}")
+    return result.stdout
 
 # ----------------------------------------------------------------------
 # DeepSeek consultation – persistent bridge

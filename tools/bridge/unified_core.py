@@ -101,7 +101,7 @@ class BridgeCore:
             time.sleep(5)
             
             # CRITICAL FIX: Send instruction to analyze the file
-            instruction_sent = self._send_instruction("Please analyze the uploaded file and provide recommendations.")
+            instruction_sent = self._send_instruction("Thoroughly and deeply comprehend and respond.")
             
             # Clean up temp file
             if os.path.exists(temp_path):

@@ -1,3 +1,4 @@
+
 """Scout scanning logic."""
 import ast
 import json
@@ -14,7 +15,7 @@ from tools.analysis import extractors
 from tools.analysis import db_operations as db
 from tools.analysis.embedding_model import embed_text
 from tools.analysis.ast_analyzer import ASTAnalyzer  # keep as is
-DEBUG = True
+DEBUG = False
 
 MUTATING_METHODS = {'update', 'save', 'delete', 'create', 'add', 'remove', 'insert', 'set', 'put', 'patch'}
 STATE_HOLDERS = {'SessionSystem', 'GameEngine', 'WorldState', 'Database', 'Repository'}

@@ -17,20 +17,15 @@ Modes:
 import sys
 import argparse
 from pathlib import Path
-
-# Add analysis directory to path
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
+from datetime import datetime
 from typing import List
 
-from scanner import run_scout
-from reporters import (
+from tools.analysis.scanner import run_scout
+from tools.analysis.reporters import (
     report_hot, report_mutations, report_largest, report_concepts,
     report_exporters, report_summary, report_risk_heatmap
 )
-from intent_matcher import _get_top_files_for_intent
+from tools.analysis.intent_matcher import _get_top_files_for_intent
 
 def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
                     project_root: str = '.', ignore_dirs: List[str] = None, verbose: bool = False):
@@ -39,13 +34,13 @@ def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
         # Optional: check age (e.g., older than 1 day)
         age = datetime.now() - datetime.fromtimestamp(db_path.stat().st_mtime)
         if age.days >= 1 and not no_prompt:
-            print(f"≡ƒòÆ Scout DB is {age.days} day(s) old.")
+            print(f"Note: Scout DB is {age.days} day(s) old.")
             answer = input("Rescan now? (Y/n): ").strip().lower()
             if answer != 'n':
                 force = True
         # else proceed
     if not db_path.exists() and not no_prompt:
-        print("Γ¥î Scout DB not found.")
+        print("Note: Scout DB not found.")
         answer = input("Run a full scout scan now? (Y/n): ").strip().lower()
         if answer != 'n':
             force = True
@@ -53,7 +48,7 @@ def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
             return False
 
     if force:
-        print("≡ƒöä Running scout scan...")
+        print("Running forced scout scan to rebuild db...")
         run_scout(project_root, str(db_path), force=True, ignore_dirs=ignore_dirs, verbose=verbose)
     return True
     
@@ -91,9 +86,6 @@ def main():
     parser.add_argument('--exporters', action='store_true', help='Show most imported files')
     parser.add_argument('--summary', action='store_true', help='Show project summary statistics')
     parser.add_argument('--limit', '-l', type=int, default=10, help='Limit for report modes')
-
-    # ASK mode
-    parser.add_argument('--ask', nargs='?', const='', help='Natural language question (if no argument, interactive)')
 
     # Context mode
     parser.add_argument('--context', action='store_true', help='Generate AI‑ready context package (requires intent)')
@@ -193,19 +185,10 @@ def main():
             return 1
         return report_summary(args.db, args.format)
 
-    # ASK mode
-    if args.ask is not None:
-        if not ensure_db_fresh(Path(args.db), force=args.force, no_prompt=args.no_prompt,
-                               project_root=args.project_root, ignore_dirs=args.ignore_dirs,
-                               verbose=args.verbose):
-            return 1
-        question = args.ask if args.ask else None
-        return ask_mode(args.db, question)
-
     # Context mode
     if args.context:
         if not args.intent:
-            print("❌ --context requires an intent (e.g., --context 'character creation')", file=sys.stderr)
+            print("[Error] --context requires an intent (e.g., --context 'character creation')", file=sys.stderr)
             return 1
         if not args.categories:
             default_cat = Path(args.db).parent / 'discovered_categories.json'
@@ -227,7 +210,7 @@ def main():
     # Consult mode
     if args.consult:
         if not args.intent:
-            print("❌ --consult requires an intent (e.g., --consult 'character creation')", file=sys.stderr)
+            print("[Error] --consult requires an intent (e.g., --consult 'character creation')", file=sys.stderr)
             return 1
         if not args.categories:
             default_cat = Path(args.db).parent / 'discovered_categories.json'
@@ -250,7 +233,7 @@ def main():
     # Test generation mode
     if args.test:
         if not args.intent:
-            print("❌ --test requires an intent...")
+            print("[Error] --test requires an intent...")
             return 1
         if not args.categories:
             default_cat = Path(args.db).parent / 'discovered_categories.json'
@@ -282,7 +265,7 @@ def main():
         try:
             from tools.analysis.test_templates import TestTemplateLibrary
         except ImportError as e:
-            print(f"❌ Could not import TestTemplateLibrary: {e}", file=sys.stderr)
+            print(f"[Error] Could not import TestTemplateLibrary: {e}", file=sys.stderr)
             return 1
 
         lib = TestTemplateLibrary(Path(args.template_dir) if args.template_dir else None)
@@ -291,18 +274,18 @@ def main():
             # Name the template after the original file without 'test_' prefix
             name = Path(args.extract_template).stem.replace('test_', '')
             lib.save_template(template, name)
-            print(f"✅ Template extracted and saved as '{name}'")
+            print(f"[Ok] Template extracted and saved as '{name}'")
             print(f"   Patterns found: {len(template['patterns']['test_structure'])} tests")
             categories = {e.get('focus', 'general') for e in template.get('example_tests', [])}
             print(f"   Example categories: {categories}")
         else:
-            print("⚠️  Failed to extract template.")
+            print("[Warn]  Failed to extract template.")
         return 0
 
     # Test update mode
     if args.test_update:
         if not args.test_file or not args.diff:
-            print("❌ --test-update requires --test-file and --diff", file=sys.stderr)
+            print("[Error] --test-update requires --test-file and --diff", file=sys.stderr)
             return 1
         if not args.categories:
             default_cat = Path(args.db).parent / 'discovered_categories.json'
@@ -323,27 +306,15 @@ def main():
                            verbose=args.verbose):
         return 1
 
-    # Default: if no intent, and no other action, and not --no-prompt, launch interactive ask mode
-    if not args.intent:
+    # Default: if no intent, and no other action, and not --no-prompt, print mesasge
+    if not args.intent and not args.force:
         if not args.no_prompt:
-            return ask_mode(args.db, question=None)
+            print("No command specified. Use --help for usage.")
+            return 0
         else:
+            # already handled
             print("No command specified. Use --help for usage.")
             return 0
 
-    # Recon mode (requires intent)
-    if not args.categories:
-        default_cat = Path(args.db).parent / 'discovered_categories.json'
-        if default_cat.exists():
-            args.categories = str(default_cat)
-
-    return run_recon(
-        intent=args.intent,
-        db_path=args.db,
-        categories_path=args.categories,
-        max_files=args.max_files,
-        output_format=args.format,
-        verbose=args.verbose
-    )
 if __name__ == '__main__':
     sys.exit(main())
