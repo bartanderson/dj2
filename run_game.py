@@ -43,7 +43,7 @@ def main():
     try:
         # Start dungeon server (port 5005)
         print("\n1. Starting dungeon server (port 5005)...")
-        dungeon_proc = run_server("dungeon_neo_web_app.py", 5005)
+        dungeon_proc = run_server("dungeon_app.py", 5005)
         processes.append(dungeon_proc)
         time.sleep(3)  # Give dungeon server time to start
         

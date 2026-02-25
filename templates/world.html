@@ -158,8 +158,9 @@ window.dungeonGameId = null;
 function toggleDebug() {
     dungeonDebugMode = !dungeonDebugMode;
     const img = document.getElementById('dungeon-map');
-    if (img) {
-        img.src = `http://localhost:5005/dungeon-image?debug=${dungeonDebugMode}&t=${Date.now()}`;
+    if (img && window.dungeonGameId) {
+        const debug = dungeonDebugMode ? 'true' : 'false';
+        img.src = `http://localhost:5005/dungeon-image?game_id=${window.dungeonGameId}&debug=${debug}&t=${Date.now()}`;
     }
     addToChatLog(`Debug mode ${dungeonDebugMode ? 'enabled' : 'disabled'}`, 'system');
 }
