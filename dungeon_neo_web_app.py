@@ -1,3 +1,5 @@
+# dungeon_neo_web_app.py
+# coding: utf-8
 from flask import Flask, send_file, request, jsonify, session, g
 from core.dungeon_standalone import DungeonSystem
 from dungeon_neo.test_campaign import TestCampaign
@@ -11,6 +13,13 @@ DUNGEON_CACHE = {}
 
 app = Flask(__name__)
 app.secret_key = 'standalone_secret_key'
+# Session configuration for cross-origin requests
+app.config.update(
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SECURE=False,   # Set to True if using HTTPS in production
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_PATH='/'
+)
 app.campaign = TestCampaign()
 
 # Configure logging
@@ -36,23 +45,28 @@ def apply_cors(response):
 
 @app.before_request
 def init_session_and_dungeon():
-    # Get game_id if provided
-    game_id = None
-    if request.args.get('game_id'):
-        game_id = request.args.get('game_id')
-    elif request.is_json and request.json and 'game_id' in request.json:
+    # 1. Try to get game_id from query string or POST body
+    game_id = request.args.get('game_id')
+    if not game_id and request.method == 'POST' and request.is_json:
         game_id = request.json.get('game_id')
     
-    # Fall back to session for standalone page
+    # 2. If not provided, use session (or create new one)
     if not game_id:
-        if 'session_id' not in session:
-            session_id = str(uuid.uuid4())
-            session['session_id'] = session_id
-            game_id = session_id  # Use session ID as game ID for standalone
+        game_id = session.get('dungeon_game_id')
+        if game_id:
+            logger.info(f"Using game_id from session: {game_id}")
         else:
-            game_id = session['session_id']
+            game_id = str(uuid.uuid4())
+            session['dungeon_game_id'] = game_id
+            session.modified = True
+            logger.info(f"New session created: {game_id}")
+    else:
+        # Store in session for future requests
+        session['dungeon_game_id'] = game_id
+        session.modified = True
+        logger.info(f"Using provided game_id: {game_id}")
     
-    # Get or create dungeon for game_id
+    # 3. Get or create dungeon
     if game_id not in DUNGEON_CACHE:
         dungeon = DungeonSystem()
         location = app.campaign.get_location("test_dungeon")
@@ -63,9 +77,8 @@ def init_session_and_dungeon():
         else:
             logger.error(f"Dungeon init failed for {game_id}")
     
-    # Attach to request context
-    g.dungeon = DUNGEON_CACHE.get(game_id)
-    g.game_id = game_id  # Store for debugging
+    g.dungeon = DUNGEON_CACHE[game_id]
+    g.game_id = game_id
 
 @app.route('/')
 def index():
@@ -81,6 +94,7 @@ def dungeon_image():
         img = g.dungeon.get_image(debug)
         return serve_pil_image(img)
     except Exception as e:
+        logger.exception("Image rendering error")
         return create_placeholder_image(f"Rendering error: {str(e)}")
 
 @app.route('/move', methods=['POST'])
@@ -89,13 +103,17 @@ def move():
         return jsonify({"success": False, "message": "Dungeon not initialized"})
     
     data = request.json
+    logger.info(f"/move received data: {data}")
     direction = data.get('direction')
     steps = data.get('steps', 1)
     
     try:
         result = g.dungeon.state.movement.move_party(direction, steps)
+        # No need to store dungeon in session – cache already holds it
+        logger.info(f"Move: new position {g.dungeon.state.party_position}")
         return jsonify(result)
     except Exception as e:
+        logger.exception("Movement error")
         return jsonify({"success": False, "message": f"Movement error: {str(e)}"})
 
 @app.route('/position', methods=['GET'])
@@ -137,11 +155,12 @@ def ai_command():
         result = g.dungeon.process_ai_command(command)
         return jsonify(result)
     except Exception as e:
+        logger.exception("AI error")
         return jsonify({"success": False, "message": f"AI error: {str(e)}"})
 
 @app.route('/api/new-game', methods=['POST'])
 def new_game():
-    """Create a new game instance with a unique ID"""
+    """Create a new game instance with a unique ID (overwrites session)."""
     data = request.json
     game_id = data.get('game_id', f"game_{uuid.uuid4()}")
     
@@ -151,6 +170,9 @@ def new_game():
         dungeon_type = location["dungeon_type"] if location else "cave"
         if dungeon.generate(dungeon_type):
             DUNGEON_CACHE[game_id] = dungeon
+            # Update session to use this new game_id
+            session['game_id'] = game_id
+            session.modified = True
             return jsonify({"game_id": game_id, "created": True})
         else:
             return jsonify({"error": "Failed to create dungeon"}), 500

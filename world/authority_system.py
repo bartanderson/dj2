@@ -4,16 +4,35 @@ Authority System - validates and executes game actions
 Phase: Authority (validates rules, permissions, dice rolls)
 """
 from typing import Dict, Any, Optional, List
-import json
 import random
+from dataclasses import dataclass, field
+
+# FIX: Added fields for dice rolling
+@dataclass
+class ValidatedAction:
+    valid: bool
+    message: str
+    action_data: Dict[str, Any] = field(default_factory=dict)
+    requires_tool: bool = False
+    tool_name: Optional[str] = None
+    tool_params: Optional[Dict] = None
+    needs_roll: bool = False           # New: indicates if a dice roll is required
+    roll_spec: Optional[str] = None    # New: e.g., "d20+5"
 
 class AuthoritySystem:
     """Validates game actions before they're executed"""
-    
+
     def __init__(self, tool_registry):
         self.tool_registry = tool_registry
         self.validation_rules = self._load_validation_rules()
-        
+        # FIX: Map action types to tool names (could be generated from registry)
+        self.intent_to_tool = {
+            "character_creation": "create_character",
+            "movement": "move_party",          # example
+            "combat": "combat_action",         # example
+            "inventory": "inventory_action",   # example
+        }
+
     def _load_validation_rules(self) -> Dict[str, Any]:
         """Load validation rules for different action types"""
         return {
@@ -23,182 +42,255 @@ class AuthoritySystem:
             "interaction": self._validate_interaction,
             "inventory": self._validate_inventory
         }
-    
-    def validate_action(self, intent: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+
+    # FIX: Unify return type – now returns ValidatedAction
+    def validate_action(self, intent: Dict[str, Any], context: Dict[str, Any]) -> ValidatedAction:
         """
-        Validate if an action is legal given current game state
-        Returns: {"valid": bool, "message": str, "action_data": Dict}
+        Validate if an action is legal given current game state.
+        Returns a ValidatedAction object.
         """
         action_type = intent.get("intent", "unknown")
-        
-        # Check if we have validation for this action type
         validator = self.validation_rules.get(action_type)
         if validator:
-            return validator(intent, context)
-        
-        # Default validation for unknown actions
-        return self._validate_generic_action(intent, context)
-    
+            result_dict = validator(intent, context)
+        else:
+            result_dict = self._validate_generic_action(intent, context)
+
+        # Convert dict result to ValidatedAction
+        validated = ValidatedAction(
+            valid=result_dict.get("valid", False),
+            message=result_dict.get("message", ""),
+            action_data=result_dict.get("action_data", {}),
+            requires_tool=False,   # will be set by validate_and_prepare_action
+        )
+        return validated
+
+    def validate_and_prepare_action(self, intent: Dict[str, Any], context: Dict[str, Any]) -> ValidatedAction:
+        """
+        Validate action and prepare data for execution, including tool mapping and roll indication.
+        """
+        # First get basic validation
+        validated = self.validate_action(intent, context)
+
+        if not validated.valid:
+            return validated
+
+        # Determine if a tool is needed
+        action_type = intent.get("intent")
+        tool_name = self.intent_to_tool.get(action_type)
+        if tool_name and self.tool_registry.has_tool(tool_name):
+            validated.requires_tool = True
+            validated.tool_name = tool_name
+            # Build tool parameters from intent and context
+            validated.tool_params = self._build_tool_params(intent, context, tool_name)
+
+        # Determine if a dice roll is needed (example logic – expand as needed)
+        if self._requires_roll(action_type, intent, context):
+            validated.needs_roll = True
+            validated.roll_spec = self._get_roll_spec(action_type, intent, context)
+
+        return validated
+
+    def _build_tool_params(self, intent: Dict, context: Dict, tool_name: str) -> Dict:
+        """Construct parameters for the tool from intent and context."""
+        params = intent.get("parameters", {}).copy()
+        # Add common context fields
+        params["player_id"] = context.get("player_id")
+        params["session_id"] = context.get("session_id")
+        params["character_id"] = context.get("character_id")
+        return params
+
+    def _requires_roll(self, action_type: str, intent: Dict, context: Dict) -> bool:
+        """Determine if the action requires a dice roll."""
+        # Example: always roll for combat, never for character creation
+        if action_type == "combat":
+            return True
+        # Could check difficulty in intent
+        difficulty = intent.get("parameters", {}).get("difficulty")
+        return difficulty is not None
+
+    def _get_roll_spec(self, action_type: str, intent: Dict, context: Dict) -> str:
+        """Return dice specification (e.g., 'd20+5') based on action."""
+        # Default to a d20 with relevant modifier
+        modifier = context.get("ability_modifier", 0)
+        return f"d20+{modifier}"
+
+    # Internal validators remain returning dict (for backward compatibility within class)
     def _validate_character_creation(self, intent: Dict, context: Dict) -> Dict:
         """Validate character creation choices"""
-        # Basic validation - could be expanded with campaign rules
         char_data = intent.get("parameters", {}).get("character_data", {})
-        
+
         if not char_data.get("name"):
             return {"valid": False, "message": "Character needs a name"}
-        
+
         if not char_data.get("race"):
             return {"valid": False, "message": "Please choose a race"}
-        
+
         if not char_data.get("class"):
             return {"valid": False, "message": "Please choose a class"}
-        
+
+        # FIX: Optionally verify class exists in dnd_character.CLASSES
+        # try:
+        #     from dnd_character import CLASSES
+        #     if char_data["class"].lower() not in CLASSES:
+        #         return {"valid": False, "message": "Invalid class"}
+        # except ImportError:
+        #     pass   # if module not available, skip
+
         return {"valid": True, "message": "Character creation valid", "action_data": char_data}
-    
+
     def _validate_movement(self, intent: Dict, context: Dict) -> Dict:
         """Validate movement actions"""
-        # Check if player can move (not incapacitated, etc.)
         character_state = context.get("character_state", {})
-        
+
         if character_state.get("incapacitated"):
             return {"valid": False, "message": "Cannot move while incapacitated"}
-        
+
         if character_state.get("grappled"):
             return {"valid": False, "message": "Cannot move while grappled"}
-        
-        # Check destination validity
+
         destination = intent.get("parameters", {}).get("destination")
         if not destination:
             return {"valid": False, "message": "No destination specified"}
-        
-        # Additional checks would go here (terrain, permissions, etc.)
-        
+
+        # FIX: Check if destination exists and is reachable (requires world state in context)
+        world_map = context.get("world_map")
+        if world_map and not world_map.is_reachable(destination):
+            return {"valid": False, "message": "Destination is not reachable"}
+
         return {"valid": True, "message": "Movement valid", "action_data": intent.get("parameters")}
-    
+
     def _validate_combat(self, intent: Dict, context: Dict) -> Dict:
         """Validate combat actions"""
-        # Check if combat is allowed
         if not context.get("in_combat"):
             return {"valid": False, "message": "Not in combat"}
-        
-        # Check action-specific rules
-        action = intent.get("parameters", {}).get("action")
+
         target = intent.get("parameters", {}).get("target")
-        
         if not target:
             return {"valid": False, "message": "No target specified"}
-        
-        # Check range, line of sight, etc. (simplified)
-        return {"valid": True, "message": "Combat action valid"}
-    
+
+        # FIX: Check if target is valid (exists, in range, etc.)
+        combat_state = context.get("combat_state")
+        if combat_state and not combat_state.is_valid_target(target):
+            return {"valid": False, "message": "Invalid target"}
+
+        return {"valid": True, "message": "Combat action valid", "action_data": intent.get("parameters")}
+
     def _validate_interaction(self, intent: Dict, context: Dict) -> Dict:
         """Validate NPC/object interactions"""
         target = intent.get("parameters", {}).get("target")
-        
+
         if not target:
             return {"valid": False, "message": "No target specified for interaction"}
-        
-        # Check if target exists and is interactable
-        # This would check against world state
-        
-        return {"valid": True, "message": "Interaction valid"}
-    
+
+        # FIX: Check if target exists and is interactable
+        world_state = context.get("world_state")
+        if world_state and not world_state.is_interactable(target):
+            return {"valid": False, "message": f"{target} is not interactable"}
+
+        return {"valid": True, "message": "Interaction valid", "action_data": intent.get("parameters")}
+
     def _validate_inventory(self, intent: Dict, context: Dict) -> Dict:
         """Validate inventory actions"""
         action = intent.get("parameters", {}).get("action")
         item = intent.get("parameters", {}).get("item")
-        
+
         if action in ["use", "equip"] and not item:
             return {"valid": False, "message": "No item specified"}
-        
+
         if action == "drop" and not item:
             return {"valid": False, "message": "No item to drop"}
-        
+
         # Check if player has the item
         inventory = context.get("inventory", [])
         if item and item not in inventory:
             return {"valid": False, "message": f"You don't have {item}"}
-        
-        return {"valid": True, "message": "Inventory action valid"}
-    
+
+        return {"valid": True, "message": "Inventory action valid", "action_data": intent.get("parameters")}
+
     def _validate_generic_action(self, intent: Dict, context: Dict) -> Dict:
         """Default validation for unknown action types"""
-        # For now, allow most actions if they have parameters
-        if intent.get("parameters"):
-            return {"valid": True, "message": "Action appears valid", "action_data": intent.get("parameters")}
+        # FIX: Require at least a non-empty parameters dict
+        params = intent.get("parameters")
+        if params and isinstance(params, dict) and len(params) > 0:
+            return {"valid": True, "message": "Action appears valid", "action_data": params}
         return {"valid": False, "message": "Action lacks details"}
-    
+
     def roll_dice(self, dice_string: str, context: Dict = None) -> Dict[str, Any]:
         """
         Roll dice with authority
         Format: "2d6+3" or "d20"
         """
         try:
-            # Parse dice string
             if "d" not in dice_string:
                 return {"total": 0, "rolls": [], "error": "Invalid dice format"}
-            
-            # Simple dice roller - would need expansion for complex expressions
+
+            # Simple dice roller – for complex expressions, consider a library
             parts = dice_string.split("d")
             if len(parts) != 2:
                 return {"total": 0, "rolls": [], "error": "Invalid dice format"}
-            
+
             num_dice = int(parts[0]) if parts[0] else 1
             die_sides = int(parts[1])
-            
+
             rolls = [random.randint(1, die_sides) for _ in range(num_dice)]
             total = sum(rolls)
-            
+
             # Apply bonuses/penalties from context
-            bonuses = context.get("bonuses", {}) if context else {}
+            context = context or {}
             advantage = context.get("advantage", False)
             disadvantage = context.get("disadvantage", False)
-            
+
             if advantage and disadvantage:
                 # Cancel out - normal roll
                 pass
             elif advantage:
-                # Roll twice, take highest
                 extra_rolls = [random.randint(1, die_sides) for _ in range(num_dice)]
                 rolls = [max(rolls[i], extra_rolls[i]) for i in range(num_dice)]
                 total = sum(rolls)
             elif disadvantage:
-                # Roll twice, take lowest
                 extra_rolls = [random.randint(1, die_sides) for _ in range(num_dice)]
                 rolls = [min(rolls[i], extra_rolls[i]) for i in range(num_dice)]
                 total = sum(rolls)
-            
+
+            # FIX: Apply bonuses from context
+            bonus = context.get("bonus", 0)
+            total += bonus
+
             return {
                 "total": total,
                 "rolls": rolls,
                 "dice_string": dice_string,
                 "advantage": advantage,
-                "disadvantage": disadvantage
+                "disadvantage": disadvantage,
+                "bonus": bonus
             }
-            
+
         except Exception as e:
             return {"total": 0, "rolls": [], "error": f"Error rolling dice: {str(e)}"}
-    
+
     def execute_tool(self, tool_name: str, parameters: Dict, context: Dict) -> Dict[str, Any]:
         """
-        Execute a tool through the registry with validation
-        Phase: Authority (validates) -> returns result for Mutation phase
+        Execute a tool through the registry with validation.
+        Returns a dict with at least "success", "message", and optionally "action_data".
         """
-        # First validate the tool execution
+        # Validate tool execution (existence and basic parameter checks)
         validation_result = self.validate_tool_execution(tool_name, parameters, context)
-        
+
         if not validation_result.get("valid"):
             return {
                 "success": False,
                 "message": validation_result.get("message", "Tool execution failed validation"),
                 "action_data": parameters,
-                "needs_roll": False
             }
-        
-        # Execute the tool (this should only return what needs to happen, not mutate state)
+
         try:
             tool_result = self.tool_registry.execute_tool(tool_name, parameters)
-            tool_result["validated"] = True
+            # Ensure result has expected keys
+            if "success" not in tool_result:
+                tool_result["success"] = True
+            if "message" not in tool_result:
+                tool_result["message"] = f"Executed {tool_name}"
             tool_result["action_data"] = parameters
             return tool_result
         except Exception as e:
@@ -207,14 +299,13 @@ class AuthoritySystem:
                 "message": f"Tool execution error: {str(e)}",
                 "action_data": parameters
             }
-    
+
     def validate_tool_execution(self, tool_name: str, parameters: Dict, context: Dict) -> Dict[str, Any]:
-        """Validate if a tool can be executed"""
-        # Check if tool exists
+        """Validate if a tool can be executed (tool‑specific checks)."""
         if not self.tool_registry.has_tool(tool_name):
             return {"valid": False, "message": f"Unknown tool: {tool_name}"}
-        
-        # Tool-specific validation
+
+        # Tool‑specific validation
         if tool_name == "create_door":
             return self._validate_create_door(parameters, context)
         elif tool_name == "move_party":
@@ -222,55 +313,60 @@ class AuthoritySystem:
         elif tool_name == "add_entity":
             return self._validate_add_entity(parameters, context)
         # Add more tool validations as needed
-        
-        # Default validation passes
+
         return {"valid": True, "message": "Tool execution valid"}
-    
+
     def _validate_create_door(self, parameters: Dict, context: Dict) -> Dict[str, Any]:
         """Validate door creation parameters"""
         x = parameters.get("x")
         y = parameters.get("y")
-        
+
         if x is None or y is None:
             return {"valid": False, "message": "Missing coordinates for door"}
-        
+
         if not isinstance(x, int) or not isinstance(y, int):
             return {"valid": False, "message": "Coordinates must be integers"}
-        
+
         # Check if position is valid in dungeon
         dungeon_state = context.get("dungeon_state")
-        if dungeon_state:
-            # Would check if coordinates are within bounds, not blocked, etc.
-            pass
-            
+        if dungeon_state and not dungeon_state.is_valid_position(x, y):
+            return {"valid": False, "message": "Invalid door position"}
+
         return {"valid": True, "message": "Door creation valid"}
-    
+
     def _validate_move_party(self, parameters: Dict, context: Dict) -> Dict[str, Any]:
         """Validate party movement"""
         direction = parameters.get("direction")
         steps = parameters.get("steps", 1)
-        
+
         if not direction:
             return {"valid": False, "message": "No direction specified"}
-        
+
         valid_directions = ["north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest"]
         if direction.lower() not in valid_directions:
             return {"valid": False, "message": f"Invalid direction: {direction}"}
-        
+
         if not isinstance(steps, int) or steps < 1:
             return {"valid": False, "message": "Steps must be positive integer"}
-        
+
+        # Check movement cost (if needed)
+        movement_cost = parameters.get("movement_cost", 1)
+        if movement_cost > context.get("remaining_movement", 100):
+            return {"valid": False, "message": "Not enough movement points"}
+
         return {"valid": True, "message": "Movement valid"}
-    
+
     def _validate_add_entity(self, parameters: Dict, context: Dict) -> Dict[str, Any]:
         """Validate entity addition"""
         entity_type = parameters.get("entity_type")
-        
+
         if not entity_type:
             return {"valid": False, "message": "No entity type specified"}
-        
+
         valid_entities = ["npc", "monster", "item", "trap", "portal", "chest"]
         if entity_type.lower() not in valid_entities:
             return {"valid": False, "message": f"Invalid entity type: {entity_type}"}
-        
+
+        # Additional checks (e.g., unique names, limits) can be added here
+
         return {"valid": True, "message": "Entity addition valid"}
