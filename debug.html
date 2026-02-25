@@ -2,10 +2,9 @@
 <html>
 <head>
     <title>Agent Log Viewer</title>
-    <meta charset="utf-8">
     <style>
         body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
-        .event { border-bottom: 1px solid #333; margin-bottom: 10px; padding: 5px; }
+        .event { border-bottom: 1px solid #333; margin-bottom: 10px; padding: 5px; cursor: pointer; }
         .timestamp { color: #888; font-size: 0.9em; }
         .type { font-weight: bold; display: inline-block; width: 80px; }
         .prompt { background: #2a2a2a; }
@@ -13,25 +12,42 @@
         .tool-call { background: #1e3a3a; }
         .tool-result { background: #3a2a1e; }
         .error { background: #4a2a2a; }
-        pre { white-space: pre-wrap; word-wrap: break-word; background: #000; padding: 10px; border-radius: 5px; }
+        pre { white-space: pre-wrap; word-wrap: break-word; background: #000; padding: 10px; border-radius: 5px; display: none; }
         button { margin: 5px; padding: 5px 10px; background: #333; color: white; border: none; cursor: pointer; }
         button:hover { background: #555; }
         .controls { margin-bottom: 20px; }
         .summary { color: #aaa; }
+        .paused { background: #a00; }
     </style>
 </head>
 <body>
     <h1>Agent Log Viewer</h1>
     <div class="controls">
         <button onclick="loadLog()">Refresh</button>
-        <button onclick="autoRefresh = !autoRefresh; this.innerText = autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh OFF'">Auto-refresh OFF</button>
+        <button id="pauseBtn" onclick="toggleAutoRefresh()">Pause</button>
         <label><input type="checkbox" id="scroll" checked> Auto-scroll</label>
     </div>
     <div id="log"></div>
 
     <script>
-        let autoRefresh = false;
+        let autoRefresh = true;
         let lastTimestamp = 0;
+        let refreshInterval;
+
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(() => {
+                if (autoRefresh) loadLog();
+            }, 3000);
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            const btn = document.getElementById('pauseBtn');
+            btn.innerText = autoRefresh ? 'Pause' : 'Play';
+            btn.className = autoRefresh ? '' : 'paused';
+            if (autoRefresh) loadLog();
+        }
 
         async function loadLog() {
             try {
@@ -73,9 +89,10 @@
                         <span class="type">${event.type}</span>
                         <span class="summary">${summary}</span>
                     </div>
-                    <pre style="display: none;">${escapeHtml(JSON.stringify(event.data, null, 2))}</pre>
+                    <pre>${escapeHtml(JSON.stringify(event.data, null, 2))}</pre>
                 `;
-                div.addEventListener('click', () => {
+                div.addEventListener('click', (e) => {
+                    // Toggle the pre element when the div is clicked
                     const pre = div.querySelector('pre');
                     pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
                 });
@@ -90,11 +107,10 @@
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
 
-        setInterval(() => {
-            if (autoRefresh) loadLog();
-        }, 3000);
-
-        window.onload = loadLog;
+        window.onload = () => {
+            loadLog();
+            startAutoRefresh();
+        };
     </script>
 </body>
 </html>

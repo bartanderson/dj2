@@ -16,6 +16,8 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).parent
 LOG_FILE = PROJECT_ROOT / 'agent_log.jsonl'
 
+_KEEP_BROWSER_OPEN = True   # set to True if you want to keep browser open after exit
+
 # ----------------------------------------------------------------------
 # Logging
 # ----------------------------------------------------------------------
@@ -104,7 +106,7 @@ def _ensure_bridge_alive():
 
 def _close_bridge():
     global _deepseek_bridge
-    if _deepseek_bridge is not None:
+    if _deepseek_bridge is not None and not _KEEP_BROWSER_OPEN:
         try:
             _deepseek_bridge.close()
         except:
@@ -179,7 +181,21 @@ def write_file(path, content):
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content, encoding='utf-8')
     return f"Written {path}"
-
+    
+def upload_file(file_path):
+    """
+    Upload a single file to the active DeepSeek conversation.
+    The file becomes part of the context for subsequent prompts.
+    Returns confirmation.
+    """
+    bridge = _ensure_bridge_alive()
+    full_path = PROJECT_ROOT / file_path
+    if not full_path.exists():
+        raise Exception(f"File not found: {file_path}")
+    content = full_path.read_text(encoding='utf-8')
+    # Use the bridge's underlying upload method
+    bridge.bridge._core.upload_file(content, full_path.name)
+    return f"Uploaded {file_path}"
 # ----------------------------------------------------------------------
 # Search tool using ai.py search and return valid paths
 # ----------------------------------------------------------------------

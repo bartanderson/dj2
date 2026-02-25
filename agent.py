@@ -17,7 +17,8 @@ from agent_tools import (
     create_branch,
     commit_changes,
     show_diff,
-    log_event
+    log_event,
+    semantic_search
 )
 
 TOOL_DESCRIPTIONS = """
