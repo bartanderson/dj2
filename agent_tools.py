@@ -50,6 +50,28 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
+# Semantic search using intent_matcher
+# ----------------------------------------------------------------------
+def semantic_search(query, limit=5):
+    """
+    Use embedding index to find files relevant to the query.
+    Returns a list of dicts: [{"path": "file.py", "score": 0.95}, ...]
+    """
+    # Import here to avoid circular imports
+    from tools.analysis.intent_matcher import _get_top_files_for_intent
+
+    # Path to the embeddings database (adjust if different)
+    db_path = PROJECT_ROOT / "ai_context" / "embeddings.db"
+    if not db_path.exists():
+        # Fallback: maybe run indexer first? For now, warn and return empty.
+        print(f"Warning: Embeddings DB not found at {db_path}", file=sys.stderr)
+        return []
+
+    results = _get_top_files_for_intent(query, db_path, max_files=limit)
+    # results is list of (file_path, score, file_data)
+    return [{"path": path, "score": score} for path, score, _ in results]
+
+# ----------------------------------------------------------------------
 # DeepSeek consultation – persistent bridge
 # ----------------------------------------------------------------------
 _deepseek_bridge = None

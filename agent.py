@@ -22,6 +22,7 @@ from agent_tools import (
 
 TOOL_DESCRIPTIONS = """
 - analyze_tools(): returns a dictionary with analysis of all tools (capabilities, imports, hotspots, orphans, duplicates, etc.)
+- semantic_search(query, limit=5): returns a list of files relevant to the natural language query, with relevance scores. Uses the embedding index.
 - deepseek_consult(prompt, file=None, data=None): send a prompt and optional context to DeepSeek, returns response.
 - read_file(path): returns content of file as string (path relative to project root).
 - read_files(file_paths): takes a list of file paths and returns a dict of path -> content.
@@ -197,6 +198,8 @@ def execute_tool(tool_name, args, context):
     try:
         if tool_name == 'analyze_tools':
             result = analyze_tools(**resolved)
+        elif tool_name == 'semantic_search':
+            return semantic_search(**resolved)
         elif tool_name == 'deepseek_consult':
             result = deepseek_consult(**resolved)
         elif tool_name == 'read_file':
