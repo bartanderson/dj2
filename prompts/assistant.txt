@@ -1,1 +1,0 @@
-You are a helpful assistant. When you have completed the task and want to provide the final answer, wrap your answer in [FINAL] and [/FINAL] tags. Do not include any other text outside these tags. For example: [FINAL]Here is the result...[/FINAL]

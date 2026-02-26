@@ -2,13 +2,13 @@
 """
 Multi‑turn ReAct agent for test generation.
 Supports --one-shot mode to stop after first tool call.
+Uses XML tags: <tool>tool_name(args)</tool> and <final>answer</final>.
 """
 
 import json
 import re
 import sys
 import argparse
-import shlex
 from pathlib import Path
 import importlib.util
 
@@ -45,60 +45,58 @@ def format_tools_for_prompt(tools):
         lines.append(f"- {name}({param_str}): {desc}")
     return "\n".join(lines)
 
-def find_tool_calls(text):
-    """Return list of (tool_name, args_list) from any TOOL_CALL: lines."""
+# ----------------------------------------------------------------------
+# New parsing functions for XML tags
+# ----------------------------------------------------------------------
+def extract_tool_calls(text):
+    """
+    Return list of (tool_name, args_str) from <tool>...</tool> tags.
+    Example: <tool>search_files(query="python", limit=5)</tool>
+    """
+    pattern = r'<tool>(.*?)</tool>'
+    matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
     tool_calls = []
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("TOOL_CALL:"):
-            match = re.match(r"TOOL_CALL:\s*(\w+)\((.*)\)", line, re.DOTALL)
-            if match:
-                tool_name = match.group(1)
-                args_str = match.group(2).strip()
-                try:
-                    args_list = shlex.split(args_str)
-                except:
-                    args_list = [a.strip() for a in args_str.split(",") if a.strip()]
-                tool_calls.append((tool_name, args_list))
+    for match in matches:
+        # match is like "search_files(query="python", limit=5)"
+        m = re.match(r'(\w+)\((.*)\)', match.strip(), re.DOTALL)
+        if m:
+            tool_name = m.group(1)
+            args_str = m.group(2).strip()
+            tool_calls.append((tool_name, args_str))
     return tool_calls
 
-def build_args_dict(tool_name, args_list, tools):
-    """Convert argument list to dictionary, handling multiple keyword arguments."""
-    # Get expected parameter names for this tool
-    param_names = []
-    for t in tools:
-        if t["function"]["name"] == tool_name:
-            param_names = list(t["function"]["parameters"]["properties"].keys())
-            break
+def extract_final(text):
+    """Return content of first <final>...</final> tag, or None."""
+    match = re.search(r'<final>(.*?)</final>', text, re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else None
+
+def parse_args_string(args_str):
+    """
+    Parse key=value pairs from a string like 'query="python", limit=5'.
+    Returns a dictionary with keys and string values (numbers remain strings).
+    Handles quoted values and trailing commas.
+    """
     args_dict = {}
-    # First, try to parse as keyword arguments
-    for token in args_list:
-        token = token.strip()
-        if '=' in token:
-            key, value = token.split('=', 1)
-            key = key.strip()
-            value = value.strip().strip('"\'')
-            if key in param_names:
-                args_dict[key] = value
-            else:
-                # Unexpected key – ignore
-                pass
-        else:
-            # If any token is not a keyword, we'll fall back to positional for all
-            args_dict = {}
-            break
-    # If we couldn't parse as keywords, assume positional
-    if not args_dict:
-        for i, token in enumerate(args_list):
-            token = token.strip().strip('"\'')
-            if i < len(param_names):
-                args_dict[param_names[i]] = token
+    # Find all key=value pairs: key = value (value may be quoted or unquoted)
+    pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^,\s]+))'
+    for match in re.finditer(pattern, args_str):
+        key = match.group(1)
+        # Value is one of the three capture groups: double-quoted, single-quoted, or unquoted
+        value = match.group(2) or match.group(3) or match.group(4)
+        # Remove any trailing comma that might have been captured
+        if value.endswith(','):
+            value = value[:-1].rstrip()
+        args_dict[key] = value
     return args_dict
 
+# ----------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tools", required=False, help="Path to tools module (if omitted, uses default tools)")
-    parser.add_argument("--prompt", required=True)
+    parser.add_argument("--prompt", required=False, default=str(project_root / "prompts" / "agent.txt"),
+                        help="Path to system prompt file (default: prompts/agent.txt)")
     parser.add_argument("--input", required=True)
     parser.add_argument("--output")
     parser.add_argument("--db", default="ai_context/scout.db")
@@ -119,7 +117,6 @@ def main():
             return 1
         tools_mod = load_module_from_file(str(tools_path), "tools_mod")
     else:
-        # Use default tools from tools.default_tools
         import tools.default_tools as tools_mod
 
     tools = tools_mod.TOOLS
@@ -157,10 +154,11 @@ def main():
         )
 
     # ------------------------------------------------------------------
-    # Main loop (ReAct mode – planning will be added later)
+    # Main loop (ReAct)
     # ------------------------------------------------------------------
     for turn in range(args.max_turns):
         print(f"\n--- Turn {turn+1} ---")
+        
         # Build prompt from conversation
         prompt = ""
         for msg in messages:
@@ -170,49 +168,66 @@ def main():
         prompt += "ASSISTANT:"
 
         print("\n=== PROMPT ===")
-        print(prompt)
+        print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
         print("==============")
 
         text = client.generate(prompt)
         print(f"\n=== RAW RESPONSE ===\n{text}\n===================")
 
-        tool_calls = find_tool_calls(text)
-        if tool_calls:
-            # Add assistant message to history
-            messages.append({"role": "assistant", "content": text})
-            # Execute only the first tool call
-            tool_name, args_list = tool_calls[0]
-            args_dict = build_args_dict(tool_name, args_list, tools)
-            # Check for nested tool calls in arguments
-            nested = False
-            for val in args_dict.values():
-                if isinstance(val, str) and re.search(r'\w+\s*\(', val):
-                    nested = True
-                    break
-            if nested:
-                result = f"Error: Argument contains a nested tool call. Use literal values only. Arguments received: {args_dict}"
+        # Add assistant response to history
+        messages.append({"role": "assistant", "content": text})
+
+        # 1. Check for final answer first
+        final = extract_final(text)
+        if final:
+            if args.output:
+                Path(args.output).write_text(final, encoding='utf-8')
+                print(f"✅ Result written to {args.output}")
             else:
-                print(f"Tool call: {tool_name}({args_dict})")
-                handler = handlers.get(tool_name)
-                if not handler:
-                    result = f"Unknown tool: {tool_name}"
+                print("\n" + "="*40)
+                print(final)
+                print("="*40)
+            return 0
+
+        # 2. Check for tool calls
+        tool_calls = extract_tool_calls(text)
+        if tool_calls:
+            print(f"\nFound {len(tool_calls)} tool call(s)")
+            
+            for tool_name, args_str in tool_calls:
+                # Parse arguments string into dictionary
+                args_dict = parse_args_string(args_str)
+                
+                # Check for nested tool calls (crude injection prevention)
+                nested = False
+                for val in args_dict.values():
+                    if isinstance(val, str) and re.search(r'\w+\s*\(', val):
+                        nested = True
+                        break
+                
+                if nested:
+                    result = f"Error: Nested tool call detected in arguments: {args_dict}"
                 else:
-                    result = handler(args_dict)
-            print(f"Result: {str(result)[:200]}...")
-            messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
-            # If one-shot, stop after first tool call
+                    print(f"Executing: {tool_name}({args_dict})")
+                    handler = handlers.get(tool_name)
+                    if not handler:
+                        result = f"Unknown tool: {tool_name}"
+                    else:
+                        # Pass the dictionary as keyword arguments
+                        result = handler(**args_dict)
+                
+                print(f"Result: {str(result)[:200]}...")
+                messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
+            
+            # After executing tools, continue to next turn
             if args.one_shot:
                 print("\n--- One-shot mode: stopping after first tool call ---")
-                print("Final conversation:")
-                for msg in messages[-2:]:
-                    print(f"{msg['role'].upper()}: {msg['content'][:100]}...")
                 return 0
-            continue
+            continue  # Go to next turn to process tool results
 
-        # --- Check for final answer using custom tags ---
-        final_match = re.search(r'\[FINAL\](.*?)\[/FINAL\]', text, re.DOTALL | re.IGNORECASE)
-        if final_match:
-            final = final_match.group(1).strip()
+        # 3. No tool calls, no final tag – treat as implicit final answer
+        final = text.strip()
+        if final:
             if args.output:
                 Path(args.output).write_text(final, encoding='utf-8')
                 print(f"✅ Result written to {args.output}")
@@ -221,24 +236,6 @@ def main():
                 print(final)
                 print("="*40)
             return 0
-
-        # --- Fallback: original triple-backtick detection ---
-        if "```" in text:
-            match = re.search(r"```(?:\w+)?\n(.*?)\n```", text, re.DOTALL)
-            if match:
-                final = match.group(1).strip()
-            else:
-                final = text.strip()
-            if args.output:
-                Path(args.output).write_text(final, encoding='utf-8')
-                print(f"✅ Result written to {args.output}")
-            else:
-                print("\n" + "="*40)
-                print(final)
-                print("="*40)
-            return 0
-
-        messages.append({"role": "assistant", "content": text})
 
     print("❌ Max turns reached without final output.")
     return 1
