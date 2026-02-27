@@ -1,63 +1,26 @@
 #!/usr/bin/env python3
-"""
-Multi‑turn ReAct agent for test generation.
-Supports --one-shot mode to stop after first tool call.
-Uses XML tags: <tool>tool_name(args)</tool> and <final>answer</final>.
-"""
+# simple_agent.py
 
-import json
 import re
 import sys
-import argparse
 from pathlib import Path
-import importlib.util
 
-# ----------------------------------------------------------------------
-# Path setup – find project root (parent of tools directory)
-# ----------------------------------------------------------------------
-script_dir = Path(__file__).resolve().parent          # tools/
-project_root = script_dir.parent                       # project root (dj2/)
-scripts_dir = project_root / "scripts"
-tools_dir = project_root / "tools"
+# Path setup – script is in project root
+script_dir = Path(__file__).parent          # .../dj2/tools/
+project_root = script_dir.parent             # .../dj2/
+tools_dir = script_dir       
 
-for d in [scripts_dir, tools_dir]:
-    if d.exists() and str(d) not in sys.path:
-        sys.path.insert(0, str(d))
+# Add tools directory to path
+sys.path.insert(0, str(tools_dir))
 
-# ----------------------------------------------------------------------
-# Imports (now that paths are set)
-# ----------------------------------------------------------------------
-from tools.model_client import OllamaClient, DeepSeekClient
+from langchain_ollama import ChatOllama
+import tools.default_tools as tools_mod
 
-def load_module_from_file(file_path: str, module_name: str):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-def format_tools_for_prompt(tools):
-    lines = []
-    for t in tools:
-        name = t["function"]["name"]
-        desc = t["function"]["description"]
-        params = t["function"]["parameters"]["properties"]
-        param_str = ", ".join(params.keys())
-        lines.append(f"- {name}({param_str}): {desc}")
-    return "\n".join(lines)
-
-# ----------------------------------------------------------------------
-# New parsing functions for XML tags
-# ----------------------------------------------------------------------
 def extract_tool_calls(text):
-    """
-    Return list of (tool_name, args_str) from <tool>...</tool> tags.
-    Example: <tool>search_files(query="python", limit=5)</tool>
-    """
     pattern = r'<tool>(.*?)</tool>'
     matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
     tool_calls = []
     for match in matches:
-        # match is like "search_files(query="python", limit=5)"
         m = re.match(r'(\w+)\((.*)\)', match.strip(), re.DOTALL)
         if m:
             tool_name = m.group(1)
@@ -66,100 +29,63 @@ def extract_tool_calls(text):
     return tool_calls
 
 def extract_final(text):
-    """Return content of first <final>...</final> tag, or None."""
     match = re.search(r'<final>(.*?)</final>', text, re.DOTALL | re.IGNORECASE)
     return match.group(1).strip() if match else None
 
-def parse_args_string(args_str):
-    """
-    Parse key=value pairs from a string like 'query="python", limit=5'.
-    Returns a dictionary with keys and string values (numbers remain strings).
-    Handles quoted values and trailing commas.
-    """
+def parse_args_string(args_str, tool_name, tools):
     args_dict = {}
-    # Find all key=value pairs: key = value (value may be quoted or unquoted)
     pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^,\s]+))'
-    for match in re.finditer(pattern, args_str):
-        key = match.group(1)
-        # Value is one of the three capture groups: double-quoted, single-quoted, or unquoted
-        value = match.group(2) or match.group(3) or match.group(4)
-        # Remove any trailing comma that might have been captured
-        if value.endswith(','):
-            value = value[:-1].rstrip()
-        args_dict[key] = value
+    matches = list(re.finditer(pattern, args_str))
+    if matches:
+        for match in matches:
+            key = match.group(1)
+            value = match.group(2) or match.group(3) or match.group(4)
+            if value.endswith(','):
+                value = value[:-1].rstrip()
+            args_dict[key] = value
+        return args_dict
+    # fallback to positional
+    param_names = []
+    for t in tools:
+        if t["function"]["name"] == tool_name:
+            param_names = list(t["function"]["parameters"]["properties"].keys())
+            break
+    import shlex
+    try:
+        positional = shlex.split(args_str)
+    except:
+        positional = [v.strip() for v in args_str.split(',') if v.strip()]
+    for i, val in enumerate(positional):
+        if i < len(param_names):
+            args_dict[param_names[i]] = val.strip('"\'')
     return args_dict
 
-# ----------------------------------------------------------------------
-# Main
-# ----------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--tools", required=False, help="Path to tools module (if omitted, uses default tools)")
-    parser.add_argument("--prompt", required=False, default=str(project_root / "prompts" / "agent.txt"),
-                        help="Path to system prompt file (default: prompts/agent.txt)")
-    parser.add_argument("--input", required=True)
-    parser.add_argument("--output")
-    parser.add_argument("--db", default="ai_context/scout.db")
-    parser.add_argument("--project-root", default=".")
-    parser.add_argument("--model", default="llama3.2:3b")
-    parser.add_argument("--max-turns", type=int, default=15)
-    parser.add_argument("--max-tokens", type=int, default=16000)
-    parser.add_argument("--one-shot", action="store_true", help="Stop after first tool call")
-    args = parser.parse_args()
-
-    # ------------------------------------------------------------------
-    # Load tools
-    # ------------------------------------------------------------------
-    if args.tools:
-        tools_path = Path(args.tools)
-        if not tools_path.exists():
-            print(f"❌ Tools file not found: {tools_path}")
-            return 1
-        tools_mod = load_module_from_file(str(tools_path), "tools_mod")
-    else:
-        import tools.default_tools as tools_mod
-
-    tools = tools_mod.TOOLS
-    get_handlers = tools_mod.get_handlers
-
-    # Prepare handlers (ignore db_path and project_root for now)
-    handlers = get_handlers(db_path=None, project_root=project_root)
-
-    # ------------------------------------------------------------------
-    # Load prompt and prepare system message
-    # ------------------------------------------------------------------
-    prompt_path = Path(args.prompt)
-    if not prompt_path.exists():
-        print(f"❌ Prompt file not found: {prompt_path}")
+    if len(sys.argv) < 2:
+        print("Usage: simple_agent.py <user request>")
         return 1
+
+    user_input = " ".join(sys.argv[1:])
+
+    # Load tools and handlers
+    tools = tools_mod.TOOLS
+    handlers = tools_mod.get_handlers(db_path=None, project_root=project_root)
+
+    # Load prompt
+    prompt_path = project_root / "prompts" / "agent.txt"
     sys_prompt = prompt_path.read_text(encoding='utf-8')
-    tools_desc = format_tools_for_prompt(tools)
-    full_sys_prompt = sys_prompt + "\n\nAvailable tools:\n" + tools_desc
 
     messages = [
-        {"role": "system", "content": full_sys_prompt},
-        {"role": "user", "content": args.input}
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": user_input}
     ]
 
-    # ------------------------------------------------------------------
-    # Initialize model client
-    # ------------------------------------------------------------------
-    if args.model.lower() == 'deepseek':
-        client = DeepSeekClient(timeout=args.max_tokens)
-    else:
-        client = OllamaClient(
-            model_name=args.model,
-            max_tokens=args.max_tokens,
-            temperature=0.2
-        )
+    # Initialize Ollama directly
+    llm = ChatOllama(model="mistral:7b", temperature=0.2, num_predict=4000)
 
-    # ------------------------------------------------------------------
-    # Main loop (ReAct)
-    # ------------------------------------------------------------------
-    for turn in range(args.max_turns):
-        print(f"\n--- Turn {turn+1} ---")
-        
-        # Build prompt from conversation
+    max_turns = 10
+    for turn in range(max_turns):
+        # Build prompt
         prompt = ""
         for msg in messages:
             role = msg["role"].upper()
@@ -167,77 +93,43 @@ def main():
             prompt += f"{role}: {content}\n"
         prompt += "ASSISTANT:"
 
-        print("\n=== PROMPT ===")
-        print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
-        print("==============")
+        print(f"\n--- Turn {turn+1} ---")
+        response = llm.invoke(prompt)
+        text = response.content
+        print(f"\nRAW: {text}\n")
 
-        text = client.generate(prompt)
-        print(f"\n=== RAW RESPONSE ===\n{text}\n===================")
-
-        # Add assistant response to history
         messages.append({"role": "assistant", "content": text})
 
-        # 1. Check for final answer first
-        final = extract_final(text)
-        if final:
-            if args.output:
-                Path(args.output).write_text(final, encoding='utf-8')
-                print(f"✅ Result written to {args.output}")
-            else:
-                print("\n" + "="*40)
-                print(final)
-                print("="*40)
-            return 0
-
-        # 2. Check for tool calls
+        # 1. Tool calls first
         tool_calls = extract_tool_calls(text)
         if tool_calls:
-            print(f"\nFound {len(tool_calls)} tool call(s)")
-            
             for tool_name, args_str in tool_calls:
-                # Parse arguments string into dictionary
-                args_dict = parse_args_string(args_str)
-                
-                # Check for nested tool calls (crude injection prevention)
-                nested = False
-                for val in args_dict.values():
-                    if isinstance(val, str) and re.search(r'\w+\s*\(', val):
-                        nested = True
-                        break
-                
-                if nested:
-                    result = f"Error: Nested tool call detected in arguments: {args_dict}"
+                args_dict = parse_args_string(args_str, tool_name, tools)
+                handler = handlers.get(tool_name)
+                if not handler:
+                    result = f"Unknown tool: {tool_name}"
                 else:
-                    print(f"Executing: {tool_name}({args_dict})")
-                    handler = handlers.get(tool_name)
-                    if not handler:
-                        result = f"Unknown tool: {tool_name}"
-                    else:
-                        # Pass the dictionary as keyword arguments
+                    try:
                         result = handler(**args_dict)
-                
-                print(f"Result: {str(result)[:200]}...")
+                    except Exception as e:
+                        result = f"Error executing {tool_name}: {e}"
+                print(f"Executed {tool_name}: {str(result)[:100]}...")
                 messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
-            
-            # After executing tools, continue to next turn
-            if args.one_shot:
-                print("\n--- One-shot mode: stopping after first tool call ---")
-                return 0
-            continue  # Go to next turn to process tool results
+            continue
 
-        # 3. No tool calls, no final tag – treat as implicit final answer
-        final = text.strip()
+        # 2. No tool calls – check for final
+        final = extract_final(text)
         if final:
-            if args.output:
-                Path(args.output).write_text(final, encoding='utf-8')
-                print(f"✅ Result written to {args.output}")
-            else:
-                print("\n" + "="*40)
-                print(final)
-                print("="*40)
+            print("\n=== FINAL ANSWER ===")
+            print(final)
             return 0
 
-    print("❌ Max turns reached without final output.")
+        # 3. Implicit final
+        print("\n=== FINAL ANSWER (implicit) ===")
+        print(text.strip())
+        return 0
+
+    print("Max turns reached.")
     return 1
 
 if __name__ == "__main__":

@@ -19,14 +19,16 @@ from datetime import datetime
 # MODERN BROWSER-USE IMPORTS (v0.12.0)
 from browser_use import Agent, ChatOpenAI, Browser
 
-TOOLS_DIR = Path(__file__).parent          # of this file, ie. .../dj2/tools/
-PROJECT_ROOT = Path(__file__).parent       # and project root is parent of that .../dj2
-LOG_FILE = TOOLS_DIR / 'agent_log.jsonl'
+# --- Correct path setup ---
+TOOLS_DIR = Path(__file__).parent          # .../dj2/tools/
+PROJECT_ROOT = TOOLS_DIR.parent             # .../dj2/   (project root)
+LOG_FILE = TOOLS_DIR / 'agent_log.jsonl'    # keep log in tools/
+# --------------------------
 
 # ----------------------------------------------------------------------
-# Logging
+# Logging (internal)
 # ----------------------------------------------------------------------
-def log_event(event_type, data):
+def _log_event(event_type, data):
     """Append an event to the log file."""
     entry = {
         'timestamp': datetime.now().isoformat(timespec='milliseconds'),
@@ -42,7 +44,7 @@ def log_event(event_type, data):
 # ----------------------------------------------------------------------
 # Persistent Browser Setup (Long-running Chrome Pool)
 # ----------------------------------------------------------------------
-class ChromePool:
+class _ChromePool:
     """
     Manages connection to long-running Chrome instance.
     Chrome stays running; agents connect/disconnect ephemerally.
@@ -86,21 +88,21 @@ class ChromePool:
         if self._browser:
             await self._browser.close()
             self._browser = None
-            log_event('browser_disconnect', {'status': 'agent_disconnected_chrome_running'})
+            _log_event('browser_disconnect', {'status': 'agent_disconnected_chrome_running'})
 
 # Global pool instance - Chrome stays running across agent sessions
-_chrome_pool = ChromePool(cdp_port=9222)
+_chrome_pool = _ChromePool(cdp_port=9222)
 
-def get_browser():
+def _get_browser():
     """Get browser connection for agent use."""
     return _chrome_pool.get_browser()
 
-async def disconnect_browser():
+async def _disconnect_browser():
     """Call to release agent connection (Chrome stays up for watcher)."""
     await _chrome_pool.disconnect()
 
 # ----------------------------------------------------------------------
-# DeepSeek Consultation (Using Long-Running Chrome via CDP)
+# DeepSeek Consultation (PUBLIC TOOL)
 # ----------------------------------------------------------------------
 def deepseek_consult(prompt, file=None, data=None, timeout=3600):
     """
@@ -117,7 +119,7 @@ def deepseek_consult(prompt, file=None, data=None, timeout=3600):
             with open(file, 'r', encoding='utf-8') as f:
                 content = f.read() + "\n\n" + prompt
         except Exception as e:
-            log_event('file_read_error', str(e))
+            _log_event('file_read_error', str(e))
             return f"Error reading file: {e}"
     
     if data:
@@ -160,7 +162,7 @@ Provide your analysis:"""
     return response or "No response received"
 
 # ----------------------------------------------------------------------
-# Watcher Integration: Safe History Reading
+# Watcher Integration: Safe History Reading (internal, not a tool)
 # ----------------------------------------------------------------------
 def get_chrome_history(profile_dir: str = None, limit: int = 10):
     """
@@ -206,7 +208,7 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
         Path(tmp_path).unlink(missing_ok=True)
 
 # ----------------------------------------------------------------------
-# Analysis tool – calls your existing tool_analyzer
+# Analysis tool – PUBLIC
 # ----------------------------------------------------------------------
 def analyze_tools():
     """Run the tool_analyzer and return the full analysis dict."""
@@ -223,7 +225,7 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
-# Semantic search using intent_matcher
+# Semantic search – PUBLIC
 # ----------------------------------------------------------------------
 def semantic_search(query, limit=5):
     """
@@ -241,7 +243,7 @@ def semantic_search(query, limit=5):
     return [{"path": path, "score": score} for path, score, _ in results]
 
 # ----------------------------------------------------------------------
-# Architecture context using arch_recon
+# Architecture context – PUBLIC
 # ----------------------------------------------------------------------
 def arch_context(query, level='standard'):
     """
@@ -261,7 +263,7 @@ def arch_context(query, level='standard'):
     return result.stdout
 
 # ----------------------------------------------------------------------
-# File operations
+# File operations – PUBLIC
 # ----------------------------------------------------------------------
 def read_file(path):
     """Return content of file as string. Path relative to project root."""
@@ -294,18 +296,8 @@ def write_file(path, content):
     full_path.write_text(content, encoding='utf-8')
     return f"Written {path}"
 
-def upload_file(file_path):
-    """
-    Upload a single file to the active DeepSeek conversation.
-    The file becomes part of the context for subsequent prompts.
-    Returns confirmation.
-    """
-    # This is kept for compatibility; the new deepseek_consult handles upload automatically.
-    # You may want to integrate it with the persistent browser, but for now it's a placeholder.
-    return f"Uploaded {file_path} (simulated)"
-
 # ----------------------------------------------------------------------
-# Search tool using ai.py search and return valid paths
+# Search tool – PUBLIC
 # ----------------------------------------------------------------------
 def search_files(query, limit=10, group=None):
     """
@@ -349,7 +341,7 @@ def search_files(query, limit=10, group=None):
     return file_paths
 
 # ----------------------------------------------------------------------
-# Git operations
+# Git operations – PUBLIC
 # ----------------------------------------------------------------------
 def create_branch(branch_name):
     """Create and switch to a new git branch."""

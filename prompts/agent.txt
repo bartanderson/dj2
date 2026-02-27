@@ -12,6 +12,7 @@ AVAILABLE TOOLS:
 - create_branch(branch_name): Git branch creation.
 - commit_changes(message): Git commit.
 - show_diff(): Show git diff.
+- For complex analysis (e.g., code review, security assessment), use the deepseek_consult tool.
 
 INTERACTION PROTOCOL (VERY IMPORTANT):
 This is a turn‑based conversation. You and the system take turns.

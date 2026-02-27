@@ -2,22 +2,30 @@
 import inspect
 from tools import agent_tools
 
-# Gather all public functions from agent_tools
-TOOL_NAMES = [
-    name for name, obj in inspect.getmembers(agent_tools)
-    if inspect.isfunction(obj) and not name.startswith('_')
+# Only these functions should be exposed as tools
+TOOL_WHITELIST = [
+    "search_files",
+    "read_file",
+    "read_files",
+    "write_file",
+    "analyze_tools",
+    "arch_context",
+    "deepseek_consult",
+    "semantic_search",
+    "create_branch",
+    "commit_changes",
+    "show_diff"
 ]
 
 # Build TOOLS list in the required OpenAI function‑calling format
 TOOLS = []
-for name in TOOL_NAMES:
+for name in TOOL_WHITELIST:
     func = getattr(agent_tools, name)
     sig = inspect.signature(func)
     properties = {}
     required = []
     for param_name, param in sig.parameters.items():
-        # Basic type inference (could be extended)
-        param_type = "string"
+        param_type = "string"  # Simplified; you could improve this
         properties[param_name] = {
             "type": param_type,
             "description": f"Parameter {param_name}"
@@ -39,4 +47,4 @@ for name in TOOL_NAMES:
 
 def get_handlers(db_path=None, project_root=None):
     """Return a dict mapping tool names to callables."""
-    return {name: getattr(agent_tools, name) for name in TOOL_NAMES}
+    return {name: getattr(agent_tools, name) for name in TOOL_WHITELIST}
