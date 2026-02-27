@@ -3,18 +3,29 @@
 
 import re
 import sys
+import datetime
 from pathlib import Path
 
 # Path setup – script is in project root
 script_dir = Path(__file__).parent          # .../dj2/tools/
 project_root = script_dir.parent             # .../dj2/
-tools_dir = script_dir       
+tools_dir = script_dir
+# Setup session log with timestamp
+session_dir = project_root / "ai_context" / "session"
+session_dir.mkdir(parents=True, exist_ok=True)
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+LOG_FILE = session_dir / f"agent_session_{timestamp}.log"    
 
 # Add tools directory to path
 sys.path.insert(0, str(tools_dir))
 
 from langchain_ollama import ChatOllama
 import tools.default_tools as tools_mod
+
+def log_to_file(entry):
+    """Append entry to log file with timestamp."""
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.datetime.now().isoformat()}]\n{entry}\n\n")
 
 def extract_tool_calls(text):
     pattern = r'<tool>(.*?)</tool>'
@@ -94,9 +105,13 @@ def main():
         prompt += "ASSISTANT:"
 
         print(f"\n--- Turn {turn+1} ---")
+        # Log the prompt before sending
+        log_to_file(f"--- Turn {turn+1} PROMPT ---\n{prompt}")
+
         response = llm.invoke(prompt)
         text = response.content
         print(f"\nRAW: {text}\n")
+        log_to_file(f"--- Turn {turn+1} RAW ---\n{text}")
 
         messages.append({"role": "assistant", "content": text})
 
@@ -111,8 +126,10 @@ def main():
                 else:
                     try:
                         result = handler(**args_dict)
+                        log_to_file(f"--- Tool {tool_name} result ---\n{result}")
                     except Exception as e:
                         result = f"Error executing {tool_name}: {e}"
+                        log_to_file(f"--- Tool {tool_name} result ---\n{result}")
                 print(f"Executed {tool_name}: {str(result)[:100]}...")
                 messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
             continue
@@ -122,11 +139,14 @@ def main():
         if final:
             print("\n=== FINAL ANSWER ===")
             print(final)
+            log_to_file(f"=== FINAL ANSWER ===\n{final}")
             return 0
 
         # 3. Implicit final
         print("\n=== FINAL ANSWER (implicit) ===")
         print(text.strip())
+        # Log implicit final as a single entry
+        log_to_file(f"=== FINAL ANSWER (implicit) ===\n{text.strip()}")
         return 0
 
     print("Max turns reached.")
