@@ -9,13 +9,24 @@ TOOL_WHITELIST = [
     "read_files",
     "write_file",
     "analyze_tools",
-    "arch_context",
+    #"arch_context", disabled till fixed
     "deepseek_consult",
     "semantic_search",
     "create_branch",
     "commit_changes",
     "gather_context",
-    "show_diff"
+    "show_diff",
+    "file_metadata",
+    "file_imports",
+    "file_importers",
+    "test_coverage",
+    "file_concepts",
+    "concept_files",
+    "cluster_files",
+    "function_contract",
+    "function_parameters",
+    "extract_code",
+    "list_functions",
 ]
 
 # Build TOOLS list in the required OpenAI function‑calling format

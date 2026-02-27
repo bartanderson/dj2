@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 from datetime import datetime
+import ast
 
 # MODERN BROWSER-USE IMPORTS (v0.12.0)
 from browser_use import Agent, ChatOpenAI, Browser
@@ -232,6 +233,11 @@ def semantic_search(query, limit=5):
     Use embedding index to find files relevant to the query.
     Returns a list of dicts: [{"path": "file.py", "score": 0.95}, ...]
     """
+    try:
+        limit = int(limit)  # ensure integer
+    except (TypeError, ValueError):
+        limit = 5
+        
     from tools.analysis.intent_matcher import _get_top_files_for_intent
 
     db_path = PROJECT_ROOT / "ai_context" / "scout.db"
@@ -394,3 +400,305 @@ def show_diff():
     """Return git diff of current changes."""
     result = subprocess.run(['git', 'diff'], cwd=PROJECT_ROOT, capture_output=True, text=True)
     return result.stdout
+
+# ----------------------------------------------------------------------
+# Newly added to create suite of tests
+# ----------------------------------------------------------------------
+def _get_db_connection():
+    """Return a connection to the scout database, or None if DB doesn't exist."""
+    db_path = PROJECT_ROOT / "ai_context" / "scout.db"
+    if not db_path.exists():
+        return None
+    return sqlite3.connect(str(db_path))
+
+def _error_response(message):
+    """Return a standard error dictionary."""
+    return {"success": False, "error": message}
+
+def file_metadata(path):
+    """
+    Return metadata for a given file path.
+    Returns dict with keys: success, error, data (role, is_hot, line_count, importers).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT role, is_hot, line_count, data FROM files WHERE path = ?", (path,))
+        row = cur.fetchone()
+        if not row:
+            return _error_response(f"File '{path}' not found in database.")
+        role, is_hot, line_count, data_json = row
+        data = json.loads(data_json) if data_json else {}
+        importers = data.get('imported_by', [])
+        return {
+            "success": True,
+            "data": {
+                "role": role,
+                "is_hot": bool(is_hot),
+                "line_count": line_count,
+                "importers": importers
+            }
+        }
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def file_imports(path):
+    """
+    Return list of modules imported by the file.
+    Returns dict with keys: success, error, data (list of module names).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT full_module FROM imports WHERE importer_path = ?", (path,))
+        rows = cur.fetchall()
+        modules = [r[0] for r in rows]
+        return {"success": True, "data": modules}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def file_importers(path):
+    """
+    Return list of files that import the given file.
+    Returns dict with keys: success, error, data (list of file paths).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        # Use the 'imported_by' field stored in the files table's JSON data
+        cur = conn.cursor()
+        cur.execute("SELECT data FROM files WHERE path = ?", (path,))
+        row = cur.fetchone()
+        if not row:
+            return _error_response(f"File '{path}' not found.")
+        data = json.loads(row[0]) if row[0] else {}
+        importers = data.get('imported_by', [])
+        return {"success": True, "data": importers}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def test_coverage(path):
+    """
+    Return test path and whether tests exist for a given file.
+    Returns dict with keys: success, error, data (test_path, test_exists).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT test_path, test_exists FROM test_coverage WHERE source_path = ?", (path,))
+        row = cur.fetchone()
+        if not row:
+            return {"success": True, "data": {"test_path": None, "test_exists": False}}
+        test_path, test_exists = row
+        return {
+            "success": True,
+            "data": {
+                "test_path": test_path,
+                "test_exists": bool(test_exists)
+            }
+        }
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def file_concepts(path):
+    """
+    Return list of concepts associated with a file.
+    Returns dict with keys: success, error, data (list of concept strings).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT concept FROM concepts WHERE path = ?", (path,))
+        rows = cur.fetchall()
+        concepts = [r[0] for r in rows]
+        return {"success": True, "data": concepts}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def concept_files(concept):
+    """
+    Return list of file paths associated with a given concept.
+    Returns dict with keys: success, error, data (list of file paths).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT file_path FROM concepts WHERE concept = ?", (concept,))
+        rows = cur.fetchall()
+        files = [r[0] for r in rows]
+        return {"success": True, "data": files}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def cluster_files(cluster_name):
+    """
+    Return list of file paths in a named cluster.
+    Returns dict with keys: success, error, data (list of file paths).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT paths FROM clusters WHERE cluster_name = ?", (cluster_name,))
+        row = cur.fetchone()
+        if not row:
+            return {"success": True, "data": []}
+        files = json.loads(row[0]) if row[0] else []
+        return {"success": True, "data": files}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def function_contract(path, function_name):
+    """
+    Return behavioral contract for a function or method.
+    Returns dict with success, error, data containing description, side_effects,
+    testable_behaviors, complexity_score.
+    If no contract found, data is None.
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT description, side_effects, testable_behaviors, complexity_score
+            FROM behavioral_contracts
+            WHERE path = ? AND function_name = ?
+        """, (path, function_name))
+        row = cur.fetchone()
+        if not row:
+            return {"success": True, "data": None}
+        desc, side_effects_json, testable_json, complexity = row
+        side_effects = json.loads(side_effects_json) if side_effects_json else []
+        testable = json.loads(testable_json) if testable_json else []
+        return {
+            "success": True,
+            "data": {
+                "description": desc,
+                "side_effects": side_effects,
+                "testable_behaviors": testable,
+                "complexity_score": complexity
+            }
+        }
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+
+def function_parameters(path, function_name, class_name=None):
+    """
+    Return list of parameters for a function or method.
+    Each parameter is a dict with keys: name, position.
+    Returns dict with success, error, data (list).
+    """
+    conn = _get_db_connection()
+    if not conn:
+        return _error_response("Database not found. Run scout first.")
+    try:
+        cur = conn.cursor()
+        # Query method_params table; for __init__ we could also check class_constructors,
+        # but we'll assume __init__ is stored as a method with name '__init__'.
+        if class_name:
+            cur.execute("""
+                SELECT param_name, param_position
+                FROM method_params
+                WHERE path = ? AND class_name = ? AND method_name = ?
+                ORDER BY param_position
+            """, (path, class_name, function_name))
+        else:
+            cur.execute("""
+                SELECT param_name, param_position
+                FROM method_params
+                WHERE path = ? AND class_name IS NULL AND method_name = ?
+                ORDER BY param_position
+            """, (path, function_name))
+        rows = cur.fetchall()
+        params = [{"name": r[0], "position": r[1]} for r in rows]
+        return {"success": True, "data": params}
+    except Exception as e:
+        return _error_response(str(e))
+    finally:
+        conn.close()
+
+def extract_code(path, element_type, element_name):
+    """
+    Extract source code of a function or class from a file.
+    element_type: 'function' or 'class'
+    element_name: name of the function or class.
+    Returns dict with success, error, data (source code string).
+    """
+    full_path = PROJECT_ROOT / path
+    if not full_path.exists():
+        return _error_response(f"File '{path}' does not exist.")
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        tree = ast.parse(source)
+        lines = source.splitlines()
+        for node in ast.walk(tree):
+            if element_type == 'function' and isinstance(node, ast.FunctionDef) and node.name == element_name:
+                start = node.lineno - 1
+                end = node.end_lineno
+                code = '\n'.join(lines[start:end])
+                return {"success": True, "data": code}
+            elif element_type == 'class' and isinstance(node, ast.ClassDef) and node.name == element_name:
+                start = node.lineno - 1
+                end = node.end_lineno
+                code = '\n'.join(lines[start:end])
+                return {"success": True, "data": code}
+        return _error_response(f"{element_type} '{element_name}' not found in file.")
+    except Exception as e:
+        return _error_response(str(e))
+
+def list_functions(path):
+    """
+    Return a list of function and method names in a file.
+    Methods are returned as 'ClassName.method_name'.
+    """
+    full_path = PROJECT_ROOT / path
+    if not full_path.exists():
+        return _error_response(f"File not found: {path}")
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        tree = ast.parse(source)
+        functions = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                # Check if inside a class
+                for parent in ast.walk(tree):
+                    if isinstance(parent, ast.ClassDef) and node in ast.walk(parent):
+                        functions.append(f"{parent.name}.{node.name}")
+                        break
+                else:
+                    functions.append(node.name)
+        return {"success": True, "data": functions}
+    except Exception as e:
+        return _error_response(str(e))
