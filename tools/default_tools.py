@@ -14,6 +14,7 @@ TOOL_WHITELIST = [
     "semantic_search",
     "create_branch",
     "commit_changes",
+    "gather_context",
     "show_diff"
 ]
 

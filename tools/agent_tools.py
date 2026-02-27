@@ -240,7 +240,8 @@ def semantic_search(query, limit=5):
         return []
 
     results = _get_top_files_for_intent(query, db_path, max_files=limit)
-    return [{"path": path, "score": score} for path, score, _ in results]
+    # Convert score to float for JSON serialization
+    return [{"path": path, "score": float(score)} for path, score, _ in results]
 
 # ----------------------------------------------------------------------
 # Architecture context – PUBLIC
@@ -261,6 +262,41 @@ def arch_context(query, level='standard'):
     if result.returncode != 0:
         raise Exception(f"arch_context failed: {result.stderr}")
     return result.stdout
+
+# ----------------------------------------------------------------------
+# Gather context – PUBLIC
+# ----------------------------------------------------------------------
+
+def gather_context(topic, limit=5):
+    """
+    Gather comprehensive context about a topic.
+    - Finds relevant files via semantic_search.
+    - Reads their full content.
+    - Returns a structured JSON object.
+    """
+    # 1. Get relevant files with scores
+    files_with_scores = semantic_search(topic, limit)
+    
+    # 2. Extract paths
+    paths = [item["path"] for item in files_with_scores]
+    
+    # 3. Read file contents
+    contents = read_files(paths)
+    
+    # 4. Build context object
+    context = {
+        "topic": topic,
+        "files": []
+    }
+    for item in files_with_scores:
+        path = item["path"]
+        context["files"].append({
+            "path": path,
+            "score": item["score"],
+            "content": contents.get(path, "Error reading file")
+        })
+    
+    return context
 
 # ----------------------------------------------------------------------
 # File operations – PUBLIC

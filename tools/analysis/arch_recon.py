@@ -14,11 +14,15 @@ Modes:
   --extract-patterns <file>   : analyze a test file and store patterns in DB
 """
 
+import json
+import sqlite3
+import io
+import contextlib
 import sys
 import argparse
 from pathlib import Path
 from datetime import datetime
-from typing import List
+from typing import List, Optional, Any, Dict, Union
 
 from tools.analysis.scanner import run_scout
 from tools.analysis.reporters import (
@@ -26,6 +30,9 @@ from tools.analysis.reporters import (
     report_exporters, report_summary, report_risk_heatmap
 )
 from tools.analysis.intent_matcher import _get_top_files_for_intent
+from tools.analysis.utils import clean_ascii
+
+MIN_CONCEPT_LENGTH = 3
 
 def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
                     project_root: str = '.', ignore_dirs: List[str] = None, verbose: bool = False):
@@ -51,6 +58,254 @@ def ensure_db_fresh(db_path: Path, force: bool = False, no_prompt: bool = False,
         print("Running forced scout scan to rebuild db...")
         run_scout(project_root, str(db_path), force=True, ignore_dirs=ignore_dirs, verbose=verbose)
     return True
+# ----------------------------------------------------------------------
+# GLOBAL ARCHITECTURE RULES – loaded from files or embedded
+# ----------------------------------------------------------------------
+def load_global_rules(project_root: Path) -> Dict[str, str]:
+    """Load ai_contract.md and development_playbook.md if present."""
+    rules = {
+        'ai_contract': None,
+        'playbook': None,
+        'phase_sequence': 'Input → Interpretation → Authority → Mutation → Consequence → Persistence → View',
+        'ai_contract_rules': [
+            '1. AI NEVER owns state.',
+            '2. AI NEVER mutates state directly.',
+            '3. AI ONLY requests actions via interfaces.'
+        ],
+        'role_definitions': '\n'.join([
+            '- Core: default role, no special path',
+            '- Adapter: paths containing /routes/',
+            '- AI-Facing: paths containing /ai/',
+            '- Boundary: files matching dm_chat_ai or ai_boundary'
+        ])
+    }
+    # Try to load from files
+    ai_contract = project_root / 'ai_context' / 'ai_contract.md'
+    if ai_contract.exists():
+        try:
+            rules['ai_contract'] = ai_contract.read_text(encoding='utf-8')
+        except:
+            pass
+    playbook = project_root / 'ai_context' / 'development_playbook.md'
+    if playbook.exists():
+        try:
+            rules['playbook'] = playbook.read_text(encoding='utf-8')
+        except:
+            pass
+    return rules
+
+# ----------------------------------------------------------------------
+# CONTEXT PACKAGE GENERATION (tiered, with dynamic phase extraction)
+# ----------------------------------------------------------------------
+def generate_context_package(intent: str, db_path: Path, categories_path: Optional[str] = None,
+                             max_files: int = 5, level: str = 'standard', verbose: bool = False):
+    db_path = Path(db_path)
+    if not db_path.exists():
+        print(f"❌ Scout DB not found: {db_path}\n   Run `--scout` first.", file=sys.stderr)
+        return 1
+    top_files = _get_top_files_for_intent(intent, db_path, categories_path, max_files, verbose)
+    if not top_files:
+        print(f"⚠️  No files matched intent '{intent}'.", file=sys.stderr)
+        return 1
+    project_root = Path(db_path).parent.parent
+    rules = load_global_rules(project_root)
+
+    summary_data = {}
+    f = io.StringIO()
+    with contextlib.redirect_stdout(f):
+        report_summary(str(db_path), 'json')
+    try:
+        summary_data = json.loads(f.getvalue())
+    except:
+        summary_data = {"error": "Could not parse summary"}
+
+    lines = []
+    lines.append("=" * 80)
+    lines.append(f"ARCHITECTURE RECONNAISSANCE – CONTEXT PACKAGE")
+    lines.append(f"Generated: {datetime.now().isoformat()}")
+    lines.append(f"Intent: {intent}")
+    lines.append(f"Context level: {level}")
+    lines.append(f"Max files: {max_files}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    # Global rules
+    lines.append("## GLOBAL ARCHITECTURAL RULES")
+    if rules['ai_contract']:
+        lines.append(clean_ascii(rules['ai_contract']))
+    else:
+        lines.append("### AI Contract")
+        for rule in rules['ai_contract_rules']:
+            lines.append(rule)
+        lines.append("")
+        lines.append("### Phase Sequence")
+        lines.append(rules['phase_sequence'])
+        lines.append("")
+        lines.append("### Role Definitions")
+        lines.append(rules['role_definitions'])
+    if rules['playbook']:
+        lines.append("")
+        lines.append("### Development Playbook")
+        lines.append(clean_ascii(rules['playbook']))
+    lines.append("")
+
+    # Dynamic phase model
+    lines.append("## PHASE MODEL (from engine/phases.py)")
+    phases_file = project_root / 'engine' / 'phases.py'
+    if phases_file.exists():
+        try:
+            with open(phases_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            import ast
+            module = ast.parse(content)
+            docstring = ast.get_docstring(module)
+            if docstring:
+                lines.append(docstring.strip())
+            phase_order = []
+            for node in ast.walk(module):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == 'ALL_PHASES':
+                            if isinstance(node.value, ast.List):
+                                phase_order = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
+                            break
+            if phase_order:
+                lines.append("**Phase sequence:** " + " → ".join(phase_order))
+            else:
+                lines.append("**Phase sequence:** Input → Interpretation → Authority → Mutation → Consequence → Persistence → View")
+        except Exception as e:
+            lines.append(f"*[Could not parse phases.py: {e}]*")
+    else:
+        lines.append("*[engine/phases.py not found – using fallback]*")
+        lines.append("Input → Interpretation → Authority → Mutation → Consequence → Persistence → View")
+    lines.append("")
+
+    # Project health summary
+    lines.append("## PROJECT HEALTH SUMMARY")
+    if "error" not in summary_data:
+        lines.append(f"- Python files: {summary_data.get('python_files', '?')}")
+        lines.append(f"- Total lines: {summary_data.get('total_lines', 0):,}")
+        lines.append(f"- Hot files: {summary_data.get('hot_files', '?')}")
+        lines.append(f"- Mutation files: {summary_data.get('mutation_files', '?')}")
+        lines.append(f"- Unique concepts: {summary_data.get('unique_concepts', '?')}")
+        lines.append(f"- Clusters: {summary_data.get('clusters', '?')}")
+    else:
+        lines.append(f"- {summary_data.get('error')}")
+    lines.append("")
+
+    # Intent‑matched files
+    lines.append(f"## INTENT-MATCHED FILES (top {len(top_files)})")
+    for idx, (file_path, score, data) in enumerate(top_files, 1):
+        lines.append("")
+        lines.append("---")
+        lines.append(f"### {idx}. `{file_path}` (score: {score})")
+        lines.append(f"- **Role**: {data.get('role', 'Unknown')}")
+        lines.append(f"- **Hot**: {'Yes' if data.get('is_hot') else 'No'}")
+        lines.append(f"- **Line count**: {data.get('line_count', 0)}")
+        lines.append(f"- **Phase violations**: {len(data.get('phase_violations', []))}")
+        for v in data.get('phase_violations', []):
+            lines.append(f"  - line {v.get('line', '?')}: {v.get('pattern', 'unknown')}")
+        lines.append(f"- **Mutations**: {len(data.get('mutations', []))}")
+        for m in data.get('mutations', []):
+            lines.append(f"  - line {m.get('line', '?')}: {m.get('call', '?')}")
+        lines.append(f"- **Read-only methods**: {', '.join(data.get('read_only_methods', [])) if data.get('read_only_methods') else 'None'}")
+        lines.append(f"- **Importers**: {len(data.get('imported_by', []))} files")
+        if data.get('imported_by'):
+            lines.append(f"  - {', '.join(Path(p).name for p in data['imported_by'])}")
+        lines.append(f"- **Imports**: {len(data.get('imports', []))} modules")
+
+        lines.append("")
+        lines.append("#### Interfaces")
+        lines.append("```python")
+        for cls in data.get('classes', []):
+            lines.append(f"class {cls['name']}:")
+            for meth in cls.get('methods', []):
+                args = ', '.join(meth.get('args', []))
+                ret = f" -> {meth['returns']}" if meth.get('returns') else ''
+                lines.append(f"    def {meth['name']}({args}){ret}")
+            if cls.get('read_only_methods'):
+                lines.append(f"    # read-only: {', '.join(cls['read_only_methods'])}")
+        for func in data.get('functions', []):
+            args = ', '.join(func.get('args', []))
+            ret = f" -> {func['returns']}" if func.get('returns') else ''
+            lines.append(f"def {func['name']}({args}){ret}")
+        lines.append("```")
+        lines.append("")
+
+        include_source = False
+        if level == 'deep':
+            include_source = True
+        elif level == 'standard':
+            if data.get('is_hot') or idx == 1:
+                include_source = True
+        if include_source:
+            try:
+                full_path = project_root / file_path
+                if full_path.exists():
+                    with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+                        source = f.read()
+                    lines_limit = 500 if level == 'deep' else 200
+                    source_lines = source.splitlines()
+                    if len(source_lines) > lines_limit:
+                        source = '\n'.join(source_lines[:lines_limit]) + f"\n... (truncated at {lines_limit} lines)"
+                    lines.append("#### Source code")
+                    lines.append("```python")
+                    lines.append(source)
+                    lines.append("```")
+                    lines.append("")
+            except Exception as e:
+                lines.append(f"*[Error reading source: {e}]*")
+
+    lines.append("## RIPPLE IMPACT")
+    for file_path, score, data in top_files:
+        importers = data.get('imported_by', [])
+        if importers:
+            lines.append(f"- **{Path(file_path).name}** is imported by {len(importers)} files:")
+            lines.append(f"  - {', '.join(Path(p).name for p in importers[:5])}")
+            if len(importers) > 5:
+                lines.append(f"    ... and {len(importers)-5} more")
+        else:
+            lines.append(f"- **{Path(file_path).name}** has no direct importers.")
+    lines.append("")
+
+    lines.append("## CONCEPTUAL OVERLAP")
+    intent_words = set(w for w in intent.lower().split() if len(w) >= MIN_CONCEPT_LENGTH)
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    concept_counts = []
+    for word in intent_words:
+        count = cur.execute("SELECT COUNT(DISTINCT file_path) FROM concepts WHERE concept = ?", (word,)).fetchone()[0]
+        if count > 0:
+            concept_counts.append((word, count))
+    conn.close()
+    if concept_counts:
+        lines.append("Concepts in your intent and their prevalence:")
+        for word, count in sorted(concept_counts, key=lambda x: x[1], reverse=True):
+            lines.append(f"- `{word}` appears in {count} files")
+    else:
+        lines.append("No strong concept overlap found.")
+    lines.append("")
+
+    if categories_path and Path(categories_path).exists():
+        try:
+            with open(categories_path, 'r') as f:
+                cat_data = json.load(f)
+            clusters = cat_data.get('clusters', [])
+            matched_names = set()
+            for word in intent_words:
+                for cl in clusters:
+                    if word in cl.get('concepts', []):
+                        matched_names.add(cl['name'])
+            if matched_names:
+                lines.append("Related clusters (from discovered_categories.json):")
+                for name in matched_names:
+                    lines.append(f"- {name}")
+        except:
+            pass
+
+    lines.append("=" * 80)
+    print("\n".join(lines))
+    return 0
     
 def main():
     parser = argparse.ArgumentParser(

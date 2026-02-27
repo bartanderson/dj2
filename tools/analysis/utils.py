@@ -6,6 +6,13 @@ from typing import List, Optional
 
 MIN_CONCEPT_LENGTH = 3
 
+def clean_ascii(text):
+    """Remove non-ASCII characters and normalize whitespace."""
+    if not text:
+        return ""
+    import unicodedata
+    return unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+
 def module_to_file_path(full_module: str, project_root: Path) -> Optional[Path]:
     """
     Convert a dotted module name (e.g., 'world.ai_integration') to a file path.
