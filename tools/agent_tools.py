@@ -589,8 +589,8 @@ def function_contract(path, function_name):
         cur.execute("""
             SELECT description, side_effects, testable_behaviors, complexity_score
             FROM behavioral_contracts
-            WHERE path = ? AND function_name = ?
-        """, (path, function_name))
+            WHERE file_path = ? AND function_name = ?
+        """, (path, function_name))  # column is file_path, parameter is path
         row = cur.fetchone()
         if not row:
             return {"success": True, "data": None}
@@ -611,7 +611,6 @@ def function_contract(path, function_name):
     finally:
         conn.close()
 
-
 def function_parameters(path, function_name, class_name=None):
     """
     Return list of parameters for a function or method.
@@ -629,14 +628,14 @@ def function_parameters(path, function_name, class_name=None):
             cur.execute("""
                 SELECT param_name, param_position
                 FROM method_params
-                WHERE path = ? AND class_name = ? AND method_name = ?
+                WHERE file_path = ? AND class_name = ? AND method_name = ?
                 ORDER BY param_position
             """, (path, class_name, function_name))
         else:
             cur.execute("""
                 SELECT param_name, param_position
                 FROM method_params
-                WHERE path = ? AND class_name IS NULL AND method_name = ?
+                WHERE file_path = ? AND class_name IS NULL AND method_name = ?
                 ORDER BY param_position
             """, (path, function_name))
         rows = cur.fetchall()
