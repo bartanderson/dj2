@@ -122,7 +122,7 @@ def analyze_file_for_scout(filepath: Path, project_root: Path, ignore_dirs: List
     analyzer = ASTAnalyzer(ignore_dirs=ignore_dirs)
 
     file_info = {
-        'path': str(filepath.relative_to(project_root)),
+        'path': str(filepath.relative_to(project_root)).replace('\\', '/'),
         'imports': [],
         'classes': [],
         'functions': [],
@@ -173,7 +173,7 @@ def build_import_map(project_root: Path, ignore_dirs: List[str]) -> Dict[str, Li
         try:
             with open(py_file, 'r', encoding='utf-8', errors='ignore') as f:
                 tree = ast.parse(f.read())
-            rel_path = str(py_file.relative_to(project_root))
+            rel_path = str(py_file.relative_to(project_root)).replace('\\', '/')
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
@@ -192,12 +192,12 @@ def find_corresponding_test(source_path: str, project_root: Path) -> Optional[st
     test_dir = project_root / 'tests'
     test_file = test_dir / f"test_{source_file.stem}.py"
     if test_file.exists():
-        return str(test_file.relative_to(project_root))
+        return str(test_file.relative_to(project_root)).replace('\\', '/')
     for subdir in test_dir.iterdir():
         if subdir.is_dir():
             nested_test = subdir / f"test_{source_file.stem}.py"
             if nested_test.exists():
-                return str(nested_test.relative_to(project_root))
+                return str(nested_test.relative_to(project_root)).replace('\\', '/')
     return None
 
 def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs: List[str] = None, verbose: bool = False):

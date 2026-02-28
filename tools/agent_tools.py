@@ -3,7 +3,7 @@
 Tools for the agent – each function is a callable tool.
 Uses browser-use 0.12.0 with persistent session and file upload.
 """
-
+import re
 import subprocess
 import json
 import sys
@@ -226,6 +226,34 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
+# Display file – PUBLIC
+# ----------------------------------------------------------------------
+def display_file(path):
+    """Alias for read_file – returns content of a file."""
+    return read_file(path)
+
+# ----------------------------------------------------------------------
+# List files – PUBLIC
+# ----------------------------------------------------------------------
+def list_files(directory=".", pattern="*", recursive=False):
+    """
+    List files in a directory matching a pattern.
+    Args:
+        directory (str): relative path from project root
+        pattern (str): glob pattern (e.g., "*.py")
+        recursive (bool): whether to search subdirectories
+    Returns:
+        list of file paths (relative to project root)
+    """
+    from pathlib import Path
+    base = PROJECT_ROOT / directory
+    if recursive:
+        files = base.rglob(pattern)
+    else:
+        files = base.glob(pattern)
+    return [str(f.relative_to(PROJECT_ROOT)) for f in files if f.is_file()]
+
+# ----------------------------------------------------------------------
 # Semantic search – PUBLIC
 # ----------------------------------------------------------------------
 def semantic_search(query, limit=5):
@@ -366,6 +394,8 @@ def search_files(query, limit=10, group=None):
         if not line:
             continue
         if line.startswith('[DEBUG]') or line.startswith('Found '):
+            continue
+        if re.match(r'^-+$', line): # eliminate the --------------------- that are found in scraping tool output
             continue
         if '. ' in line:
             parts = line.split('. ', 1)

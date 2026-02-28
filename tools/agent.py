@@ -50,8 +50,14 @@ def parse_args_string(args_str, tool_name, tools):
     if matches:
         for match in matches:
             key = match.group(1)
-            value = match.group(2) or match.group(3) or match.group(4)
-            if value.endswith(','):
+            # Get the first non‑None capture group (empty string is allowed)
+            value = match.group(2)
+            if value is None:
+                value = match.group(3)
+            if value is None:
+                value = match.group(4)
+            # value may still be None if all groups were None (should not occur)
+            if value is not None and value.endswith(','):
                 value = value[:-1].rstrip()
             args_dict[key] = value
         return args_dict
