@@ -1,0 +1,1943 @@
+diff --git a/ai_context/scout.db b/ai_context/scout.db
+index d93dcc4..2e3b6db 100644
+Binary files a/ai_context/scout.db and b/ai_context/scout.db differ
+diff --git a/test_bridge.py b/test_bridge.py
+deleted file mode 100644
+index 467a334..0000000
+--- a/test_bridge.py
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-Test the bridge: open, send a few prompts, see if it stays alive.
+-"""
+-
+-import time
+-from tools.bridge.bridge_controller import BridgeController
+-
+-def test_bridge():
+-    print("Creating bridge...")
+-    bridge = BridgeController()
+-
+-    # First prompt
+-    print("\n--- First ask ---")
+-    resp1 = bridge.ask_deepseek("Hello, respond with a short greeting.", use_tools=False)
+-    print(f"Response 1: {resp1}")
+-
+-    time.sleep(5)  # Wait a bit
+-
+-    # Second prompt
+-    print("\n--- Second ask ---")
+-    resp2 = bridge.ask_deepseek("What is 2+2? Answer with just the number.", use_tools=False)
+-    print(f"Response 2: {resp2}")
+-
+-    # Third prompt
+-    print("\n--- Third ask ---")
+-    resp3 = bridge.ask_deepseek("Say 'done'.", use_tools=False)
+-    print(f"Response 3: {resp3}")
+-
+-    print("\nAll done. Browser should remain open.")
+-    # Do not close – keep it open so you can inspect.
+-    # When you're finished, you can close manually or let it be.
+-
+-if __name__ == "__main__":
+-    test_bridge()
+-    input("Press Enter to exit and close browser...")  # pause so you can see
+\ No newline at end of file
+diff --git a/test_browser_use.py b/test_browser_use.py
+deleted file mode 100644
+index ef8cc1c..0000000
+--- a/test_browser_use.py
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import asyncio
+-from browser_use import Agent
+-from langchain_ollama import ChatOllama
+-
+-async def main():
+-    # Use a model you already have (adjust the name if needed)
+-    llm = ChatOllama(
+-        model="llama3.2:3b",   # or your preferred model (e.g., deepseek-r1:32b)
+-        num_ctx=128000,            # your full context window
+-        temperature=0.0
+-    )
+-
+-    agent = Agent(
+-        task="Go to chat.deepseek.com and tell me what the page title is",
+-        llm=llm,
+-        use_vision=False,          # set to True if your model supports vision
+-    )
+-
+-    result = await agent.run()
+-    print(f"Result: {result}")
+-
+-if __name__ == "__main__":
+-    asyncio.run(main())
+\ No newline at end of file
+diff --git a/tools/agent.py b/tools/agent.py
+index 75671c8..3755830 100644
+--- a/tools/agent.py
++++ b/tools/agent.py
+@@ -5,8 +5,6 @@ import re
+ import sys
+ import datetime
+ from pathlib import Path
+-import json
+-from agent_tools import deepseek_consult
+ 
+ # Path setup – script is in project root
+ script_dir = Path(__file__).parent          # .../dj2/tools/
+@@ -101,52 +99,8 @@ def main():
+ 
+     # Initialize Ollama directly
+     llm = ChatOllama(model="mistral:7b", temperature=0.2, num_predict=4000)
+-    # --- Planner: decompose the user request into sub‑goals ---
+-    planner_prompt = f"""You are a planning assistant. The user asked: "{user_input}"
+ 
+-Available tools: {', '.join([t['function']['name'] for t in tools])}
+-
+-Break this task down into a sequence of concrete sub‑goals. Each sub‑goal should be something that can be achieved by calling one or more tools. Output a numbered list, each line starting with the sub‑goal number and a brief description.
+-
+-Example:
+-1. Find all files related to the DM agent.
+-2. Find all files related to character creation.
+-3. Identify the main functions in the DM agent.
+-4. Identify character creation functions.
+-5. Trace whether any DM function calls a character creation function.
+-6. If not, propose missing code.
+-
+-Now output the plan for the user's request.
+-    """
+-    print("\n[Planner] Generating plan...")
+-    plan_response = deepseek_consult(prompt=planner_prompt, timeout=60)
+-    # Parse plan: assume each line starts with a number and a dot
+-    plan_lines = [line.strip() for line in plan_response.split('\n') if line.strip()]
+-    plan = []
+-    for line in plan_lines:
+-        if line and line[0].isdigit() and '. ' in line:
+-            parts = line.split('. ', 1)
+-            if len(parts) == 2:
+-                plan.append(parts[1])
+-    if not plan:
+-        # fallback: treat the whole response as one step
+-        plan = [plan_response.strip()]
+-
+-    # Save plan to session file
+-    plan_file = session_dir / 'plan.json'
+-    with open(plan_file, 'w') as f:
+-        json.dump({
+-            "plan": plan,
+-            "current": 0,
+-            "completed": []
+-        }, f, indent=2)
+-    print(f"[Planner] Created plan with {len(plan)} steps.")
+-    # Optionally show the plan to the user (can be removed later)
+-    print("Plan:")
+-    for i, step in enumerate(plan):
+-        print(f"  {i+1}. {step}")
+-    # ---------------------------------------------------------
+-    max_turns = 30
++    max_turns = 10
+     for turn in range(max_turns):
+         # Build prompt
+         prompt = ""
+@@ -184,95 +138,6 @@ Now output the plan for the user's request.
+                         log_to_file(f"--- Tool {tool_name} result ---\n{result}")
+                 print(f"Executed {tool_name}: {str(result)[:100]}...")
+                 messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
+-            # Load current plan
+-            if plan_file.exists():
+-                with open(plan_file, 'r') as f:
+-                    plan_data = json.load(f)
+-                plan = plan_data["plan"]
+-                current_idx = plan_data["current"]
+-                completed = plan_data["completed"]
+-                
+-                # If we've already completed all sub‑goals, no need for critic
+-                if current_idx < len(plan):
+-                    current_goal = plan[current_idx]
+-                    # Build a summary of the last assistant message and tool results
+-                    # We'll use the last assistant message (text) and the tool results we just appended
+-                    # The tool results are stored in messages with role "user" and content starting with "TOOL_RESULT:"
+-                    # Let's collect them from the last few messages
+-                    tool_results = []
+-                    for msg in reversed(messages):
+-                        if msg["role"] == "user" and msg["content"].startswith("TOOL_RESULT:"):
+-                            tool_results.append(msg["content"][12:].strip())  # remove prefix
+-                        else:
+-                            break  # stop at first non‑tool‑result message
+-                    tool_results.reverse()  # back to original order
+-                    
+-                    critic_prompt = f"""You are a critic reviewing an AI assistant's progress. The original user query: "{user_input}"
+-
+-The current plan:
+-{chr(10).join(f"{i+1}. {step}" for i, step in enumerate(plan))}
+-
+-The assistant is currently working on sub‑goal {current_idx+1}: "{current_goal}"
+-
+-The assistant's last message:
+-{text}
+-
+-Tool results received:
+-{chr(10).join(tool_results) if tool_results else "No tool results yet."}
+-
+-Your task:
+-- Determine if the current sub‑goal is complete.
+-- If not, what specific information is still missing?
+-- Suggest the next tool call(s) that would help complete this sub‑goal.
+-- If the sub‑goal is complete, indicate that we should move to the next one.
+-- If the entire plan is misguided, suggest a revised plan.
+-
+-Output in this format:
+-STATUS: [complete / incomplete / blocked / replan]
+-NEXT_STEP: (if incomplete) a brief description of what's needed
+-TOOL_SUGGESTIONS: (if incomplete) one or more <tool> tags on separate lines
+-MOVE_TO_NEXT: [yes/no] (only if STATUS is complete)
+-REVISED_PLAN: (if replan) a new numbered list of sub‑goals
+-"""
+-                    print("\n[Critic] Evaluating...")
+-                    critic_response = deepseek_consult(prompt=critic_prompt, timeout=60)
+-                    print(f"[Critic] Response:\n{critic_response}\n")
+-                    
+-                    # Parse critic response (simple keyword checks)
+-                    if "STATUS: complete" in critic_response and "MOVE_TO_NEXT: yes" in critic_response:
+-                        completed.append(current_idx)
+-                        current_idx += 1
+-                        plan_data["current"] = current_idx
+-                        plan_data["completed"] = completed
+-                        with open(plan_file, 'w') as f:
+-                            json.dump(plan_data, f, indent=2)
+-                        # Inject a system message to guide the agent
+-                        if current_idx < len(plan):
+-                            next_goal = plan[current_idx]
+-                            messages.append({"role": "system", "content": f"Good. Now proceed to sub‑goal {current_idx+1}: {next_goal}"})
+-                        else:
+-                            messages.append({"role": "system", "content": "All sub‑goals are complete. Please provide a final answer to the user."})
+-                    elif "STATUS: replan" in critic_response and "REVISED_PLAN:" in critic_response:
+-                        # Extract new plan
+-                        revised_part = critic_response.split("REVISED_PLAN:")[1].strip()
+-                        new_plan_lines = [line.strip() for line in revised_part.split('\n') if line.strip()]
+-                        new_plan = []
+-                        for line in new_plan_lines:
+-                            if line and line[0].isdigit() and '. ' in line:
+-                                parts = line.split('. ', 1)
+-                                if len(parts) == 2:
+-                                    new_plan.append(parts[1])
+-                        if new_plan:
+-                            plan_data["plan"] = new_plan
+-                            plan_data["current"] = 0
+-                            plan_data["completed"] = []
+-                            with open(plan_file, 'w') as f:
+-                                json.dump(plan_data, f, indent=2)
+-                            messages.append({"role": "system", "content": "The plan has been revised. Start with the first new sub‑goal."})
+-                    else:
+-                        # Incomplete – append critic's suggestions as a user message (or system)
+-                        messages.append({"role": "user", "content": f"Critic suggests: {critic_response}"})
+-            # End of critic block
+             continue
+ 
+         # 2. No tool calls – check for final
+diff --git a/tools/agent_tools.py b/tools/agent_tools.py
+index 3df1404..30b7382 100644
+--- a/tools/agent_tools.py
++++ b/tools/agent_tools.py
+@@ -108,26 +108,44 @@ async def _disconnect_browser():
+ def deepseek_consult(prompt, file=None, data=None, timeout=3600):
+     """
+     Consult DeepSeek using the local Playwright bridge.
++    
++    Args:
++        prompt (str): The main question or instruction.
++        file (str, optional): Path to a file to upload. Its content is NOT prepended; the file is uploaded separately.
++        data (any, optional): Additional data to include in the prompt (converted to string).
++        timeout (int): Maximum seconds to wait for response.
++    
++    Returns:
++        str: The assistant's response, or an error message.
+     """
+-    content = prompt
+-    if file:
+-        try:
+-            with open(file, 'r', encoding='utf-8') as f:
+-                content = f.read() + "\n\n" + prompt
+-        except Exception as e:
+-            return f"Error reading file: {e}"
++    # Combine prompt and data
++    full_prompt = prompt
+     if data:
+         data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
+-        content = data_str + "\n\n" + content
++        full_prompt = data_str + "\n\n" + prompt
+ 
+-    # Use our new library
++    # Import our library
+     from tools.bridge.deepseek_lib import full_consult
++
++    # Generate a meaningful filename for any uploaded content
++    import re
++    safe_name = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
++    if not safe_name:
++        safe_name = "consult"
++    filename = f"{safe_name}.txt"
++
+     try:
+-        response = full_consult(content, file_path=file, timeout=timeout)
++        if file:
++            # Upload the file directly
++            response = full_consult(prompt=full_prompt, file_path=file, timeout=timeout)
++        else:
++            # No file, just send the prompt
++            response = full_consult(prompt=full_prompt, timeout=timeout)
+         return response or "No response received"
+     except Exception as e:
++        logger.exception("DeepSeek consultation failed")
+         return f"DeepSeek consultation failed: {e}"
+-
++        
+ # ----------------------------------------------------------------------
+ # Watcher Integration: Safe History Reading (internal, not a tool)
+ # ----------------------------------------------------------------------
+@@ -696,41 +714,4 @@ def list_functions(path):
+                     functions.append(node.name)
+         return {"success": True, "data": functions}
+     except Exception as e:
+-        return _error_response(str(e))
+-
+-def find_calls_to_function(callee_name, file_filter=None):
+-    """
+-    Find all places where a given function is called.
+-    
+-    Args:
+-        callee_name (str): The name of the function to search for (e.g., 'create_character').
+-        file_filter (str, optional): Limit search to a specific file or directory (relative to project root).
+-    
+-    Returns:
+-        list of dicts: each with keys 'caller_file', 'caller_function', 'line_number'.
+-    """
+-    conn = _get_db_connection()
+-    if not conn:
+-        return _error_response("Database not found. Run scout first.")
+-
+-    try:
+-        cur = conn.cursor()
+-        query = "SELECT caller_file, caller_function, line_number FROM function_calls WHERE callee_name = ?"
+-        params = [callee_name]
+-        if file_filter:
+-            query += " AND caller_file LIKE ?"
+-            params.append(f"%{file_filter}%")
+-        cur.execute(query, params)
+-        rows = cur.fetchall()
+-        results = []
+-        for row in rows:
+-            results.append({
+-                'caller_file': row[0],
+-                'caller_function': row[1],
+-                'line_number': row[2]
+-            })
+-        return {"success": True, "data": results}
+-    except Exception as e:
+-        return _error_response(str(e))
+-    finally:
+-        conn.close()
+\ No newline at end of file
++        return _error_response(str(e))
+\ No newline at end of file
+diff --git a/tools/analysis/scanner.py b/tools/analysis/scanner.py
+index 45b5fc5..62f2b26 100644
+--- a/tools/analysis/scanner.py
++++ b/tools/analysis/scanner.py
+@@ -200,70 +200,6 @@ def find_corresponding_test(source_path: str, project_root: Path) -> Optional[st
+                 return str(nested_test.relative_to(project_root)).replace('\\', '/')
+     return None
+ 
+-def extract_function_calls(tree, file_path, conn, file_info=None):
+-    """
+-    Walk the AST, find all function calls, and insert into function_calls table.
+-    
+-    Args:
+-        tree: AST tree of the file
+-        file_path: relative path to the file (string)
+-        conn: sqlite3 connection object
+-        file_info: optional dict with file metadata (unused currently)
+-    """
+-    class CallVisitor(ast.NodeVisitor):
+-        def __init__(self):
+-            self.current_class = None
+-            self.current_function = None
+-            self.calls = []
+-
+-        def visit_ClassDef(self, node):
+-            old_class = self.current_class
+-            self.current_class = node.name
+-            self.generic_visit(node)
+-            self.current_class = old_class
+-
+-        def visit_FunctionDef(self, node):
+-            old_function = self.current_function
+-            self.current_function = node.name
+-            self.generic_visit(node)
+-            self.current_function = old_function
+-
+-        def visit_AsyncFunctionDef(self, node):
+-            self.visit_FunctionDef(node)
+-
+-        def visit_Call(self, node):
+-            # Determine the name of the called function
+-            callee = None
+-            if isinstance(node.func, ast.Name):
+-                callee = node.func.id
+-            elif isinstance(node.func, ast.Attribute):
+-                callee = node.func.attr
+-            if callee:
+-                # Build fully qualified caller name
+-                caller_parts = []
+-                if self.current_class:
+-                    caller_parts.append(self.current_class)
+-                if self.current_function:
+-                    caller_parts.append(self.current_function)
+-                caller = '.'.join(caller_parts) if caller_parts else None
+-
+-                self.calls.append({
+-                    'caller': caller,
+-                    'callee': callee,
+-                    'line': node.lineno
+-                })
+-            self.generic_visit(node)
+-
+-    visitor = CallVisitor()
+-    visitor.visit(tree)
+-
+-    cur = conn.cursor()
+-    for call in visitor.calls:
+-        cur.execute(
+-            "INSERT INTO function_calls (caller_file, caller_function, callee_name, line_number) VALUES (?, ?, ?, ?)",
+-            (file_path, call['caller'], call['callee'], call['line'])
+-        )
+-
+ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs: List[str] = None, verbose: bool = False):
+     project_root = Path(project_root).resolve()
+     db_path = Path(db_path)
+@@ -412,16 +348,6 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
+                 FOREIGN KEY (source_file) REFERENCES files(path)
+             )
+         """)
+-        cur.execute("""
+-            CREATE TABLE IF NOT EXISTS function_calls (
+-                caller_file TEXT,
+-                caller_function TEXT,
+-                callee_name TEXT,
+-                line_number INTEGER,
+-                FOREIGN KEY (caller_file) REFERENCES files(path) ON DELETE CASCADE
+-            )
+-        """)
+-        cur.execute("CREATE INDEX IF NOT EXISTS idx_calls_callee ON function_calls(callee_name)")
+ 
+ 
+     for i, py_file in enumerate(py_files):
+@@ -495,7 +421,6 @@ def run_scout(project_root: str, db_path: str, force: bool = False, ignore_dirs:
+             with open(py_file, 'r', encoding='utf-8', errors='ignore') as f:
+                 source = f.read()
+             tree = ast.parse(source)
+-            extract_function_calls(tree, file_info['path'], conn, file_info)
+             summary_parts = []
+             module_doc = ast.get_docstring(tree)
+             if module_doc:
+diff --git a/tools/bridge/__init__.py b/tools/bridge/__init__.py
+index a1669c4..45eefe7 100644
+--- a/tools/bridge/__init__.py
++++ b/tools/bridge/__init__.py
+@@ -1,12 +1,26 @@
+ # tools/bridge/__init__.py - UPDATED
+ """
+-Bridge system exports
++Bridge system exports – now using modular deepseek_lib.
+ """
+ 
+-from .deepseek_bridge_react import DeepSeekBridgeReact
+-from .bridge_controller import BridgeController
++from .deepseek_lib import (
++    connect_to_browser,
++    find_deepseek_page,
++    remove_file,
++    is_file_attached,
++    upload_file,
++    send_message,
++    wait_for_response,
++    full_consult,
++)
+ 
+ __all__ = [
+-    'DeepSeekBridgeReact', 
+-    'BridgeController'
++    'connect_to_browser',
++    'find_deepseek_page',
++    'remove_file',
++    'is_file_attached',
++    'upload_file',
++    'send_message',
++    'wait_for_response',
++    'full_consult',
+ ]
+\ No newline at end of file
+diff --git a/tools/bridge/bridge_controller.py b/tools/bridge/bridge_controller.py
+deleted file mode 100644
+index e255482..0000000
+--- a/tools/bridge/bridge_controller.py
++++ /dev/null
+@@ -1,89 +0,0 @@
+-# tools/bridge/bridge_controller.py - UPDATED
+-"""
+-Bridge Controller - Updated to use React bridge for file upload capability
+-"""
+-
+-from typing import Optional
+-import subprocess
+-import time
+-
+-class BridgeController:
+-    """Bridge controller using React bridge for file uploads"""
+-    
+-    def __init__(self, bridge=None):
+-        # Use React bridge by default (has file upload capability)
+-        if bridge is None:
+-            from .deepseek_bridge_react import DeepSeekBridgeReact
+-            self.bridge = DeepSeekBridgeReact(verbose=True)
+-        else:
+-            self.bridge = bridge
+-        
+-        self.conversation_history = []
+-    
+-    def ask_deepseek(self, question: str, use_tools: bool = True, timeout: int = 3600) -> Optional[str]:
+-        """Ask DeepSeek using file upload for reliability"""
+-        try:
+-            print(f"\n[BridgeController] Asking: {question[:50]}...")
+-            
+-            # Get context if needed
+-            context = ""
+-            if use_tools:
+-                context = self._get_context_for_question(question)
+-            
+-            # Always use file upload for reliability
+-            if not self.bridge.connect():
+-                print("❌ Failed to connect to DeepSeek")
+-                return None
+-            
+-            # Build full content
+-            if context:
+-                full_content = f"Context:\n{context}\n\nQuestion: {question}"
+-            else:
+-                full_content = question
+-            
+-            print(f"[BridgeController] Using file upload for {len(full_content)} chars")
+-            
+-            # Upload file and wait for response
+-            if self.bridge.send_via_file_upload(full_content, "analysis_context.txt"):
+-                response = self.bridge._wait_for_response(timeout=180)
+-            else:
+-                print("❌ File upload failed")
+-                return None
+-            
+-            # Store history
+-            self.conversation_history.append({
+-                "question": question,
+-                "response": response,
+-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+-            })
+-            
+-            return response
+-            
+-        except Exception as e:
+-            print(f"❌ Error in ask_deepseek: {e}")
+-            import traceback
+-            traceback.print_exc()
+-            return None
+-    
+-    def _get_context_for_question(self, question: str) -> str:
+-        """Get context for question (simplified)"""
+-        try:
+-            # Use ai.py search for context
+-            cmd = ['python', 'ai.py', 'search', question[:50], '--limit', '3']
+-            result = subprocess.run(cmd, capture_output=True, text=True)
+-            if result.returncode == 0:
+-                return result.stdout[:1000]
+-            return ""
+-        except:
+-            return ""
+-    
+-    def get_conversation_summary(self) -> str:
+-        """Get conversation summary"""
+-        summary = []
+-        for i, entry in enumerate(self.conversation_history):
+-            summary.append(f"Turn {i+1}:")
+-            summary.append(f"  Q: {entry['question'][:80]}...")
+-            if entry['response']:
+-                summary.append(f"  A: {entry['response'][:80]}...")
+-        
+-        return "\n".join(summary)
+\ No newline at end of file
+diff --git a/tools/bridge/debug_bridge.py b/tools/bridge/debug_bridge.py
+deleted file mode 100644
+index da71920..0000000
+--- a/tools/bridge/debug_bridge.py
++++ /dev/null
+@@ -1,253 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-Interactive debug tool for DeepSeek Bridge.
+-Test file removal, upload, send, and response.
+-"""
+-
+-import sys
+-import os
+-import tempfile
+-import time
+-from pathlib import Path
+-
+-# Add project root to path
+-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+-
+-from deepseek_bridge_react import DeepSeekBridgeReact
+-
+-
+-class DebugBridge:
+-    def __init__(self):
+-        self.bridge = DeepSeekBridgeReact(verbose=True)
+-        self.page = None
+-        self.temp_file = None
+-
+-    def connect(self):
+-        if not self.bridge.connect():
+-            print("❌ Connection failed")
+-            return False
+-        # Now get the page reference
+-        page = self.bridge.get_current_page()
+-        if page:
+-            print(f"✅ Connected. Current page: {page.url}")
+-        else:
+-            print("✅ Connected but no DeepSeek page found – open one manually.")
+-        return True
+-
+-    def get_current_page(self):
+-        """Return the persistent page object, reconnecting if necessary."""
+-        try:
+-            if hasattr(self, '_page') and self._page:
+-                # Test if page is still alive
+-                self._page.title()
+-                return self._page
+-        except Exception:
+-            self._log("Page connection lost, reconnecting...")
+-            self.close_playwright()  # clean up old
+-        # Reconnect
+-        if self._ensure_playwright_session():
+-            return self._page
+-        return None
+-
+-    def get_page(self):
+-        if not hasattr(self.bridge, '_current_page') or not self.bridge._current_page:
+-            print("No active page. Run 'connect' and ensure a DeepSeek tab is open.")
+-            return None
+-        return self.bridge._current_page
+-
+-    def run(self):
+-        print("DeepSeek Bridge Debug Tool")
+-        print("Commands:")
+-        print("  connect            - connect to Chrome")
+-        print("  page               - show current page URL/title")
+-        print("  remove             - click X to remove attached file (if any)")
+-        print("  upload <text>      - create temp file and upload it")
+-        print("  clear              - clear textarea")
+-        print("  send <msg>         - type and send message")
+-        print("  wait               - wait for response and print")
+-        print("  full <text>        - full flow: remove + upload + clear + send + wait")
+-        print("  exit               - quit")
+-
+-        while True:
+-            try:
+-                cmd = input(">> ").strip()
+-                if not cmd:
+-                    continue
+-                parts = cmd.split(maxsplit=1)
+-                base = parts[0].lower()
+-                arg = parts[1] if len(parts) > 1 else None
+-
+-                if base == "exit":
+-                    break
+-                elif base == "connect":
+-                    self.connect()
+-                elif base == "page":
+-                    page = self.get_page()
+-                    if page:
+-                        print(f"URL: {page.url}")
+-                        print(f"Title: {page.title()}")
+-                elif base == "remove":
+-                    self.cmd_remove()
+-                elif base == "upload":
+-                    if not arg:
+-                        print("Usage: upload <text content>")
+-                        continue
+-                    self.cmd_upload(arg)
+-                elif base == "clear":
+-                    self.cmd_clear()
+-                elif base == "send":
+-                    if not arg:
+-                        print("Usage: send <message>")
+-                        continue
+-                    self.cmd_send(arg)
+-                elif base == "wait":
+-                    self.cmd_wait()
+-                elif base == "full":
+-                    if not arg:
+-                        print("Usage: full <text>")
+-                        continue
+-                    self.cmd_full(arg)
+-                else:
+-                    print("Unknown command.")
+-            except KeyboardInterrupt:
+-                break
+-            except Exception as e:
+-                print(f"Error: {e}")
+-
+-    def cmd_remove(self):
+-        page = self.get_page()
+-        if not page:
+-            return
+-        # Look for the X button
+-        remove_xpath = "//button[.//*[local-name()='svg' and @d='M6 18L18 6M6 6l12 12']] | //button[contains(text(),'×')]"
+-        remove_btn = page.locator(f'xpath={remove_xpath}').first
+-        if remove_btn.count() > 0 and remove_btn.is_visible():
+-            remove_btn.click()
+-            print("✅ Clicked remove button")
+-            time.sleep(1)
+-        else:
+-            print("ℹ️ No remove button found")
+-
+-    def cmd_upload(self, content):
+-        page = self.get_page()
+-        if not page:
+-            return
+-
+-        # Create temp file
+-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+-            f.write(content)
+-            temp_path = f.name
+-        self.temp_file = temp_path
+-
+-        # Find file input
+-        file_input = page.locator('input[type="file"]').first
+-        if file_input.count() == 0:
+-            file_input = page.locator('input[accept*=".txt"]').first
+-        if file_input.count() == 0:
+-            print("❌ File input not found")
+-            os.unlink(temp_path)
+-            return
+-
+-        file_input.set_input_files(temp_path)
+-        print("✅ File selected")
+-
+-        # Wait for file to appear (remove button or filename)
+-        start = time.time()
+-        while time.time() - start < 15:
+-            # Check for remove button (indicates file attached)
+-            remove_xpath = "//button[.//*[local-name()='svg' and @d='M6 18L18 6M6 6l12 12']] | //button[contains(text(),'×')]"
+-            if page.locator(f'xpath={remove_xpath}').count() > 0:
+-                print("✅ File upload confirmed (remove button visible)")
+-                return
+-            # Also check for filename
+-            if page.locator(f'text={os.path.basename(temp_path)}').count() > 0:
+-                print("✅ File upload confirmed (filename visible)")
+-                return
+-            time.sleep(1)
+-        print("⚠️ Upload confirmation timeout – file may not be attached")
+-
+-    def cmd_clear(self):
+-        page = self.get_page()
+-        if not page:
+-            return
+-        textarea = page.locator('textarea').first
+-        if textarea.count() == 0:
+-            textarea = page.locator('[contenteditable="true"]').first
+-        if textarea.count() == 0:
+-            print("❌ No textarea found")
+-            return
+-        textarea.click()
+-        time.sleep(0.3)
+-        # Select all and delete
+-        textarea.press('Control+A')
+-        time.sleep(0.2)
+-        textarea.press('Delete')
+-        # Also fill with empty string to be sure
+-        textarea.fill("")
+-        print("✅ Textarea cleared")
+-
+-    def cmd_send(self, message):
+-        page = self.get_page()
+-        if not page:
+-            return
+-        textarea = page.locator('textarea').first
+-        if textarea.count() == 0:
+-            textarea = page.locator('[contenteditable="true"]').first
+-        if textarea.count() == 0:
+-            print("❌ No input field found")
+-            return
+-        textarea.click()
+-        time.sleep(0.3)
+-        textarea.fill(message)
+-        print(f"✅ Typed: {message}")
+-        time.sleep(0.5)
+-
+-        # Try Enter
+-        textarea.press('Enter')
+-        print("Pressed Enter")
+-        time.sleep(2)
+-
+-        # Check if cleared
+-        after = textarea.input_value()
+-        if after and len(after) > 0:
+-            print("ℹ️ Enter didn't clear – trying send button")
+-            # Look for send button
+-            send_selectors = [
+-                "//*[local-name()='svg' and @d='M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z']/ancestor::div[@role='button' and not(contains(@class,'disabled'))]",
+-                "button[aria-label='Send']",
+-                "button:has-text('Send')",
+-            ]
+-            for sel in send_selectors:
+-                if sel.startswith("//"):
+-                    btn = page.locator(f'xpath={sel}').first
+-                else:
+-                    btn = page.locator(sel).first
+-                if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
+-                    btn.click()
+-                    print("✅ Clicked send button")
+-                    break
+-            else:
+-                print("❌ No send button found – message may not have sent")
+-        else:
+-            print("✅ Message sent (textarea cleared)")
+-
+-    def cmd_wait(self):
+-        # Use the bridge's response waiting (which uses Playwright locators)
+-        response = self.bridge._wait_for_response_playwright(self.get_page(), timeout=60)
+-        if response:
+-            print(f"Response:\n{response[:500]}...")
+-        else:
+-            print("No response received")
+-
+-    def cmd_full(self, content):
+-        self.cmd_remove()
+-        self.cmd_upload(content)
+-        # Clear any leftover text
+-        self.cmd_clear()
+-        # Send a default instruction
+-        self.cmd_send("Please analyze this file thoroughly.")
+-        self.cmd_wait()
+-
+-
+-if __name__ == "__main__":
+-    DebugBridge().run()
+\ No newline at end of file
+diff --git a/tools/bridge/deepseek_bridge_react.py b/tools/bridge/deepseek_bridge_react.py
+deleted file mode 100644
+index 5716e4e..0000000
+--- a/tools/bridge/deepseek_bridge_react.py
++++ /dev/null
+@@ -1,302 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-DeepSeek Bridge - browser-use version with persistent Playwright session.
+-Connects to existing Chrome on port 9222.
+-Includes file upload, removal, send, and response waiting.
+-"""
+-
+-import asyncio
+-import tempfile
+-import os
+-import time
+-import atexit
+-from typing import Optional
+-
+-import requests
+-from browser_use import Browser
+-from playwright.sync_api import sync_playwright
+-
+-CDP_URL = "http://127.0.0.1:9222"
+-
+-
+-class DeepSeekBridgeReact:
+-    """Bridge using browser-use and persistent Playwright session."""
+-
+-    def __init__(self, verbose=True):
+-        self.verbose = verbose
+-        self.browser = None  # for browser‑use compatibility (unused)
+-        self._connected = False
+-        self._last_response: Optional[str] = None
+-        self._upload_in_progress = False
+-
+-        # Playwright persistent session
+-        self._playwright = None
+-        self._pw_browser = None
+-        self._page = None
+-        atexit.register(self.close_playwright)
+-
+-    # ----------------------------------------------------------------------
+-    # Logging
+-    # ----------------------------------------------------------------------
+-    def _log(self, message: str):
+-        if self.verbose:
+-            print(f"[Bridge] {message}")
+-
+-    # ----------------------------------------------------------------------
+-    # Connection Management
+-    # ----------------------------------------------------------------------
+-    def connect(self) -> bool:
+-        """Legacy connect – kept for compatibility."""
+-        # We rely on Playwright session, but we'll also attempt browser‑use
+-        # for backward compatibility if needed.
+-        if self._connected and self.browser:
+-            return True
+-        try:
+-            self.browser = Browser(cdp_url=CDP_URL)
+-            self._connected = True
+-            self._log("Connected to Chrome via browser-use")
+-            return True
+-        except Exception as e:
+-            self._log(f"Browser‑use connection failed: {e}")
+-            # Fallback: just mark connected via Playwright
+-            self._connected = True
+-            return True
+-
+-    def _ensure_playwright_session(self):
+-        """Start a persistent Playwright session if not already running."""
+-        if self._page:
+-            try:
+-                # Test if page is still alive
+-                self._page.title()
+-                return True
+-            except Exception:
+-                self._log("Page connection lost, reconnecting...")
+-                self.close_playwright()
+-
+-        try:
+-            self._playwright = sync_playwright().start()
+-            self._pw_browser = self._playwright.chromium.connect_over_cdp(CDP_URL)
+-            # Find DeepSeek page
+-            for context in self._pw_browser.contexts:
+-                for page in context.pages:
+-                    if 'chat.deepseek.com' in page.url:
+-                        self._page = page
+-                        self._log(f"Found DeepSeek page: {page.url}")
+-                        return True
+-            self._log("No DeepSeek page found – open a chat tab.")
+-            return False
+-        except Exception as e:
+-            self._log(f"Failed to start Playwright session: {e}")
+-            return False
+-
+-    def close_playwright(self):
+-        """Clean up Playwright resources."""
+-        if self._playwright:
+-            try:
+-                self._playwright.stop()
+-            except:
+-                pass
+-            self._playwright = None
+-            self._pw_browser = None
+-            self._page = None
+-            self._log("Playwright session closed")
+-
+-    def get_current_page(self):
+-        """Return the persistent page object, reconnecting if dead."""
+-        if not self._ensure_playwright_session():
+-            return None
+-        return self._page
+-
+-    # ----------------------------------------------------------------------
+-    # UI Helpers
+-    # ----------------------------------------------------------------------
+-    def _remove_existing_file(self, page):
+-        """If a file is attached, click its remove button (×)."""
+-        try:
+-            # XPath for the remove button – matches both the SVG × and a button with text '×'
+-            remove_xpath = "//button[.//*[local-name()='svg' and @d='M6 18L18 6M6 6l12 12']] | //button[contains(text(),'×')]"
+-            remove_btn = page.locator(f'xpath={remove_xpath}').first
+-            if remove_btn.count() > 0 and remove_btn.is_visible():
+-                remove_btn.click()
+-                self._log("Removed existing file")
+-                page.wait_for_timeout(1000)
+-        except Exception as e:
+-            self._log(f"Error removing existing file: {e}")
+-
+-    def _wait_for_file_upload(self, page, filename, timeout=30):
+-        """Wait for the uploaded filename or remove button to appear."""
+-        start = time.time()
+-        while time.time() - start < timeout:
+-            try:
+-                # Look for filename text
+-                if page.locator(f'text={filename}').count() > 0:
+-                    self._log(f"File '{filename}' visible in UI")
+-                    return True
+-                # Look for remove button (indicates file attached)
+-                remove_xpath = "//button[.//*[local-name()='svg' and @d='M6 18L18 6M6 6l12 12']] | //button[contains(text(),'×')]"
+-                if page.locator(f'xpath={remove_xpath}').count() > 0:
+-                    self._log("File attached (remove button visible)")
+-                    return True
+-            except:
+-                pass
+-            page.wait_for_timeout(1000)
+-        self._log("Timeout waiting for file upload")
+-        return False
+-
+-    def _wait_for_response_playwright(self, page, timeout=180):
+-        """Wait for and extract the last assistant message."""
+-        start = time.time()
+-        last_text = ""
+-        stable = 0
+-        while time.time() - start < timeout:
+-            try:
+-                # Try multiple selectors for assistant messages
+-                selectors = ['.ds-markdown', '[class*="markdown"]', '[class*="message"][class*="assistant"]']
+-                for selector in selectors:
+-                    elements = page.locator(selector).all()
+-                    if elements:
+-                        latest = elements[-1].inner_text()
+-                        if latest and latest != last_text:
+-                            last_text = latest
+-                            stable = 0
+-                        elif latest:
+-                            stable += 1
+-                            if stable >= 3:
+-                                return last_text
+-                        break
+-            except:
+-                pass
+-            time.sleep(2)
+-        return last_text if last_text else None
+-
+-    # ----------------------------------------------------------------------
+-    # Main Upload + Send
+-    # ----------------------------------------------------------------------
+-    def send_via_file_upload(self, text: str, filename: str = "context.txt") -> bool:
+-        """
+-        Upload a file, remove any stuck file first, and send an instruction.
+-        Uses persistent Playwright session.
+-        """
+-        if self._upload_in_progress:
+-            self._log("Upload already in progress, skipping")
+-            return False
+-
+-        # Ensure we have a live page
+-        page = self.get_current_page()
+-        if not page:
+-            self._log("No active page")
+-            return False
+-
+-        self._upload_in_progress = True
+-        temp_path = None
+-        try:
+-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+-                                             suffix=filename, delete=False) as f:
+-                f.write(text)
+-                temp_path = f.name
+-
+-            # --- Remove any existing file ---
+-            self._remove_existing_file(page)
+-
+-            # --- Find file input and upload ---
+-            file_input = page.locator('input[type="file"]').first
+-            if file_input.count() == 0:
+-                file_input = page.locator('input[accept*=".txt"]').first
+-            if file_input.count() == 0:
+-                self._log("File input not found")
+-                return False
+-
+-            file_input.set_input_files(temp_path)
+-            self._log("File selected")
+-
+-            # --- Wait for upload confirmation ---
+-            if not self._wait_for_file_upload(page, filename, timeout=30):
+-                self._log("File upload did not complete successfully")
+-                self._remove_existing_file(page)
+-                return False
+-
+-            self._log("File upload confirmed.")
+-
+-            # --- Send instruction ---
+-            instruction = "Please analyze this file thoroughly."
+-            textarea = page.locator('textarea').first
+-            if textarea.count() == 0:
+-                textarea = page.locator('[contenteditable="true"]').first
+-            if textarea.count() == 0:
+-                self._log("No input field found")
+-                return False
+-
+-            textarea.click()
+-            page.wait_for_timeout(500)
+-            textarea.fill(instruction)
+-            self._log("Instruction typed")
+-
+-            # Try Enter
+-            textarea.press('Enter')
+-            page.wait_for_timeout(2000)
+-            after = textarea.input_value()
+-            if after and len(after) > 0:
+-                self._log("Enter didn't work – trying send button")
+-                # Try send button using stable SVG path
+-                send_xpath = ("//*[local-name()='svg' and @d='M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374"
+-                              "C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717"
+-                              "V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277"
+-                              "1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031"
+-                              "0.956564 8.3125 0.981587Z']/ancestor::div[@role='button' and not(contains(@class,'disabled'))]")
+-                send_button = page.locator(f'xpath={send_xpath}').first
+-                if send_button.count() > 0 and send_button.is_visible() and send_button.is_enabled():
+-                    send_button.click()
+-                    self._log("Clicked send button")
+-                else:
+-                    self._log("Send button not found – message may not have sent")
+-            else:
+-                self._log("Message sent (textarea cleared)")
+-
+-            # --- Wait for response ---
+-            self._last_response = self._wait_for_response_playwright(page, timeout=180)
+-            return True
+-
+-        except Exception as e:
+-            self._log(f"Upload failed: {e}")
+-            import traceback
+-            traceback.print_exc()
+-            return False
+-        finally:
+-            self._upload_in_progress = False
+-            if temp_path and os.path.exists(temp_path):
+-                os.unlink(temp_path)
+-
+-    # ----------------------------------------------------------------------
+-    # Other methods (kept for compatibility)
+-    # ----------------------------------------------------------------------
+-    def get_current_page_url(self):
+-        """Get URL from CDP – fallback."""
+-        try:
+-            r = requests.get('http://127.0.0.1:9222/json/list', timeout=3)
+-            pages = r.json()
+-            for p in pages:
+-                if p.get('type') == 'page' and not p.get('url', '').startswith('chrome://'):
+-                    return p['url']
+-        except Exception as e:
+-            self._log(f"Could not get current URL: {e}")
+-        return 'https://chat.deepseek.com'
+-
+-    def _wait_for_response(self, timeout: int = 180) -> Optional[str]:
+-        """Return last response (agent already waited)"""
+-        return self._last_response
+-
+-    def receive(self) -> str:
+-        """Get latest response"""
+-        return self._last_response or ""
+-
+-    def close(self):
+-        """Disconnect from Chrome (Chrome keeps running)"""
+-        self.close_playwright()
+-        if self.browser:
+-            try:
+-                asyncio.run(self.browser.close())
+-            except:
+-                pass
+-            self.browser = None
+-            self._connected = False
+-            self._log("Disconnected")
+\ No newline at end of file
+diff --git a/tools/bridge/deepseek_bridge_react.py.bak b/tools/bridge/deepseek_bridge_react.py.bak
+deleted file mode 100644
+index f8f977f..0000000
+--- a/tools/bridge/deepseek_bridge_react.py.bak
++++ /dev/null
+@@ -1,248 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-DeepSeek Bridge - browser-use version (replaces Selenium)
+-Connects to existing Chrome on port 9222
+-"""
+-
+-import asyncio
+-import tempfile
+-import os
+-from typing import Optional
+-import requests
+-
+-from browser_use import Agent, ChatOpenAI, Browser
+-
+-CDP_URL = "http://127.0.0.1:9222"
+-
+-
+-class DeepSeekBridgeReact:
+-    """Minimal bridge using browser-use instead of Selenium"""
+-    
+-    def __init__(self, verbose=True):
+-        self.verbose = verbose
+-        self.browser: Optional[Browser] = None
+-        self._connected = False
+-        self._last_response: Optional[str] = None
+-
+-    def get_current_page_url(self):
+-        """Get URL from CDP to avoid empty navigation."""
+-        try:
+-            r = requests.get('http://127.0.0.1:9222/json/list', timeout=3)
+-            pages = r.json()
+-            for p in pages:
+-                if p.get('type') == 'page' and not p.get('url', '').startswith('chrome://'):
+-                    return p['url']
+-        except Exception as e:
+-            self._log(f"Could not get current URL: {e}")
+-        return 'https://chat.deepseek.com'
+-        
+-    def _log(self, message: str):
+-        if self.verbose:
+-            print(f"[Bridge] {message}")
+-    
+-    def connect(self) -> bool:
+-        """Connect to existing Chrome via CDP"""
+-        if self._connected and self.browser:
+-            return True
+-            
+-        try:
+-            # Browser 0.12.0 accepts cdp_url directly in constructor
+-            self.browser = Browser(cdp_url=CDP_URL)
+-            self._connected = True
+-            self._log("Connected to Chrome")
+-            return True
+-        except Exception as e:
+-            self._log(f"Connection failed: {e}")
+-            return False
+-
+-    def send_via_file_upload(self, text: str, filename: str = "context.txt") -> bool:
+-        """Upload using direct Playwright CDP connection."""
+-        import tempfile
+-        import os
+-        import time
+-        from playwright.sync_api import sync_playwright
+-        
+-        if getattr(self, '_upload_in_progress', False):
+-            self._log("Upload already in progress, skipping")
+-            return False
+-        
+-        self._upload_in_progress = True
+-        
+-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
+-                                         suffix=filename, delete=False) as f:
+-            f.write(text)
+-            temp_path = f.name
+-        
+-        try:
+-            with sync_playwright() as p:
+-                browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+-                
+-                # Find DeepSeek page
+-                target_page = None
+-                for context in browser.contexts:
+-                    for page in context.pages:
+-                        if 'chat.deepseek.com' in page.url:
+-                            target_page = page
+-                            break
+-                
+-                if not target_page:
+-                    self._log("No DeepSeek page found")
+-                    return False
+-                
+-                page = target_page
+-                page.bring_to_front()
+-                
+-                # DEBUG: Check current state
+-                self._log(f"Page URL: {page.url}")
+-                self._log(f"Page title: {page.title()}")
+-                
+-                # Upload file if not already there
+-                try:
+-                    if page.locator('text=analysis_context.txt').count() == 0:
+-                        file_input = page.locator('input[type="file"]').first
+-                        if file_input.count() > 0:
+-                            file_input.set_input_files(temp_path)
+-                            self._log("File uploaded")
+-                            time.sleep(2)  # Wait for file to register
+-                    else:
+-                        self._log("File already present")
+-                except Exception as e:
+-                    self._log(f"Upload issue: {e}")
+-                
+-                # DEBUG: Check if file is visible
+-                file_visible = page.locator('text=analysis_context.txt').count() > 0
+-                self._log(f"File visible in UI: {file_visible}")
+-                
+-                # TYPE AND SEND WITH DEBUG TIMING
+-                try:
+-                    # Find textarea
+-                    textarea = None
+-                    for selector in ['textarea', '[contenteditable="true"]', 'div[role="textbox"]']:
+-                        loc = page.locator(selector).first
+-                        if loc.count() > 0:
+-                            textarea = loc
+-                            self._log(f"Found textarea with: {selector}")
+-                            break
+-                    
+-                    if not textarea:
+-                        self._log("No textarea found!")
+-                        return False
+-                    
+-                    # Click to focus
+-                    self._log("Clicking textarea...")
+-                    textarea.click()
+-                    time.sleep(0.5)
+-                    
+-                    # Clear
+-                    self._log("Clearing textarea...")
+-                    textarea.fill("")
+-                    time.sleep(0.3)
+-                    
+-                    # Type message
+-                    message = "Please analyze this file thoroughly."
+-                    self._log(f"Typing message: '{message}'")
+-                    textarea.fill(message)
+-                    
+-                    # DEBUG: Verify text entered
+-                    entered = textarea.input_value()
+-                    self._log(f"Text in textarea after fill: '{entered}'")
+-                    self._log(f"Text length: {len(entered) if entered else 0}")
+-                    
+-                    time.sleep(0.5)  # Let it settle
+-                    
+-                    # Try to send
+-                    if entered and len(entered) > 5:
+-                        self._log("Text confirmed, attempting send...")
+-                        
+-                        # Method 1: Ctrl+Enter
+-                        self._log("Trying Ctrl+Enter...")
+-                        textarea.press('Control+Enter')
+-                        time.sleep(1)
+-                        
+-                        # Check if cleared
+-                        after_send = textarea.input_value()
+-                        self._log(f"Text after Ctrl+Enter: '{after_send}' (len={len(after_send) if after_send else 0})")
+-                        
+-                        if after_send and len(after_send) > 0:
+-                            # Method 2: Just Enter
+-                            self._log("Ctrl+Enter didn't work, trying Enter...")
+-                            textarea.press('Enter')
+-                            time.sleep(1)
+-                            
+-                            after_enter = textarea.input_value()
+-                            self._log(f"Text after Enter: '{after_enter}' (len={len(after_enter) if after_enter else 0})")
+-                            
+-                            if after_enter and len(after_enter) > 0:
+-                                # Method 3: Click send button
+-                                self._log("Enter didn't work, trying send button...")
+-                                send_btn = page.locator('button:has-text("Send"), button svg path[d*="arrow"], button.primary').first
+-                                if send_btn.count() > 0:
+-                                    self._log(f"Found send button, clicking...")
+-                                    send_btn.click()
+-                                    time.sleep(1)
+-                                else:
+-                                    self._log("No send button found!")
+-                        else:
+-                            self._log("Ctrl+Enter worked - text cleared")
+-                    else:
+-                        self._log(f"Text not entered properly, skipping send")
+-                        return False
+-                    
+-                except Exception as e:
+-                    self._log(f"Send failed: {e}")
+-                    import traceback
+-                    traceback.print_exc()
+-                    return False
+-                
+-                # Wait for response
+-                self._log("Waiting for AI response...")
+-                time.sleep(10)
+-                
+-                # Poll for response
+-                last_response = ""
+-                for i in range(36):
+-                    try:
+-                        response = page.locator('.ds-markdown, .chat-message-assistant, [class*="assistant"]').last.inner_text()
+-                        if response and response != last_response:
+-                            self._log(f"Response updated: {len(response)} chars")
+-                            last_response = response
+-                        elif response == last_response and len(response) > 200:
+-                            self._log("Response complete")
+-                            break
+-                    except:
+-                        pass
+-                    time.sleep(5)
+-                
+-                self._last_response = last_response
+-                browser.close()
+-                return True
+-                
+-        except Exception as e:
+-            self._log(f"Failed: {e}")
+-            import traceback
+-            traceback.print_exc()
+-            return False
+-            
+-        finally:
+-            self._upload_in_progress = False
+-            if os.path.exists(temp_path):
+-                os.unlink(temp_path)
+-    
+-    def _wait_for_response(self, timeout: int = 180) -> Optional[str]:
+-        """Return last response (agent already waited)"""
+-        return self._last_response
+-    
+-    def receive(self) -> str:
+-        """Get latest response"""
+-        return self._last_response or ""
+-    
+-    def close(self):
+-        """Disconnect from Chrome (Chrome keeps running)"""
+-        if self.browser:
+-            try:
+-                asyncio.run(self.browser.close())
+-            except:
+-                pass
+-            self.browser = None
+-            self._connected = False
+-            self._log("Disconnected")
+\ No newline at end of file
+diff --git a/tools/bridge/deepseek_lib.py b/tools/bridge/deepseek_lib.py
+new file mode 100644
+index 0000000..28e99aa
+--- /dev/null
++++ b/tools/bridge/deepseek_lib.py
+@@ -0,0 +1,280 @@
++#!/usr/bin/env python3
++"""
++DeepSeek automation library – stable, container‑based selectors.
++All functions use only reliable class names that were discovered iteratively.
++"""
++
++import logging
++import time
++import os
++import tempfile
++from playwright.sync_api import sync_playwright
++
++logger = logging.getLogger("deepseek_lib")
++
++CDP_URL = "http://127.0.0.1:9222"
++DEEPSEEK_URL = "https://chat.deepseek.com"
++GOOGLE_URL = "https://www.google.com"
++
++# ----------------------------------------------------------------------
++# Connection and page finding
++# ----------------------------------------------------------------------
++def connect_to_browser(cdp_url=CDP_URL):
++    logger.info(f"Connecting to Chrome at {cdp_url}")
++    playwright = sync_playwright().start()
++    try:
++        browser = playwright.chromium.connect_over_cdp(cdp_url)
++        logger.info("Connected successfully")
++        return browser, playwright
++    except Exception as e:
++        logger.error(f"Connection failed: {e}")
++        playwright.stop()
++        raise
++
++def find_deepseek_page(browser, force_referral=False):
++    logger.info("Looking for existing DeepSeek page...")
++    for context in browser.contexts:
++        for page in context.pages:
++            if DEEPSEEK_URL in page.url:
++                logger.info(f"Found existing DeepSeek page: {page.url}")
++                return page
++
++    if force_referral:
++        logger.info("No DeepSeek page found, creating via Google referral...")
++        if browser.contexts:
++            context = browser.contexts[0]
++        else:
++            context = browser.new_context()
++        page = context.new_page()
++
++        page.goto(GOOGLE_URL)
++        page.wait_for_timeout(1000)
++        page.fill('input[name="q"]', "deepseek chat")
++        page.keyboard.press("Enter")
++        page.wait_for_timeout(2000)
++        link = page.locator('a:has-text("DeepSeek")').first
++        if link.count() == 0:
++            raise Exception("No DeepSeek link found in search results")
++        link.click()
++        page.wait_for_timeout(3000)
++        logger.info(f"Now on: {page.url}")
++        return page
++    else:
++        raise Exception("No DeepSeek page found and force_referral=False")
++
++# ----------------------------------------------------------------------
++# File attachment detection and removal (stable selectors)
++# ----------------------------------------------------------------------
++def is_file_attached(page):
++    """
++    Return True if the file attachment container (div.d2d04dae) is present.
++    This container appears only when a file is uploaded.
++    """
++    return page.locator('div.d2d04dae').count() > 0
++
++def remove_existing_file(page, timeout=10):
++    """
++    Remove any attached file by:
++      1. Checking for the container div.d2d04dae (indicates file attached).
++      2. Hovering over it to reveal the remove button.
++      3. Clicking the element with class '_35730b2' inside that container (the actual remove button).
++      4. Waiting for the container to disappear.
++    Returns True if removal succeeded (or no file), False otherwise.
++    """
++    container = page.locator('div.d2d04dae').first
++    if container.count() == 0:
++        logger.info("No file attached (container not found)")
++        return True
++
++    # Hover to reveal the remove button (if needed)
++    container.hover()
++    page.wait_for_timeout(500)
++
++    # Find the remove button with class _35730b2 inside the container
++    remove_btn = container.locator('div._35730b2').first
++    if remove_btn.count() == 0:
++        logger.error("Remove button (_35730b2) not found after hover")
++        return False
++
++    remove_btn.click()
++    logger.info("Clicked remove button")
++
++    # Wait for the container to disappear (file removed)
++    start = time.time()
++    while time.time() - start < timeout:
++        if page.locator('div.d2d04dae').count() == 0:
++            logger.info("File removed successfully")
++            return True
++        page.wait_for_timeout(200)
++    logger.error("File still present after removal timeout")
++    return False
++
++# ----------------------------------------------------------------------
++# Upload (direct file input, wait for container)
++# ----------------------------------------------------------------------
++def upload_file(page, file_path, timeout=30):
++    """
++    Upload a file by directly setting the file input.
++    Assumes any existing file has been removed (call remove_existing_file first).
++    Waits for the container div.d2d04dae to appear as confirmation.
++    """
++    logger.info(f"Uploading file: {file_path}")
++
++    # Find the file input (directly, without clicking paperclip)
++    file_input = page.locator('input[type="file"]').first
++    if file_input.count() == 0:
++        logger.error("File input not found")
++        return False
++
++    try:
++        file_input.set_input_files(file_path)
++        logger.info("File selected")
++    except Exception as e:
++        logger.error(f"Failed to set input files: {e}")
++        return False
++
++    # Wait for the container to appear (upload confirmed)
++    start = time.time()
++    while time.time() - start < timeout:
++        if page.locator('div.d2d04dae').count() > 0:
++            logger.info("Upload confirmed (container appeared)")
++            return True
++        page.wait_for_timeout(500)
++
++    logger.error("Upload confirmation timeout")
++    return False
++
++# ----------------------------------------------------------------------
++# Send message and wait for response
++# ----------------------------------------------------------------------
++def send_message(page, prompt):
++    """
++    Type a message into the textarea and send it.
++    Returns True if message appears to be sent, False otherwise.
++    """
++    logger.info(f"Sending message: {prompt[:50]}...")
++    textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
++    if textarea.count() == 0:
++        textarea = page.locator('[contenteditable="true"]').first
++    if textarea.count() == 0:
++        logger.error("No input field found")
++        return False
++
++    textarea.click()
++    page.wait_for_timeout(300)
++    textarea.press('Control+A')
++    page.wait_for_timeout(200)
++    textarea.press('Delete')
++    textarea.fill("")
++    textarea.fill(prompt)
++    logger.info("Prompt typed")
++    textarea.press('Enter')
++    page.wait_for_timeout(2000)
++
++    after = textarea.input_value()
++    if after and len(after) > 0:
++        logger.info("Enter didn't clear – trying send button")
++        # Stable send button SVG path (from earlier)
++        send_path = "M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z"
++        send_xpath = f"//*[local-name()='svg' and @d='{send_path}']/ancestor::*[self::button or self::div[@role='button']]"
++        send_button = page.locator(f'xpath={send_xpath}').first
++        if send_button.count() > 0 and send_button.is_visible() and send_button.is_enabled():
++            send_button.click()
++            logger.info("Clicked send button")
++        else:
++            logger.warning("Send button not found")
++            return False
++    else:
++        logger.info("Message sent (textarea cleared)")
++    return True
++
++def wait_for_response(page, timeout=180):
++    """
++    Wait for the assistant's response to appear and stabilize.
++    Returns the response text, or None if timeout.
++    """
++    logger.info(f"Waiting for response (timeout: {timeout}s)...")
++    start = time.time()
++    last_text = ""
++    stable_count = 0
++    while time.time() - start < timeout:
++        # Try multiple selectors for assistant messages
++        selectors = ['.ds-markdown', '[class*="markdown"]', '[class*="message"][class*="assistant"]']
++        for selector in selectors:
++            elements = page.locator(selector).all()
++            if elements:
++                latest = elements[-1].inner_text()
++                if latest and latest != last_text:
++                    last_text = latest
++                    stable_count = 0
++                    logger.debug(f"Response updated ({len(latest)} chars)")
++                elif latest and latest == last_text:
++                    stable_count += 1
++                    if stable_count >= 3:
++                        logger.info(f"Response complete ({len(latest)} chars)")
++                        return latest
++                break
++        time.sleep(2)
++    logger.warning("Response timeout")
++    return last_text if last_text else None
++
++# ----------------------------------------------------------------------
++# High‑level consultation (orchestrates everything)
++# ----------------------------------------------------------------------
++def full_consult(prompt, file_path=None, file_content=None, filename=None, timeout=180):
++    """
++    Complete consultation: connect, find page, optionally upload, send, wait.
++    Returns response text.
++    """
++    browser = None
++    playwright = None
++    temp_path = None
++    try:
++        browser, playwright = connect_to_browser()
++        page = find_deepseek_page(browser, force_referral=True)
++
++        # Ensure no existing file (clean start)
++        remove_existing_file(page)
++
++        upload_this = None
++        if file_path:
++            upload_this = file_path
++            logger.info(f"Uploading existing file: {upload_this}")
++        elif file_content:
++            if filename:
++                temp_dir = tempfile.gettempdir()
++                if not filename.endswith('.txt'):
++                    filename += '.txt'
++                temp_path = os.path.join(temp_dir, filename)
++                with open(temp_path, 'w', encoding='utf-8') as f:
++                    f.write(file_content)
++            else:
++                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
++                    f.write(file_content)
++                    temp_path = f.name
++            upload_this = temp_path
++            logger.info(f"Uploading temp file: {upload_this}")
++
++        if upload_this:
++            if not upload_file(page, upload_this):
++                raise Exception("File upload failed")
++
++        if not send_message(page, prompt):
++            raise Exception("Failed to send message")
++
++        response = wait_for_response(page, timeout)
++        if not response:
++            raise Exception("No response received")
++
++        return response
++    finally:
++        if temp_path and os.path.exists(temp_path):
++            os.unlink(temp_path)
++            logger.info(f"Temp file deleted: {temp_path}")
++        if browser:
++            browser.close()
++        if playwright:
++            playwright.stop()
++
++# Alias for backward compatibility with tests
++remove_file = remove_existing_file
+\ No newline at end of file
+diff --git a/tools/bridge/discover_selectors.py b/tools/bridge/discover_selectors.py
+new file mode 100644
+index 0000000..f7ff8a6
+--- /dev/null
++++ b/tools/bridge/discover_selectors.py
+@@ -0,0 +1,119 @@
++#!/usr/bin/env python3
++"""
++Discover both the file container and the remove button selectors.
++Run this after manually uploading a file.
++"""
++
++import sys
++import time
++import re
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).parent.parent.parent))
++from deepseek_lib import connect_to_browser, find_deepseek_page
++
++def find_container(page):
++    """Find the container that holds the file icon and file size text."""
++    # Find the file icon (stable class)
++    file_icon = page.locator('.ds-icon').first
++    if file_icon.count() == 0:
++        print("❌ No file icon (.ds-icon) found. Is a file uploaded?")
++        return None
++
++    # Find an element that contains size text like "PY 5.92KB" – this is likely the container.
++    # We'll search for any element containing text matching a pattern like "PY \d+\.\d+KB"
++    size_text = page.locator('text=/\w+ \d+\.\d+KB/').first
++    if size_text.count() == 0:
++        # fallback: look for any element containing "KB"
++        size_text = page.locator('text=/KB/').first
++    if size_text.count() == 0:
++        print("⚠️ Could not find size text. Using heuristic based on file icon parent.")
++        # fallback: go up from file icon until we find a div with multiple children
++        current = file_icon
++        for _ in range(5):
++            parent = current.locator('xpath=..').first
++            if parent.count() == 0:
++                break
++            child_count = parent.locator('*').count()
++            if child_count >= 3:
++                return parent
++            current = parent
++        return None
++
++    # The container is likely the common ancestor of file_icon and size_text
++    # We'll use XPath to find the nearest ancestor that contains both.
++    # A simple way: get the parent of size_text and check if it contains file_icon
++    candidate = size_text.locator('xpath=..').first
++    for _ in range(5):
++        if candidate.locator('.ds-icon').count() > 0:
++            return candidate
++        candidate = candidate.locator('xpath=..').first
++        if candidate.count() == 0:
++            break
++    return None
++
++def main():
++    print("\n=== DISCOVER FILE CONTAINER AND REMOVE BUTTON ===")
++    print("Please ensure a file is already uploaded to DeepSeek.")
++    input("Press Enter when ready...")
++
++    browser, playwright = connect_to_browser()
++    page = find_deepseek_page(browser, force_referral=True)
++
++    # Step 1: Find container
++    container = find_container(page)
++    if container is None:
++        print("❌ Could not determine container automatically.")
++        browser.close()
++        playwright.stop()
++        return
++
++    # Output container info
++    tag = container.evaluate('el => el.tagName.toLowerCase()')
++    classes = container.get_attribute('class') or ''
++    print(f"\n✅ Found container: <{tag} class=\"{classes}\">")
++    # Suggest a simple selector using the first class (most stable)
++    first_class = classes.split()[0] if classes else ''
++    container_selector = f"{tag}.{first_class}" if first_class else tag
++    print(f"Suggested container selector: {container_selector}")
++
++    # Step 2: Discover remove button
++    print("\nHovering over container to reveal remove button...")
++    container.hover()
++    time.sleep(0.5)
++
++    children = container.locator('*').all()
++    print(f"Found {len(children)} child elements. Clicking each until file disappears...\n")
++
++    for i, child in enumerate(children):
++        tag_c = child.evaluate('el => el.tagName.toLowerCase()')
++        classes_c = child.get_attribute('class') or ''
++        visible = child.is_visible()
++        print(f"\n--- Candidate {i+1} ---")
++        print(f"Tag: {tag_c}, Classes: {classes_c}, Visible: {visible}")
++
++        if not visible:
++            print("Skipping (not visible)")
++            continue
++
++        try:
++            child.click()
++            time.sleep(0.5)  # wait for UI update
++        except Exception as e:
++            print(f"Click failed: {e}")
++            continue
++
++        # Check if file is gone (container disappeared)
++        if page.locator(container_selector).count() == 0:
++            print(f"\n✅✅ SUCCESS! Candidate {i+1} removed the file.")
++            print(f"Remove button selector: {tag_c}.{classes_c.split()[0] if classes_c else tag_c}")
++            browser.close()
++            playwright.stop()
++            return
++
++    print("\n❌ No element removed the file. You may need to inspect manually.")
++    browser.close()
++    playwright.stop()
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/tools/bridge/test_deepseek.py b/tools/bridge/test_deepseek.py
+new file mode 100644
+index 0000000..dac9ae6
+--- /dev/null
++++ b/tools/bridge/test_deepseek.py
+@@ -0,0 +1,110 @@
++#!/usr/bin/env python3
++"""
++Complete test suite for deepseek_lib.py.
++Tests functions in isolation where possible, and runs upload/remove sequentially last.
++"""
++
++import tempfile
++import os
++import sys
++from deepseek_lib import (
++    connect_to_browser,
++    find_deepseek_page,
++    upload_file,
++    remove_file,
++    is_file_attached,
++    send_message,
++    wait_for_response,
++    full_consult,
++)
++
++def test_connect():
++    """Test connection to Chrome."""
++    print("\n=== Testing connect_to_browser ===")
++    try:
++        browser, playwright = connect_to_browser()
++        print("✅ Connection successful")
++        browser.close()
++        playwright.stop()
++        return True
++    except Exception as e:
++        print(f"❌ Connection failed: {e}")
++        return False
++
++def test_find_page():
++    """Test finding (or creating) a DeepSeek page."""
++    print("\n=== Testing find_deepseek_page ===")
++    try:
++        browser, playwright = connect_to_browser()
++        page = find_deepseek_page(browser, force_referral=True)
++        assert page is not None, "No page returned"
++        print(f"✅ Found page: {page.url}")
++        browser.close()
++        playwright.stop()
++        return True
++    except Exception as e:
++        print(f"❌ find_deepseek_page failed: {e}")
++        return False
++
++def test_send_and_wait():
++    """Test sending a message and waiting for response."""
++    print("\n=== Testing send_message and wait_for_response ===")
++    try:
++        browser, playwright = connect_to_browser()
++        page = find_deepseek_page(browser, force_referral=True)
++        # Send a trivial message
++        assert send_message(page, "Say 'ok'"), "send_message failed"
++        response = wait_for_response(page, timeout=30)
++        assert response and len(response) > 0, "No response or empty"
++        print(f"✅ Response received: {response[:50]}...")
++        browser.close()
++        playwright.stop()
++        return True
++    except Exception as e:
++        print(f"❌ send/wait failed: {e}")
++        return False
++
++def test_upload_remove():
++    """Test upload and removal in sequence."""
++    print("\n=== Testing upload_file and remove_file ===")
++    browser, playwright = connect_to_browser()
++    page = find_deepseek_page(browser, force_referral=True)
++
++    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
++        f.write("test content")
++        path = f.name
++
++    try:
++        # Upload
++        assert upload_file(page, path), "upload_file failed"
++        assert is_file_attached(page), "File not attached after upload"
++        print("✅ Upload succeeded")
++
++        # Remove
++        assert remove_file(page), "remove_file failed"
++        assert not is_file_attached(page), "File still attached after removal"
++        print("✅ Removal succeeded – page clean")
++    except Exception as e:
++        print(f"❌ Test failed: {e}")
++        return False
++    finally:
++        os.unlink(path)
++        browser.close()
++        playwright.stop()
++    return True
++
++def main():
++    tests = [
++        ("Connect", test_connect),
++        ("Find page", test_find_page),
++        ("Send & Wait", test_send_and_wait),
++        ("Upload & Remove", test_upload_remove),
++    ]
++    for name, func in tests:
++        if not func():
++            print(f"\n❌ {name} failed. Stopping.")
++            sys.exit(1)
++    print("\n✅ All tests passed.")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/tools/default_tools.py b/tools/default_tools.py
+index b293e94..8eafa7b 100644
+--- a/tools/default_tools.py
++++ b/tools/default_tools.py
+@@ -29,7 +29,6 @@ TOOL_WHITELIST = [
+     "list_functions",
+     "display_file", #alias for read_file
+     "list_files",
+-    "find_calls_to_function",
+ ]
+ 
+ # Build TOOLS list in the required OpenAI function‑calling format

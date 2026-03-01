@@ -8,7 +8,6 @@ import subprocess
 import json
 import sys
 import os
-import asyncio
 import tempfile
 import requests
 import shutil
@@ -16,9 +15,7 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 import ast
-
-# MODERN BROWSER-USE IMPORTS (v0.12.0)
-from browser_use import Agent, ChatOpenAI, Browser
+from browser_use import Browser
 
 # --- Correct path setup ---
 TOOLS_DIR = Path(__file__).parent          # .../dj2/tools/
