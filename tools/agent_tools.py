@@ -107,61 +107,45 @@ async def _disconnect_browser():
 # ----------------------------------------------------------------------
 def deepseek_consult(prompt, file=None, data=None, timeout=3600):
     """
-    Consult DeepSeek using the working Playwright bridge.
-    Connects to existing Chrome on port 9222.
+    Consult DeepSeek using the local Playwright bridge.
+    
+    Args:
+        prompt (str): The main question or instruction.
+        file (str, optional): Path to a file to upload. Its content is NOT prepended; the file is uploaded separately.
+        data (any, optional): Additional data to include in the prompt (converted to string).
+        timeout (int): Maximum seconds to wait for response.
+    
+    Returns:
+        str: The assistant's response, or an error message.
     """
-    # Import the working bridge
-    from tools.bridge.deepseek_bridge_react import DeepSeekBridgeReact
-    
-    # Prepare content
-    content = prompt
-    if file:
-        try:
-            with open(file, 'r', encoding='utf-8') as f:
-                content = f.read() + "\n\n" + prompt
-        except Exception as e:
-            _log_event('file_read_error', str(e))
-            return f"Error reading file: {e}"
-    
+    # Combine prompt and data
+    full_prompt = prompt
     if data:
         data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
-        content = data_str + "\n\n" + content
-    
-    # Use working bridge
-    bridge = DeepSeekBridgeReact(verbose=True)
-    
-    if not bridge.connect():
-        return "Error: Could not connect to Chrome"
-    
-    # Add consultant prompt wrapper
-    consultant_prompt = f"""You are DeepSeek, an expert AI assistant.
+        full_prompt = data_str + "\n\n" + prompt
 
-Analyze the following content thoroughly and provide detailed insights.
-Wrap your complete response in [FINAL] and [/FINAL] tags.
+    # Import our library
+    from tools.bridge.deepseek_lib import full_consult
 
-Content to analyze:
-{content}
-
-Provide your analysis:"""
-
-    # Send via file upload (working method)
-    success = bridge.send_via_file_upload(consultant_prompt, filename="consultation.txt")
-    
-    if not success:
-        bridge.close()
-        return "Error: Failed to send to DeepSeek"
-    
-    # Get response
-    response = bridge._wait_for_response(timeout=timeout)
-    bridge.close()
-    
-    # Strip [FINAL] tags if present (agent will add its own)
+    # Generate a meaningful filename for any uploaded content
     import re
-    if response:
-        response = re.sub(r'\[FINAL\](.*?)\[/FINAL\]', r'\1', response, flags=re.DOTALL).strip()
-    
-    return response or "No response received"
+    safe_name = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
+    if not safe_name:
+        safe_name = "consult"
+    filename = f"{safe_name}.txt"
 
+    try:
+        if file:
+            # Upload the file directly
+            response = full_consult(prompt=full_prompt, file_path=file, timeout=timeout)
+        else:
+            # No file, just send the prompt
+            response = full_consult(prompt=full_prompt, timeout=timeout)
+        return response or "No response received"
+    except Exception as e:
+        logger.exception("DeepSeek consultation failed")
+        return f"DeepSeek consultation failed: {e}"
+        
 # ----------------------------------------------------------------------
 # Watcher Integration: Safe History Reading (internal, not a tool)
 # ----------------------------------------------------------------------
