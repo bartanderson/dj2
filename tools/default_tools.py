@@ -36,6 +36,7 @@ TOOLS = []
 for name in TOOL_WHITELIST:
     func = getattr(agent_tools, name)
     sig = inspect.signature(func)
+    print(f"[default_tools] {name} has {len(sig.parameters)} parameters: {list(sig.parameters.keys())}")
     properties = {}
     required = []
     for param_name, param in sig.parameters.items():
@@ -58,6 +59,28 @@ for name in TOOL_WHITELIST:
             }
         }
     })
+    # Override list_files with proper schema
+    for tool in TOOLS:
+        if tool['function']['name'] == 'list_files':
+            tool['function']['parameters'] = {
+                "type": "object",
+                "properties": {
+                    "directory": {
+                        "type": "string",
+                        "description": "Directory to list files from, relative to project root (default: '.')"
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "File pattern, e.g., '*.py' (default: '*')"
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Whether to search subdirectories recursively (default: false)"
+                    }
+                },
+                "required": []
+            }
+            break
 
 def get_handlers(db_path=None, project_root=None):
     """Return a dict mapping tool names to callables."""

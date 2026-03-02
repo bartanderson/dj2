@@ -22,7 +22,16 @@ TOOLS_DIR = Path(__file__).parent          # .../dj2/tools/
 PROJECT_ROOT = TOOLS_DIR.parent             # .../dj2/   (project root)
 LOG_FILE = TOOLS_DIR / 'agent_log.jsonl'    # keep log in tools/
 # --------------------------
+# Ignore patterns for filtering files (copied from arch_recon)
+IGNORE_PATTERNS = ['__pycache__', 'venv', '.git', 'node_modules', 'Lib', 'docs', 'archive']
 
+def _should_ignore(rel_path: str) -> bool:
+    """Return True if path contains any ignore pattern."""
+    path_lower = rel_path.lower()
+    for pattern in IGNORE_PATTERNS:
+        if pattern.lower() in path_lower:
+            return True
+    return False
 # ----------------------------------------------------------------------
 # Logging (internal)
 # ----------------------------------------------------------------------
@@ -104,7 +113,9 @@ async def _disconnect_browser():
 # ----------------------------------------------------------------------
 def deepseek_consult(prompt, file=None, data=None, timeout=3600):
     """
-    Consult DeepSeek using the local Playwright bridge.
+    Consult DeepSeek AI via browser automation.
+    Use this for any task requiring AI reasoning, content generation, or answering questions.
+    Can optionally upload a file for context.
     
     Args:
         prompt (str): The main question or instruction.
@@ -121,10 +132,8 @@ def deepseek_consult(prompt, file=None, data=None, timeout=3600):
         data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
         full_prompt = data_str + "\n\n" + prompt
 
-    # Import our library
     from tools.bridge.deepseek_lib import full_consult
 
-    # Generate a meaningful filename for any uploaded content
     import re
     safe_name = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
     if not safe_name:
@@ -133,14 +142,13 @@ def deepseek_consult(prompt, file=None, data=None, timeout=3600):
 
     try:
         if file:
-            # Upload the file directly
             response = full_consult(prompt=full_prompt, file_path=file, timeout=timeout)
         else:
-            # No file, just send the prompt
             response = full_consult(prompt=full_prompt, timeout=timeout)
         return response or "No response received"
     except Exception as e:
-        logger.exception("DeepSeek consultation failed")
+        import sys
+        print(f"DeepSeek consultation failed: {e}", file=sys.stderr)
         return f"DeepSeek consultation failed: {e}"
         
 # ----------------------------------------------------------------------
@@ -158,7 +166,6 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
     if not history_db.exists():
         return []
     
-    # Copy to temp location—Chrome locks the original
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         shutil.copy(history_db, tmp.name)
         tmp_path = tmp.name
@@ -176,7 +183,6 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
         results = []
         for row in cursor.fetchall():
             url, title, visit_time = row
-            # Chrome timestamp is microseconds since 1601-01-01
             epoch_start = datetime(1601, 1, 1)
             visit_datetime = epoch_start + __import__('datetime').timedelta(microseconds=visit_time)
             results.append({
@@ -193,7 +199,13 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
 # Analysis tool – PUBLIC
 # ----------------------------------------------------------------------
 def analyze_tools():
-    """Run the tool_analyzer and return the full analysis dict."""
+    """
+    Run the tool analyzer to get a complete landscape report of all tools in the project.
+    Use this to understand the tool ecosystem, find hotspots, orphans, duplicates, and get recommendations.
+    
+    Returns:
+        dict: A comprehensive report containing inventory, summary, hotspots, orphans, duplicates, and recommendations.
+    """
     tool_path = PROJECT_ROOT / 'tools' / 'tool_analyzer' / 'run.py'
     if not tool_path.exists():
         raise Exception(f"Analyzer not found at {tool_path}")
@@ -207,10 +219,18 @@ def analyze_tools():
     return json.loads(result.stdout)
 
 # ----------------------------------------------------------------------
-# Display file – PUBLIC
+# Display file – PUBLIC (alias for read_file)
 # ----------------------------------------------------------------------
 def display_file(path):
-    """Alias for read_file – returns content of a file."""
+    """
+    Display the contents of a file. Alias for read_file.
+    
+    Args:
+        path (str): Path to the file, relative to project root.
+    
+    Returns:
+        str: File content.
+    """
     return read_file(path)
 
 # ----------------------------------------------------------------------
@@ -218,32 +238,54 @@ def display_file(path):
 # ----------------------------------------------------------------------
 def list_files(directory=".", pattern="*", recursive=False):
     """
-    List files in a directory matching a pattern.
+    List files by filename pattern using glob.
+    Use this for queries about filenames, extensions, or directories.
+    Examples: "list all Python files" recursive=True, "find .txt files in docs folder" default, "show files in tools directory" default.
+    
     Args:
-        directory (str): relative path from project root
-        pattern (str): glob pattern (e.g., "*.py")
-        recursive (bool): whether to search subdirectories
+        directory (str): Directory to search, relative to project root. Default: "."
+        pattern (str): File pattern (e.g., "*.py", "*.txt", "config.*"). Default: "*"
+        recursive (bool): Whether to search subdirectories. True if "all" files requested. Default: False
+    
     Returns:
-        list of file paths (relative to project root)
+        list: File paths relative to project root, excluding common ignored directories (__pycache__, venv, .git, etc.).
     """
-    from pathlib import Path
+
     base = PROJECT_ROOT / directory
     if recursive:
         files = base.rglob(pattern)
     else:
         files = base.glob(pattern)
-    return [str(f.relative_to(PROJECT_ROOT)) for f in files if f.is_file()]
+    
+    result = []
+    for f in files:
+        if not f.is_file():
+            continue
+        rel = str(f.relative_to(PROJECT_ROOT))
+        if not _should_ignore(rel):
+            result.append(rel)
+    
+    print(f"[list_files] Found {len(result)} files")
+    return result
 
 # ----------------------------------------------------------------------
 # Semantic search – PUBLIC
 # ----------------------------------------------------------------------
 def semantic_search(query, limit=5):
     """
-    Use embedding index to find files relevant to the query.
-    Returns a list of dicts: [{"path": "file.py", "score": 0.95}, ...]
+    Semantic search for files based on conceptual content, not filename.
+    Use this to find files that discuss a topic, implement a feature, or contain related ideas.
+    Examples: "files related to character creation", "where is the DM agent defined?", "concept movement in dungeon".
+    
+    Args:
+        query (str): Natural language description of what you're looking for.
+        limit (int): Maximum number of results. Default: 5
+    
+    Returns:
+        list: List of dicts with 'path' and 'score', ranked by relevance.
     """
     try:
-        limit = int(limit)  # ensure integer
+        limit = int(limit)
     except (TypeError, ValueError):
         limit = 5
         
@@ -255,7 +297,6 @@ def semantic_search(query, limit=5):
         return []
 
     results = _get_top_files_for_intent(query, db_path, max_files=limit)
-    # Convert score to float for JSON serialization
     return [{"path": path, "score": float(score)} for path, score, _ in results]
 
 # ----------------------------------------------------------------------
@@ -263,8 +304,15 @@ def semantic_search(query, limit=5):
 # ----------------------------------------------------------------------
 def arch_context(query, level='standard'):
     """
-    Generate a context package using arch_recon.py --context.
-    Returns a JSON string with file snippets, behavioral contracts, and metadata.
+    Generate an architecture context package for a given intent.
+    Use this when you need deep understanding of a feature or area, including relevant files, their roles, and architectural rules.
+    
+    Args:
+        query (str): Intent or topic, e.g., "character creation".
+        level (str): Detail level: 'brief', 'standard', or 'deep'. Default: 'standard'.
+    
+    Returns:
+        str: JSON string with file snippets, behavioral contracts, and metadata.
     """
     cmd = [
         sys.executable,
@@ -281,24 +329,23 @@ def arch_context(query, level='standard'):
 # ----------------------------------------------------------------------
 # Gather context – PUBLIC
 # ----------------------------------------------------------------------
-
 def gather_context(topic, limit=5):
     """
     Gather comprehensive context about a topic.
-    - Finds relevant files via semantic_search.
-    - Reads their full content.
-    - Returns a structured JSON object.
+    Finds relevant files via semantic_search and reads their full content.
+    Use this when you need to understand the code related to a concept.
+    
+    Args:
+        topic (str): The topic or concept.
+        limit (int): Maximum number of files to include. Default: 5
+    
+    Returns:
+        dict: Contains 'topic' and 'files' list with path, score, and content.
     """
-    # 1. Get relevant files with scores
     files_with_scores = semantic_search(topic, limit)
-    
-    # 2. Extract paths
     paths = [item["path"] for item in files_with_scores]
-    
-    # 3. Read file contents
     contents = read_files(paths)
     
-    # 4. Build context object
     context = {
         "topic": topic,
         "files": []
@@ -310,14 +357,21 @@ def gather_context(topic, limit=5):
             "score": item["score"],
             "content": contents.get(path, "Error reading file")
         })
-    
     return context
 
 # ----------------------------------------------------------------------
 # File operations – PUBLIC
 # ----------------------------------------------------------------------
 def read_file(path):
-    """Return content of file as string. Path relative to project root."""
+    """
+    Read a file and return its content.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        str: File content.
+    """
     full_path = PROJECT_ROOT / path
     if not full_path.exists():
         raise Exception(f"File not found: {path}")
@@ -325,8 +379,13 @@ def read_file(path):
 
 def read_files(file_paths):
     """
-    Read multiple files and return a dictionary mapping file path to content.
-    file_paths: list of paths (relative to project root).
+    Read multiple files and return a dict mapping path to content.
+    
+    Args:
+        file_paths (list): List of paths relative to project root.
+    
+    Returns:
+        dict: {path: content}
     """
     contents = {}
     for path in file_paths:
@@ -338,7 +397,16 @@ def read_files(file_paths):
     return contents
 
 def write_file(path, content):
-    """Write content to file. Creates a backup (.bak) if file exists."""
+    """
+    Write content to a file. Creates a backup (.bak) if file exists.
+    
+    Args:
+        path (str): Path relative to project root.
+        content (str): Content to write.
+    
+    Returns:
+        str: Confirmation message.
+    """
     full_path = PROJECT_ROOT / path
     if full_path.exists():
         backup = full_path.with_suffix('.bak')
@@ -352,8 +420,16 @@ def write_file(path, content):
 # ----------------------------------------------------------------------
 def search_files(query, limit=10, group=None):
     """
-    Search for files using ai.py search command.
-    Returns a list of file paths (relative to project root) matching the query.
+    Search for files using a text‑based command (ai.py search). This is a simple wrapper around a CLI tool.
+    Prefer semantic_search for conceptual queries, but use this for exact keyword searches if needed.
+    
+    Args:
+        query (str): Keyword or phrase to search for in file names/paths.
+        limit (int): Maximum number of results.
+        group (str, optional): Filter by code group (e.g., 'world', 'engine').
+    
+    Returns:
+        list: File paths relative to project root.
     """
     cmd = [sys.executable, 'ai.py', 'search', query, '--limit', str(limit)]
     if group:
@@ -376,7 +452,7 @@ def search_files(query, limit=10, group=None):
             continue
         if line.startswith('[DEBUG]') or line.startswith('Found '):
             continue
-        if re.match(r'^-+$', line): # eliminate the --------------------- that are found in scraping tool output
+        if re.match(r'^-+$', line):
             continue
         if '. ' in line:
             parts = line.split('. ', 1)
@@ -397,23 +473,44 @@ def search_files(query, limit=10, group=None):
 # Git operations – PUBLIC
 # ----------------------------------------------------------------------
 def create_branch(branch_name):
-    """Create and switch to a new git branch."""
+    """
+    Create and switch to a new git branch.
+    
+    Args:
+        branch_name (str): Name of the new branch.
+    
+    Returns:
+        str: Confirmation message.
+    """
     subprocess.run(['git', 'checkout', '-b', branch_name], cwd=PROJECT_ROOT, check=True)
     return f"Switched to branch {branch_name}"
 
 def commit_changes(message):
-    """Commit all changes with message."""
+    """
+    Commit all changes with a message.
+    
+    Args:
+        message (str): Commit message.
+    
+    Returns:
+        str: Confirmation message.
+    """
     subprocess.run(['git', 'add', '.'], cwd=PROJECT_ROOT, check=True)
     subprocess.run(['git', 'commit', '-m', message], cwd=PROJECT_ROOT, check=True)
     return f"Committed: {message}"
 
 def show_diff():
-    """Return git diff of current changes."""
+    """
+    Show git diff of current changes (unstaged and staged).
+    
+    Returns:
+        str: Diff output.
+    """
     result = subprocess.run(['git', 'diff'], cwd=PROJECT_ROOT, capture_output=True, text=True)
     return result.stdout
 
 # ----------------------------------------------------------------------
-# Newly added to create suite of tests
+# Database query tools (require scout DB)
 # ----------------------------------------------------------------------
 def _get_db_connection():
     """Return a connection to the scout database, or None if DB doesn't exist."""
@@ -428,8 +525,14 @@ def _error_response(message):
 
 def file_metadata(path):
     """
-    Return metadata for a given file path.
-    Returns dict with keys: success, error, data (role, is_hot, line_count, importers).
+    Get metadata for a file from the scout database.
+    Use this to understand a file's role, whether it's "hot", line count, and what imports it.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: Contains success, error (if any), and data with role, is_hot, line_count, importers.
     """
     conn = _get_db_connection()
     if not conn:
@@ -459,8 +562,13 @@ def file_metadata(path):
 
 def file_imports(path):
     """
-    Return list of modules imported by the file.
-    Returns dict with keys: success, error, data (list of module names).
+    Get list of modules imported by a file.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: success, error, data (list of module names).
     """
     conn = _get_db_connection()
     if not conn:
@@ -478,14 +586,18 @@ def file_imports(path):
 
 def file_importers(path):
     """
-    Return list of files that import the given file.
-    Returns dict with keys: success, error, data (list of file paths).
+    Get list of files that import the given file.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: success, error, data (list of file paths).
     """
     conn = _get_db_connection()
     if not conn:
         return _error_response("Database not found. Run scout first.")
     try:
-        # Use the 'imported_by' field stored in the files table's JSON data
         cur = conn.cursor()
         cur.execute("SELECT data FROM files WHERE path = ?", (path,))
         row = cur.fetchone()
@@ -501,8 +613,13 @@ def file_importers(path):
 
 def test_coverage(path):
     """
-    Return test path and whether tests exist for a given file.
-    Returns dict with keys: success, error, data (test_path, test_exists).
+    Check if a file has a corresponding test.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: success, error, data with test_path and test_exists.
     """
     conn = _get_db_connection()
     if not conn:
@@ -528,15 +645,20 @@ def test_coverage(path):
 
 def file_concepts(path):
     """
-    Return list of concepts associated with a file.
-    Returns dict with keys: success, error, data (list of concept strings).
+    Get concepts (topics) associated with a file from the scout DB.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: success, error, data (list of concept strings).
     """
     conn = _get_db_connection()
     if not conn:
         return _error_response("Database not found. Run scout first.")
     try:
         cur = conn.cursor()
-        cur.execute("SELECT concept FROM concepts WHERE path = ?", (path,))
+        cur.execute("SELECT concept FROM concepts WHERE file_path = ?", (path,))
         rows = cur.fetchall()
         concepts = [r[0] for r in rows]
         return {"success": True, "data": concepts}
@@ -547,8 +669,13 @@ def file_concepts(path):
 
 def concept_files(concept):
     """
-    Return list of file paths associated with a given concept.
-    Returns dict with keys: success, error, data (list of file paths).
+    Find all files associated with a given concept.
+    
+    Args:
+        concept (str): Concept word.
+    
+    Returns:
+        dict: success, error, data (list of file paths).
     """
     conn = _get_db_connection()
     if not conn:
@@ -566,15 +693,20 @@ def concept_files(concept):
 
 def cluster_files(cluster_name):
     """
-    Return list of file paths in a named cluster.
-    Returns dict with keys: success, error, data (list of file paths).
+    Get all files in a named cluster (from discovered categories).
+    
+    Args:
+        cluster_name (str): Name of the cluster.
+    
+    Returns:
+        dict: success, error, data (list of file paths).
     """
     conn = _get_db_connection()
     if not conn:
         return _error_response("Database not found. Run scout first.")
     try:
         cur = conn.cursor()
-        cur.execute("SELECT paths FROM clusters WHERE cluster_name = ?", (cluster_name,))
+        cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,))
         row = cur.fetchone()
         if not row:
             return {"success": True, "data": []}
@@ -587,10 +719,14 @@ def cluster_files(cluster_name):
 
 def function_contract(path, function_name):
     """
-    Return behavioral contract for a function or method.
-    Returns dict with success, error, data containing description, side_effects,
-    testable_behaviors, complexity_score.
-    If no contract found, data is None.
+    Get the behavioral contract of a function (description, side effects, testable behaviors, complexity).
+    
+    Args:
+        path (str): Path relative to project root.
+        function_name (str): Name of the function (or method in format ClassName.method).
+    
+    Returns:
+        dict: success, error, data with contract info (or None if not found).
     """
     conn = _get_db_connection()
     if not conn:
@@ -601,7 +737,7 @@ def function_contract(path, function_name):
             SELECT description, side_effects, testable_behaviors, complexity_score
             FROM behavioral_contracts
             WHERE file_path = ? AND function_name = ?
-        """, (path, function_name))  # column is file_path, parameter is path
+        """, (path, function_name))
         row = cur.fetchone()
         if not row:
             return {"success": True, "data": None}
@@ -624,17 +760,21 @@ def function_contract(path, function_name):
 
 def function_parameters(path, function_name, class_name=None):
     """
-    Return list of parameters for a function or method.
-    Each parameter is a dict with keys: name, position.
-    Returns dict with success, error, data (list).
+    Get parameters of a function or method.
+    
+    Args:
+        path (str): Path relative to project root.
+        function_name (str): Function or method name.
+        class_name (str, optional): If it's a method, provide the class name.
+    
+    Returns:
+        dict: success, error, data (list of params with name and position).
     """
     conn = _get_db_connection()
     if not conn:
         return _error_response("Database not found. Run scout first.")
     try:
         cur = conn.cursor()
-        # Query method_params table; for __init__ we could also check class_constructors,
-        # but we'll assume __init__ is stored as a method with name '__init__'.
         if class_name:
             cur.execute("""
                 SELECT param_name, param_position
@@ -659,10 +799,15 @@ def function_parameters(path, function_name, class_name=None):
 
 def extract_code(path, element_type, element_name):
     """
-    Extract source code of a function or class from a file.
-    element_type: 'function' or 'class'
-    element_name: name of the function or class.
-    Returns dict with success, error, data (source code string).
+    Extract the source code of a function or class from a file.
+    
+    Args:
+        path (str): Path relative to project root.
+        element_type (str): 'function' or 'class'.
+        element_name (str): Name of the element.
+    
+    Returns:
+        dict: success, error, data (source code string).
     """
     full_path = PROJECT_ROOT / path
     if not full_path.exists():
@@ -689,8 +834,14 @@ def extract_code(path, element_type, element_name):
 
 def list_functions(path):
     """
-    Return a list of function and method names in a file.
+    List all functions and methods in a file.
     Methods are returned as 'ClassName.method_name'.
+    
+    Args:
+        path (str): Path relative to project root.
+    
+    Returns:
+        dict: success, error, data (list of function/method names).
     """
     full_path = PROJECT_ROOT / path
     if not full_path.exists():
@@ -702,7 +853,6 @@ def list_functions(path):
         functions = []
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
-                # Check if inside a class
                 for parent in ast.walk(tree):
                     if isinstance(parent, ast.ClassDef) and node in ast.walk(parent):
                         functions.append(f"{parent.name}.{node.name}")
