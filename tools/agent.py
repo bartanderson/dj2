@@ -161,9 +161,9 @@ def run_simple_tool_agent(user_input: str, max_turns: int = 5) -> str:
     return "Max turns reached without final answer."
 
 def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
-    """Run agent with planning and critic layers."""
+    """Run agent with planning and critic layers using native tool calls."""
 
-    # --- Trivial intent guard ---
+    # --- Trivial intent guard (from Step 1.1) ---
     trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
     if any(greeting in user_input.lower() for greeting in trivial_greetings):
         response = "Hello! How can I help you today?"
@@ -171,151 +171,119 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
         log_to_file(f"[Trivial guard] Responded with: {response}")
         return response
 
-    # --- Complexity classification ---
+    # --- Complexity classification (from Step 1.2) ---
     category = classify_request(user_input)
     print(f"[Complexity] Category: {category}")
     log_to_file(f"[Complexity] Category: {category}")
 
     if category == 'direct':
-        # Direct answer using LLM
         direct_prompt = f"Answer directly and concisely: {user_input}"
         response = deepseek_consult(prompt=direct_prompt, timeout=20)
         print(response)
         log_to_file(f"[Direct answer] {response}")
         return response
-
     elif category == 'simple':
-        # Run simple tool agent without planning
-        response = run_simple_tool_agent(user_input, max_turns)
-        log_to_file(f"[Simple agent] Final response: {response}")
-        return response
-    
-    # Session setup
+        return run_simple_tool_agent(user_input, max_turns)
+
+    # --- Complex path (planner/critic) ---
     print(f"Session log: {LOG_FILE}")
     log_to_file(f"\n{'='*50}\nNew session: {user_input}\n{'='*50}\n")
 
-    # For planner/critic - they need a session directory
-    # Use the parent directory (SESSIONS_DIR) or create subdir if needed
-    session_work_dir = SESSIONS_DIR / LOG_FILE.stem  # agent_session_20240302_143052
+    session_work_dir = SESSIONS_DIR / LOG_FILE.stem
     session_work_dir.mkdir(exist_ok=True)
-    
-    # Initialize LLM
+
     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
-    # llm = ChatOllama(model="mistral:7b", temperature=0.2, num_predict=4000)
-    # llm = ChatOllama(model="llama3.1:latest", temperature=0.2, num_predict=4000)
-    # llm = ChatOllama(model="llama3.2:3b", temperature=0.2, num_predict=4000)
-    # llm = ChatOllama(model="qwen3.5:35b", temperature=0.2, num_predict=4000)
-    
-    # Planning phase (if critic enabled)
+    bound_llm = llm.bind_tools(TOOLS)
+
     planner = None
     critic = None
     plan_data = None
-    
+
     if use_critic:
         planner = Planner(session_work_dir, TOOLS)
         plan = planner.create_plan(user_input)
-        
         critic = Critic(user_input)
         plan_data = planner.load_plan()
-    
-    # Execution loop
+
     messages = [{"role": "user", "content": user_input}]
-    
+
     for turn in range(max_turns):
-        # Build prompt with tool definitions
+        # Build system prompt (optional – you can keep or remove)
         tool_desc = "\n".join([
-            f"<tool>{t['function']['name']}</tool> — {t['function'].get('description', 'No description')}"
+            f"- {t['function']['name']}: {t['function'].get('description', 'No description')}"
             for t in TOOLS
         ])
-        
-        # Add plan context if using critic
+
         plan_context = ""
         if use_critic and plan_data:
             current_goal = planner.get_current_goal(plan_data)
             if current_goal:
-                plan_context = f"\nCurrent sub-goal: {current_goal}\n"
-        
-        prompt = f"""You are an AI assistant with tools. Respond with <tool>name</tool> to use a tool.
+                plan_context = f"\nCurrent sub‑goal: {current_goal}\n"
 
-Available tools:
-{tool_desc}
-{plan_context}
+        # We'll include the context in the messages, not as a separate system prompt,
+        # because the model already has the conversation. Optionally, we can insert a system message.
+        # For simplicity, we'll just use the existing messages and rely on the model's memory.
 
-History:
-{json.dumps(messages, indent=2)}
+        response = bound_llm.invoke(messages)
 
-Respond with tool calls or final answer."""
-        
-        # Get LLM response
-        response = llm.invoke(prompt)
-        text = response.content if hasattr(response, 'content') else str(response)
-        messages.append({"role": "assistant", "content": text})
-        
-        # Parse tool calls
-        tool_calls = re.findall(r'<tool>(\w+)</tool>', text)
-        
-        if tool_calls:
-            # Execute tools
-            for tool_name in tool_calls:
-                if tool_name not in TOOL_MAP:
-                    result = f"Error: Unknown tool '{tool_name}'"
-                else:
-                    try:
-                        result = TOOL_MAP[tool_name](user_input)
-                    except Exception as e:
-                        result = f"Error executing {tool_name}: {e}"
-                
-                messages.append({"role": "user", "content": f"TOOL_RESULT: {result}"})
-                print(f"Executed {tool_name}: {str(result)[:100]}...")
-            
+        if hasattr(response, 'tool_calls') and response.tool_calls:
+            # Execute the first tool call (simplify; could handle multiple)
+            tool_call = response.tool_calls[0]
+            name = tool_call['name']
+            args = tool_call.get('args', {})
+            print(f"[Complex] Executing tool: {name} with args: {args}")
+
+            if name not in TOOL_MAP:
+                result = f"Error: Unknown tool '{name}'"
+            else:
+                try:
+                    result = TOOL_MAP[name](**args)
+                except Exception as e:
+                    result = f"Error executing {name}: {e}"
+
+            # Append tool result as a tool message
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.get('id', ''),
+                "content": str(result)
+            })
+
             # Critic evaluation (if enabled)
             if use_critic and plan_data and critic:
                 tool_results = critic.extract_tool_results(messages)
-                
                 status, guidance, revised_plan = critic.evaluate(
                     plan_data["plan"],
                     plan_data["current"],
                     plan_data["completed"],
-                    text,
+                    response.content,
                     tool_results
                 )
-                
+
                 if status == "complete":
-                    # Advance to next sub-goal
                     plan_data["completed"].append(plan_data["current"])
                     plan_data["current"] += 1
                     planner.update_plan(plan_data)
                     messages.append({"role": "system", "content": guidance})
-                    
-                    # Check if fully complete
+
                     if planner.is_complete(plan_data):
-                        print("\n[Planner] All sub-goals complete.")
-                        # Continue to let agent provide final answer
-                        
+                        print("\n[Planner] All sub‑goals complete.")
                 elif status == "replan" and revised_plan:
-                    # Reset with new plan
-                    plan_data = {
-                        "plan": revised_plan,
-                        "current": 0,
-                        "completed": []
-                    }
+                    plan_data = {"plan": revised_plan, "current": 0, "completed": []}
                     planner.update_plan(plan_data)
                     messages.append({"role": "system", "content": guidance})
-                    
                 else:
-                    # Incomplete or blocked — inject critic feedback
                     messages.append({"role": "user", "content": guidance})
-            
-            continue  # Next turn
-        
-        # No tool calls — check if final answer
-        if not re.search(r'<tool>', text):
-            print(f"\nFinal: {text[:200]}...")
-            return text
-    
+
+            continue  # next turn
+
+        else:
+            # No tool calls – final answer (or we need to ask for more)
+            # Could also be the model requesting clarification.
+            print(f"\n[Complex] Final: {response.content[:200]}...")
+            return response.content
+
     print(f"\nReached max turns ({max_turns})")
     return messages[-1]["content"] if messages else "No response"
-
 
 def main():
     parser = argparse.ArgumentParser(description='Orchestrated Agent with planner/critic')

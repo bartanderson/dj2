@@ -119,11 +119,11 @@ REVISED_PLAN: (if replan) a new numbered list of sub‑goals
             return "All sub‑goals are complete. Please provide a final answer to the user."
     
     def extract_tool_results(self, messages: List[Dict[str, str]]) -> List[str]:
-        """Extract TOOL_RESULT entries from recent message history."""
+        """Extract tool result messages from recent history."""
         results = []
         for msg in reversed(messages):
-            if msg["role"] == "user" and msg["content"].startswith("TOOL_RESULT:"):
-                results.append(msg["content"][12:].strip())  # Remove prefix
+            if msg.get("role") == "tool":
+                results.append(msg["content"])
             else:
                 break
         results.reverse()
