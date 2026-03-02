@@ -14,6 +14,7 @@ import json
 import datetime
 import argparse
 from pathlib import Path
+from typing import Any
 
 # Build TOOLS list from available tool functions for planner compatibility
 # These are the tools exported by agent_tools that are in TOOL_WHITELIST
@@ -23,6 +24,24 @@ from langchain_ollama import ChatOllama
 from tools.planner import Planner
 from tools.critic import Critic
 from tools.agent_tools import deepseek_consult
+
+def save_tool_result(tool_name: str, result: Any) -> str:
+    """Save full tool result to a session file and return a summary message."""
+    session_dir = Path('ai_context/sessions')
+    session_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = session_dir / f"tool_result_{tool_name}_{timestamp}.txt"
+    
+    result_str = str(result)
+    result_file.write_text(result_str, encoding='utf-8')
+    
+    # Truncate for display
+    if len(result_str) > 500:
+        display = result_str[:500] + f"... (truncated, total {len(result_str)} chars)"
+    else:
+        display = result_str
+    
+    return f"Result from {tool_name}: {display}\nFull result saved to {result_file}"
 
 # Map of tool names to functions
 TOOL_MAP = {}
@@ -100,7 +119,6 @@ def run_simple_tool_agent(user_input: str, max_turns: int = 5) -> str:
     print(f"\n[SimpleAgent] Starting with input: {user_input}")
     messages = [{"role": "user", "content": user_input}]
     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
-    
     bound_llm = llm.bind_tools(TOOLS)
     
     for turn in range(max_turns):
@@ -118,7 +136,7 @@ def run_simple_tool_agent(user_input: str, max_turns: int = 5) -> str:
             import traceback
             traceback.print_exc()
             return f"Error: LLM call failed – {e}"
-        
+
         if hasattr(response, 'tool_calls') and response.tool_calls:
             tool_call = response.tool_calls[0]
             name = tool_call['name']
@@ -127,26 +145,13 @@ def run_simple_tool_agent(user_input: str, max_turns: int = 5) -> str:
             
             if name not in TOOL_MAP:
                 result = f"Error: Unknown tool '{name}'"
+                print(result, flush=True)
+                return result
             else:
                 try:
                     raw_result = TOOL_MAP[name](**args)
-                    # Truncate result for display, but keep full for logging
-                    result_str = str(raw_result)
-                    if len(result_str) > 500:
-                        display_result = result_str[:500] + f"... (truncated, total {len(result_str)} chars)"
-                    else:
-                        display_result = result_str
-                    
-                    # Save full result to session file
-                    session_dir = Path('ai_context/sessions')
-                    session_dir.mkdir(parents=True, exist_ok=True)
-                    import datetime
-                    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    result_file = session_dir / f"tool_result_{name}_{timestamp}.txt"
-                    result_file.write_text(result_str, encoding='utf-8')
-                    print(f"[SimpleAgent] Full result saved to {result_file}")
-                    
-                    final_message = f"Result from {name}: {display_result}"
+                    # Use the helper to save and format the result
+                    final_message = save_tool_result(name, raw_result)
                     print(final_message, flush=True)
                     return final_message
                 except Exception as e:

@@ -30,19 +30,32 @@ class Planner:
 
 Available tools: {', '.join(tool_names)}
 
-Break this task down into a sequence of concrete sub‑goals. Each sub‑goal should be something that can be achieved by calling one or more tools. Output a numbered list, each line starting with the sub‑goal number and a brief description.
+For a thorough codebase analysis, you should consider using:
+- `analyze_tools` – for a quick ecosystem overview (hotspots, orphans, duplicates, recommendations)
+- `arch_context` – for deep dives into specific features (e.g., 'character creation', 'movement system')
+- `enhanced_architect` – for phase compliance and template separation
+- `semantic_search` – to find files related to concepts
+- `read_file` – to examine specific file contents
+- `file_metadata` – to get database info about a file (role, importers, test coverage)
 
-Example:
-1. Find all files related to the DM agent.
-2. Find all files related to character creation.
-3. Identify the main functions in the DM agent.
-4. Identify character creation functions.
-5. Trace whether any DM function calls a character creation function.
-6. If not, propose missing code.
+Break the request into a sequence of concrete sub‑goals that will produce a comprehensive answer. Each sub‑goal should involve one or more tool calls. Aim for 4‑8 sub‑goals that cover:
+1. An initial high‑level scan to identify hotspots and problem areas.
+2. Deep dives into critical areas (e.g., phase violations, untested hotspots).
+3. Verification of specific concerns (e.g., check if certain files have tests).
+4. Synthesis of all findings into a final report.
+
+Output a numbered list, each line starting with the sub‑goal number and a brief description.
+
+Example for "analyze the codebase":
+1. Run the tool analyzer to get an ecosystem overview (hotspots, orphans, duplicates).
+2. For the top 3 hotspot files, run `arch_context` to understand their role and dependencies.
+3. Run the enhanced architect to check phase compliance and template separation.
+4. For each file with phase violations, extract the violating code snippets using `extract_code`.
+5. Synthesize all findings into a detailed report covering risks, priorities, and recommendations.
 
 Now output the plan for the user's request.
-        """
-        
+"""        
+
         self._log("Generating plan...")
         plan_response = deepseek_consult(prompt=planner_prompt, timeout=60)
         

@@ -51,7 +51,7 @@ Tool results received:
 
 Your task:
 - Determine if the current sub‑goal is complete.
-- If not, what specific information is still missing?
+- If the tool result is a summary or overview (e.g., a list of hotspots), consider whether more detail is needed to truly complete the sub‑goal. If so, suggest which additional tool(s) to call.
 - Suggest the next tool call(s) that would help complete this sub‑goal.
 - If the sub‑goal is complete, indicate that we should move to the next one.
 - If the entire plan is misguided, suggest a revised plan.
@@ -59,7 +59,7 @@ Your task:
 Output in this format:
 STATUS: [complete / incomplete / blocked / replan]
 NEXT_STEP: (if incomplete) a brief description of what's needed
-TOOL_SUGGESTIONS: (if incomplete) one or more <tool> tags on separate lines
+TOOL_SUGGESTIONS: (if incomplete) one or more <tool> tags on separate lines (e.g., <tool>arch_context</tool> <tool>read_file</tool>)
 MOVE_TO_NEXT: [yes/no] (only if STATUS is complete)
 REVISED_PLAN: (if replan) a new numbered list of sub‑goals
 """
