@@ -10,6 +10,7 @@ Orchestrated Agent — agent with planner/critic layer for complex tasks.
 
 import re
 import sys
+import json
 import datetime
 import argparse
 from pathlib import Path
@@ -21,7 +22,6 @@ from tools.default_tools import TOOL_WHITELIST
 from langchain_ollama import ChatOllama
 from tools.planner import Planner
 from tools.critic import Critic
-from tools.agent_tools import deepseek_consult
 
 # Map of tool names to functions
 TOOL_MAP = {}
@@ -48,15 +48,18 @@ script_dir = Path(__file__).parent
 project_root = script_dir.parent
 sys.path.insert(0, str(project_root))
 
-def get_or_create_session_dir():
-    session_dir = project_root / "ai_context" / "session"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir
+# Constant base directory for all sessions
+SESSIONS_DIR = Path('ai_context') / 'sessions'
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)  # Ensure exists once at startup
 
-# Setup session log with timestamp
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-session_dir = get_or_create_session_dir()
-LOG_FILE = session_dir / f"agent_session_{timestamp}.log"  
+def get_session_log_file() -> Path:
+    """Create timestamped log file path in sessions directory."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = SESSIONS_DIR / f"agent_session_{timestamp}.log"
+    return log_file
+
+# Initialize log file at module load
+LOG_FILE = get_session_log_file()
 
 def log_to_file(entry):
     """Append entry to log file with timestamp."""
@@ -66,10 +69,14 @@ def log_to_file(entry):
 def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
     """Run agent with planning and critic layers."""
     
-    # Setup
-    session_dir = get_or_create_session_dir()
-    print(f"Session: {session_dir}")
+    # Session setup
+    print(f"Session log: {LOG_FILE}")
     log_to_file(f"\n{'='*50}\nNew session: {user_input}\n{'='*50}\n")
+
+    # For planner/critic - they need a session directory
+    # Use the parent directory (SESSIONS_DIR) or create subdir if needed
+    session_work_dir = SESSIONS_DIR / LOG_FILE.stem  # agent_session_20240302_143052
+    session_work_dir.mkdir(exist_ok=True)
     
     # Initialize LLM
     llm = ChatOllama(model="mistral:7b", temperature=0.2, num_predict=4000)
@@ -80,7 +87,7 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
     plan_data = None
     
     if use_critic:
-        planner = Planner(session_dir, TOOLS)
+        planner = Planner(session_work_dir, TOOLS)
         plan = planner.create_plan(user_input)
         
         critic = Critic(user_input)
