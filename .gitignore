@@ -30,6 +30,10 @@ archive/
 *.png
 *.jpg
 
+# Database files
+*.db
+*.db-journal
+
 # Distribution / packaging
 .Python
 build/
