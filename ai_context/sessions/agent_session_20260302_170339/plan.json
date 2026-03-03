@@ -1,7 +1,0 @@
-{
-  "plan": [
-    "Run list_files to obtain a complete inventory of all source files.\n\nRun analyze_tools to generate an ecosystem overview (hotspots, orphans, duplicates) and save the output.\n\nRead the saved analyze_tools result file to obtain the full list of top hotspot files.\n\nFor each of the top 5 hotspot files, run file_metadata and read_file to examine their full content.\n\nFor the most critical hotspot file, run arch_context to retrieve architectural insights.\n\nRun semantic_search with queries like \"WorldState refactor\" and \"bucket 1\" to locate code related to architectural concerns.\n\nFor each major file identified (from hotspots and semantic search), run file_imports and file_importers to verify dependency direction.\n\nSynthesize all findings into a comprehensive analysis report and save it using write_file."
-  ],
-  "current": 0,
-  "completed": []
-}
