@@ -12,6 +12,7 @@ import tempfile
 import requests
 import shutil
 import sqlite3
+import ast
 from pathlib import Path
 from datetime import datetime
 from browser_use import Browser
