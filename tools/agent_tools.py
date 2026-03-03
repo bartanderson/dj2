@@ -301,29 +301,37 @@ def semantic_search(query, limit=5):
 # ----------------------------------------------------------------------
 # Architecture context – PUBLIC
 # ----------------------------------------------------------------------
-def arch_context(query, level='standard'):
+def arch_context(query=None, level='standard'):
     """
     Generate an architecture context package for a given intent.
-    Use this when you need deep understanding of a feature or area, including relevant files, their roles, and architectural rules.
+    Use this when you need deep understanding of a feature or area.
     
     Args:
-        query (str): Intent or topic, e.g., "character creation".
+        query (str, required): Intent or topic, e.g., "character creation".
         level (str): Detail level: 'brief', 'standard', or 'deep'. Default: 'standard'.
     
     Returns:
         str: JSON string with file snippets, behavioral contracts, and metadata.
     """
+    if query is None:
+        return "Error: arch_context requires a 'query' argument (the topic to analyze)."
     cmd = [
         sys.executable,
         'tools/analysis/arch_recon.py',
         '--context', query,
         '--context-level', level,
-        '--format', 'json'
+        '--format', 'json',
+        '--no-prompt'  # Prevent interactive prompts
     ]
-    result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise Exception(f"arch_context failed: {result.stderr}")
-    return result.stdout
+    try:
+        result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            return f"Error executing arch_context: {result.stderr}"
+        return result.stdout
+    except subprocess.TimeoutExpired:
+        return "Error: arch_context timed out after 30 seconds. The subprocess may be hung."
+    except Exception as e:
+        return f"Error executing arch_context: {e}"
 
 # ----------------------------------------------------------------------
 # Gather context – PUBLIC

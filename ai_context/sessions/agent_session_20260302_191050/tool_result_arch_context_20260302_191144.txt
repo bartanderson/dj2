@@ -1,0 +1,1509 @@
+================================================================================
+ARCHITECTURE RECONNAISSANCE â€“ CONTEXT PACKAGE
+Generated: 2026-03-02T19:11:44.147725
+Intent: Dungeon Journey 2 - 7-phase model and 4-bucket hierarchy
+Context level: deep
+Max files: 5
+================================================================================
+
+## GLOBAL ARCHITECTURAL RULES
+# AI Contract - Dungeon Journey 2
+
+## Absolute Constraints
+- **AI NEVER owns state** - Read-only access to SessionSystem
+- **AI NEVER mutates state directly** - All changes via GameEngine
+- **AI ONLY requests actions via interfaces** - Tool calls return proposals, not execution
+- **Windows Reality**:
+  - Use backslashes in CMD: `python tools\script.py`
+  - CRLF line endings
+  - NO `python -c` for multiline scripts - use .py files instead
+  - Single-line `python -c` only for very simple commands
+  - Example of what DOES NOT work:
+    ```cmd
+    python -c "
+    print('hello')
+    print('world')
+    "
+    ```
+  - Example of what works:
+    ```cmd
+    python -c "print('hello'); print('world')"
+    ```
+  - Better: Create a script file. The user reuses test.py, so if its one time thats what they use.
+
+## The 7 Runtime Phases (The Conveyor Belt)
+Every command cycles through:
+1. **INPUT**: Raw signals (clicks, keys, network)
+2. **INTERPRETATION**: Intent classification (AI-assisted in Narrative stage)
+3. **AUTHORITY**: Validation (dice, rules, permissions)
+4. **STATE MUTATION**: Apply changes (SessionSystem only)
+5. **CONSEQUENCE**: Effects, narration (AI assists here)
+6. **PERSISTENCE**: Save, logs, snapshots
+7. **VIEW PROJECTION**: Render, UI update
+
+Rule: Never skip, never reverse, never combine adjacent phases.
+
+## The 4-Bucket Authority Hierarchy
+- **Bucket 1 (Core)**: Game rules, validation, persistence - Deterministic, testable, AI treats as oracle
+- **Bucket 2 (Adapter)**: Tool registries, HTTP bridges, serialization - No business logic
+- **Bucket 3 (AI-Facing)**: Prompt construction, narrative selection - Non-authoritative, suggestions only
+- **Bucket 4 (Sketch)**: Prototypes, experiments - Never imported by Bucket 1
+
+## Dependency Direction (Invariant)
+Core (Bucket 1)  Interfaces (Bucket 2)  AI Systems (Bucket 3)
+Never reverse. Bidirectional arrows indicate violation.
+
+## The Ownership Rule
+If a system VALIDATES rules  it MUST OWN the state it validates.
+No "advisory authority" - control it or don't touch it.
+
+## Stage Definitions (Capability Maturity)
+- **Mechanics**: Deterministic simulation (movement, combat, saves)
+- **Events**: Reactive system (triggers, quests, consequences)
+- **Narrative**: AI integration (interpretation, dynamic narration, memory)
+
+Progression: Mechanics solid  Events added  Narrative layered on top.
+
+### Development Playbook
+# Development Playbook
+
+## The Phase  Stage Matrix
+
+### INPUT Phase (Receiving Signals)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Keyboard/mouse parsed | + Event trigger detection (enter room) | + Natural language command parsing |
+| Hardcoded command map | + Hotkey context switching             | + Voice-to-intent processing       |
+
+### INTERPRETATION Phase (Understanding Intent)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Command  Intent dict lookup | + Event condition evaluation    | + AI intent classification         |
+| "move north"  MoveIntent | + "is trap triggered?" check       | + "player seems to want to flee"   |
+
+### AUTHORITY Phase (Validation)
+| Mechanics                        | Events                                 | Narrative 
+|----------------------------------|----------------------------------------|---------------------------------------|
+|"Can move to 5,3?" collision check| + "Can trigger quest X?" prerequisites |+"Is AI suggestion valid?" sanity check|
+| Dice rolls for success           | + Event probability evaluation         | + Confidence threshold validation     |
+
+### MUTATION Phase (State Changes)
+| Mechanics              | Events                                 | Narrative                                    |
+|------------------------|----------------------------------------|----------------------------------------------|
+| Direct position update | + Event state changes (quest active)   | + AI-proposed state changes (emotional state)|
+| `party.x = 5`          | `quest.status = STARTED`               | `npc.mood = SUSPICIOUS` (via GameEngine)     |
+
+### CONSEQUENCE Phase (Results)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| Silent/null response  | + Event effects (damage applied)       | + AI-generated descriptions        |
+| Position updates      | + Unlock door, spawn enemy             | + "The floor trembles as..."       |
+
+### PERSISTENCE Phase (Memory)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| SQLite save           | + Event log append (history)           | + AI memory embedding (context)    |
+| Raw state snapshot    | + "Player killed dragon" journal       | + Semantic search index            |
+
+### VIEW Phase (Display)
+| Mechanics             | Events                                 | Narrative                          |
+|-----------------------|----------------------------------------|------------------------------------|
+| ASCII map render      | + Event notification popup             | + Dynamic AI descriptions          |
+| Grid display          | + "Quest Complete!" banner             | + Context-aware atmospheric text   |
+
+## The 7-Step Analysis Framework
+
+### Step 1: Declare Responsibility
+
+# File: world_controller.py
+RESPONSIBILITY:
+- Owns: Party position, current location state
+- Does NOT own: Campaign content (maps, NPCs), AI decisions
+- Delegates to: SessionSystem (save), DMChatAI (narration), AuthoritySystem (validation)
+Step 2: Classify Authority (4 Buckets)
+Ask: "Which bucket?"
+Bucket 1 (Core): Must be deterministic. If AI can influence it, it's wrong.
+Bucket 2 (Adapter): Glue code. If it has "if quest_active" logic, it's wrong.
+Bucket 3 (AI-Facing): Can be probabilistic. If it validates dice rolls, it's wrong.
+Bucket 4 (Sketch): Marked # EXPERIMENTAL. If imported by production code, it's wrong.
+Step 3: Extract Implicit Contracts
+For each public method:
+
+Method: move_party(direction)
+INPUTS: direction (enum), party_id (str)
+OUTPUTS: success (bool), new_position (tuple), events_triggered (list)
+INVARIANTS: Party must exist, direction must be cardinal, position must be valid
+ERRORS: InvalidDirection, PartyNotFound, MovementBlocked (with reason)
+Step 4: Audit Dependency Direction
+Draw arrows:
+
+WorldController (Bucket 1/2)  SessionSystem (Bucket 1) 
+WorldController  DMChatAI (Bucket 3) 
+DMChatAI  WorldController (direct mutation)  VIOLATION
+Arrows must flow 123 only.
+Step 5: Check Phase Compliance
+Place code in the matrix:
+Is this Interpretation logic doing Mutation work?
+Is this Mechanics code trying to do Narrative generation?
+Violation Pattern: DMChatHandler._extract_conversation_context() does Interpretation + State Query (mixing phases)
+Step 6: Identify Architectural Patterns
+Active Record (What you have):
+State + Behavior in one class (WorldController)
+Good for: Rapid prototyping
+Bad for: Testing, phase compliance
+Fix: Extract WorldState (data), WorldRuntime (behavior), keep WorldController as thin coordinator
+Event-Driven (Target):
+State Change  Event  AI Observes  Action Proposal  Engine Validates
+Loose coupling, natural AI integration
+Fix: Add EventEmitter to SessionSystem, AI subscribes instead of queries
+Step 7: Assign Action
+[ ] FREEZE - Good enough, don't touch (e.g., working MovementService)
+[ ] ADD_CONTRACT - Document interface, no rewrite yet (e.g., ToolRegistry)
+[ ] ISOLATE - Wrap with adapter, prevent spread (e.g., DMChatHandler violations)
+[ ] REWRITE_SMALL - < 2 hours, clear scope (e.g., extract method)
+[ ] REWRITE_MEDIUM - < 1 day, needs planning (e.g., CampaignState rename)
+[ ] REWRITE_LARGE - Major refactor, schedule separately (e.g., full Event system)
+[ ] DELETE - Dead code (e.g., old puzzle system prototypes)
+Common Patterns & Fixes
+Pattern: God Object (WorldController 1500+ lines)
+Symptoms: Mixes coordination, logic, persistence, AI calls
+Fix:
+Extract WorldState (pure data model)
+Extract WorldRuntime (travel, time mechanics)
+Extract SessionFacade (save/load coordination)
+Keep WorldController (thin coordinator, routes only)
+Pattern: AI Direct Mutation
+Symptoms: ai_dungeon_master.py calls world.add_location() directly
+Fix:
+# BEFORE: AI  WorldState (VIOLATION)
+# AFTER: AI  Proposal  GameEngine  WorldState
+
+@tool(name="propose_location")
+def propose_location(coords, description):
+    return {
+        "action_type": "ADD_LOCATION",
+        "payload": {"coords": coords, "desc": description},
+        "confidence": 0.8,
+        "source": "AI"
+    }
+# GameEngine validates in Authority phase, executes in Mutation phase
+Pattern: Phase Mixing (DMChatHandler line 293)
+Symptoms: _extract_conversation_context() has PHASE_VIOLATION: Direct AI call for context extraction in Interpretation phase
+Fix: Move to DMChatAI boundary (Bucket 3), pass context as parameter from Input phase
+Decision Framework: When to Refactor
+The 4 Questions
+Is it BROKEN? (crashes, wrong behavior)
+Yes  Fix immediately (minimal change)
+No  Continue
+Is it BLOCKING a feature? (can't proceed without it)
+Yes  Isolate and work around (adapter pattern)
+No  Continue
+Is it in the AUTHORITATIVE spine? (Bucket 1, deterministic)
+Yes  Freeze or Add Contract (don't break determinism)
+No  Continue
+Does it CROSS phase boundaries? (Interpretation doing Mutation)
+Yes  Isolate immediately (violation)
+No  OK for now
+The 2-Hour Rule
+If estimate > 2 hours:
+Isolate with adapter
+Document contract
+Schedule rewrite
+Continue current work
+Current System Mapping
+-----
+Table
+Component	Current Stage	Phase Issues	Bucket	Action
+WorldController	MechanicsEvents	Mixes phases	1/2 (bleeding)	ISOLATE  REWRITE_MEDIUM
+DMChatHandler	MechanicsEvents	Line 293 violation	3 (violating 1)	ISOLATE immediately
+GameEngine	Mechanics	Incomplete (no full loop)	1	REWRITE_MEDIUM (complete loop)
+ToolSystem	Mechanics	Unguarded (direct mutation)	2 (acting like 1)	REWRITE_SMALL (proposals only)
+SessionSystem	Mechanics	Good	1	FREEZE (add contracts)
+Dungeon System	MechanicsEvents	Clean via HTTP	2	FREEZE
+-----
+Windows-Specific Reminders
+Commands: python tools\script.py (backslash)
+Code paths: "tools/script.py" (forward slash in strings)
+Line endings: CRLF (\r\n)
+No python -c for multiline (use .py files)
+CMD with activated env (not PowerShell)
+Conversation Starters for AI
+For Quick Analysis:
+"Analyze [filename] using 7-step framework. Responsibility? 
+Authority bucket? Phase placement? Critical violation?"
+For Architecture Decisions:
+"Comparing [Option A] vs [Option B] for [feature].
+Evaluate: Phase compliance, Stage appropriateness, Risk to existing.
+Recommend with concrete next step."
+For Bug Triage:
+
+"Bug: [description]. 
+Apply decision framework: Quick fix, Isolate, or Refactor underlying cause?"
+For Code Review:
+
+"Review this diff against ai_contract.md. 
+Any phase violations? Bucket misclassifications? Dependency direction errors?"
+---
+Recommended Reading Order
+Start Here (30 minutes):
+Dev.to Big Ball of Mud  - Validates your pain
+https://dev.to/m_midas/big-ball-of-mud-understanding-the-antipattern-and-how-to-avoid-it-2i
+Medium: Transition to Microservices  - Practical pattern mapping
+https://medium.com/@milos.kecman/transition-from-a-monolithic-application-to-microservices-a5184fb4c417
+Deep Dive (2 hours):
+3. Master's Thesis: Refactoring Patterns  - See Chapter 4 "Migration Patterns Catalogue"
+https://is.muni.cz/th/f8zv4/Master_Thesis.pdf
+Pattern FD1 (Strangler): Your GameEngine delegation
+Pattern AX4 (Anti-corruption layer): Your HTTP bridge/phase boundaries
+Pattern BD1 (Domain-driven decomposition): Your Mechanics/Events/Narrative stages
+Academic Context (skim):
+4. ArXiv Mo2oM  - Just the "Soft Clustering" section (explains why WorldController temporarily violates boundaries)
+https://arxiv.org/html/2508.07486v1
+Practical Application to Your Current Work
+Validate Your ai_contract.md
+Compare to Clean Architecture principles:
+ "Dependency direction: Core  Interface  AI" = Clean Architecture dependency rule
+ "AI NEVER mutates state" = Domain logic isolated from infrastructure (AI is infrastructure)
+ "GameEngine as coordinator" = Use Cases layer in Clean Architecture
+Validate Your development_playbook.md
+Compare to Migration Patterns:
+Your "7-Step Framework" = Combination of AX1 (Recover Architecture) + BD1 (Domain Decomposition) + FD1 (Strangler Pattern)
+Your "2-Hour Rule" = Incremental migration best practice from thesis
+Your "Isolate vs Rewrite" = Branch by Abstraction vs Greenfield decision tree
+Your Git References
+The thesis specifically mentions:
+"Monolith clarity and architecture recovery can be omitted if the detailed description of the current architecture already exists"
+You have this: Your PHASE_AUDIT.md + four_layer.py output = Architecture Recovery documentation. You're ahead of most migration projects.
+The "8th Phase" You Saw
+You mentioned 8 phases earlier. You likely saw RUP's Inception/Elaboration/Construction/Transition mapped against your Input/Interpretation/Authority/Mutation/Consequence/Persistence/View.
+The relationship:
+Your 7 runtime phases happen within each RUP phase
+During Elaboration (where you are), you verify that all 7 runtime phases are correctly implemented before moving to Construction (adding Events/Narrative features)
+Key Takeaway: Don't build Stage B (Events) until your Stage A (Mechanics) passes all 7 runtime phase validations. This is exactly what RUP's "elaboration" milestone requires.
+You're not just refactoringyou're performing a textbook architecture recovery following industry-standard migration patterns. The documents I created (ai_contract.md, development_playbook.md) are your AX1 (Architecture Recovery) and BD1 (Domain Decomposition) deliverables per the academic literature.
+---
+## What to Do With These
+
+1. **Save** `ai_contract.md` to project root (this becomes your Ollama system prompt)
+2. **Save** `development_playbook.md` to project root (your reference, load excerpts when needed)
+3. **Archive** the original 13 files (keep for history, don't load into context)
+4. **Update** your `scripts/build_context.py` to pull from `ai_contract.md` instead of scattered files
+
+**Validation**: The matrix shows exactly what you wanted - examples of what belongs in Mechanics vs Events vs Narrative at each phase. The 7-step framework gives you the method to analyze any file against these coordinates.
+
+
+## PHASE MODEL (from engine/phases.py)
+Phase System Interfaces
+
+This module defines abstract interfaces for each phase system.
+All game logic must be implemented in systems that follow these interfaces
+to maintain strict phase separation.
+**Phase sequence:** Input â†’ Interpretation â†’ Authority â†’ Mutation â†’ Consequence â†’ Persistence â†’ View
+
+## PROJECT HEALTH SUMMARY
+- Python files: 161
+- Total lines: 35,717
+- Hot files: 0
+- Mutation files: 0
+- Unique concepts: 407
+- Clusters: 15
+
+## INTENT-MATCHED FILES (top 5)
+
+---
+### 1. `tools/workflow/__init__.py` (score: 0.45633184909820557)
+- **Role**: Core
+- **Hot**: No
+- **Line count**: 5
+- **Phase violations**: 0
+- **Mutations**: 0
+- **Read-only methods**: None
+- **Importers**: 0 files
+- **Imports**: 0 modules
+
+#### Interfaces
+```python
+```
+
+
+---
+### 2. `tools/architecture/__init__.py` (score: 0.44996726512908936)
+- **Role**: Core
+- **Hot**: No
+- **Line count**: 5
+- **Phase violations**: 0
+- **Mutations**: 0
+- **Read-only methods**: None
+- **Importers**: 0 files
+- **Imports**: 0 modules
+
+#### Interfaces
+```python
+```
+
+#### Source code
+```python
+"""
+Architecture analysis tools for Dungeon Journey 2
+"""
+
+__all__ = ['EnhancedLivingArchitect']
+```
+
+
+---
+### 3. `world/world_controller.py` (score: 0.4347515106201172)
+- **Role**: Core
+- **Hot**: No
+- **Line count**: 1143
+- **Phase violations**: 0
+- **Mutations**: 0
+- **Read-only methods**: None
+- **Importers**: 0 files
+- **Imports**: 31 modules
+
+#### Interfaces
+```python
+class WorldController:
+    def __init__(self, world_id, ai_system, seed)
+    def setup_world(self, world_data)
+    def load_world_data(self, world_id)
+    def _get_terrain_for_location(self, location, hexes)
+    def _connect_regions(self, centroids, regions, hexes)
+    def _connect_water_locations(self, locations, hexes, connected_pairs)
+    def get_map_data(self) -> dict
+    def get_current_location_data(self) -> dict
+    def move_character(self, char_id, new_position)
+    def get_available_classes(self)
+    def get_starting_equipment_options(self, class_name)
+    def get_player_inventory(self, player_id)
+    def add_item(self, player_id, item_description)
+    def get_inventory_rules(self)
+    def start_game_time(self)
+    def get_game_time(self)
+    def complete_tavern_intro(self, party_id, player_id)
+    def get_world_state(self)
+    def get_all_locations(self)
+    def add_character(self, character_data)
+    def get_location_data(self)
+    def get_rumors(self, location_id) -> list
+    def place_locations(self, hexes, terrain_grid)
+    def _is_near_land(self, hex, terrain_grid, radius)
+    def _create_region_network(self, locations, hexes)
+    def enter_dungeon(self) -> bool
+    def process_command(self, command) -> dict
+    def get_game_engine_state(self) -> dict
+    def get_or_create_player(self, session_id, player_name)
+    def _save_player_to_db(self, player)
+    def _save_session_to_db(self, session_id, player_id)
+    def _get_player_id_for_session(self, session_id)
+    def travel_to_location(self, location_id) -> bool
+    def reveal_location(self, location_id)
+    def set_current_scene(self, location_id)
+    # read-only: WorldController.__init__, WorldController.setup_world, WorldController.load_world_data, WorldController._get_terrain_for_location, WorldController._connect_regions, WorldController._connect_water_locations, WorldController.get_map_data, WorldController.get_current_location_data, WorldController.move_character, WorldController.get_available_classes, WorldController.get_starting_equipment_options, WorldController.get_player_inventory, WorldController.add_item, WorldController.get_inventory_rules, WorldController.start_game_time, WorldController.get_game_time, WorldController.complete_tavern_intro, WorldController.get_world_state, WorldController.get_all_locations, WorldController.add_character, WorldController.get_location_data, WorldController.get_rumors, WorldController.place_locations, WorldController._is_near_land, WorldController._create_region_network, WorldController.enter_dungeon, WorldController.process_command, WorldController.get_game_engine_state, WorldController.get_or_create_player, WorldController._save_player_to_db, WorldController._save_session_to_db, WorldController._get_player_id_for_session, WorldController.travel_to_location, WorldController.reveal_location, WorldController.set_current_scene
+```
+
+#### Source code
+```python
+# world_controller.py
+"""
+WorldController Module
+=====================
+
+Active Record pattern combining world state management with system coordination.
+See class docstring for architectural details.
+"""
+import json
+import math
+import random
+import uuid
+import numpy as np
+from datetime import datetime
+from typing import Dict, List, Optional, Set, Any
+
+from dnd_character import CLASSES
+from world.db import Database
+from world.utils import convex_hull, cross
+from world.world_map import WorldMap
+from world.campaign import Location, Quest, Faction, CampaignState
+from world.narrative_system import NarrativeSystem
+from world.character_builder import CharacterBuilder
+from world.character import Character
+from world.persistence import WorldManager
+from world.dm_chat_ai import DMChatAI
+from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
+from world.world_session import SessionManager
+from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
+from engine.game_engine import GameEngine, GamePhase
+from .terrain import TerrainGenerator
+from .paths import PathGenerator
+from .map_utils import MapUtils
+from .party_manager import PartyManager
+from .quest_manager import QuestManager
+from .character_manager import CharacterManager
+from world.dm_chat_handler import DMChatHandler
+from world.player import Player           # Moved to top
+from world.consequence_engine import ConsequenceEngine   # Add import
+
+import warnings
+warnings.filterwarnings("ignore", message=".*Triton.*")
+warnings.filterwarnings("ignore", message=".*redirects.*")
+
+"""
+ARCHITECTURAL OVERVIEW: ACTIVE RECORD PATTERN
+=============================================
+
+This WorldController uses the Active Record pattern, meaning it serves as BOTH:
+1. A Controller (coordinator between systems)
+2. A Data Model (campaign state containing locations, quests, factions)
+
+This design choice was made because:
+- It simplifies the initial implementation
+- It reduces abstraction layers during prototyping  
+- It's common in game development for world-state management
+
+Key Implications:
+1. WorldAI receives this controller as its "campaign_state"
+2. The controller delegates to internal managers (WorldMap, QuestManager, etc.)
+3. Phase enforcement happens via GameEngine when it's active
+
+State Models in the System:
+- Campaign State: This controller (Active Record pattern)
+- Narrative State: AIDungeonMaster.game_state
+- Game Engine State: GameEngine (planned, partially implemented)
+- AI State: Distributed across AI systems
+
+For future refactoring: Consider separating state from controller if:
+1. Testing becomes difficult
+2. Concurrent access is needed
+3. State persistence requirements change
+"""
+
+class WorldController:
+    def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
+        # Initialize core components
+        self.seed = seed
+        self.rng = random.Random(self.seed)
+        self.np_rng = np.random.default_rng(self.seed)
+        self.terrain_generator = TerrainGenerator(seed)
+        self.path_generator = PathGenerator(seed)
+        self.map_utils = MapUtils(seed)
+        self.world_map = WorldMap()
+        
+        # Create dm_chat_ai FIRST (needed by many systems)
+        self.dm_chat_ai = DMChatAI(ai_system)
+
+        # Create ConsequenceEngine immediately after dm_chat_ai
+        self.consequence_engine = ConsequenceEngine(
+            world_controller=self,
+            dm_chat_ai=self.dm_chat_ai
+        )
+
+        # For backward compatibility, point dungeon_master to the new engine
+        self.dungeon_master = self.consequence_engine
+
+        # Now create other systems that depend on dm_chat_ai or consequence_engine
+
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.character_builder = CharacterBuilder(ai_system)
+        
+        # Register character builder tools for AI use
+        if hasattr(ai_system, 'tool_registry'):
+            ai_system.tool_registry.register_from_class(self.character_builder)
+        
+        self.ai_system = ai_system
+        self.terrain_types = self.terrain_generator.terrain_types
+        self.fog_of_war = True
+
+        # Create CampaignState instance
+        self.campaign_state = CampaignState()
+
+        # Initialize state tracking
+        self.session_log: List[str] = []
+        self.current_location: Optional[Location] = None
+        
+        # Set core game state via campaign_state
+        self.campaign_state.time = 0
+        self.campaign_state.time_factor = 1  
+        self.campaign_state.game_started = False
+        
+        self.default_party_id = "main_party"
+
+        # Initialize players
+        self.players: Dict[str, Player] = {}
+        self.session_players: Dict[str, str] = {}  # session_id -> player_id
+        
+        # Initialize world manager and load world data
+        self.world_manager = WorldManager(ai_system)
+        self.world_data = self.world_manager.load_from_db(world_id)
+        
+        # Set up the world
+        self.setup_world(self.world_data)
+        
+        # Set starting location
+        starting_location = None
+        self.campaign_state.starting_location_id = None
+        for location in self.world_map.locations.values():
+            if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
+                starting_location = location
+                break
+        
+        if starting_location:
+            print("Found starting location")
+            self.campaign_state.starting_location_id = starting_location.id
+            self.reveal_location(starting_location.id)
+            self.travel_to_location(starting_location.id)
+        else:
+            # Fallback to first location if no tavern found
+            first_location_id = list(self.world_map.locations.keys())[0]
+            self.campaign_state.starting_location_id = first_location_id
+            self.reveal_location(first_location_id)
+            self.travel_to_location(first_location_id)
+
+        # Initialize managers
+        self.quest_manager = QuestManager()
+        self.party_manager = PartyManager(self.campaign_state.starting_location_id)
+        self.character_manager = CharacterManager(self.character_builder)
+
+        # Give character_manager a reference to this world controller
+        self.character_manager.set_world_controller(self)
+
+        # What was this trying to do. Is there an equivalent or is this unneeded?
+        # # Transfer existing quests from world data to quest manager
+        # for quest_id, quest in self.quest_manager.quests.items():
+        #     self.quest_manager.quests[quest_id] = quest
+        # self.quest_manager.quests = {}  # Clear old quests dict
+
+        # # Transfer existing characters to character manager
+        # self.character_manager.characters = self.character_manager.characters
+        # self.character_manager.characters = {}  # Clear old characters dict
+
+        # Initialize GameEngine for phase compliance
+        try:
+            self.game_engine = GameEngine(self)
+            print(f"[OK] GameEngine initialized for world {world_id}")
+            print(f"  Phase enforcement: ACTIVE")
+        except Exception as e:
+            print(f"[FAIL] Failed to initialize GameEngine: {e}")
+            print(f"  Continuing without phase enforcement")
+            self.game_engine = None
+
+        from .session_system import SessionSystem
+        self.session_system = SessionSystem()
+
+        # Initialize AI systems
+        self.world_ai = WorldAI(campaign_state=self)
+        self.dungeon_ai = None  # Will be initialized when entering dungeon
+        self.session_manager = SessionManager()
+
+        # No need to create AIDungeonMaster here; we already have consequence_engine.
+        # But if some legacy code still expects dungeon_master to be an AIDungeonMaster instance,
+        # we could keep it, but we've already set dungeon_master = consequence_engine.
+        # We'll leave it as is.
+
+        # Finally, create DMChatHandler (needs consequence_engine, which is now available)
+        self.dm_chat_handler = DMChatHandler(self)
+
+        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
+
+    def setup_world(self, world_data):
+        """Load world data into game systems"""
+        # Extract seed from world_data with a fallback
+        self.seed = world_data.get("seed", 42)
+        self.rng = random.Random(self.seed)
+        self.np_rng = np.random.default_rng(self.seed)
+        # 1. Load locations
+        for loc_data in world_data["locations"]:
+            # Handle both database and JSON formats
+            if "data" in loc_data:  # Database format
+                loc = loc_data["data"]
+            else:  # Direct JSON format
+                loc = loc_data
+                
+            # Create Location object
+            location = Location(
+                id=loc["id"],
+                name=loc["name"],
+                type=loc["type"],
+                description=loc["description"],
+                x=loc.get("x", 0),
+                y=loc.get("y", 0),
+                dungeon_type=loc.get("dungeon_type"),
+                dungeon_level=loc.get("dungeon_level", 1),
+                image_url=loc.get("image_url"),
+                features=loc.get("features", []),
+                services=loc.get("services", [])
+            )
+            
+            # Set discovery status
+            location.discovered = loc.get("discovered", False)
+            
+            # Initialize quests list
+            location.quests = loc.get("quests", [])
+            
+            # Add to world map
+            self.world_map.add_location(location)
+        
+        # 2. Create connections between locations
+        location_ids = [loc.id for loc in self.world_map.locations.values()]
+        for i in range(len(location_ids) - 1):
+            self.world_map.connect_locations(location_ids[i], location_ids[i+1])
+        
+        # 3. Load quests
+        for quest_data in world_data["quests"]:
+            # Handle both database and JSON formats
+            if "data" in quest_data:  # Database format
+                q = quest_data["data"]
+            else:  # Direct JSON format
+                q = quest_data
+                
+            quest = Quest(
+                id=q["id"],
+                title=q["title"],
+                description=q["description"],
+                objectives=q["objectives"],
+                location_id=q["location_id"],
+                dungeon_required=q.get("dungeon_required", False),
+                completed=q.get("completed", False)
+            )
+            
+            # Store quest in global dictionary
+            self.quest_manager.quests[quest.id] = quest
+            
+            # Add quest reference to location
+            location = self.world_map.get_location(quest.location_id)
+            if location:
+                if not hasattr(location, 'quests'):
+                    location.quests = []
+                location.quests.append(quest.id)
+            else:
+                print(f"Warning: Location {quest.location_id} not found for quest {quest.id}")
+        
+        # 4. Load factions (if any)
+        for faction_data in world_data.get("factions", []):
+            # Handle both database and JSON formats
+            if "data" in faction_data:  # Database format
+                fac = faction_data["data"]
+            else:  # Direct JSON format
+                fac = faction_data
+                
+            faction = Faction(
+                id=fac["id"],
+                name=fac["name"],
+                ideology=fac["ideology"],
+                goals=fac["goals"]
+            )
+            # Add relationships if they exist
+            if "relationships" in fac:
+                faction.relationships = fac["relationships"]
+            if "activities" in fac:
+                faction.activities = fac["activities"]
+                
+            # Add to world state
+            self.world_map.factions[faction.id] = faction
+        
+        # 5. Generate terrain
+        self.terrain_grid = self.terrain_generator.generate_terrain()
+        self.hexes = self.terrain_generator.generate_hex_map(self.terrain_grid)
+        # location dicts not part of the object, just a temp var to simplify self.paths call
+        location_dicts = [loc.to_dict() for loc in self.world_map.locations.values()]
+        self.paths = self.path_generator.generate_paths(location_dicts, self.hexes)
+
+    def load_world_data(self, world_id):
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Load world metadata
+                cur.execute("SELECT theme, seed FROM worlds WHERE id = %s", (world_id,))
+                world_row = cur.fetchone()
+                if world_row:
+                    self.theme, self.seed = world_row
+                
+                # Load locations
+                cur.execute("""
+                    SELECT id, name, type, position[0] AS x, position[1] AS y, 
+                           data->>'description' AS description,
+                           data->>'dungeon_type' AS dungeon_type,
+                           (data->>'dungeon_level')::int AS dungeon_level,
+                           data->>'image_url' AS image_url,
+                           data->'features' AS features,
+                           data->'services' AS services,
+                           discovered
+                    FROM locations 
+                    WHERE world_id = %s
+                """, (world_id,))
+                
+                for row in cur.fetchall():
+                    location = Location(
+                        id=row[0],
+                        name=row[1],
+                        type=row[2],
+                        x=row[3],
+                        y=row[4],
+                        description=row[5],
+                        dungeon_type=row[6],
+                        dungeon_level=row[7],
+                        image_url=row[8],
+                        features=row[9],
+                        services=row[10],
+                        discovered=row[11]
+                    )
+                    self.world_map.add_location(location)
+                
+                # Load quests
+                cur.execute("SELECT * FROM quests WHERE world_id = %s", (world_id,))
+                for row in cur.fetchall():
+                    quest = Quest(
+                        id=row[0],
+                        title=row[2],
+                        description=row[3],
+                        objectives=row[4],
+                        location_id=row[5],
+                        completed=row[6],
+                        dungeon_required=row[7]
+                    )
+                    self.quest_manager.quests[quest.id] = quest
+                    
+                    # Add to location
+                    if quest.location_id in self.world_map.locations:
+                        location = self.world_map.locations[quest.location_id]
+                        if not hasattr(location, 'quests'):
+                            location.quests = []
+                        location.quests.append(quest.id)
+        finally:
+            Database.return_connection(conn)
+
+    def _get_terrain_for_location(self, location, hexes):
+        """Determine terrain type for a location based on nearby hexes"""
+        # Handle case where no hexes are available
+        if not hexes:
+            return "plains"  # Default terrain
+
+        # Find the closest hex to the location
+        closest_hex = None
+        min_distance = float('inf')
+        
+        for hex in hexes:
+            distance = math.sqrt((location['x']-hex['x'])**2 + (location['y']-hex['y'])**2)
+            if distance < min_distance:
+                min_distance = distance
+                closest_hex = hex
+        
+        # Return the terrain of the closest hex
+        return closest_hex.get("terrain", "plains")  # Added .get() for safety
+
+    def _connect_regions(self, centroids, regions, hexes):
+        """Connect regions using direct paths between closest points"""
+        paths = []
+        if len(centroids) < 2:
+            return paths
+        
+        # Find closest region pairs
+        region_pairs = []
+        for i in range(len(centroids)):
+            for j in range(i+1, len(centroids)):
+                dist = math.sqrt((centroids[i]['x']-centroids[j]['x'])**2 + 
+                                 (centroids[i]['y']-centroids[j]['y'])**2)
+                region_pairs.append((dist, i, j))
+        
+        # Sort by distance
+        region_pairs.sort(key=lambda x: x[0])
+        
+        # Connect closest regions first
+        connected_regions = set()
+        for dist, i, j in region_pairs:
+            if i not in connected_regions or j not in connected_regions:
+                # Find closest locations between regions
+                start_loc = min(centroids[i]['region'], 
+                               key=lambda loc: math.sqrt((loc['x']-centroids[j]['x'])**2 + 
+                                                        (loc['y']-centroids[j]['y'])**2))
+                end_loc = min(centroids[j]['region'], 
+                             key=lambda loc: math.sqrt((loc['x']-centroids[i]['x'])**2 + 
+                                                      (loc['y']-centroids[i]['y'])**2))
+                
+                path_points = self._create_organic_path(start_loc, end_loc, hexes)
+                path_type = "highway"
+                
+                paths.append({
+                    "points": path_points,
+                    "type": path_type,
+                    "start": start_loc['id'],
+                    "end": end_loc['id']
+                })
+                
+                connected_regions.add(i)
+                connected_regions.add(j)
+        
+        return paths
+
+    def _connect_water_locations(self, locations, hexes, connected_pairs):
+        """Ensure water locations are properly connected"""
+        water_types = {"ocean", "coast", "lake", "river"}
+        water_locations = [loc for loc in locations if 
+                          self._get_terrain_for_location(loc, hexes) in water_types]
+        
+        paths = []
+        
+        # Connect water locations to their nearest land neighbor
+        for water_loc in water_locations:
+            # Find closest land location
+            closest_land = None
+            min_distance = float('inf')
+            for loc in locations:
+                if loc == water_loc:
+                    continue
+                    
+                loc_terrain = self._get_terrain_for_location(loc, hexes)
+                if loc_terrain not in water_types:
+                    distance = math.sqrt((water_loc['x']-loc['x'])**2 + (water_loc['y']-loc['y'])**2)
+                    if distance < min_distance and distance < 400:
+                        min_distance = distance
+                        closest_land = loc
+            
+            if closest_land:
+                pair_id = frozenset([water_loc['id'], closest_land['id']])
+                if pair_id not in connected_pairs:
+                    path_points = f"{water_loc['x']},{water_loc['y']} {closest_land['x']},{closest_land['y']}"
+                    paths.append({
+                        "points": path_points,
+                        "type": "ferry_route",
+                        "start": water_loc['id'],
+                        "end": closest_land['id']
+                    })
+                    connected_pairs.add(pair_id)
+        
+        return paths
+
+    def get_map_data(self) -> dict:
+        """Get complete map data for rendering"""
+        locations = []
+        for loc in self.world_map.locations.values():
+            loc_dict = loc.to_dict()
+            loc_dict["imageUrl"] = loc.image_url
+            locations.append(loc_dict)
+
+        # Ensure we have a valid seed
+        seed = getattr(self, 'seed', 42)  # Use 42 as fallback if seed doesn't exist
+        connections = self.map_utils.get_connections(self.world_map)
+        # Return generation parameters instead of terrain data
+        return {
+            "width": 1000,
+            "height": 800,
+            "connections": connections,
+            "locations": locations,
+            "currentLocation": self.world_map.current_location_id,
+            "paths": self.paths,
+            "terrainColors": self.terrain_generator.get_terrain_colors(),
+            "generation": {
+                "seed": seed,
+                "width": 1000,
+                "height": 800
+            },
+            "fog_of_war": self.fog_of_war,
+            "starting_location": self.campaign_state.starting_location_id,
+            "seed": seed
+        }
+
+    def get_current_location_data(self) -> dict:
+... (truncated at 500 lines)
+```
+
+
+---
+### 4. `engine/game_engine.py` (score: 0.4045073091983795)
+- **Role**: Core
+- **Hot**: No
+- **Line count**: 748
+- **Phase violations**: 0
+- **Mutations**: 0
+- **Read-only methods**: None
+- **Importers**: 0 files
+- **Imports**: 4 modules
+
+#### Interfaces
+```python
+class GamePhase:
+class GameContext:
+    def __init__(self)
+    def set_phase_data(self, phase, key, value)
+    def get_phase_data(self, phase, key, default)
+    def clear_phase_data(self, phase)
+    def add_error(self, message, phase)
+    def add_warning(self, message, phase)
+    # read-only: GameContext.__init__, GameContext.set_phase_data, GameContext.get_phase_data, GameContext.clear_phase_data, GameContext.add_error, GameContext.add_warning
+class GameEngine:
+    def __init__(self, world_controller)
+    def _initialize_delegates(self)
+    def _initialize_mode_delegates(self)
+    def set_mode(self, mode)
+    def set_dungeon_delegates(self, dungeon_systems)
+    def get_mode_status(self)
+    def advance(self, player_input, context) -> Dict[str, Any]
+    def _execute_input_phase(self, player_input, context) -> Dict[str, Any]
+    def _execute_interpretation_phase(self, input_data, context) -> Dict[str, Any]
+    def _execute_authority_phase(self, action, context) -> Dict[str, Any]
+    def _execute_mutation_phase(self, ruling, context) -> Dict[str, Any]
+    def _execute_consequence_phase(self, mutation_result, context) -> Dict[str, Any]
+    def _execute_persistence_phase(self, consequences, context)
+    def _execute_view_phase(self, consequences, context) -> Dict[str, Any]
+    def get_phase_violations(self) -> Dict[str, Any]
+    def register_system(self, phase, system)
+    def validate_phase_compliance(self, method_name, allowed_phases) -> bool
+    # read-only: GameEngine.__init__, GameEngine._initialize_delegates, GameEngine._initialize_mode_delegates, GameEngine.set_mode, GameEngine.set_dungeon_delegates, GameEngine.get_mode_status, GameEngine.advance, GameEngine._execute_input_phase, GameEngine._execute_interpretation_phase, GameEngine._execute_authority_phase, GameEngine._execute_mutation_phase, GameEngine._execute_consequence_phase, GameEngine._execute_persistence_phase, GameEngine._execute_view_phase, GameEngine.get_phase_violations, GameEngine.register_system, GameEngine.validate_phase_compliance
+```
+
+#### Source code
+```python
+# game_engine.py
+import json
+from enum import Enum
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+class GamePhase(Enum):
+    """Canonical game phases as defined in ENGINE_LOOP.md"""
+    INPUT = "input"
+    INTERPRETATION = "interpretation"
+    AUTHORITY = "authority"
+    MUTATION = "mutation"
+    CONSEQUENCE = "consequence"
+    PERSISTENCE = "persistence"
+    VIEW = "view"
+
+class GameContext:
+    """Context object passed between phases to maintain isolation"""
+    def __init__(self):
+        self.phase_data = {
+            GamePhase.INPUT: {},
+            GamePhase.INTERPRETATION: {},
+            GamePhase.AUTHORITY: {},
+            GamePhase.MUTATION: {},
+            GamePhase.CONSEQUENCE: {},
+            GamePhase.PERSISTENCE: {},
+            GamePhase.VIEW: {},
+        }
+        self.errors = []
+        self.warnings = []
+        
+    def set_phase_data(self, phase: GamePhase, key: str, value: Any):
+        """Store data for a specific phase"""
+        self.phase_data[phase][key] = value
+        
+    def get_phase_data(self, phase: GamePhase, key: str, default=None):
+        """Retrieve data from a specific phase"""
+        return self.phase_data[phase].get(key, default)
+        
+    def clear_phase_data(self, phase: GamePhase):
+        """Clear all data for a phase (for isolation)"""
+        self.phase_data[phase] = {}
+        
+    def add_error(self, message: str, phase: GamePhase):
+        """Log a phase violation error"""
+        self.errors.append({
+            "phase": phase,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    def add_warning(self, message: str, phase: GamePhase):
+        """Log a phase warning"""
+        self.warnings.append({
+            "phase": phase,
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+
+class GameEngine:
+    def __init__(self, world_controller):
+        # Temporary: wrap existing controller
+        self.world = world_controller
+        self.current_phase = GamePhase.INPUT
+        self.phase_history = []
+        
+        # Phase violation tracking
+        self.violations = []
+        
+        # Will be populated with phase-specific systems as we extract them
+        self.systems = {
+            GamePhase.INPUT: None,
+            GamePhase.INTERPRETATION: None,
+            GamePhase.AUTHORITY: None,
+            GamePhase.MUTATION: None,
+            GamePhase.CONSEQUENCE: None,
+            GamePhase.PERSISTENCE: None,
+            GamePhase.VIEW: None,
+        }
+        
+        # Initialize phase delegates from world_controller
+        self._initialize_delegates()
+        
+        # Add mode switching support
+        self.current_mode = "world"  # "world" or "dungeon"
+        self.mode_delegates = {
+            "world": {},
+            "dungeon": {}
+        }
+        self._initialize_mode_delegates()
+        
+    def _initialize_delegates(self):
+        """Temporary initialization of phase delegates from world_controller"""
+        # For now, we'll use the world_controller for everything
+        # As we extract systems, we'll replace these
+        
+        # Input phase: Use world_controller's command processing
+        self.systems[GamePhase.INPUT] = self.world
+        
+        # Interpretation phase: Use DMChatHandler for now (will extract)
+        if hasattr(self.world, 'dm_chat_handler'):
+            self.systems[GamePhase.INTERPRETATION] = self.world.dm_chat_handler
+            
+        # Authority phase: Use world_controller's validation (will extract to dm_tools)
+        self.systems[GamePhase.AUTHORITY] = self.world
+        
+        # Mutation phase: Use world_controller's state changes
+        self.systems[GamePhase.MUTATION] = self.world
+        
+        # Consequence phase: Use narrative system
+        if hasattr(self.world, 'narrative_system'):
+            self.systems[GamePhase.CONSEQUENCE] = self.world.narrative_system
+            
+        # Persistence phase: Use world_controller's save methods
+        self.systems[GamePhase.PERSISTENCE] = self.world
+        
+        # View phase: Use world_controller's get_map_data, etc.
+        self.systems[GamePhase.VIEW] = self.world
+        
+    def _initialize_mode_delegates(self):
+        """Initialize mode delegates from current systems"""
+        # World delegates are the current systems
+        for phase, system in self.systems.items():
+            self.mode_delegates["world"][phase] = system
+            # Dungeon delegates are None for now
+            self.mode_delegates["dungeon"][phase] = None
+    
+    def set_mode(self, mode: str):
+        """Switch between world and dungeon modes"""
+        if mode not in ["world", "dungeon"]:
+            raise ValueError(f"Invalid mode: {mode}. Must be 'world' or 'dungeon'")
+        
+        if mode == self.current_mode:
+            return  # Already in this mode
+        
+        print(f"GameEngine switching from {self.current_mode} to {mode} mode")
+        
+        # Save current context if needed
+        # (we'll implement context preservation later)
+        
+        # Switch systems
+        for phase in self.systems:
+            self.systems[phase] = self.mode_delegates[mode][phase]
+        
+        self.current_mode = mode
+        print(f"[OK] Now in {self.current_mode} mode")
+    
+    def set_dungeon_delegates(self, dungeon_systems):
+        """Set dungeon mode delegates from provided systems"""
+        if not dungeon_systems or "systems" not in dungeon_systems:
+            print("[FAIL] No dungeon systems provided")
+            return False
+        
+        systems = dungeon_systems["systems"]
+        
+        print(f"\nSetting dungeon mode delegates:")
+        for phase, system in systems.items():
+            if phase in self.mode_delegates["dungeon"]:
+                self.mode_delegates["dungeon"][phase] = system
+                if system:
+                    print(f"  [OK] {phase.value}: {type(system).__name__}")
+                else:
+                    print(f"  [WARN] {phase.value}: None")
+        
+        # Store dungeon systems for later use
+        self.dungeon_systems = dungeon_systems
+        
+        print(f"[OK] Dungeon mode ready with {len([s for s in systems.values() if s])} phase systems")
+        return True
+    
+    def get_mode_status(self):
+        """Get current mode and available delegates"""
+        status = {
+            "current_mode": self.current_mode,
+            "available_modes": ["world", "dungeon"],
+            "delegate_status": {}
+        }
+        
+        for mode in self.mode_delegates:
+            status["delegate_status"][mode] = {}
+            for phase, delegate in self.mode_delegates[mode].items():
+                status["delegate_status"][mode][phase.value] = {
+                    "has_delegate": delegate is not None,
+                    "type": type(delegate).__name__ if delegate else "None"
+                }
+        
+        return status
+        
+    def advance(self, player_input: Optional[Any] = None, context: Optional[GameContext] = None) -> Dict[str, Any]:
+        """
+        Execute one full game loop cycle
+        
+        Args:
+            player_input: Raw input from player (could be text, command, etc.)
+            context: Optional existing context (for multi-turn operations)
+            
+        Returns:
+            Dictionary with UI data and game state
+        """
+        if context is None:
+            context = GameContext()
+            
+        # Clear any previous errors/warnings
+        context.errors.clear()
+        context.warnings.clear()
+        
+        # 1. INPUT PHASE
+        self.current_phase = GamePhase.INPUT
+        self.phase_history.append(GamePhase.INPUT)
+        input_data = self._execute_input_phase(player_input, context)
+        
+        # 2. INTERPRETATION PHASE
+        self.current_phase = GamePhase.INTERPRETATION
+        self.phase_history.append(GamePhase.INTERPRETATION)
+        action = self._execute_interpretation_phase(input_data, context)
+        
+        # 3. AUTHORITY PHASE
+        self.current_phase = GamePhase.AUTHORITY
+        self.phase_history.append(GamePhase.AUTHORITY)
+        ruling = self._execute_authority_phase(action, context)
+        
+        # 4. STATE MUTATION PHASE
+        self.current_phase = GamePhase.MUTATION
+        self.phase_history.append(GamePhase.MUTATION)
+        mutation_result = self._execute_mutation_phase(ruling, context)
+        
+        # 5. CONSEQUENCE PHASE
+        self.current_phase = GamePhase.CONSEQUENCE
+        self.phase_history.append(GamePhase.CONSEQUENCE)
+        consequences = self._execute_consequence_phase(mutation_result, context)
+        
+        # 6. PERSISTENCE PHASE
+        self.current_phase = GamePhase.PERSISTENCE
+        self.phase_history.append(GamePhase.PERSISTENCE)
+        self._execute_persistence_phase(consequences, context)
+        
+        # 7. VIEW PROJECTION PHASE
+        self.current_phase = GamePhase.VIEW
+        self.phase_history.append(GamePhase.VIEW)
+        ui_data = self._execute_view_phase(consequences, context)
+        
+        # Record any violations
+        if context.errors:
+            self.violations.extend(context.errors)
+            
+        # Limit phase history
+        if len(self.phase_history) > 100:
+            self.phase_history = self.phase_history[-100:]
+            
+        return {
+            "ui_data": ui_data,
+            "context": context,
+            "current_phase": self.current_phase.value,
+            "violations": len(context.errors),
+            "warnings": len(context.warnings)
+        }
+        
+    def _execute_input_phase(self, player_input: Any, context: GameContext) -> Dict[str, Any]:
+        """Execute Input Phase: Receive and validate raw input"""
+        # Get the input system for current mode
+        input_system = self.systems[GamePhase.INPUT]
+        
+        # Try to use delegate if available
+        if input_system and hasattr(input_system, 'execute_input_phase'):
+            try:
+                return input_system.execute_input_phase(player_input, context)
+            except Exception as e:
+                context.add_error(f"Input delegate error: {str(e)}", GamePhase.INPUT)
+        
+        # DEFAULT IMPLEMENTATION (original code)
+        try:
+            # Store in context
+            context.set_phase_data(GamePhase.INPUT, "raw_input", player_input)
+            context.set_phase_data(GamePhase.INPUT, "timestamp", datetime.now().isoformat())
+            
+            # Basic validation
+            if player_input is None:
+                # System-generated event
+                return {"type": "system_event", "data": {}}
+                
+            # For text input from player
+            if isinstance(player_input, str):
+                return {
+                    "type": "player_text",
+                    "text": player_input,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+            # For structured commands
+            elif isinstance(player_input, dict):
+                return player_input
+                
+            else:
+                context.add_warning(f"Unrecognized input type: {type(player_input)}", GamePhase.INPUT)
+                return {"type": "unknown", "data": player_input}
+                
+        except Exception as e:
+            context.add_error(f"Input phase error: {str(e)}", GamePhase.INPUT)
+            return {"type": "error", "error": str(e)}
+            
+    def _execute_interpretation_phase(self, input_data: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
+        """Execute Interpretation Phase: Determine intent and action candidates"""
+        # Get the interpretation system for current mode
+        interpretation_system = self.systems[GamePhase.INTERPRETATION]
+        
+        # Try to use delegate if available
+        if interpretation_system and hasattr(interpretation_system, 'execute_interpretation_phase'):
+            try:
+                return interpretation_system.execute_interpretation_phase(input_data, context)
+            except Exception as e:
+                context.add_error(f"Interpretation delegate error: {str(e)}", GamePhase.INTERPRETATION)
+        
+        # DEFAULT IMPLEMENTATION (original code)
+        try:
+            # Check for system events first
+            if input_data.get("type") == "system_event":
+                return {
+                    "intent": "system",
+                    "action": "advance_time",
+                    "confidence": 1.0
+                }
+                
+            # Check for errors
+            if input_data.get("type") == "error":
+                return {
+                    "intent": "error",
+                    "action": "handle_error",
+                    "error": input_data.get("error")
+                }
+                
+            # For player text, use AI to interpret
+            if input_data.get("type") == "player_text":
+                text = input_data.get("text", "")
+                
+                # Temporary: Use DMChatHandler's AI if available
+                if self.systems[GamePhase.INTERPRETATION]:
+                    try:
+                        # This is where we would use AI - for now, simple simulation
+                        import random
+                        intents = ["move", "interact", "attack", "cast", "talk", "inspect"]
+                        intent = random.choice(intents)
+                        
+                        return {
+                            "intent": intent,
+                            "action": f"{intent}_action",
+                            "target": "unknown",
+                            "confidence": random.uniform(0.7, 1.0),
+                            "raw_text": text
+                        }
+                    except Exception as e:
+                        context.add_warning(f"AI interpretation failed: {str(e)}", GamePhase.INTERPRETATION)
+                        
+                # Fallback: simple keyword matching
+                text_lower = text.lower()
+                if any(word in text_lower for word in ["move", "go", "travel", "walk"]):
+                    intent = "move"
+                elif any(word in text_lower for word in ["attack", "fight", "hit", "strike"]):
+                    intent = "attack"
+                elif any(word in text_lower for word in ["talk", "speak", "ask", "say"]):
+                    intent = "talk"
+                elif any(word in text_lower for word in ["look", "inspect", "examine"]):
+                    intent = "inspect"
+                else:
+                    intent = "unknown"
+                    
+                return {
+                    "intent": intent,
+                    "action": f"{intent}_action",
+                    "target": "unknown",
+                    "confidence": 0.5,
+                    "raw_text": text
+                }
+                
+            # For structured commands, pass through
+            return input_data
+            
+        except Exception as e:
+            context.add_error(f"Interpretation phase error: {str(e)}", GamePhase.INTERPRETATION)
+            return {
+                "intent": "error",
+                "action": "handle_error",
+                "error": str(e)
+            }
+            
+    def _execute_authority_phase(self, action: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
+        """Execute Authority Phase: Validate actions, roll dice, check permissions"""
+        # Get the authority system for current mode
+        authority_system = self.systems[GamePhase.AUTHORITY]
+        
+        # Try to use delegate if available
+        if authority_system and hasattr(authority_system, 'execute_authority_phase'):
+            try:
+                return authority_system.execute_authority_phase(action, context)
+            except Exception as e:
+                context.add_error(f"Authority delegate error: {str(e)}", GamePhase.AUTHORITY)
+        
+        # DEFAULT IMPLEMENTATION (original code)
+        try:
+            intent = action.get("intent", "unknown")
+            
+            # Check for errors
+            if intent == "error":
+                return action
+                
+            # TEMPORARY: Simple validation
+            # In the future, this will delegate to dm_tools and other authority systems
+            
+            # For move action, check if destination is valid
+            if intent == "move":
+                target = action.get("target", "unknown")
+                
+                # TODO: Query world_controller/world_map for valid moves
+                # For now, assume valid
+                ruling = {
+                    "valid": True,
+                    "action": "move",
+                    "target": target,
+                    "dice_rolls": {},  # No dice needed for basic movement
+                    "permissions": ["allowed"],
+                    "constraints": []
+                }
+                
+            # For attack action, roll dice
+            elif intent == "attack":
+                # TODO: Roll actual dice via dm_tools
+                # Simulate dice roll
+                import random
+                attack_roll = random.randint(1, 20)
+                damage_roll = random.randint(1, 8)
+                
+                ruling = {
+                    "valid": True,
+                    "action": "attack",
+                    "attack_roll": attack_roll,
+                    "damage": damage_roll,
+                    "hit": attack_roll >= 10,  # Simple threshold
+                    "dice_rolls": {
+                        "attack": attack_roll,
+                        "damage": damage_roll
+                    }
+                }
+                
+            # For talk action, always valid
+            elif intent == "talk":
+                ruling = {
+                    "valid": True,
+                    "action": "talk",
+                    "target": action.get("target", "unknown")
+                }
+                
+            # Default: reject unknown intents
+            else:
+                ruling = {
+                    "valid": False,
+                    "action": intent,
+                    "error": f"Unknown intent: {intent}",
+                    "suggestion": "Try move, attack, talk, or inspect"
+                }
+                
+            # Store in context
+            context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
+            
+            return ruling
+            
+        except Exception as e:
+            context.add_error(f"Authority phase error: {str(e)}", GamePhase.AUTHORITY)
+            return {
+                "valid": False,
+                "error": str(e),
+                "action": "error"
+            }
+            
+    def _execute_mutation_phase(self, ruling: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
+        """Execute State Mutation Phase: Apply changes to game state"""
+        # Get the mutation system for current mode
+        mutation_system = self.systems[GamePhase.MUTATION]
+        
+        # Try to use delegate if available
+        if mutation_system and hasattr(mutation_system, 'execute_mutation_phase'):
+            try:
+                return mutation_system.execute_mutation_phase(ruling, context)
+            except Exception as e:
+                context.add_error(f"Mutation delegate error: {str(e)}", GamePhase.MUTATION)
+        
+        # DEFAULT IMPLEMENTATION (original code)
+        try:
+            if not ruling.get("valid", False):
+                # Invalid action, no state mutation
+                return {
+                    "applied": False,
+                    "reason": ruling.get("error", "Invalid action")
+                }
+                
+            action = ruling.get("action", "")
+            
+            # TEMPORARY: Delegate to world_controller
+            # This is where we'll need to extract mutation logic
+            
+            if action == "move":
+                target = ruling.get("target", "")
+... (truncated at 500 lines)
+```
+
+
+---
+### 5. `tools/ai_assistant/__init__.py` (score: 0.40213459730148315)
+- **Role**: Core
+- **Hot**: No
+- **Line count**: 14
+- **Phase violations**: 0
+- **Mutations**: 0
+- **Read-only methods**: None
+- **Importers**: 0 files
+- **Imports**: 0 modules
+
+#### Interfaces
+```python
+```
+
+#### Source code
+```python
+#tools\ai_assistant\__init__.py
+"""
+AI Assistant tools for Dungeon Journey 2
+Simplified version without backup functionality
+"""
+
+__all__ = [
+    'CodebaseIndexer',
+    'ArchiveIndexer',
+    'BridgeAgent', 
+    'FourLayerAnalyzer',
+    'EditingCommands',
+    'AIConfig'
+]
+```
+
+## RIPPLE IMPACT
+- **__init__.py** has no direct importers.
+- **__init__.py** has no direct importers.
+- **world_controller.py** has no direct importers.
+- **game_engine.py** has no direct importers.
+- **__init__.py** has no direct importers.
+
+## CONCEPTUAL OVERLAP
+Concepts in your intent and their prevalence:
+- `dungeon` appears in 12 files
+- `and` appears in 3 files
+- `model` appears in 3 files
+
+Related clusters (from discovered_categories.json):
+- state
+================================================================================

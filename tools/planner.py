@@ -31,12 +31,17 @@ Available tools: {', '.join(tool_names)}
 
 Break the request into a sequence of concrete, numbered sub‑goals. Each sub‑goal must be a single, focused step that can be achieved by calling one or more tools. Aim for 4‑8 sub‑goals.
 
-Output only the sub‑goals, one per line. Do not include any introductory or explanatory text. For example:
-Run analyze_tools to get an ecosystem overview.
-Read the saved analyze_tools result file to obtain the full list of hotspot files.
-For each of the top 5 hotspot files, run file_metadata and read_file.
+**Guidelines:**
+- When a sub‑goal requires understanding or evaluating code, you must include a step that calls `deepseek_consult` on the file content. This is how you get deep architectural analysis.
+- Use `read_file` first to obtain the content, then immediately follow with `deepseek_consult` using that content as input.
 
-Now output the plan for the user's request.
+Example of a correct plan for "analyze the codebase":
+1. Run `list_files` to get all source files.
+2. Use `semantic_search` with queries like "world_controller" to locate key files.
+3. For each key file, use `read_file` to retrieve its content, then call `deepseek_consult` with that content to analyze it against the 7‑phase model.
+4. Synthesize all analysis results into a final report using `write_file`.
+
+Now output the plan for the user's request. Output only the sub‑goals, one per line. Do not include any introductory or explanatory text.
 """
 
         logger.info("Generating plan...")

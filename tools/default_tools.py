@@ -108,6 +108,25 @@ for name in TOOL_WHITELIST:
                 "required": ["prompt"]
             }
             break
+    # Override arch_context with proper schema
+    for tool in TOOLS:
+        if tool['function']['name'] == 'arch_context':
+            tool['function']['parameters'] = {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Intent or topic to analyze (e.g., 'character creation'). Required."
+                    },
+                    "level": {
+                        "type": "string",
+                        "enum": ["brief", "standard", "deep"],
+                        "description": "Detail level. Default: 'standard'."
+                    }
+                },
+                "required": ["query"]
+            }
+            break
 
 def get_handlers(db_path=None, project_root=None):
     """Return a dict mapping tool names to callables."""

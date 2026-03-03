@@ -52,7 +52,7 @@ def get_session_log_file() -> Path:
     return log_file
 
 # Global log file – will be set in run_orchestrated_agent
-LOG_FILE = None
+#LOG_FILE = None
 
 def setup_logging(session_dir: Path, main_log_path: Path):
     """Configure a single logger with console and two file handlers."""
@@ -189,10 +189,134 @@ def run_simple_tool_agent(user_input: str, session_dir: Path, max_turns: int = 5
     logger.warning("Max turns reached")
     return "Max turns reached without final answer."
 
+# def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
+#     """Run agent with planning and critic layers using native tool calls."""
+#     global LOG_FILE
+#     LOG_FILE = get_session_log_file()
+
+#     # --- Trivial intent guard ---
+#     trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
+#     if any(greeting in user_input.lower() for greeting in trivial_greetings):
+#         response = "Hello! How can I help you today?"
+#         print(response)
+#         return response
+
+#     # --- Complexity classification ---
+#     category = classify_request(user_input)
+#     print(f"[Complexity] Category: {category}")
+
+#     if category == 'direct':
+#         from tools.agent_tools import deepseek_consult
+#         direct_prompt = f"Answer directly and concisely: {user_input}"
+#         response = deepseek_consult(prompt=direct_prompt, timeout=20)
+#         print(response)
+#         return response
+#     elif category == 'simple':
+#         # Need session_dir – create it now
+#         session_work_dir = SESSIONS_DIR / LOG_FILE.stem
+#         session_work_dir.mkdir(exist_ok=True)
+#         return run_simple_tool_agent(user_input, session_work_dir, max_turns)
+
+#     # --- Complex path ---
+#     session_work_dir = SESSIONS_DIR / LOG_FILE.stem
+#     session_work_dir.mkdir(exist_ok=True)
+
+#     # Set up logging
+#     logger = setup_logging(session_work_dir, LOG_FILE)
+#     logger.info(f"Session started: {user_input}")
+
+#     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
+#     bound_llm = llm.bind_tools(TOOL_FUNCTIONS)
+
+#     planner = None
+#     critic = None
+#     plan_data = None
+
+#     if use_critic:
+#         planner = Planner(session_work_dir, TOOLS)  # planner uses full TOOLS for list
+#         plan = planner.create_plan(user_input)
+#         critic = Critic(user_input)
+#         plan_data = planner.load_plan()
+
+#     messages = [{"role": "user", "content": user_input}]
+
+#     for turn in range(max_turns):
+#         logger.info(f"Turn {turn+1}")
+
+#         if use_critic and plan_data:
+#             current_goal = planner.get_current_goal(plan_data)
+#             if current_goal:
+#                 messages.append({"role": "system", "content": f"Current sub‑goal: {current_goal}"})
+
+#         response = bound_llm.invoke(messages)
+
+#         if hasattr(response, 'tool_calls') and response.tool_calls:
+#             tool_call = response.tool_calls[0]
+#             name = tool_call['name']
+#             args = tool_call.get('args', {})
+#             logger.info(f"Executing tool: {name}")
+#             logger.debug(f"Full args: {args}")
+
+#             if name not in TOOL_MAP:
+#                 result_str = f"Error: Unknown tool '{name}'"
+#                 logger.error(result_str)
+#             else:
+#                 try:
+#                     raw_result = TOOL_MAP[name](**args)
+#                     result_str = save_tool_result(name, raw_result, session_work_dir)
+#                     logger.info(result_str.split('\n')[0])
+#                 except Exception as e:
+#                     result_str = f"Error executing {name}: {e}"
+#                     logger.error(result_str)
+
+#             messages.append({
+#                 "role": "tool",
+#                 "tool_call_id": tool_call.get('id', ''),
+#                 "content": result_str
+#             })
+
+#             # Critic evaluation
+#             if use_critic and plan_data and critic:
+#                 tool_results = critic.extract_tool_results(messages)
+#                 status, guidance, revised_plan = critic.evaluate(
+#                     plan_data["plan"],
+#                     plan_data["current"],
+#                     plan_data["completed"],
+#                     response.content,
+#                     tool_results
+#                 )
+
+#                 if status == "complete":
+#                     plan_data["completed"].append(plan_data["current"])
+#                     plan_data["current"] += 1
+#                     planner.update_plan(plan_data)
+#                     messages.append({"role": "system", "content": guidance})
+#                     logger.info(f"Sub‑goal complete. Moving to next.")
+#                     if planner.is_complete(plan_data):
+#                         logger.info("All sub‑goals complete.")
+#                 elif status == "replan" and revised_plan:
+#                     plan_data = {"plan": revised_plan, "current": 0, "completed": []}
+#                     planner.update_plan(plan_data)
+#                     messages.append({"role": "system", "content": guidance})
+#                     logger.info("Plan revised.")
+#                 else:
+#                     messages.append({"role": "user", "content": guidance})
+#                     logger.debug(f"Critic feedback: {guidance}")
+
+#             continue
+
+#         else:
+#             logger.info("No tool calls – final answer")
+#             final = response.content
+#             logger.info(f"Final: {final[:200]}...")
+#             return final
+
+#     logger.warning(f"Max turns ({max_turns}) reached")
+#     return messages[-1]["content"] if messages else "No response"
+
 def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
     """Run agent with planning and critic layers using native tool calls."""
-    global LOG_FILE
-    LOG_FILE = get_session_log_file()
+    global LOG_FILE  # we will still use a global, but it will point inside session dir
 
     # --- Trivial intent guard ---
     trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
@@ -200,6 +324,15 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
         response = "Hello! How can I help you today?"
         print(response)
         return response
+
+    # --- Create session directory and main log file ---
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_work_dir = SESSIONS_DIR / f"agent_session_{timestamp}"
+    session_work_dir.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = session_work_dir / f"agent_session_{timestamp}.log"
+
+    # Set up logging (for complex path; simple path will also have logger)
+    logger = setup_logging(session_work_dir, LOG_FILE)
 
     # --- Complexity classification ---
     category = classify_request(user_input)
@@ -212,17 +345,10 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
         print(response)
         return response
     elif category == 'simple':
-        # Need session_dir – create it now
-        session_work_dir = SESSIONS_DIR / LOG_FILE.stem
-        session_work_dir.mkdir(exist_ok=True)
+        # Simple agent already receives session_dir
         return run_simple_tool_agent(user_input, session_work_dir, max_turns)
 
     # --- Complex path ---
-    session_work_dir = SESSIONS_DIR / LOG_FILE.stem
-    session_work_dir.mkdir(exist_ok=True)
-
-    # Set up logging
-    logger = setup_logging(session_work_dir, LOG_FILE)
     logger.info(f"Session started: {user_input}")
 
     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
@@ -313,7 +439,7 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
 
     logger.warning(f"Max turns ({max_turns}) reached")
     return messages[-1]["content"] if messages else "No response"
-
+    
 def main():
     parser = argparse.ArgumentParser(description='Orchestrated Agent with planner/critic')
     parser.add_argument('prompt', nargs='?', help='User request')

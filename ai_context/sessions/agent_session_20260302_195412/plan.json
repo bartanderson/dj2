@@ -1,0 +1,16 @@
+{
+  "plan": [
+    "Run list_files to obtain a comprehensive list of all source files in the codebase.",
+    "Use cluster_files to group related files into logical modules or components based on naming or location.",
+    "For each major cluster, perform semantic_search with queries like \"core architecture\", \"entry point\", \"main\" to identify key files, and then use read_file to retrieve their content and deepseek_consult to analyze their purpose, design, and role in the system.",
+    "Execute file_imports and file_importers on the identified key files to map dependencies and understand the module interaction graph.",
+    "For files with complex logic, call list_functions to extract function signatures, and optionally function_contract for critical functions to understand their contracts.",
+    "Use file_concepts on important files to capture high-level concepts and terms defined in the code.",
+    "Gather all analysis results and synthesize them into a final summary report using write_file."
+  ],
+  "current": 2,
+  "completed": [
+    0,
+    1
+  ]
+}
