@@ -2,6 +2,7 @@
 import inspect
 from tools import agent_tools
 
+
 # Only these functions should be exposed as tools
 TOOL_WHITELIST = [
     "search_files",
@@ -30,103 +31,18 @@ TOOL_WHITELIST = [
     "display_file", #alias for read_file
     "list_files",
     "parse_json_file",
+    "retrieve_knowledge",
 ]
 
-# Build TOOLS list in the required OpenAI function‑calling format
+# Build TOOLS list using introspection
 TOOLS = []
 for name in TOOL_WHITELIST:
     func = getattr(agent_tools, name)
-    sig = inspect.signature(func)
-    #print(f"[default_tools] {name} has {len(sig.parameters)} parameters: {list(sig.parameters.keys())}")
-    properties = {}
-    required = []
-    for param_name, param in sig.parameters.items():
-        param_type = "string"  # Simplified; you could improve this
-        properties[param_name] = {
-            "type": param_type,
-            "description": f"Parameter {param_name}"
-        }
-        if param.default == inspect.Parameter.empty:
-            required.append(param_name)
-    
+    tool_func_schema = function_to_tool_schema(func)
     TOOLS.append({
-        "function": {
-            "name": name,
-            "description": (func.__doc__ or "").strip(),
-            "parameters": {
-                "type": "object",
-                "properties": properties,
-                "required": required
-            }
-        }
+        "type": "function",
+        "function": tool_func_schema
     })
-    # Override list_files with proper schema
-    for tool in TOOLS:
-        if tool['function']['name'] == 'list_files':
-            tool['function']['parameters'] = {
-                "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "Directory to list files from, relative to project root (default: '.')"
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": "File pattern, e.g., '*.py' (default: '*')"
-                    },
-                    "recursive": {
-                        "type": "boolean",
-                        "description": "Whether to search subdirectories recursively (default: false)"
-                    }
-                },
-                "required": []
-            }
-            break
-    # Override deepseek_consult with proper parameter types and descriptions
-    for tool in TOOLS:
-        if tool['function']['name'] == 'deepseek_consult':
-            tool['function']['parameters'] = {
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "The main question or instruction."
-                    },
-                    "file": {
-                        "type": "string",
-                        "description": "Optional path to a file to upload. The file's content is uploaded separately."
-                    },
-                    "data": {
-                        "type": "string",
-                        "description": "Optional additional data to include in the prompt (converted to string)."
-                    },
-                    "timeout": {
-                        "type": "integer",
-                        "description": "Maximum seconds to wait for response. Default: 3600."
-                    }
-                },
-                "required": ["prompt"]
-            }
-            break
-    # Override arch_context with proper schema
-    for tool in TOOLS:
-        if tool['function']['name'] == 'arch_context':
-            tool['function']['parameters'] = {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Intent or topic to analyze (e.g., 'character creation'). Required."
-                    },
-                    "level": {
-                        "type": "string",
-                        "enum": ["brief", "standard", "deep"],
-                        "description": "Detail level. Default: 'standard'."
-                    }
-                },
-                "required": ["query"]
-            }
-            break
 
 def get_handlers(db_path=None, project_root=None):
     """Return a dict mapping tool names to callables."""

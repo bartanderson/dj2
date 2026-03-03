@@ -102,11 +102,11 @@ def generate_context_package(intent: str, db_path: Path, categories_path: Option
     db_path = Path(db_path)
     if not db_path.exists():
         print(f"❌ Scout DB not found: {db_path}\n   Run `--scout` first.", file=sys.stderr)
-        return 1
+        return 1, None, None
     top_files = _get_top_files_for_intent(intent, db_path, categories_path, max_files, verbose)
     if not top_files:
         print(f"⚠️  No files matched intent '{intent}'.", file=sys.stderr)
-        return 1
+        return 1, None, None
     project_root = Path(db_path).parent.parent
     rules = load_global_rules(project_root)
 
@@ -213,7 +213,6 @@ def generate_context_package(intent: str, db_path: Path, categories_path: Option
         if data.get('imported_by'):
             lines.append(f"  - {', '.join(Path(p).name for p in data['imported_by'])}")
         lines.append(f"- **Imports**: {len(data.get('imports', []))} modules")
-
         lines.append("")
         lines.append("#### Interfaces")
         lines.append("```python")
@@ -304,8 +303,47 @@ def generate_context_package(intent: str, db_path: Path, categories_path: Option
             pass
 
     lines.append("=" * 80)
-    print("\n".join(lines))
-    return 0
+    report_text = "\n".join(lines)
+
+    # Build structured data for JSON
+    structured_data = {
+        "intent": intent,
+        "context_level": level,
+        "max_files": max_files,
+        "generated": datetime.now().isoformat(),
+        "global_rules": {
+            "ai_contract": rules['ai_contract'],
+            "playbook": rules['playbook'],
+            "phase_sequence": rules['phase_sequence'],
+            "ai_contract_rules": rules['ai_contract_rules'],
+            "role_definitions": rules['role_definitions']
+        },
+        "phase_model": {
+            "docstring": docstring if 'docstring' in locals() else None,
+            "phase_order": phase_order if 'phase_order' in locals() else []
+        },
+        "project_health": summary_data,
+        "files": [],
+        "concept_overlap": [{"word": w, "count": c} for w, c in concept_counts] if concept_counts else [],
+        "related_clusters": list(matched_names) if 'matched_names' in locals() else []
+    }
+    for file_path, score, data in top_files:
+        structured_data["files"].append({
+            "path": file_path,
+            "score": float(score),  # <-- add float() conversion
+            "role": data.get('role'),
+            "is_hot": data.get('is_hot'),
+            "line_count": data.get('line_count'),
+            "phase_violations": data.get('phase_violations', []),
+            "mutations": data.get('mutations', []),
+            "read_only_methods": data.get('read_only_methods', []),
+            "imported_by": data.get('imported_by', []),
+            "imports": data.get('imports', []),
+            "classes": data.get('classes', []),
+            "functions": data.get('functions', [])
+        })
+
+    return 0, report_text, structured_data
     
 def main():
     parser = argparse.ArgumentParser(
@@ -443,7 +481,7 @@ def main():
     # Context mode
     if args.context:
         if not args.intent:
-            print("[Error] --context requires an intent (e.g., --context 'character creation')", file=sys.stderr)
+            print("[Error] --context requires an intent...", file=sys.stderr)
             return 1
         if not args.categories:
             default_cat = Path(args.db).parent / 'discovered_categories.json'
@@ -453,7 +491,7 @@ def main():
                                project_root=args.project_root, ignore_dirs=args.ignore_dirs,
                                verbose=args.verbose):
             return 1
-        return generate_context_package(
+        ret, report_text, structured_data = generate_context_package(
             intent=args.intent,
             db_path=Path(args.db),
             categories_path=args.categories,
@@ -461,7 +499,14 @@ def main():
             level=args.context_level,
             verbose=args.verbose
         )
-
+        if ret != 0:
+            return ret
+        if args.format == 'json':
+            print(json.dumps(structured_data, indent=2))
+        else:
+            print(report_text)
+        return 0
+        
     # Consult mode
     if args.consult:
         if not args.intent:

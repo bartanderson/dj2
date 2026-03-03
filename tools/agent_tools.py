@@ -15,6 +15,7 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime
 from browser_use import Browser
+from typing import Optional, List, Dict, Any, Union
 
 # --- Correct path setup ---
 TOOLS_DIR = Path(__file__).parent          # .../dj2/tools/
@@ -31,6 +32,22 @@ def _should_ignore(rel_path: str) -> bool:
         if pattern.lower() in path_lower:
             return True
     return False
+
+def retrieve_knowledge(query: Optional[str] = None, thread_id: Optional[str] = None, limit: int = 10) -> list:
+    """
+    Retrieve previously stored knowledge by concept keywords or thread ID.
+
+    Args:
+        query: Optional concept keywords to search for.
+        thread_id: Optional thread ID to filter by.
+        limit: Maximum number of entries to return. Default: 10.
+
+    Returns:
+        list: List of knowledge entries matching the criteria.
+    """
+    from .knowledge_base import retrieve_knowledge as kb_retrieve
+    return kb_retrieve(query=query, thread_id=thread_id, limit=limit)
+    
 # ----------------------------------------------------------------------
 # Logging (internal)
 # ----------------------------------------------------------------------
@@ -110,22 +127,22 @@ async def _disconnect_browser():
 # ----------------------------------------------------------------------
 # DeepSeek Consultation (PUBLIC TOOL)
 # ----------------------------------------------------------------------
-def deepseek_consult(prompt, file=None, data=None, timeout=3600):
+def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, timeout: int = 3600) -> str:
     """
     Consult DeepSeek AI via browser automation.
+
     Use this for any task requiring AI reasoning, content generation, or answering questions.
     Can optionally upload a file for context.
-    
+
     Args:
-        prompt (str): The main question or instruction.
-        file (str, optional): Path to a file to upload. Its content is NOT prepended; the file is uploaded separately.
-        data (any, optional): Additional data to include in the prompt (converted to string).
-        timeout (int): Maximum seconds to wait for response.
-    
+        prompt: The main question or instruction.
+        file: Optional path to a file to upload. The file's content is uploaded separately.
+        data: Optional additional data to include in the prompt (converted to string).
+        timeout: Maximum seconds to wait for response. Default: 3600.
+
     Returns:
         str: The assistant's response, or an error message.
     """
-    # Combine prompt and data
     full_prompt = prompt
     if data:
         data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
@@ -197,14 +214,39 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
 # ----------------------------------------------------------------------
 # Analysis tool – PUBLIC
 # ----------------------------------------------------------------------
-def analyze_tools():
+def analyze_tools(thread_id: Optional[str] = None, parent_id: Optional[int] = None) -> dict:
     """
     Run the tool analyzer to get a complete landscape report of all tools in the project.
-    Use this to understand the tool ecosystem, find hotspots, orphans, duplicates, and get recommendations.
-    
+
+    This tool scans all Python files in the tools directory and analyzes their relationships,
+    hotspots, orphans, duplicates, and provides recommendations.
+
+    Args:
+        thread_id: Optional thread ID for grouping knowledge entries.
+        parent_id: Optional ID of parent knowledge entry.
+
     Returns:
-        dict: A comprehensive report containing inventory, summary, hotspots, orphans, duplicates, and recommendations.
+        dict: A comprehensive report containing:
+            - inventory: list of all tool files with metadata
+            - summary: overview statistics
+            - hotspots: most important files
+            - orphans: files not imported by anything
+            - duplicates: files with similar names in different folders
+            - recommendations: actionable suggestions
     """
+    from .knowledge_base import get_fresh_result, store_knowledge_with_hash
+    import json
+    import subprocess
+    import sys
+
+    # No query parameters for this tool, so params is just the tool name
+    params = {}  # or we could include version info if needed
+
+    # Check cache (fresh within 1 day)
+    cached = get_fresh_result('analyze_tools', params, max_age_seconds=86400)
+    if cached is not None:
+        return cached
+
     tool_path = PROJECT_ROOT / 'tools' / 'tool_analyzer' / 'run.py'
     if not tool_path.exists():
         raise Exception(f"Analyzer not found at {tool_path}")
@@ -215,41 +257,61 @@ def analyze_tools():
     )
     if result.returncode != 0:
         raise Exception(f"Analyzer failed: {result.stderr}")
-    return json.loads(result.stdout)
+    
+    data = json.loads(result.stdout)
+    
+    # Store in knowledge base
+    store_knowledge_with_hash(
+        'analyze_tools',
+        data,
+        params,
+        concepts=["ecosystem", "hotspots", "tools"],
+        thread_id=thread_id,
+        parent_id=parent_id
+    )
+    
+    return data
 
 # ----------------------------------------------------------------------
 # Display file – PUBLIC (alias for read_file)
 # ----------------------------------------------------------------------
-def display_file(path):
+def read_files(file_paths: List[str]) -> Dict[str, str]:
     """
-    Display the contents of a file. Alias for read_file.
-    
+    Read multiple files and return a dict mapping path to content.
+
     Args:
-        path (str): Path to the file, relative to project root.
-    
+        file_paths: List of paths relative to project root.
+
     Returns:
-        str: File content.
+        dict: {path: content} for each file. If a file is not found, the value is an error message.
     """
-    return read_file(path)
+    contents = {}
+    for path in file_paths:
+        full_path = PROJECT_ROOT / path
+        if full_path.exists():
+            contents[path] = full_path.read_text(encoding='utf-8')
+        else:
+            contents[path] = f"File not found: {path}"
+    return contents
 
 # ----------------------------------------------------------------------
 # List files – PUBLIC
 # ----------------------------------------------------------------------
-def list_files(directory=".", pattern="*", recursive=False):
+def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False) -> list:
     """
-    List files by filename pattern using glob.
-    Use this for queries about filenames, extensions, or directories.
-    Examples: "list all Python files" recursive=True, "find .txt files in docs folder" default, "show files in tools directory" default.
-    
-    Args:
-        directory (str): Directory to search, relative to project root. Default: "."
-        pattern (str): File pattern (e.g., "*.py", "*.txt", "config.*"). Default: "*"
-        recursive (bool): Whether to search subdirectories. True if "all" files requested. Default: False
-    
-    Returns:
-        list: File paths relative to project root, excluding common ignored directories (__pycache__, venv, .git, etc.).
-    """
+    List files by filename pattern using glob, excluding common ignored directories.
 
+    Use this for queries about filenames, extensions, or directories.
+    Examples: "list all Python files", "find .txt files in docs folder", "show files in tools directory".
+
+    Args:
+        directory: Directory to search, relative to project root. Default: "."
+        pattern: File pattern (e.g., "*.py", "*.txt", "config.*"). Default: "*"
+        recursive: Whether to search subdirectories. For "all" files, set True. Default: False
+
+    Returns:
+        list: File paths relative to project root, excluding common ignored directories.
+    """
     base = PROJECT_ROOT / directory
     if recursive:
         files = base.rglob(pattern)
@@ -264,13 +326,12 @@ def list_files(directory=".", pattern="*", recursive=False):
         if not _should_ignore(rel):
             result.append(rel)
     
-    print(f"[list_files] Found {len(result)} files")
     return result
 
 # ----------------------------------------------------------------------
 # Semantic search – PUBLIC
 # ----------------------------------------------------------------------
-def semantic_search(query, limit=5):
+def semantic_search(query, limit=5, thread_id=None, parent_id=None):
     """
     Semantic search for files based on conceptual content, not filename.
     Use this to find files that discuss a topic, implement a feature, or contain related ideas.
@@ -279,15 +340,28 @@ def semantic_search(query, limit=5):
     Args:
         query (str): Natural language description of what you're looking for.
         limit (int): Maximum number of results. Default: 5
+        thread_id (str, optional): Thread ID for grouping knowledge entries.
+        parent_id (int, optional): ID of parent knowledge entry.
     
     Returns:
         list: List of dicts with 'path' and 'score', ranked by relevance.
     """
+    from .knowledge_base import get_fresh_result, store_knowledge_with_hash
+    import sys
+
+    # Parameters for caching (query and limit affect the result)
+    params = {'query': query, 'limit': limit}
+
+    # Check cache (fresh within 1 day)
+    cached = get_fresh_result('semantic_search', params, max_age_seconds=86400)
+    if cached is not None:
+        return cached
+
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         limit = 5
-        
+
     from tools.analysis.intent_matcher import _get_top_files_for_intent
 
     db_path = PROJECT_ROOT / "ai_context" / "scout.db"
@@ -296,12 +370,26 @@ def semantic_search(query, limit=5):
         return []
 
     results = _get_top_files_for_intent(query, db_path, max_files=limit)
-    return [{"path": path, "score": float(score)} for path, score, _ in results]
+    data = [{"path": path, "score": float(score)} for path, score, _ in results]
+
+    # Store in knowledge base
+    concepts = [word for word in query.lower().split() if len(word) > 3]  # simple keyword concepts
+    store_knowledge_with_hash(
+        'semantic_search',
+        data,
+        params,
+        query=query,
+        concepts=concepts,
+        thread_id=thread_id,
+        parent_id=parent_id
+    )
+
+    return data
 
 # ----------------------------------------------------------------------
 # Architecture context – PUBLIC
 # ----------------------------------------------------------------------
-def arch_context(query=None, level='standard'):
+def arch_context(query=None, level='standard', thread_id=None, parent_id=None):
     """
     Generate an architecture context package for a given intent.
     Use this when you need deep understanding of a feature or area.
@@ -309,43 +397,81 @@ def arch_context(query=None, level='standard'):
     Args:
         query (str, required): Intent or topic, e.g., "character creation".
         level (str): Detail level: 'brief', 'standard', or 'deep'. Default: 'standard'.
+        thread_id (str, optional): Thread ID for knowledge grouping.
+        parent_id (int, optional): ID of parent knowledge entry.
     
     Returns:
-        str: JSON string with file snippets, behavioral contracts, and metadata.
+        dict/list: Parsed JSON result (from arch_recon.py).
     """
     if query is None:
-        return "Error: arch_context requires a 'query' argument (the topic to analyze)."
+        return {"error": "arch_context requires a 'query' argument."}
+    
+    from .knowledge_base import get_fresh_result, store_knowledge_with_hash
+    import json
+    import subprocess
+    import sys
+    
+    # Prepare parameters for caching
+    params = {'query': query, 'level': level}
+    
+    # Check cache (fresh within 1 day)
+    cached = get_fresh_result('arch_context', params, max_age_seconds=86400)
+    if cached is not None:
+        return cached
+    
+    # Not in cache, run the command
     cmd = [
         sys.executable,
         'tools/analysis/arch_recon.py',
         '--context', query,
         '--context-level', level,
         '--format', 'json',
-        '--no-prompt'  # Prevent interactive prompts
+        '--no-prompt'
     ]
     try:
         result = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
-            return f"Error executing arch_context: {result.stderr}"
-        return result.stdout
+            error_msg = f"Error executing arch_context: {result.stderr}"
+            # Store error as result? Maybe not, just return string.
+            return {"error": error_msg}
+        
+        # Parse JSON
+        data = json.loads(result.stdout)
+        
+        # Store in knowledge base
+        concepts = [query] if query else []
+        store_knowledge_with_hash(
+            'arch_context',
+            data,
+            params,
+            query=query,
+            concepts=concepts,
+            thread_id=thread_id,
+            parent_id=parent_id
+        )
+        
+        return data
     except subprocess.TimeoutExpired:
-        return "Error: arch_context timed out after 30 seconds. The subprocess may be hung."
+        return {"error": "arch_context timed out after 30 seconds."}
+    except json.JSONDecodeError:
+        return {"error": "arch_context returned invalid JSON."}
     except Exception as e:
-        return f"Error executing arch_context: {e}"
+        return {"error": f"arch_context failed: {e}"}
 
 # ----------------------------------------------------------------------
 # Gather context – PUBLIC
 # ----------------------------------------------------------------------
-def gather_context(topic, limit=5):
+def gather_context(topic: str, limit: int = 5) -> dict:
     """
     Gather comprehensive context about a topic.
+
     Finds relevant files via semantic_search and reads their full content.
     Use this when you need to understand the code related to a concept.
-    
+
     Args:
-        topic (str): The topic or concept.
-        limit (int): Maximum number of files to include. Default: 5
-    
+        topic: The topic or concept.
+        limit: Maximum number of files to include. Default: 5.
+
     Returns:
         dict: Contains 'topic' and 'files' list with path, score, and content.
     """
@@ -384,6 +510,18 @@ def read_file(path):
         raise Exception(f"File not found: {path}")
     return full_path.read_text(encoding='utf-8')
 
+def display_file(path: str) -> str:
+    """
+    Display the contents of a file. Alias for read_file.
+
+    Args:
+        path: Path to the file, relative to project root.
+
+    Returns:
+        str: File content.
+    """
+    return read_file(path)
+
 def read_files(file_paths):
     """
     Read multiple files and return a dict mapping path to content.
@@ -403,14 +541,14 @@ def read_files(file_paths):
             contents[path] = f"File not found: {path}"
     return contents
 
-def write_file(path, content):
+def write_file(path: str, content: str) -> str:
     """
     Write content to a file. Creates a backup (.bak) if file exists.
-    
+
     Args:
-        path (str): Path relative to project root.
-        content (str): Content to write.
-    
+        path: Path relative to project root.
+        content: Content to write.
+
     Returns:
         str: Confirmation message.
     """
@@ -425,16 +563,17 @@ def write_file(path, content):
 # ----------------------------------------------------------------------
 # Search tool – PUBLIC
 # ----------------------------------------------------------------------
-def search_files(query, limit=10, group=None):
+def search_files(query: str, limit: int = 10, group: Optional[str] = None) -> list:
     """
-    Search for files using a text‑based command (ai.py search). This is a simple wrapper around a CLI tool.
-    Prefer semantic_search for conceptual queries, but use this for exact keyword searches if needed.
-    
+    Search for files using a text‑based command (ai.py search).
+
+    This is a simple wrapper around a CLI tool. Prefer semantic_search for conceptual queries.
+
     Args:
-        query (str): Keyword or phrase to search for in file names/paths.
-        limit (int): Maximum number of results.
-        group (str, optional): Filter by code group (e.g., 'world', 'engine').
-    
+        query: Keyword or phrase to search for in file names/paths.
+        limit: Maximum number of results. Default: 10.
+        group: Optional filter by code group (e.g., 'world', 'engine').
+
     Returns:
         list: File paths relative to project root.
     """
@@ -479,26 +618,26 @@ def search_files(query, limit=10, group=None):
 # ----------------------------------------------------------------------
 # Git operations – PUBLIC
 # ----------------------------------------------------------------------
-def create_branch(branch_name):
+def create_branch(branch_name: str) -> str:
     """
     Create and switch to a new git branch.
-    
+
     Args:
-        branch_name (str): Name of the new branch.
-    
+        branch_name: Name of the new branch.
+
     Returns:
         str: Confirmation message.
     """
     subprocess.run(['git', 'checkout', '-b', branch_name], cwd=PROJECT_ROOT, check=True)
     return f"Switched to branch {branch_name}"
 
-def commit_changes(message):
+def commit_changes(message: str) -> str:
     """
     Commit all changes with a message.
-    
+
     Args:
-        message (str): Commit message.
-    
+        message: Commit message.
+
     Returns:
         str: Confirmation message.
     """
@@ -506,10 +645,10 @@ def commit_changes(message):
     subprocess.run(['git', 'commit', '-m', message], cwd=PROJECT_ROOT, check=True)
     return f"Committed: {message}"
 
-def show_diff():
+def show_diff() -> str:
     """
     Show git diff of current changes (unstaged and staged).
-    
+
     Returns:
         str: Diff output.
     """
@@ -530,14 +669,13 @@ def _error_response(message):
     """Return a standard error dictionary."""
     return {"success": False, "error": message}
 
-def file_metadata(path):
+def file_metadata(path: str) -> dict:
     """
     Get metadata for a file from the scout database.
-    Use this to understand a file's role, whether it's "hot", line count, and what imports it.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: Contains success, error (if any), and data with role, is_hot, line_count, importers.
     """
@@ -567,13 +705,13 @@ def file_metadata(path):
     finally:
         conn.close()
 
-def file_imports(path):
+def file_imports(path: str) -> dict:
     """
     Get list of modules imported by a file.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: success, error, data (list of module names).
     """
@@ -591,13 +729,13 @@ def file_imports(path):
     finally:
         conn.close()
 
-def file_importers(path):
+def file_importers(path: str) -> dict:
     """
     Get list of files that import the given file.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: success, error, data (list of file paths).
     """
@@ -618,13 +756,13 @@ def file_importers(path):
     finally:
         conn.close()
 
-def test_coverage(path):
+def test_coverage(path: str) -> dict:
     """
     Check if a file has a corresponding test.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: success, error, data with test_path and test_exists.
     """
@@ -650,13 +788,13 @@ def test_coverage(path):
     finally:
         conn.close()
 
-def file_concepts(path):
+def file_concepts(path: str) -> dict:
     """
     Get concepts (topics) associated with a file from the scout DB.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: success, error, data (list of concept strings).
     """
@@ -674,13 +812,13 @@ def file_concepts(path):
     finally:
         conn.close()
 
-def concept_files(concept):
+def concept_files(concept: str) -> dict:
     """
     Find all files associated with a given concept.
-    
+
     Args:
-        concept (str): Concept word.
-    
+        concept: Concept word.
+
     Returns:
         dict: success, error, data (list of file paths).
     """
@@ -698,40 +836,48 @@ def concept_files(concept):
     finally:
         conn.close()
 
-def cluster_files(cluster_name):
+def cluster_files(cluster_name: Optional[str] = None) -> dict:
     """
     Get all files in a named cluster (from discovered categories).
-    
+
+    If cluster_name is omitted, returns a list of all available cluster names.
+
     Args:
-        cluster_name (str): Name of the cluster.
-    
+        cluster_name: Optional name of the cluster.
+
     Returns:
-        dict: success, error, data (list of file paths).
+        dict: success, error, data (list of file paths or cluster names).
     """
     conn = _get_db_connection()
     if not conn:
         return _error_response("Database not found. Run scout first.")
     try:
         cur = conn.cursor()
-        cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,))
-        row = cur.fetchone()
-        if not row:
-            return {"success": True, "data": []}
-        files = json.loads(row[0]) if row[0] else []
-        return {"success": True, "data": files}
+        if cluster_name:
+            cur.execute("SELECT file_paths FROM clusters WHERE cluster_name = ?", (cluster_name,))
+            row = cur.fetchone()
+            if not row:
+                return {"success": True, "data": []}
+            files = json.loads(row[0]) if row[0] else []
+            return {"success": True, "data": files}
+        else:
+            cur.execute("SELECT cluster_name FROM clusters")
+            rows = cur.fetchall()
+            clusters = [r[0] for r in rows]
+            return {"success": True, "data": clusters}
     except Exception as e:
         return _error_response(str(e))
     finally:
         conn.close()
 
-def function_contract(path, function_name):
+def function_contract(path: str, function_name: str) -> dict:
     """
     Get the behavioral contract of a function (description, side effects, testable behaviors, complexity).
-    
+
     Args:
-        path (str): Path relative to project root.
-        function_name (str): Name of the function (or method in format ClassName.method).
-    
+        path: Path relative to project root.
+        function_name: Name of the function (or method in format ClassName.method).
+
     Returns:
         dict: success, error, data with contract info (or None if not found).
     """
@@ -765,15 +911,15 @@ def function_contract(path, function_name):
     finally:
         conn.close()
 
-def function_parameters(path, function_name, class_name=None):
+def function_parameters(path: str, function_name: str, class_name: Optional[str] = None) -> dict:
     """
     Get parameters of a function or method.
-    
+
     Args:
-        path (str): Path relative to project root.
-        function_name (str): Function or method name.
-        class_name (str, optional): If it's a method, provide the class name.
-    
+        path: Path relative to project root.
+        function_name: Function or method name.
+        class_name: Optional; if it's a method, provide the class name.
+
     Returns:
         dict: success, error, data (list of params with name and position).
     """
@@ -804,17 +950,24 @@ def function_parameters(path, function_name, class_name=None):
     finally:
         conn.close()
 
-def parse_json_file(file_path: str, extract_path: str = None):
+def parse_json_file(file_path: str, extract_path: Optional[str] = None) -> Any:
     """
     Parse a JSON file and optionally extract a sub‑path (dot notation with slices).
+
+    Use this to get structured data from saved tool results.
+
+    Args:
+        file_path: Path to the JSON file, relative to project root.
+        extract_path: Optional dot‑separated path to a specific field, e.g., "inventory[0:5]" to get first 5 items of 'inventory' list.
+
+    Returns:
+        Extracted data as a Python object (list/dict), or the full parsed JSON if no extract_path.
     """
     full_path = PROJECT_ROOT / file_path
     if not full_path.exists():
         raise Exception(f"File not found: {file_path}")
-
     with open(full_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
+        data = json.loads(f.read())
     if extract_path:
         parts = extract_path.split('.')
         for part in parts:
@@ -832,15 +985,15 @@ def parse_json_file(file_path: str, extract_path: str = None):
                 data = data[part]
     return data
 
-def extract_code(path, element_type, element_name):
+def extract_code(path: str, element_type: str, element_name: str) -> dict:
     """
     Extract the source code of a function or class from a file.
-    
+
     Args:
-        path (str): Path relative to project root.
-        element_type (str): 'function' or 'class'.
-        element_name (str): Name of the element.
-    
+        path: Path relative to project root.
+        element_type: 'function' or 'class'.
+        element_name: Name of the element.
+
     Returns:
         dict: success, error, data (source code string).
     """
@@ -867,14 +1020,14 @@ def extract_code(path, element_type, element_name):
     except Exception as e:
         return _error_response(str(e))
 
-def list_functions(path):
+def list_functions(path: str) -> dict:
     """
     List all functions and methods in a file.
     Methods are returned as 'ClassName.method_name'.
-    
+
     Args:
-        path (str): Path relative to project root.
-    
+        path: Path relative to project root.
+
     Returns:
         dict: success, error, data (list of function/method names).
     """
