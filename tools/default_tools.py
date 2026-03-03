@@ -29,6 +29,7 @@ TOOL_WHITELIST = [
     "list_functions",
     "display_file", #alias for read_file
     "list_files",
+    "parse_json_file",
 ]
 
 # Build TOOLS list in the required OpenAI function‑calling format
@@ -36,7 +37,7 @@ TOOLS = []
 for name in TOOL_WHITELIST:
     func = getattr(agent_tools, name)
     sig = inspect.signature(func)
-    print(f"[default_tools] {name} has {len(sig.parameters)} parameters: {list(sig.parameters.keys())}")
+    #print(f"[default_tools] {name} has {len(sig.parameters)} parameters: {list(sig.parameters.keys())}")
     properties = {}
     required = []
     for param_name, param in sig.parameters.items():
@@ -79,6 +80,32 @@ for name in TOOL_WHITELIST:
                     }
                 },
                 "required": []
+            }
+            break
+    # Override deepseek_consult with proper parameter types and descriptions
+    for tool in TOOLS:
+        if tool['function']['name'] == 'deepseek_consult':
+            tool['function']['parameters'] = {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The main question or instruction."
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "Optional path to a file to upload. The file's content is uploaded separately."
+                    },
+                    "data": {
+                        "type": "string",
+                        "description": "Optional additional data to include in the prompt (converted to string)."
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Maximum seconds to wait for response. Default: 3600."
+                    }
+                },
+                "required": ["prompt"]
             }
             break
 

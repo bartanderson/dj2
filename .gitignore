@@ -14,8 +14,10 @@ share/
 .nativeclaw/
 
 #tool generated and constantly changing, so of no value
-ai_context/session/deepseek_response.txt
+ai_context/session
 ai_context/session/
+ai_context/session/*
+
 test.py
 project_ast.json
 #local ignore for my project

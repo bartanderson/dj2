@@ -1,7 +1,0 @@
-{
-  "plan": [
-    "Use search_files or semantic_search to locate any existing files that might contain greeting functions or related code to avoid duplication.\n\nIf no relevant files are found, use arch_context or analyze_tools to understand the project structure and determine the appropriate location for a new hello function (e.g., a utility module or a new script).\n\nUse write_file to create a new file (e.g., hello.py or greetings.py) containing a function that prints or returns \"hello\".\n\nOptionally, use list_files or file_metadata to confirm the file was created successfully.\n\nIf version control is used, create a new branch with create_branch for this feature.\n\nStage and commit the changes using commit_changes with a descriptive message."
-  ],
-  "current": 0,
-  "completed": []
-}

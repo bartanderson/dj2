@@ -1,7 +1,0 @@
-{
-  "plan": [
-    "Use write_file to create a new file (e.g., \"greeting.txt\") with the content \"hello\".\n\nUse display_file to show the contents of that file, effectively outputting the greeting."
-  ],
-  "current": 0,
-  "completed": []
-}

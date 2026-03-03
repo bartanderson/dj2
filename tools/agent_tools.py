@@ -14,7 +14,6 @@ import shutil
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-import ast
 from browser_use import Browser
 
 # --- Correct path setup ---
@@ -796,6 +795,34 @@ def function_parameters(path, function_name, class_name=None):
         return _error_response(str(e))
     finally:
         conn.close()
+
+def parse_json_file(file_path: str, extract_path: str = None):
+    """
+    Parse a JSON file and optionally extract a sub‑path (dot notation with slices).
+    """
+    full_path = PROJECT_ROOT / file_path
+    if not full_path.exists():
+        raise Exception(f"File not found: {file_path}")
+
+    with open(full_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    if extract_path:
+        parts = extract_path.split('.')
+        for part in parts:
+            if '[' in part and ']' in part:
+                name, slice_str = part.split('[')
+                slice_str = slice_str.rstrip(']')
+                data = data[name]
+                if ':' in slice_str:
+                    start, end = map(int, slice_str.split(':'))
+                    data = data[start:end]
+                else:
+                    idx = int(slice_str)
+                    data = data[idx]
+            else:
+                data = data[part]
+    return data
 
 def extract_code(path, element_type, element_name):
     """
