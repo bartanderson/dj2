@@ -28,7 +28,7 @@ logging.getLogger('deepseek_lib').setLevel(logging.WARNING)
 #logging.getLogger('langchain').setLevel(logging.WARNING)
 #logging.getLogger('httpcore').setLevel(logging.WARNING)
 
-KNOWLEDGE_TOOLS = {"arch_context", "analyze_tools", "semantic_search"}
+KNOWLEDGE_TOOLS = {"arch_context", "analyze_tools", "semantic_search", "deepseek_consult"}
 
 # Build TOOL_MAP from TOOLS and agent_tools
 TOOL_MAP = {}
@@ -123,7 +123,7 @@ Output only the category word.
 """
     try:
         response = llm.invoke(prompt)
-        category = response.strip().lower()
+        category = response.content.strip().lower()
         if category not in ('direct', 'simple', 'complex'):
             category = 'complex'
         return category
@@ -182,7 +182,7 @@ def run_simple_tool_agent(user_input: str, session_dir: Path, max_turns: int = 5
     # Build system prompt with knowledge base instructions
     system_message = f"""You are an AI assistant with access to tools. Your goal is to answer the user's request: "{user_input}"
 
-You have access to a persistent knowledge base that stores results from previous tool runs. Before running any expensive tool (like `arch_context`, `analyze_tools`, or `semantic_search`), you should first check if relevant information already exists by using `retrieve_knowledge` with appropriate keywords or thread ID.
+You have access to a persistent knowledge base that stores results from previous tool runs. Before running any expensive tool (like `arch_context`, `analyze_tools`, `semantic_search`, or `deepseek_consult`), you should first check if relevant information already exists by using `retrieve_knowledge` with appropriate keywords or thread ID.
 
 Each analysis session has a thread ID: {thread_id}. Tools that generate new knowledge (like `arch_context`) will automatically store their results with this thread ID, so you can refer back to them later.
 
@@ -238,15 +238,6 @@ Now begin.
 def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
     """Run agent with planning and critic layers using native tool calls."""
     global LOG_FILE  # we will still use a global, but it will point inside session dir
-
-    print(f"DEBUG remove me: user_input='{user_input}'")
-    
-    # # --- Trivial intent guard ---
-    # trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
-    # if any(greeting in user_input.lower() for greeting in trivial_greetings):
-    #     response = "Hello! How can I help you today?"
-    #     print(response)
-    #     return response
 
     # --- Create session directory and main log file ---
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -129,73 +129,82 @@ async def _disconnect_browser():
 # DeepSeek Consultation (PUBLIC TOOL)
 # ----------------------------------------------------------------------
 def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, timeout: int = 3600,
-                     thread_id: Optional[str] = None, parent_id: Optional[int] = None) -> str:
+                     thread_id: Optional[str] = None, parent_id: Optional[int] = None,
+                     trigger: str = "Please analyze the uploaded file.") -> str:
     """
     Consult DeepSeek AI via browser automation.
 
-    Use this for any task requiring AI reasoning, content generation, or answering questions.
-    Can optionally upload a file for context.
+    The main `prompt` is uploaded as a temporary file. A short `trigger` message is typed and sent
+    to start the analysis. This avoids typing long text and ensures reliable sending.
 
     Args:
-        prompt: The main question or instruction.
-        file: Optional path to a file to upload. The file's content is uploaded separately.
-        data: Optional additional data to include in the prompt (converted to string).
-        timeout: Maximum seconds to wait for response. Default: 3600.
-        thread_id: Optional thread ID for grouping knowledge entries.
-        parent_id: Optional ID of parent knowledge entry.
+        prompt: The main question or instruction (will be uploaded as a file if `file` is not given).
+        file: Optional path to an existing file to upload. If provided, that file is uploaded instead
+              of creating one from `prompt`.
+        data: (Deprecated) Ignored.
+        timeout: Maximum seconds to wait for response.
+        thread_id: Optional thread ID for knowledge base.
+        parent_id: Optional parent ID.
+        trigger: Short message to type and send after upload (default: "Please analyze the uploaded file.").
 
     Returns:
         str: The assistant's response, or an error message.
     """
     from .knowledge_base import get_fresh_result, store_knowledge_with_hash
+    import tempfile
+    import os
     import json
+    import sys
 
-    # Prepare parameters for caching
-    params = {'prompt': prompt, 'file': file, 'data': data, 'timeout': timeout}
+    # Determine which file to upload
+    temp_path = None
+    if file:
+        upload_path = file
+    else:
+        # Create temporary file with prompt content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(prompt)
+            temp_path = f.name
+        upload_path = temp_path
+
+    # For caching, include both the prompt content (or file) and the trigger.
+    # Since the trigger is constant, we can include it; the actual analysis depends on the uploaded file.
+    params = {'prompt_content': prompt, 'trigger': trigger, 'timeout': timeout}
     cached = get_fresh_result('deepseek_consult', params, max_age_seconds=86400)
     if cached is not None:
-        # Assume cached is a dict with a 'response' field
+        # Clean up temp file if we created it
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
         return cached.get('response', str(cached))
-
-    # Not cached, run the actual consultation
-    full_prompt = prompt
-    if data:
-        data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
-        full_prompt = data_str + "\n\n" + prompt
 
     from tools.bridge.deepseek_lib import full_consult
 
-    import re
-    safe_name = re.sub(r'[^\w\s-]', '', prompt[:30]).strip().replace(' ', '_')
-    if not safe_name:
-        safe_name = "consult"
-    filename = f"{safe_name}.txt"
-
     try:
-        if file:
-            response = full_consult(prompt=full_prompt, file_path=file, timeout=timeout)
-        else:
-            response = full_consult(prompt=full_prompt, timeout=timeout)
+        # Call full_consult with the trigger prompt and the uploaded file
+        response = full_consult(prompt=trigger, file_path=upload_path, timeout=timeout)
         result = response or "No response received"
     except Exception as e:
-        import sys
         print(f"DeepSeek consultation failed: {e}", file=sys.stderr)
         result = f"DeepSeek consultation failed: {e}"
 
     # Store result in knowledge base
-    # We'll store as a JSON object with a 'response' field
     result_data = {"response": result}
-    concepts = [word for word in prompt.lower().split() if len(word) > 3]
+    # Simple concepts from prompt (first few words)
+    concepts = [word for word in prompt.lower().split() if len(word) > 3][:5]
     store_knowledge_with_hash(
         'deepseek_consult',
         result_data,
         params,
         query=prompt,
-        file_path=file,
+        file_path=upload_path,
         concepts=concepts,
         thread_id=thread_id,
         parent_id=parent_id
     )
+
+    # Clean up temp file if we created it
+    if temp_path and os.path.exists(temp_path):
+        os.unlink(temp_path)
 
     return result
         

@@ -244,7 +244,7 @@ def wait_for_response(page, timeout=180):
 def full_consult(prompt, file_path=None, file_content=None, filename=None, timeout=180):
     """
     Complete consultation: connect, find page, optionally upload, send, wait.
-    Returns response text.
+    Returns response text. Raises an exception if a file is already attached (session not clean).
     """
     browser = None
     playwright = None
@@ -253,8 +253,9 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
         browser, playwright = connect_to_browser()
         page = find_deepseek_page(browser, force_referral=True)
 
-        # Ensure no existing file (clean start)
-        remove_existing_file(page)
+        # Check for existing file – fail if present
+        if is_file_attached(page):
+            raise Exception("A file is already attached. Please clear the chat manually and retry.")
 
         upload_this = None
         if file_path:
@@ -278,6 +279,7 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
         if upload_this:
             if not upload_file(page, upload_this):
                 raise Exception("File upload failed")
+            time.sleep(1)  # Allow UI to stabilize after upload
 
         if not send_message(page, prompt):
             raise Exception("Failed to send message")
@@ -295,6 +297,6 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
             browser.close()
         if playwright:
             playwright.stop()
-
-# Alias for backward compatibility with tests
+            
+# Alias for backward compatibility (at module level, no indent)
 remove_file = remove_existing_file
