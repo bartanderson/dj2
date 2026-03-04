@@ -1,6 +1,7 @@
 # tools\default_tools.py
 import inspect
 from tools import agent_tools
+from tools.tool_utils import function_to_tool_schema
 
 
 # Only these functions should be exposed as tools

@@ -14,7 +14,7 @@ share/
 .nativeclaw/
 
 #tool generated and constantly changing, so of no value
-ai_context/session/
+ai_context/sessions/
 ai_context/knowledge.db
 test.py
 project_ast.json

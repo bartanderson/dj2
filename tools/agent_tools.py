@@ -128,7 +128,8 @@ async def _disconnect_browser():
 # ----------------------------------------------------------------------
 # DeepSeek Consultation (PUBLIC TOOL)
 # ----------------------------------------------------------------------
-def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, timeout: int = 3600) -> str:
+def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, timeout: int = 3600,
+                     thread_id: Optional[str] = None, parent_id: Optional[int] = None) -> str:
     """
     Consult DeepSeek AI via browser automation.
 
@@ -140,10 +141,23 @@ def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, 
         file: Optional path to a file to upload. The file's content is uploaded separately.
         data: Optional additional data to include in the prompt (converted to string).
         timeout: Maximum seconds to wait for response. Default: 3600.
+        thread_id: Optional thread ID for grouping knowledge entries.
+        parent_id: Optional ID of parent knowledge entry.
 
     Returns:
         str: The assistant's response, or an error message.
     """
+    from .knowledge_base import get_fresh_result, store_knowledge_with_hash
+    import json
+
+    # Prepare parameters for caching
+    params = {'prompt': prompt, 'file': file, 'data': data, 'timeout': timeout}
+    cached = get_fresh_result('deepseek_consult', params, max_age_seconds=86400)
+    if cached is not None:
+        # Assume cached is a dict with a 'response' field
+        return cached.get('response', str(cached))
+
+    # Not cached, run the actual consultation
     full_prompt = prompt
     if data:
         data_str = json.dumps(data, indent=2) if isinstance(data, dict) else str(data)
@@ -162,11 +176,28 @@ def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, 
             response = full_consult(prompt=full_prompt, file_path=file, timeout=timeout)
         else:
             response = full_consult(prompt=full_prompt, timeout=timeout)
-        return response or "No response received"
+        result = response or "No response received"
     except Exception as e:
         import sys
         print(f"DeepSeek consultation failed: {e}", file=sys.stderr)
-        return f"DeepSeek consultation failed: {e}"
+        result = f"DeepSeek consultation failed: {e}"
+
+    # Store result in knowledge base
+    # We'll store as a JSON object with a 'response' field
+    result_data = {"response": result}
+    concepts = [word for word in prompt.lower().split() if len(word) > 3]
+    store_knowledge_with_hash(
+        'deepseek_consult',
+        result_data,
+        params,
+        query=prompt,
+        file_path=file,
+        concepts=concepts,
+        thread_id=thread_id,
+        parent_id=parent_id
+    )
+
+    return result
         
 # ----------------------------------------------------------------------
 # Watcher Integration: Safe History Reading (internal, not a tool)
@@ -276,16 +307,25 @@ def analyze_tools(thread_id: Optional[str] = None, parent_id: Optional[int] = No
 # ----------------------------------------------------------------------
 # Display file – PUBLIC (alias for read_file)
 # ----------------------------------------------------------------------
-def read_files(file_paths: List[str]) -> Dict[str, str]:
+def read_files(file_paths):
     """
     Read multiple files and return a dict mapping path to content.
 
     Args:
-        file_paths: List of paths relative to project root.
+        file_paths: List of paths relative to project root, or a single path string,
+                    or a comma-separated string of paths.
 
     Returns:
         dict: {path: content} for each file. If a file is not found, the value is an error message.
     """
+    # Handle various input formats
+    if isinstance(file_paths, str):
+        # Check if it's a comma-separated list
+        if ',' in file_paths:
+            file_paths = [p.strip() for p in file_paths.split(',')]
+        else:
+            file_paths = [file_paths]
+    # If it's already a list, fine
     contents = {}
     for path in file_paths:
         full_path = PROJECT_ROOT / path
@@ -294,7 +334,7 @@ def read_files(file_paths: List[str]) -> Dict[str, str]:
         else:
             contents[path] = f"File not found: {path}"
     return contents
-
+    
 # ----------------------------------------------------------------------
 # List files – PUBLIC
 # ----------------------------------------------------------------------

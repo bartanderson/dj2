@@ -21,6 +21,8 @@ from tools.default_tools import TOOLS
 from tools.planner import Planner
 from tools.critic import Critic
 
+USE_OLLAMA_FOR_LIGHT_TASKS = True
+
 os.environ['NODE_NO_WARNINGS'] = '1'
 logging.getLogger('deepseek_lib').setLevel(logging.WARNING)
 #logging.getLogger('langchain').setLevel(logging.WARNING)
@@ -59,6 +61,9 @@ def get_session_log_file() -> Path:
 def setup_logging(session_dir: Path, main_log_path: Path):
     """Configure a single logger with console and two file handlers."""
     logger = logging.getLogger('agent')
+    # Remove any existing handlers to avoid duplicates
+    if logger.hasHandlers():
+        logger.handlers.clear()
     logger.setLevel(logging.DEBUG)
 
     # Console handler (INFO and above) – concise format
@@ -88,9 +93,23 @@ def setup_logging(session_dir: Path, main_log_path: Path):
 
     return logger
 
+def get_llm_for_light_tasks():
+    """Return an LLM instance for lightweight tasks (classification, direct answers)."""
+    if USE_OLLAMA_FOR_LIGHT_TASKS:
+        from langchain_ollama import ChatOllama
+        return ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
+    else:
+        # Use DeepSeek via the existing consult tool (but wrapped as an LLM-like interface)
+        # We can create a simple wrapper that calls deepseek_consult
+        class DeepSeekWrapper:
+            def invoke(self, prompt):
+                from tools.agent_tools import deepseek_consult
+                return type('Response', (), {'content': deepseek_consult(prompt)})()
+        return DeepSeekWrapper()
+
 def classify_request(user_input: str) -> str:
     """Determine if request is direct, simple, or complex using LLM."""
-    from tools.agent_tools import deepseek_consult
+    llm = get_llm_for_light_tasks()
     prompt = f"""You are a task classifier. Determine how to handle the user request.
 
 User: {user_input}
@@ -103,7 +122,7 @@ Choose one of:
 Output only the category word.
 """
     try:
-        response = deepseek_consult(prompt=prompt, timeout=10)
+        response = llm.invoke(prompt)
         category = response.strip().lower()
         if category not in ('direct', 'simple', 'complex'):
             category = 'complex'
@@ -151,7 +170,32 @@ def run_simple_tool_agent(user_input: str, session_dir: Path, max_turns: int = 5
     """Run a simple agent using native tool calling."""
     logger = logging.getLogger('agent')
     logger.info(f"SimpleAgent starting with input: {user_input}")
-    messages = [{"role": "user", "content": user_input}]
+
+    # Load or create thread ID
+    thread_id_file = session_dir / "thread_id.txt"
+    if thread_id_file.exists():
+        thread_id = thread_id_file.read_text().strip()
+    else:
+        thread_id = f"thread_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        thread_id_file.write_text(thread_id)
+
+    # Build system prompt with knowledge base instructions
+    system_message = f"""You are an AI assistant with access to tools. Your goal is to answer the user's request: "{user_input}"
+
+You have access to a persistent knowledge base that stores results from previous tool runs. Before running any expensive tool (like `arch_context`, `analyze_tools`, or `semantic_search`), you should first check if relevant information already exists by using `retrieve_knowledge` with appropriate keywords or thread ID.
+
+Each analysis session has a thread ID: {thread_id}. Tools that generate new knowledge (like `arch_context`) will automatically store their results with this thread ID, so you can refer back to them later.
+
+When you need to read files, **use `read_files`** – it accepts a single file path (as a string) or a list of paths. Using `read_files` is more efficient than multiple `read_file` calls. Avoid `read_file` unless you have a specific reason; `read_files` is the preferred tool for reading files.
+
+When you read a file using `read_files`, you will receive one or more `SAVED_FILE:` lines with paths to the saved content. **You must then call `deepseek_consult` with the `file` parameter set to that path** and an appropriate prompt (e.g., "Analyze this file for phase compliance"). Do not attempt to answer based on the raw file content alone – always use `deepseek_consult` for deep architectural analysis.
+
+Available tools: {', '.join([t['function']['name'] for t in TOOLS])}
+
+Now begin.
+"""
+    messages = [{"role": "system", "content": system_message}, {"role": "user", "content": user_input}]
+
     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)
     bound_llm = llm.bind_tools(TOOL_FUNCTIONS)
 
@@ -195,12 +239,14 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
     """Run agent with planning and critic layers using native tool calls."""
     global LOG_FILE  # we will still use a global, but it will point inside session dir
 
-    # --- Trivial intent guard ---
-    trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
-    if any(greeting in user_input.lower() for greeting in trivial_greetings):
-        response = "Hello! How can I help you today?"
-        print(response)
-        return response
+    print(f"DEBUG remove me: user_input='{user_input}'")
+    
+    # # --- Trivial intent guard ---
+    # trivial_greetings = ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'say hello']
+    # if any(greeting in user_input.lower() for greeting in trivial_greetings):
+    #     response = "Hello! How can I help you today?"
+    #     print(response)
+    #     return response
 
     # --- Create session directory and main log file ---
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -216,9 +262,9 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
     print(f"[Complexity] Category: {category}")
 
     if category == 'direct':
-        from tools.agent_tools import deepseek_consult
+        llm = get_llm_for_light_tasks()
         direct_prompt = f"Answer directly and concisely: {user_input}"
-        response = deepseek_consult(prompt=direct_prompt, timeout=20)
+        response = llm.invoke(direct_prompt)
         print(response)
         return response
     elif category == 'simple':
@@ -226,6 +272,20 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
         return run_simple_tool_agent(user_input, session_work_dir, max_turns)
 
     # --- Complex path ---
+    session_work_dir = SESSIONS_DIR / LOG_FILE.stem
+    session_work_dir.mkdir(exist_ok=True)
+
+    # Load or create thread ID for knowledge base
+    thread_id_file = session_work_dir / "thread_id.txt"
+    if thread_id_file.exists():
+        thread_id = thread_id_file.read_text().strip()
+    else:
+        thread_id = f"thread_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        thread_id_file.write_text(thread_id)
+    logger.info(f"Thread ID: {thread_id}")
+
+    # Set up logging
+    logger = setup_logging(session_work_dir, LOG_FILE)
     logger.info(f"Session started: {user_input}")
 
     llm = ChatOllama(model="qwen2.5:7b", temperature=0.2, num_predict=4000)

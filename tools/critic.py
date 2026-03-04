@@ -53,7 +53,7 @@ Your task:
 Output in this format:
 STATUS: [complete / incomplete / blocked / replan]
 NEXT_STEP: (if incomplete) a brief description of what's needed
-TOOL_SUGGESTIONS: (if incomplete) one or more <tool> tags on separate lines
+TOOL_SUGGESTIONS: (if incomplete) one or more tool calls in the format `<tool>tool_name</tool>` followed by JSON arguments on the same line, e.g., `<tool>deepseek_consult</tool> {{"file": "path", "prompt": "analyze"}}`. Provide each tool call on a separate line.
 MOVE_TO_NEXT: [yes/no] (only if STATUS is complete)
 REVISED_PLAN: (if replan) a new numbered list of sub‑goals
 """

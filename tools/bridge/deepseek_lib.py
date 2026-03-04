@@ -16,6 +16,9 @@ CDP_URL = "http://127.0.0.1:9222"
 DEEPSEEK_URL = "https://chat.deepseek.com"
 GOOGLE_URL = "https://www.google.com"
 
+MAX_RETRIES = 3
+RETRY_DELAY = 2
+
 # ----------------------------------------------------------------------
 # Connection and page finding
 # ----------------------------------------------------------------------
@@ -149,44 +152,61 @@ def upload_file(page, file_path, timeout=30):
 # ----------------------------------------------------------------------
 def send_message(page, prompt):
     """
-    Type a message into the textarea and send it.
-    Returns True if message appears to be sent, False otherwise.
+    Type a message and send it using Enter key, with retries.
+    Returns True if message appears sent (textarea cleared), False otherwise.
     """
     logger.info(f"Sending message: {prompt[:50]}...")
-    textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
-    if textarea.count() == 0:
-        textarea = page.locator('[contenteditable="true"]').first
-    if textarea.count() == 0:
-        logger.error("No input field found")
-        return False
+    for attempt in range(3):
+        try:
+            # Re-find textarea each attempt in case it changed
+            textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
+            if textarea.count() == 0:
+                textarea = page.locator('[contenteditable="true"]').first
+            if textarea.count() == 0:
+                logger.error("No input field found")
+                return False
 
-    textarea.click()
-    page.wait_for_timeout(300)
-    textarea.press('Control+A')
-    page.wait_for_timeout(200)
-    textarea.press('Delete')
-    textarea.fill("")
-    textarea.fill(prompt)
-    logger.info("Prompt typed")
-    textarea.press('Enter')
-    page.wait_for_timeout(2000)
+            # Ensure focus
+            textarea.wait_for(state="attached", timeout=5000)
+            textarea.scroll_into_view_if_needed()
+            textarea.click()
+            page.wait_for_timeout(300)
 
-    after = textarea.input_value()
-    if after and len(after) > 0:
-        logger.info("Enter didn't clear – trying send button")
-        # Stable send button SVG path (from earlier)
-        send_path = "M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z"
-        send_xpath = f"//*[local-name()='svg' and @d='{send_path}']/ancestor::*[self::button or self::div[@role='button']]"
-        send_button = page.locator(f'xpath={send_xpath}').first
-        if send_button.count() > 0 and send_button.is_visible() and send_button.is_enabled():
-            send_button.click()
-            logger.info("Clicked send button")
-        else:
-            logger.warning("Send button not found")
-            return False
-    else:
-        logger.info("Message sent (textarea cleared)")
-    return True
+            # Clear existing text (only on first attempt, subsequent attempts may have already cleared)
+            if attempt == 0:
+                textarea.press('Control+A')
+                page.wait_for_timeout(200)
+                textarea.press('Delete')
+                textarea.fill("")
+                page.wait_for_timeout(200)
+
+                # Type the prompt
+                for char in prompt:
+                    textarea.type(char, delay=20)
+                logger.info("Prompt typed")
+                page.wait_for_timeout(500)
+
+            # Press Enter
+            textarea.press('Enter')
+            page.wait_for_timeout(2000)  # Wait for send
+
+            # Check if textarea cleared
+            if textarea.get_attribute('contenteditable') == 'true':
+                current = textarea.inner_text()
+            else:
+                current = textarea.input_value()
+            if not current or len(current.strip()) == 0:
+                logger.info(f"Message sent via Enter on attempt {attempt+1}")
+                return True
+            else:
+                logger.warning(f"Enter attempt {attempt+1} failed, text remains: {current[:30]}...")
+                # Wait a bit longer before retry
+                page.wait_for_timeout(1000 * (attempt + 1))
+        except Exception as e:
+            logger.warning(f"Send attempt {attempt+1} exception: {e}")
+            page.wait_for_timeout(1000)
+    logger.error("All send attempts failed")
+    return False
 
 def wait_for_response(page, timeout=180):
     """
