@@ -129,6 +129,7 @@ async def _disconnect_browser():
 # ----------------------------------------------------------------------
 # DeepSeek Consultation (PUBLIC TOOL)
 # ----------------------------------------------------------------------
+@tool()
 def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, timeout: int = 3600,
                      thread_id: Optional[str] = None, parent_id: Optional[int] = None,
                      trigger: str = "Please analyze the uploaded file.") -> str:
@@ -256,6 +257,7 @@ def get_chrome_history(profile_dir: str = None, limit: int = 10):
 # ----------------------------------------------------------------------
 # Analysis tool – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def analyze_tools(thread_id: Optional[str] = None, parent_id: Optional[int] = None) -> dict:
     """
     Run the tool analyzer to get a complete landscape report of all tools in the project.
@@ -317,6 +319,7 @@ def analyze_tools(thread_id: Optional[str] = None, parent_id: Optional[int] = No
 # ----------------------------------------------------------------------
 # Display file – PUBLIC (alias for read_file)
 # ----------------------------------------------------------------------
+@tool()
 def read_files(file_paths):
     """
     Read multiple files and return a dict mapping path to content.
@@ -344,10 +347,31 @@ def read_files(file_paths):
         else:
             contents[path] = f"File not found: {path}"
     return contents
+
+# @tool()
+# def read_files(file_paths):
+#     """
+#     Read multiple files and return a dict mapping path to content.
+    
+#     Args:
+#         file_paths (list): List of paths relative to project root.
+    
+#     Returns:
+#         dict: {path: content}
+#     """
+#     contents = {}
+#     for path in file_paths:
+#         full_path = PROJECT_ROOT / path
+#         if full_path.exists():
+#             contents[path] = full_path.read_text(encoding='utf-8')
+#         else:
+#             contents[path] = f"File not found: {path}"
+#     return contents
     
 # ----------------------------------------------------------------------
 # List files – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False) -> list:
     """
     List files by filename pattern using glob, excluding common ignored directories.
@@ -382,6 +406,7 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
 # ----------------------------------------------------------------------
 # Semantic search – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def semantic_search(query, limit=5, thread_id=None, parent_id=None):
     """
     Semantic search for files based on conceptual content, not filename.
@@ -440,6 +465,7 @@ def semantic_search(query, limit=5, thread_id=None, parent_id=None):
 # ----------------------------------------------------------------------
 # Architecture context – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def arch_context(query=None, level='standard', thread_id=None, parent_id=None):
     """
     Generate an architecture context package for a given intent.
@@ -512,6 +538,7 @@ def arch_context(query=None, level='standard', thread_id=None, parent_id=None):
 # ----------------------------------------------------------------------
 # Gather context – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def gather_context(topic: str, limit: int = 5) -> dict:
     """
     Gather comprehensive context about a topic.
@@ -546,6 +573,7 @@ def gather_context(topic: str, limit: int = 5) -> dict:
 # ----------------------------------------------------------------------
 # File operations – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def read_file(path):
     """
     Read a file and return its content.
@@ -557,10 +585,16 @@ def read_file(path):
         str: File content.
     """
     full_path = PROJECT_ROOT / path
+    print(f"[DEBUG] PROJECT_ROOT = {PROJECT_ROOT}")
+    print(f"[DEBUG] full_path = {full_path}")
+    print(f"[DEBUG] file exists? {full_path.exists()}")
     if not full_path.exists():
         raise Exception(f"File not found: {path}")
-    return full_path.read_text(encoding='utf-8')
+    content = full_path.read_text(encoding='utf-8')
+    print(f"[DEBUG] content length: {len(content)}")
+    return content
 
+@tool()
 def display_file(path: str) -> str:
     """
     Display the contents of a file. Alias for read_file.
@@ -573,28 +607,13 @@ def display_file(path: str) -> str:
     """
     return read_file(path)
 
-def read_files(file_paths):
-    """
-    Read multiple files and return a dict mapping path to content.
-    
-    Args:
-        file_paths (list): List of paths relative to project root.
-    
-    Returns:
-        dict: {path: content}
-    """
-    contents = {}
-    for path in file_paths:
-        full_path = PROJECT_ROOT / path
-        if full_path.exists():
-            contents[path] = full_path.read_text(encoding='utf-8')
-        else:
-            contents[path] = f"File not found: {path}"
-    return contents
-
+@tool()
 def write_file(path: str, content: str) -> str:
     """
     Write content to a file. Creates a backup (.bak) if file exists.
+    The backup is created by appending '.bak' to the original filename.
+    If a backup already exists, FileExistsError is raised (to prevent
+    accidental overwriting).
 
     Args:
         path: Path relative to project root.
@@ -602,10 +621,15 @@ def write_file(path: str, content: str) -> str:
 
     Returns:
         str: Confirmation message.
+
+    Raises:
+        FileExistsError: If the backup file already exists.
+        Other exceptions from file operations.
     """
     full_path = PROJECT_ROOT / path
     if full_path.exists():
-        backup = full_path.with_suffix('.bak')
+        backup = full_path.parent / (full_path.name + '.bak')
+        # rename will raise FileExistsError if backup already exists
         full_path.rename(backup)
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content, encoding='utf-8')
@@ -625,14 +649,24 @@ def search_files(query: str, limit: int = 10, group: Optional[str] = None,
     Args:
         query: Keyword or phrase to search for in file names/paths.
         limit: Maximum number of results. Default: 10.
-        group: Optional filter by code group (e.g., 'world', 'engine').
+        group: Optional filter by group (code, docs, config, ui, python, markdown, json, yaml, text, all).
+        path: Optional restrict search to a specific directory.
+        file_type: Optional filter by file extension (comma‑separated).
 
     Returns:
         list: File paths relative to project root.
     """
-    cmd = [sys.executable, 'ai.py', 'search', query, '--limit', str(limit)]
+    cmd = [sys.executable, 'ai.py', 'search']
+    if query:
+        cmd.append(query)
+    if limit != 10:
+        cmd.extend(['--limit', str(limit)])
     if group:
         cmd.extend(['--group', group])
+    if path:
+        cmd.extend(['--path', path])
+    if file_type:
+        cmd.extend(['--file-type', file_type])
 
     result = subprocess.run(
         cmd,
@@ -647,30 +681,15 @@ def search_files(query: str, limit: int = 10, group: Optional[str] = None,
     file_paths = []
     for line in lines:
         line = line.strip()
-        if not line:
-            continue
-        if line.startswith('[DEBUG]') or line.startswith('Found '):
-            continue
-        if re.match(r'^-+$', line):
-            continue
-        if '. ' in line:
-            parts = line.split('. ', 1)
-            if len(parts) == 2:
-                rest = parts[1]
-                if ' (score:' in rest:
-                    path = rest.split(' (score:', 1)[0]
-                else:
-                    path = rest
-                file_paths.append(path.strip())
-            else:
-                file_paths.append(line)
-        else:
+        if line and not line.startswith('[DEBUG]') and not line.startswith('Found '):
             file_paths.append(line)
     return file_paths
+
 
 # ----------------------------------------------------------------------
 # Git operations – PUBLIC
 # ----------------------------------------------------------------------
+@tool()
 def create_branch(branch_name: str) -> str:
     """
     Create and switch to a new git branch.
@@ -684,6 +703,7 @@ def create_branch(branch_name: str) -> str:
     subprocess.run(['git', 'checkout', '-b', branch_name], cwd=PROJECT_ROOT, check=True)
     return f"Switched to branch {branch_name}"
 
+@tool()
 def commit_changes(message: str) -> str:
     """
     Commit all changes with a message.
@@ -698,6 +718,7 @@ def commit_changes(message: str) -> str:
     subprocess.run(['git', 'commit', '-m', message], cwd=PROJECT_ROOT, check=True)
     return f"Committed: {message}"
 
+@tool()
 def show_diff() -> str:
     """
     Show git diff of current changes (unstaged and staged).
@@ -722,6 +743,7 @@ def _error_response(message):
     """Return a standard error dictionary."""
     return {"success": False, "error": message}
 
+@tool()
 def file_metadata(path: str) -> dict:
     """
     Get metadata for a file from the scout database.
@@ -758,6 +780,7 @@ def file_metadata(path: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def file_imports(path: str) -> dict:
     """
     Get list of modules imported by a file.
@@ -782,6 +805,7 @@ def file_imports(path: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def file_importers(path: str) -> dict:
     """
     Get list of files that import the given file.
@@ -809,6 +833,7 @@ def file_importers(path: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def test_coverage(path: str) -> dict:
     """
     Check if a file has a corresponding test.
@@ -841,6 +866,7 @@ def test_coverage(path: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def file_concepts(path: str) -> dict:
     """
     Get concepts (topics) associated with a file from the scout DB.
@@ -865,6 +891,7 @@ def file_concepts(path: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def concept_files(concept: str) -> dict:
     """
     Find all files associated with a given concept.
@@ -889,6 +916,7 @@ def concept_files(concept: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def cluster_files(cluster_name: Optional[str] = None) -> dict:
     """
     Get all files in a named cluster (from discovered categories).
@@ -923,6 +951,7 @@ def cluster_files(cluster_name: Optional[str] = None) -> dict:
     finally:
         conn.close()
 
+@tool()
 def function_contract(path: str, function_name: str) -> dict:
     """
     Get the behavioral contract of a function (description, side effects, testable behaviors, complexity).
@@ -964,6 +993,7 @@ def function_contract(path: str, function_name: str) -> dict:
     finally:
         conn.close()
 
+@tool()
 def function_parameters(path: str, function_name: str, class_name: Optional[str] = None) -> dict:
     """
     Get parameters of a function or method.
@@ -1003,6 +1033,7 @@ def function_parameters(path: str, function_name: str, class_name: Optional[str]
     finally:
         conn.close()
 
+@tool()
 def parse_json_file(file_path: str, extract_path: Optional[str] = None) -> Any:
     """
     Parse a JSON file and optionally extract a sub‑path (dot notation with slices).
@@ -1038,6 +1069,7 @@ def parse_json_file(file_path: str, extract_path: Optional[str] = None) -> Any:
                 data = data[part]
     return data
 
+@tool()
 def extract_code(path: str, element_type: str, element_name: str) -> dict:
     """
     Extract the source code of a function or class from a file.
@@ -1073,6 +1105,7 @@ def extract_code(path: str, element_type: str, element_name: str) -> dict:
     except Exception as e:
         return _error_response(str(e))
 
+@tool()
 def list_functions(path: str) -> dict:
     """
     List all functions and methods in a file.

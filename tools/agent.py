@@ -194,9 +194,14 @@ When you need to read files, **use `read_files`** – it accepts a single file p
 
 When you read a file using `read_files`, you will receive one or more `SAVED_FILE:` lines with paths to the saved content. **You must then call `deepseek_consult` with the `file` parameter set to that path** and an appropriate prompt (e.g., "Analyze this file for phase compliance"). Do not attempt to answer based on the raw file content alone – always use `deepseek_consult` for deep architectural analysis.
 
+**Critical rules:**
+- Follow the plan step by step. After completing a step, move to the next.
+- If the critic provides `TOOL_SUGGESTIONS`, you must execute those tools in your next turn unless they have already been executed. Do not provide a final answer while the current sub‑goal is incomplete.
+- If a tool call fails, do not give up. Use the critic's guidance to correct the approach.
+
 Available tools: {', '.join([t['function']['name'] for t in TOOLS])}
 
-Now begin.
+Now begin..
 """
     messages = [{"role": "system", "content": system_message}, {"role": "user", "content": user_input}]
 

@@ -275,6 +275,21 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
             upload_this = temp_path
             logger.info(f"Uploading temp file: {upload_this}")
 
+            # --- NEW LOGGING: capture first/last 50 chars of the temp file ---
+            try:
+                size = os.path.getsize(temp_path)
+                logger.debug(f"Temp file size: {size} bytes")
+                with open(temp_path, 'r', encoding='utf-8') as cf:
+                    content = cf.read()
+                    if len(content) > 100:
+                        logger.debug(f"First 50 chars: {content[:50]}")
+                        logger.debug(f"Last 50 chars: {content[-50:]}")
+                    else:
+                        logger.debug(f"Full content: {content}")
+            except Exception as e:
+                logger.warning(f"Could not read temp file for logging: {e}")
+            # ----------------------------------------------------------------
+
         if upload_this:
             if not upload_file(page, upload_this):
                 raise Exception("File upload failed")
