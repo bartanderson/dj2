@@ -17,6 +17,7 @@ from pathlib import Path
 from datetime import datetime
 from browser_use import Browser
 from typing import Optional, List, Dict, Any, Union
+from tools.tool_registry import tool
 
 # --- Correct path setup ---
 TOOLS_DIR = Path(__file__).parent          # .../dj2/tools/
@@ -613,7 +614,9 @@ def write_file(path: str, content: str) -> str:
 # ----------------------------------------------------------------------
 # Search tool – PUBLIC
 # ----------------------------------------------------------------------
-def search_files(query: str, limit: int = 10, group: Optional[str] = None) -> list:
+@tool(schema_override={"additionalProperties": False})
+def search_files(query: str, limit: int = 10, group: Optional[str] = None,
+                 path: Optional[str] = None, file_type: Optional[str] = None) -> list:
     """
     Search for files using a text‑based command (ai.py search).
 

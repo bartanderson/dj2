@@ -16,10 +16,12 @@ from typing import Any
 
 from langchain_ollama import ChatOllama
 
-from tools import agent_tools
-from tools.default_tools import TOOLS
+from tools import agent_tools   # this registers tools
+from tools.tool_registry import get_all_tools, get_tool_schema_override
+from tools.tool_utils import function_to_tool_schema
 from tools.planner import Planner
 from tools.critic import Critic
+
 
 USE_OLLAMA_FOR_LIGHT_TASKS = True
 
@@ -30,14 +32,16 @@ logging.getLogger('deepseek_lib').setLevel(logging.WARNING)
 
 KNOWLEDGE_TOOLS = {"arch_context", "analyze_tools", "semantic_search", "deepseek_consult"}
 
-# Build TOOL_MAP from TOOLS and agent_tools
+# Build TOOLS list and TOOL_MAP from registry
+TOOLS = []
 TOOL_MAP = {}
-for tool_def in TOOLS:
-    name = tool_def['function']['name']
-    if hasattr(agent_tools, name):
-        TOOL_MAP[name] = getattr(agent_tools, name)
+for name, func in get_all_tools():
+    schema_override = get_tool_schema_override(name)
+    tool_func_schema = function_to_tool_schema(func, schema_override)
+    TOOLS.append({"type": "function", "function": tool_func_schema})
+    TOOL_MAP[name] = func
 
-# For binding, we need just the function definitions (without the outer 'type')
+# Keep TOOL_FUNCTIONS for convenience (if used elsewhere)
 TOOL_FUNCTIONS = [t['function'] for t in TOOLS]
 
 # Add project root to path

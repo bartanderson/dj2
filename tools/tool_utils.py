@@ -2,7 +2,6 @@
 import inspect
 import re
 from typing import get_type_hints, Any, Dict, List, Optional, Union, Literal
-from collections import namedtuple
 
 def parse_google_docstring(docstring: str) -> Dict[str, str]:
     """
@@ -72,9 +71,10 @@ def type_to_json_schema(typ) -> Dict[str, Any]:
     # Fallback
     return {"type": "string"}
 
-def function_to_tool_schema(func) -> Dict[str, Any]:
+def function_to_tool_schema(func, schema_override=None):  # <-- added optional parameter
     """
     Generate an OpenAI tool schema from a function's signature and docstring.
+    Optionally merge a schema_override (top-level JSON schema keywords).
     Returns the inner function dict: { "name": ..., "description": ..., "parameters": ... }
     """
     sig = inspect.signature(func)
@@ -106,12 +106,19 @@ def function_to_tool_schema(func) -> Dict[str, Any]:
             if not (getattr(typ, '__origin__', None) is Union and type(None) in getattr(typ, '__args__', [])):
                 required.append(name)
 
+    parameters = {
+        "type": "object",
+        "properties": properties,
+        "required": required
+    }
+    if schema_override:
+        # Shallow merge: any keys in schema_override will replace existing keys.
+        # Avoid including 'properties' or 'required' in schema_override unless you intend
+        # to replace the entire parameters structure. For adding extra keywords like
+        # 'additionalProperties', this is safe and intended.
+        parameters.update(schema_override)
     return {
         "name": func.__name__,
         "description": parsed_doc.get('description', func.__doc__ or "").strip(),
-        "parameters": {
-            "type": "object",
-            "properties": properties,
-            "required": required
-        }
+        "parameters": parameters
     }
