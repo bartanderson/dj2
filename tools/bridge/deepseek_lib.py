@@ -75,6 +75,7 @@ def is_file_attached(page):
     """
     return page.locator('div.d2d04dae').count() > 0
 
+# this should not normally be called this should only be called if upload fails
 def remove_existing_file(page, timeout=10):
     """
     Remove any attached file by:
@@ -118,7 +119,7 @@ def remove_existing_file(page, timeout=10):
 def upload_file(page, file_path, timeout=30):
     """
     Upload a file by directly setting the file input.
-    Assumes any existing file has been removed (call remove_existing_file first).
+    Assumes any existing file has been removed.
     Waits for the container div.d2d04dae to appear as confirmation.
     """
     logger.info(f"Uploading file: {file_path}")
@@ -150,64 +151,112 @@ def upload_file(page, file_path, timeout=30):
 # ----------------------------------------------------------------------
 # Send message and wait for response
 # ----------------------------------------------------------------------
-def send_message(page, prompt):
-    """
-    Type a message and send it using Enter key, with retries.
-    Returns True if message appears sent (textarea cleared), False otherwise.
-    """
+def send_message(page, prompt, timeout=30):
     logger.info(f"Sending message: {prompt[:50]}...")
-    for attempt in range(3):
-        try:
-            # Re-find textarea each attempt in case it changed
-            textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
-            if textarea.count() == 0:
-                textarea = page.locator('[contenteditable="true"]').first
-            if textarea.count() == 0:
-                logger.error("No input field found")
-                return False
+    try:
+        textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
+        if textarea.count() == 0:
+            textarea = page.locator('[contenteditable="true"]').first
+        if textarea.count() == 0:
+            logger.error("No input field found")
+            return False
 
-            # Ensure focus
-            textarea.wait_for(state="attached", timeout=5000)
-            textarea.scroll_into_view_if_needed()
-            textarea.click()
-            page.wait_for_timeout(300)
+        textarea.wait_for(state="attached", timeout=5000)
+        textarea.scroll_into_view_if_needed()
+        textarea.click()
+        page.wait_for_timeout(300)
 
-            # Clear existing text (only on first attempt, subsequent attempts may have already cleared)
-            if attempt == 0:
-                textarea.press('Control+A')
-                page.wait_for_timeout(200)
-                textarea.press('Delete')
-                textarea.fill("")
-                page.wait_for_timeout(200)
+        # Clear any existing text to ensure a clean slate
+        textarea.press('Control+A')
+        page.wait_for_timeout(200)
+        textarea.press('Delete')
+        textarea.fill("")
+        page.wait_for_timeout(200)
 
-                # Type the prompt
-                for char in prompt:
-                    textarea.type(char, delay=20)
-                logger.info("Prompt typed")
-                page.wait_for_timeout(500)
+        textarea.fill(prompt)
+        logger.info("Prompt entered")
+        page.wait_for_timeout(500)
 
-            # Press Enter
-            textarea.press('Enter')
-            page.wait_for_timeout(2000)  # Wait for send
+        textarea.press('Enter')
+        logger.debug("Enter pressed")
 
-            # Check if textarea cleared
-            if textarea.get_attribute('contenteditable') == 'true':
-                current = textarea.inner_text()
-            else:
-                current = textarea.input_value()
+        start = time.time()
+        while time.time() - start < timeout:
+            current = textarea.input_value()
             if not current or len(current.strip()) == 0:
-                logger.info(f"Message sent via Enter on attempt {attempt+1}")
+                logger.info(f"Textarea cleared after {time.time()-start:.1f}s")
                 return True
-            else:
-                logger.warning(f"Enter attempt {attempt+1} failed, text remains: {current[:30]}...")
-                # Wait a bit longer before retry
-                page.wait_for_timeout(1000 * (attempt + 1))
-        except Exception as e:
-            logger.warning(f"Send attempt {attempt+1} exception: {e}")
-            page.wait_for_timeout(1000)
-    logger.error("All send attempts failed")
-    return False
+            time.sleep(0.5)
 
+        logger.warning(f"Textarea did not clear within {timeout}s")
+        return False
+    except Exception as e:
+        logger.error(f"Send failed: {e}")
+        return False
+# def send_message(page, prompt, max_attempts=3):
+#     """
+#     Enter the prompt, press Enter, and wait for the assistant's response to begin.
+#     If no response starts within timeout, retry up to `max_attempts` times.
+#     Returns True if response detected.
+#     """
+#     logger.info(f"Sending message: {prompt[:50]}...")
+#     for attempt in range(max_attempts):
+#         try:
+#             # Find and focus textarea
+#             textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
+#             if textarea.count() == 0:
+#                 textarea = page.locator('[contenteditable="true"]').first
+#             if textarea.count() == 0:
+#                 logger.error("No input field found")
+#                 return False
+
+#             textarea.wait_for(state="attached", timeout=5000)
+#             textarea.scroll_into_view_if_needed()
+#             textarea.click()
+#             page.wait_for_timeout(300)
+
+#             # Clear and fill
+#             textarea.press('Control+A')
+#             page.wait_for_timeout(200)
+#             textarea.press('Delete')
+#             textarea.fill("")
+#             page.wait_for_timeout(200)
+#             textarea.fill(prompt)
+#             logger.info("Prompt entered")
+#             page.wait_for_timeout(500)
+
+#             # Press Enter
+#             textarea.press('Enter')
+#             logger.debug(f"Enter pressed (attempt {attempt+1})")
+
+#             # Wait up to 10 seconds for any assistant message to appear
+#             start = time.time()
+#             while time.time() - start < 10:
+#                 # Check for any assistant message (use same selectors as wait_for_response)
+#                 assistant = page.locator('.ds-markdown, [class*="message"][class*="assistant"]').first
+#                 if assistant.count() > 0:
+#                     logger.info(f"Assistant response detected on attempt {attempt+1}")
+#                     return True
+#                 time.sleep(0.5)
+
+#             logger.warning(f"No response detected after attempt {attempt+1}")
+#             # Optionally, check if textarea cleared (maybe message sent but response slow)
+#             if textarea.get_attribute('contenteditable') == 'true':
+#                 current = textarea.inner_text()
+#             else:
+#                 current = textarea.input_value()
+#             if not current or len(current.strip()) == 0:
+#                 logger.info("Textarea cleared, assuming send succeeded")
+#                 return True
+#         except Exception as e:
+#             logger.warning(f"Send attempt {attempt+1} exception: {e}")
+
+#         # Short pause before retry
+#         page.wait_for_timeout(1000)
+
+#     logger.error("All send attempts failed")
+#     return False
+    
 def wait_for_response(page, timeout=180):
     """
     Wait for the assistant's response to appear and stabilize.
@@ -238,13 +287,30 @@ def wait_for_response(page, timeout=180):
     logger.warning("Response timeout")
     return last_text if last_text else None
 
+def wait_for_upload_complete(page, expected_filename, timeout=15):
+    """
+    Wait for a file container that contains the expected filename and a file size.
+    Returns True if found within timeout, False otherwise.
+    """
+    import re
+    start = time.time()
+    while time.time() - start < timeout:
+        containers = page.locator('div.d2d04dae').all()
+        for c in containers:
+            text = c.text_content()
+            if text and expected_filename in text and re.search(r'\d+(\.\d+)?\s*(B|KB|MB)', text):
+                return True
+        time.sleep(0.2)
+    logger.warning(f"Upload completion not confirmed for '{expected_filename}' within {timeout}s")
+    return False
+
 # ----------------------------------------------------------------------
 # High‑level consultation (orchestrates everything)
 # ----------------------------------------------------------------------
 def full_consult(prompt, file_path=None, file_content=None, filename=None, timeout=180):
     """
     Complete consultation: connect, find page, optionally upload, send, wait.
-    Returns response text. Raises an exception if a file is already attached (session not clean).
+    Returns response text.
     """
     browser = None
     playwright = None
@@ -252,10 +318,6 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
     try:
         browser, playwright = connect_to_browser()
         page = find_deepseek_page(browser, force_referral=True)
-
-        # Check for existing file – fail if present
-        if is_file_attached(page):
-            raise Exception("A file is already attached. Please clear the chat manually and retry.")
 
         upload_this = None
         if file_path:
@@ -279,7 +341,11 @@ def full_consult(prompt, file_path=None, file_content=None, filename=None, timeo
         if upload_this:
             if not upload_file(page, upload_this):
                 raise Exception("File upload failed")
-            time.sleep(1)  # Allow UI to stabilize after upload
+            # Wait for upload to complete using the file's basename
+            expected_name = os.path.basename(upload_this)
+            if not wait_for_upload_complete(page, expected_name, timeout=15):
+                logger.warning("Upload completion not confirmed, but continuing")
+            # No extra sleep – next step will poll as needed
 
         if not send_message(page, prompt):
             raise Exception("Failed to send message")

@@ -235,7 +235,7 @@ Now begin.
     logger.warning("Max turns reached")
     return "Max turns reached without final answer."
 
-def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 10):
+def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: int = 30):
     """Run agent with planning and critic layers using native tool calls."""
     global LOG_FILE  # we will still use a global, but it will point inside session dir
 
@@ -364,7 +364,11 @@ def run_orchestrated_agent(user_input: str, use_critic: bool = True, max_turns: 
         else:
             logger.info("No tool calls – final answer")
             final = response.content
-            logger.info(f"Final: {final[:200]}...")
+            # Save full final answer to a file
+            final_file = session_work_dir / 'final_answer.txt'
+            final_file.write_text(final, encoding='utf-8')
+            logger.info(f"Full final answer saved to {final_file}")
+            logger.info(f"Final (truncated): {final[:200]}...")
             return final
 
     logger.warning(f"Max turns ({max_turns}) reached")

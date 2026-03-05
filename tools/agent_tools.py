@@ -162,7 +162,7 @@ def deepseek_consult(prompt: str, file: Optional[str] = None, data: Any = None, 
         upload_path = file
     else:
         # Create temporary file with prompt content
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
             f.write(prompt)
             temp_path = f.name
         upload_path = temp_path
