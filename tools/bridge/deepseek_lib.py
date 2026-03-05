@@ -193,70 +193,7 @@ def send_message(page, prompt, timeout=30):
     except Exception as e:
         logger.error(f"Send failed: {e}")
         return False
-# def send_message(page, prompt, max_attempts=3):
-#     """
-#     Enter the prompt, press Enter, and wait for the assistant's response to begin.
-#     If no response starts within timeout, retry up to `max_attempts` times.
-#     Returns True if response detected.
-#     """
-#     logger.info(f"Sending message: {prompt[:50]}...")
-#     for attempt in range(max_attempts):
-#         try:
-#             # Find and focus textarea
-#             textarea = page.locator('textarea[placeholder*="Message DeepSeek"]').first
-#             if textarea.count() == 0:
-#                 textarea = page.locator('[contenteditable="true"]').first
-#             if textarea.count() == 0:
-#                 logger.error("No input field found")
-#                 return False
-
-#             textarea.wait_for(state="attached", timeout=5000)
-#             textarea.scroll_into_view_if_needed()
-#             textarea.click()
-#             page.wait_for_timeout(300)
-
-#             # Clear and fill
-#             textarea.press('Control+A')
-#             page.wait_for_timeout(200)
-#             textarea.press('Delete')
-#             textarea.fill("")
-#             page.wait_for_timeout(200)
-#             textarea.fill(prompt)
-#             logger.info("Prompt entered")
-#             page.wait_for_timeout(500)
-
-#             # Press Enter
-#             textarea.press('Enter')
-#             logger.debug(f"Enter pressed (attempt {attempt+1})")
-
-#             # Wait up to 10 seconds for any assistant message to appear
-#             start = time.time()
-#             while time.time() - start < 10:
-#                 # Check for any assistant message (use same selectors as wait_for_response)
-#                 assistant = page.locator('.ds-markdown, [class*="message"][class*="assistant"]').first
-#                 if assistant.count() > 0:
-#                     logger.info(f"Assistant response detected on attempt {attempt+1}")
-#                     return True
-#                 time.sleep(0.5)
-
-#             logger.warning(f"No response detected after attempt {attempt+1}")
-#             # Optionally, check if textarea cleared (maybe message sent but response slow)
-#             if textarea.get_attribute('contenteditable') == 'true':
-#                 current = textarea.inner_text()
-#             else:
-#                 current = textarea.input_value()
-#             if not current or len(current.strip()) == 0:
-#                 logger.info("Textarea cleared, assuming send succeeded")
-#                 return True
-#         except Exception as e:
-#             logger.warning(f"Send attempt {attempt+1} exception: {e}")
-
-#         # Short pause before retry
-#         page.wait_for_timeout(1000)
-
-#     logger.error("All send attempts failed")
-#     return False
-    
+            
 def wait_for_response(page, timeout=180):
     """
     Wait for the assistant's response to appear and stabilize.
