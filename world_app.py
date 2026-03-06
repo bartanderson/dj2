@@ -1324,96 +1324,172 @@ def all_locations():
         return jsonify({"locations": []})
 
 
+# @app.route('/api/dm-response', methods=['POST'])
+# def dm_response():
+#     """Process DM chat with GameEngine phase compliance"""
+#     try:
+#         print("DEBUG: dm-response endpoint called with GameEngine")
+        
+#         # Check if GameEngine is available
+#         if not hasattr(app, 'game_engine') or app.game_engine is None:
+#             print("DEBUG: GameEngine not available, using legacy processing")
+#             return legacy_dm_response()  # Fallback to original implementation
+        
+#         data = request.get_json()
+#         message = data.get('message')
+#         character_id = data.get('character_id')
+        
+#         # Get session ID
+#         session_id = request.cookies.get('session_id')
+#         is_new_session = False
+        
+#         if not session_id:
+#             session_id = str(uuid.uuid4())
+#             is_new_session = True
+        
+#         # Get or create player
+#         player = app.world_controller.get_or_create_player(session_id)
+        
+#         # If character_id is specified, validate
+#         if character_id and character_id not in player.character_ids:
+#             return jsonify({'error': 'Character does not belong to player'}), 400
+        
+#         # Set active character
+#         active_character_id = character_id or player.active_character_id
+#         if active_character_id:
+#             player.set_active_character(active_character_id)
+        
+#         # Create GameContext for this interaction
+#         context = GameContext()
+#         context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
+#         context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
+#         context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
+        
+#         # Process through GameEngine
+#         engine_result = app.game_engine.advance(player_input=message, context=context)
+        
+#         # Extract UI data and narration
+#         ui_data = engine_result.get('ui_data', {})
+#         narration = ui_data.get('narration', '')
+        
+#         # Get any tool results from context
+#         tool_result = context.get_phase_data(GamePhase.AUTHORITY, "tool_result")
+        
+#         # Build response
+#         response_data = {
+#             'responses': [{
+#                 'speaker': 'DM',
+#                 'content': narration or "The DM considers your words...",
+#                 'type': 'narration'
+#             }],
+#             'tool_result': tool_result,
+#             'session_id': session_id,
+#             'character_id': active_character_id,
+#             'player_id': player.id,
+#             'phase_info': {
+#                 'current_phase': engine_result.get('current_phase'),
+#                 'violations': engine_result.get('violations', 0),
+#                 'warnings': engine_result.get('warnings', 0)
+#             }
+#         }
+        
+#         # Create response and set cookie if needed
+#         response = jsonify(response_data)
+#         if is_new_session:
+#             response.set_cookie(
+#                 'session_id', 
+#                 session_id, 
+#                 max_age=60*60*24*7,
+#                 path='/',
+#                 secure=False,
+#                 httponly=True,
+#                 samesite='Lax'
+#             )
+            
+#         return response
+        
+#     except Exception as e:
+#         print(f"Error in dm-response: {str(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({'error': str(e)}), 500
+
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
-    """Process DM chat with GameEngine phase compliance"""
     try:
-        print("DEBUG: dm-response endpoint called with GameEngine")
-        
-        # Check if GameEngine is available
-        if not hasattr(app, 'game_engine') or app.game_engine is None:
-            print("DEBUG: GameEngine not available, using legacy processing")
-            return legacy_dm_response()  # Fallback to original implementation
-        
+        print("DEBUG: dm-response endpoint called")
         data = request.get_json()
         message = data.get('message')
         character_id = data.get('character_id')
-        
-        # Get session ID
         session_id = request.cookies.get('session_id')
         is_new_session = False
-        
         if not session_id:
             session_id = str(uuid.uuid4())
             is_new_session = True
-        
-        # Get or create player
+
         player = app.world_controller.get_or_create_player(session_id)
-        
-        # If character_id is specified, validate
+
         if character_id and character_id not in player.character_ids:
             return jsonify({'error': 'Character does not belong to player'}), 400
-        
-        # Set active character
+
         active_character_id = character_id or player.active_character_id
-        if active_character_id:
-            player.set_active_character(active_character_id)
-        
-        # Create GameContext for this interaction
-        context = GameContext()
-        context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
-        context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
-        context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
-        
-        # Process through GameEngine
-        engine_result = app.game_engine.advance(player_input=message, context=context)
-        
-        # Extract UI data and narration
-        ui_data = engine_result.get('ui_data', {})
-        narration = ui_data.get('narration', '')
-        
-        # Get any tool results from context
-        tool_result = context.get_phase_data(GamePhase.AUTHORITY, "tool_result")
-        
-        # Build response
-        response_data = {
-            'responses': [{
-                'speaker': 'DM',
-                'content': narration or "The DM considers your words...",
-                'type': 'narration'
-            }],
-            'tool_result': tool_result,
-            'session_id': session_id,
-            'character_id': active_character_id,
-            'player_id': player.id,
-            'phase_info': {
-                'current_phase': engine_result.get('current_phase'),
-                'violations': engine_result.get('violations', 0),
-                'warnings': engine_result.get('warnings', 0)
+
+        # ---------- CHARACTER CREATION PATH (no active character) ----------
+        if not active_character_id:
+            result = app.world_controller.dm_chat_handler.process_message(
+                session_id, message, character_id=None
+            )
+            responses = [{
+                'speaker': r.speaker,
+                'content': r.content,
+                'type': r.dialog_type
+            } for r in result.get('narrative', [])]
+
+            response_data = {
+                'responses': responses,
+                'tool_result': result.get('tool_result'),
+                'session_id': session_id,
+                'character_id': None,
+                'player_id': player.id
             }
-        }
-        
-        # Create response and set cookie if needed
+
+        # ---------- IN‑GAME PATH (character exists) ----------
+        else:
+            from engine.game_engine import GamePhase, GameContext
+            context = GameContext()
+            context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
+            context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
+            context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
+
+            engine_result = app.game_engine.advance(player_input=message, context=context)
+            ui_data = engine_result.get('ui_data', {})
+            narration = ui_data.get('narration', '')
+
+            response_data = {
+                'responses': [{
+                    'speaker': 'DM',
+                    'content': narration or "The DM considers your words...",
+                    'type': 'narration'
+                }],
+                'session_id': session_id,
+                'character_id': active_character_id,
+                'player_id': player.id
+            }
+
         response = jsonify(response_data)
         if is_new_session:
             response.set_cookie(
-                'session_id', 
-                session_id, 
-                max_age=60*60*24*7,
-                path='/',
-                secure=False,
-                httponly=True,
-                samesite='Lax'
+                'session_id', session_id,
+                max_age=60*60*24*7, path='/',
+                secure=False, httponly=True, samesite='Lax'
             )
-            
         return response
-        
+
     except Exception as e:
         print(f"Error in dm-response: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
 def legacy_dm_response():
     """Fallback to original dm-response logic"""
     try:

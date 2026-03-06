@@ -35,8 +35,11 @@ from .party_manager import PartyManager
 from .quest_manager import QuestManager
 from .character_manager import CharacterManager
 from world.dm_chat_handler import DMChatHandler
-from world.player import Player           # Moved to top
-from world.consequence_engine import ConsequenceEngine   # Add import
+from world.player import Player           
+from world.consequence_engine import ConsequenceEngine
+from world.tool_system import ToolRegistry
+from world.authority_system import AuthoritySystem
+
 
 import warnings
 warnings.filterwarnings("ignore", message=".*Triton.*")
@@ -85,6 +88,10 @@ class WorldController:
         
         # Create dm_chat_ai FIRST (needed by many systems)
         self.dm_chat_ai = DMChatAI(ai_system)
+
+        # Initialize authority system with proper tool registry
+        self.tool_registry = ToolRegistry()
+        self.authority_system = AuthoritySystem(self.tool_registry)
 
         # Create ConsequenceEngine immediately after dm_chat_ai
         self.consequence_engine = ConsequenceEngine(

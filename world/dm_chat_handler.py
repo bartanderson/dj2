@@ -385,9 +385,15 @@ class DMChatHandler:
                         'character_level': character.level
                     }
 
-            # Use AI to classify intent
-            intent_context = "Character creation phase" if not character_id else "In-game phase"
+
+            # Build context for intent classification
+            intent_context = {
+                "phase": "character_creation" if not character_id else "in_game",
+                "character_context": character_context,
+                "session": session_state.get_creation_context() if hasattr(session_state, 'get_creation_context') else {}
+            }
             intent_result = self._classify_intent(message, intent_context)
+            
             print(f"AI Intent Classification: {intent_result}")
 
             # Handle meta-requests early
@@ -536,6 +542,9 @@ class DMChatHandler:
     def _handle_meta_request(self, message: str, session_id: str) -> str:
         """Generate response to meta-questions about the conversation"""
         recent_topics = self.get_recent_topics(session_id)
+        if not recent_topics:
+            # No conversation history – treat as start of character creation
+            return "I'd be happy to help you create a character! Tell me about the kind of adventurer you'd like to play."
         prompt = f"""
         You're a Dungeon Master handling a player's request about your conversation.
         
@@ -864,9 +873,14 @@ class DMChatHandler:
                 return True, f"Understood, I'll use {assessment['corrected_value']} instead. Let's continue."
 
             else:
-                return False, "I'm not sure if you're confirming the suggestion or suggesting something different. Could you clarify?"
+                # Not a confirmation or correction – treat as rejection or unclear
+                self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
+                self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+                self.world_controller.session_system.set_pending_suggestion(session_id, None)
+                # Clear temporary suggestion fields
+                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
+                    self.world_controller.session_system.remove_character_data_field(session_id, field)
+                return False, "No problem! Let's keep exploring your character. Tell me more about what you're imagining."
         except Exception as e:
             print(f"Error handling confirmation: {e}")
             return False, "I had trouble understanding your response. Could you please clarify?"
-
-    # The _finalize_character method has been removed as it is redundant and unused.

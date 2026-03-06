@@ -1,3 +1,5 @@
+import uuid
+from typing import List, Optional, Dict, Any
 class Player:
     def __init__(self, id=None, name="Unknown Player", attributes=None):
         self.id = id or str(uuid.uuid4())

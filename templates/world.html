@@ -1048,24 +1048,61 @@ document.addEventListener('DOMContentLoaded', checkMode);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
         
-        function sendChatMessage() {
+        async function sendChatMessage() {
             const message = chatInput.value.trim();
-            if (message) {
-                addMessage(message, 'player');
-                chatInput.value = '';
+            if (!message) return;
+            
+            // Show user message immediately
+            addMessage(message, 'player');
+            chatInput.value = '';
+            
+            // Show loading indicator
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.innerHTML = '<em>DM is thinking...</em>';
+            loadingDiv.style.color = '#888';
+            loadingDiv.style.marginBottom = '8px';
+            chatMessages.appendChild(loadingDiv);
+            
+            try {
+                const response = await fetch('/api/dm-response', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
                 
-                // Simulate DM response (placeholder)
-                setTimeout(() => {
-                    const responses = [
-                        "Interesting choice, adventurer. How shall we proceed?",
-                        "The dungeon awaits. Are you prepared?",
-                        "Your words echo in the ancient halls...",
-                        "What would you like to do next?",
-                        "The journey continues. Tell me more."
-                    ];
-                    const response = responses[Math.floor(Math.random() * responses.length)];
-                    addMessage(response, 'dm');
-                }, 1000);
+                // Remove loading indicator
+                document.getElementById(loadingId)?.remove();
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    addMessage('Error: ' + (error.error || 'Unknown error'), 'dm');
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Add each response from the DM
+                if (data.responses && Array.isArray(data.responses)) {
+                    data.responses.forEach(r => {
+                        addMessage(r.content, r.speaker.toLowerCase() === 'dm' ? 'dm' : 'player');
+                    });
+                } else {
+                    // Fallback
+                    addMessage('The DM nods silently.', 'dm');
+                }
+                
+                // If character data was returned, you could update the character sheet here
+                if (data.character_data) {
+                    console.log('Character data received:', data.character_data);
+                    // Optionally trigger a character sheet refresh
+                }
+                
+            } catch (error) {
+                document.getElementById(loadingId)?.remove();
+                addMessage('Network error: ' + error.message, 'dm');
+                console.error('Chat error:', error);
             }
         }
         
@@ -1074,9 +1111,61 @@ document.addEventListener('DOMContentLoaded', checkMode);
             if (e.key === 'Enter') sendChatMessage();
         });
         
-        // Add welcome message
-        addMessage("Welcome to Dungeon World! How can I help you create your character?", 'dm');
+        // Add a welcome message from the server? Not needed; the server will respond when we send a message.
+        // Instead, we could fetch some initial context, but it's fine to start with nothing.
     }
+    // function setupChat() {
+    //     const chatInput = document.getElementById('chat-input');
+    //     const chatMessages = document.getElementById('chat-messages');
+    //     const sendChatBtn = document.getElementById('send-chat');
+        
+    //     function addMessage(text, sender = 'player') {
+    //         const msgDiv = document.createElement('div');
+    //         msgDiv.className = `chat-message ${sender}`;
+    //         msgDiv.innerHTML = `
+    //             <div style="font-weight: bold; color: ${sender === 'player' ? '#4ecca3' : '#ff9800'}">
+    //                 ${sender === 'player' ? 'You' : 'DM'}:
+    //             </div>
+    //             <div style="margin-left: 10px;">${text}</div>
+    //         `;
+    //         msgDiv.style.marginBottom = '10px';
+    //         msgDiv.style.padding = '8px';
+    //         msgDiv.style.background = 'rgba(0,0,0,0.3)';
+    //         msgDiv.style.borderRadius = '4px';
+            
+    //         chatMessages.appendChild(msgDiv);
+    //         chatMessages.scrollTop = chatMessages.scrollHeight;
+    //     }
+        
+    //     function sendChatMessage() {
+    //         const message = chatInput.value.trim();
+    //         if (message) {
+    //             addMessage(message, 'player');
+    //             chatInput.value = '';
+                
+    //             // Simulate DM response (placeholder)
+    //             setTimeout(() => {
+    //                 const responses = [
+    //                     "Interesting choice, adventurer. How shall we proceed?",
+    //                     "The dungeon awaits. Are you prepared?",
+    //                     "Your words echo in the ancient halls...",
+    //                     "What would you like to do next?",
+    //                     "The journey continues. Tell me more."
+    //                 ];
+    //                 const response = responses[Math.floor(Math.random() * responses.length)];
+    //                 addMessage(response, 'dm');
+    //             }, 1000);
+    //         }
+    //     }
+        
+    //     sendChatBtn.addEventListener('click', sendChatMessage);
+    //     chatInput.addEventListener('keypress', (e) => {
+    //         if (e.key === 'Enter') sendChatMessage();
+    //     });
+        
+    //     // Add welcome message
+    //     addMessage("Welcome to Dungeon World! How can I help you create your character?", 'dm');
+    // }
     
     // ===== SETTINGS FUNCTIONALITY =====
     function setupSettings() {

@@ -144,12 +144,28 @@ class DMChatAI(AIBoundary):
             return {}
     
     def suggest_character_class(self, character_concept: str, existing_data: Dict = None) -> Dict[str, Any]:
-        """Suggest appropriate character class based on concept"""
+        """Suggest appropriate character class based on concept and existing data"""
+        # Build a rich concept from existing data
+        concept_parts = []
+        if existing_data:
+            if existing_data.get('race'):
+                concept_parts.append(f"Race: {existing_data['race']}")
+            if existing_data.get('background'):
+                concept_parts.append(f"Background: {existing_data['background']}")
+            if existing_data.get('personality'):
+                concept_parts.append(f"Personality: {existing_data['personality']}")
+            if existing_data.get('motivations'):
+                concept_parts.append(f"Motivations: {existing_data['motivations']}")
+            if existing_data.get('skills'):
+                concept_parts.append(f"Skills: {existing_data['skills']}")
+        if character_concept:
+            concept_parts.append(f"Desired class/concept: {character_concept}")
+        rich_concept = "\n".join(concept_parts) if concept_parts else "No details provided yet."
+
         prompt = f"""
         Based on this character concept, suggest the most appropriate D&D 5e class:
         
-        CONCEPT: "{character_concept}"
-        EXISTING DATA: {json.dumps(existing_data) if existing_data else 'None'}
+        CONCEPT: {rich_concept}
         
         Consider:
         - Combat style preferences
@@ -218,16 +234,16 @@ class DMChatAI(AIBoundary):
     def interpret_confirmation(self, message: str, context: Dict) -> Dict[str, Any]:
         """Interpret if a message is confirmation, correction, or neither"""
         prompt = f"""
-        Determine if this message is a confirmation, correction, or neither:
+        Determine if this message is a confirmation, correction (offering a different class), or neither.
         "{message}"
         
-        Context: {json.dumps(context)}
+        Context: The player was asked to confirm a suggested character class: {context.get('suggested_class', 'unknown')}
         
         Return JSON with:
-        - is_confirmation: true/false
-        - corrected_value: if it's a correction, what's the new value (null if not)
+        - is_confirmation: true if they agree (yes, sure, okay, that works, etc.)
+        - corrected_value: if they offer a different class, extract the class name (e.g., "I'd rather be a wizard" → "wizard")
         - confidence: 0-1 confidence in the assessment
-        - interpretation: brief explanation of your interpretation
+        - interpretation: brief explanation
         """
         
         try:
@@ -245,7 +261,7 @@ class DMChatAI(AIBoundary):
                 "confidence": 0.5,
                 "interpretation": "Could not interpret"
             }
-    
+
     def generate_meta_response(self, message: str, recent_topics: List[str]) -> str:
         """Generate response to meta-questions about the conversation"""
         prompt = f"""
