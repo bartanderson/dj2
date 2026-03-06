@@ -1,4 +1,4 @@
-# /ai/ai_boundary.py
+# ai/ai_boundary.py
 """
 Strict AI boundary enforcing phase separation.
 AI can only:

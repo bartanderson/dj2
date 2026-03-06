@@ -48,15 +48,205 @@ class DMChatHandler:
             print(f"AI topic extraction failed: {e}")
             return None
 
+    def _generate_resume_prompt(self, session_id: str) -> str:
+        """Generate a prompt to resume character creation."""
+        session = self.world_controller.session_system.get_session(session_id)
+        if not session:
+            return "Let's start creating your character. Tell me about the kind of adventurer you'd like to play."
+        
+        context = session.get_creation_context()
+        prompt = f"""
+        The player was in the middle of creating a character. Here's what we have so far:
+        {context}
+        
+        Generate a friendly, concise message that:
+        1. Summarizes what we've discussed (the key details already provided).
+        2. Asks if they want to continue or start over.
+        
+        Keep it conversational and encouraging.
+        """
+        try:
+            return self.world_controller.dm_chat_ai.generate_text(prompt)
+        except Exception as e:
+            print(f"Resume prompt generation failed: {e}")
+            # Fallback
+            details = ", ".join([f"{k}: {v}" for k, v in session.character_data.items() if v])
+            return f"Welcome back! You were creating a character with these details: {details}. Would you like to continue or start over?"
+
+    def _process_creation_step(self, message: str, session_id: str) -> Dict:
+        """Process a message during character creation. Returns dict with narrative."""
+        session = self.world_controller.session_system.get_session(session_id)
+        if not session:
+            return {"narrative": [Dialog("DM", "Session error. Please start over.", "system")]}
+
+        # If first time, set state to gathering_info
+        if session.creation_state == "not_started":
+            self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+            session = self.world_controller.session_system.get_session(session_id)
+
+        # 1. INTERPRETATION: classify intent
+        intent_result = self.world_controller.dm_chat_ai.classify_intent(
+            message, {"phase": "character_creation", "session": session.get_creation_context()}
+        )
+        intent = intent_result.get("intent", "unknown")
+
+        # 2. Handle confirmation state
+        if session.awaiting_confirmation and intent in ["confirmation", "clarification"]:
+            is_confirmed, response = self._handle_confirmation(session_id, message, session)
+            self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
+
+            if is_confirmed:
+                return self._continue_creation_after_confirmation(session_id)
+            else:
+                return {"narrative": [Dialog("DM", response, "clarification")]}
+
+        # 3. Not awaiting confirmation – extract data and update session
+        extracted = self.world_controller.dm_chat_ai.extract_character_data(message, session.character_data)
+        if extracted:
+            self.world_controller.session_system.update_character_data(session_id, extracted)
+            session = self.world_controller.session_system.get_session(session_id)
+
+        # 4. Decide next step based on state and data
+        if session.creation_state == "gathering_info":
+            if self._has_sufficient_data_for_class_suggestion(session.character_data):
+                # Suggest a class
+                class_info = self._determine_character_class(
+                    session.character_data.get('class', ''),
+                    session.character_data
+                )
+                # Store suggestion in session
+                updates = {
+                    'suggested_class': class_info['primary_class'],
+                    'suggested_multiclass': class_info['secondary_class'],
+                    'class_explanation': class_info['explanation'],
+                    'custom_traits': class_info['custom_traits']
+                }
+                self.world_controller.session_system.update_character_data(session_id, updates)
+                self.world_controller.session_system.set_creation_state(session_id, "class_suggested")
+                self.world_controller.session_system.set_awaiting_confirmation(session_id, True)
+                self.world_controller.session_system.set_pending_suggestion(session_id, class_info)
+
+                message = (f"Based on your description, I suggest {class_info['primary_class']} "
+                           f"{('with a dip into ' + class_info['secondary_class'] + ' ') if class_info['secondary_class'] else ''}"
+                           f"because: {class_info['explanation']}. Does this work for you?")
+                return {"narrative": [Dialog("DM", message, "narration")]}
+
+            else:
+                # Not enough info – ask next question
+                next_q = self._determine_next_question(session.character_data, session_id)
+                return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
+
+        elif session.creation_state == "class_suggested":
+            # Should not happen because we handle confirmation above, but just in case
+            return {
+                "narrative": [Dialog("DM", "I'm still waiting for your confirmation on the class suggestion. Does the suggested class work for you?", "narration")]
+            }
+
+        elif session.creation_state == "class_confirmed":
+            if self._has_sufficient_character_data(session.character_data):
+                # Create the character
+                character = self.world_controller.character_manager.create_character(
+                    session.player_id,
+                    session.character_data
+                )
+                if session.player_id:
+                    self.world_controller.character_manager.assign_character_to_player(
+                        session.player_id, character.id
+                    )
+                    self.world_controller.session_system.set_creation_state(session_id, "completed")
+                    self.world_controller.session_system.set_active_character(session_id, character.id)
+                    return {
+                        "narrative": [Dialog("DM", f"Character {character.name} created successfully as a {session.character_data.get('class', 'adventurer')}!", "narration")],
+                        "character_data": session.character_data,
+                        "character_id": character.id,
+                    }
+                else:
+                    return {
+                        "narrative": [Dialog("DM", "Character data is complete, but no player is associated with this session. Please start over.", "system")]
+                    }
+            else:
+                # Fallback: ask next question (shouldn't happen)
+                next_q = self._determine_next_question(session.character_data, session_id)
+                return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
+
+        else:
+            # Fallback
+            return {
+                "narrative": [Dialog("DM", "Let's continue creating your character. Tell me more about them.", "narration")]
+            }
+
+    def _continue_creation_after_confirmation(self, session_id: str) -> Dict:
+        """After a class confirmation, proceed with creation (may create character)."""
+        session = self.world_controller.session_system.get_session(session_id)
+        if not session:
+            return {"narrative": [Dialog("DM", "Session error.", "system")]}
+
+        # If we just confirmed, the state should now be class_confirmed
+        if session.creation_state != "class_confirmed":
+            self.world_controller.session_system.set_creation_state(session_id, "class_confirmed")
+            session = self.world_controller.session_system.get_session(session_id)
+
+        # Now handle the class_confirmed state (same as in _process_creation_step)
+        if self._has_sufficient_character_data(session.character_data):
+            character = self.world_controller.character_manager.create_character(
+                session.player_id,
+                session.character_data
+            )
+            if session.player_id:
+                self.world_controller.character_manager.assign_character_to_player(
+                    session.player_id, character.id
+                )
+                self.world_controller.session_system.set_creation_state(session_id, "completed")
+                self.world_controller.session_system.set_active_character(session_id, character.id)
+                return {
+                    "narrative": [Dialog("DM", f"Character {character.name} created successfully as a {session.character_data.get('class', 'adventurer')}!", "narration")],
+                    "character_data": session.character_data,
+                    "character_id": character.id,
+                }
+            else:
+                return {
+                    "narrative": [Dialog("DM", "Character data is complete, but no player is associated with this session. Please start over.", "system")]
+                }
+        else:
+            # Not enough data – should not happen if confirmation led here, but fallback
+            next_q = self._determine_next_question(session.character_data, session_id)
+            return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
+
     def get_recent_topics(self, session_id: str) -> List[str]:
         """Get recent topics for a session"""
         if hasattr(self.world_controller, 'session_system') and self.world_controller.session_system:
             return self.world_controller.session_system.get_recent_topics(session_id)
         return []
 
+    def _generate_resume_prompt(self, session_id: str) -> str:
+        """Generate a prompt to resume character creation."""
+        session = self.world_controller.session_system.get_session(session_id)
+        if not session:
+            return "Let's start creating your character. Tell me about the kind of adventurer you'd like to play."
+        
+        context = session.get_creation_context()
+        prompt = f"""
+        The player was in the middle of creating a character. Here's what we have so far:
+        {context}
+        
+        Generate a friendly, concise message that:
+        1. Summarizes what we've discussed (the key details already provided).
+        2. Asks if they want to continue or start over.
+        
+        Keep it conversational and encouraging.
+        """
+        try:
+            return self.world_controller.dm_chat_ai.generate_text(prompt)
+        except Exception as e:
+            print(f"Resume prompt generation failed: {e}")
+            # Fallback
+            details = ", ".join([f"{k}: {v}" for k, v in session.character_data.items() if v])
+            return f"Welcome back! You were creating a character with these details: {details}. Would you like to continue or start over?"
+
     def process_message(self, session_id: str, message: str, character_id=None):
         """Process a message from a player session"""
         response_data = {}
+        tool_result = None 
         print("DEBUG: DMChatHandler.process_message called")
         try:
             session_state = self.world_controller.session_system.get_or_create_session(session_id, None)
@@ -64,6 +254,22 @@ class DMChatHandler:
             player = None
             if session_state.player_id:
                 player = self.world_controller.players.get(session_state.player_id)
+
+                # Resume detection for interrupted character creation
+                print("DEBUG: Resume checkpoint")
+                print(f"DEBUG: resume check: character_id={character_id}, has_data={bool(session_state.character_data)}, creation_state={session_state.creation_state}, active_char={session_state.active_character_id}")
+                if (not character_id and 
+                    session_state.character_data and 
+                    session_state.creation_state != "not_started" and 
+                    not session_state.active_character_id):
+                    print(f"DEBUG: Resume triggered for session {session_id}")
+                    resume_message = self._generate_resume_prompt(session_id)
+                    # Store the user message? For now, just return the resume prompt without processing the message.
+                    # We'll add the user message to history later (optional).
+                    return {
+                        "narrative": [Dialog("DM", resume_message, "narration")],
+                        "tool_result": None
+                    }
 
             # Check if we're in a confirmation state
             if session_state.awaiting_confirmation:
@@ -136,21 +342,18 @@ class DMChatHandler:
 
             # If in character creation mode (no active character), use the dedicated creation flow
             is_character_creation = not character_id and (not player or not player.active_character_id)
+
             if is_character_creation:
-                try:
-                    intent_result = self.world_controller.dm_chat_ai.classify_intent(
-                        message, {"phase": "character_creation"}
-                    )
-                    if intent_result["intent"] == "character_creation":
-                        response_text = "I'd be happy to help you create a character! Let's start by choosing a race and class. What kind of character are you imagining?"
-                    else:
-                        response_text = "I can help you create a character! Tell me about the type of adventurer you'd like to play."
-                    narrative_responses = [Dialog("DM", response_text, "narration")]
-                except Exception as e:
-                    print(f"Error generating character creation response: {e}")
-                    narrative_responses = [Dialog("DM", "I'd be happy to help you create a character! Let's start by choosing a race and class. What kind of character are you imagining?", "narration")]
+                creation_result = self._process_creation_step(message, session_id)
+                narrative_responses = creation_result.get("narrative", [])
+                if "character_data" in creation_result:
+                    response_data['character_data'] = creation_result['character_data']
+                if "character_id" in creation_result:
+                    response_data['character_id'] = creation_result['character_id']
+                # Skip the rest of the in-game processing (the else branch will not run)
+
             else:
-                # ---- NEW: Use ConsequenceEngine instead of self.dm ----
+                # ---- NEW: Use ConsequenceEngine instead of self.dm ---
                 # First, check if tool execution is needed
                 requires_tool = self._ai_detect_tool_intent(message, [], character_context)  # we don't have dm_responses yet
                 tool_result = None
@@ -181,10 +384,6 @@ class DMChatHandler:
                     response_data['show_character_sheet'] = True
                 # ---- END NEW ----
 
-            # Update topics for DM responses
-            for response in narrative_responses:
-                self._update_conversation_topics(session_id, response.content, is_dm_response=True)
-
             # Store in chat history using session_system
             if hasattr(self.world_controller, 'session_system') and self.world_controller.session_system:
                 self.world_controller.session_system.add_message(session_id, "Player", message)
@@ -197,6 +396,10 @@ class DMChatHandler:
                 "tool_result": tool_result,
                 "character_data": tool_result.get('character_data') if tool_result else None
             }
+
+            # Update topics for DM responses
+            for response in narrative_responses:
+                self._update_conversation_topics(session_id, response.content, is_dm_response=True)
 
         except Exception as e:
             print(f"DEBUG: Exception in process_message: {e}")
