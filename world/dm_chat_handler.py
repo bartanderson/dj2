@@ -75,9 +75,8 @@ class DMChatHandler:
             return f"Welcome back! You were creating a character with these details: {details}. Would you like to continue or start over?"
 
     def _ensure_creation_state(self, session_id: str, session) -> 'SessionState':
-        print(f"DEBUG: _ensure_creation_state called with state={session.creation_state}")
+        """If creation_state is not_started, set to gathering_info and return updated session."""
         if session.creation_state == "not_started":
-            print(f"DEBUG: transitioning to gathering_info")
             self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
             return self.world_controller.session_system.get_session(session_id)
         return session
@@ -102,12 +101,15 @@ class DMChatHandler:
             if is_confirmed:
                 return self._continue_creation_after_confirmation(session_id)
             else:
-                return {"narrative": [Dialog("DM", response, "clarification")]}
+                # Use consequence engine for clarification
+                action = {"action": "error", "parameters": {"message": response}}
+                narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+                return {"narrative": narrative}
 
         # 3. Not awaiting confirmation – extract data and update session
         extracted = self.world_controller.dm_chat_ai.extract_character_data(message, session.character_data)
         if extracted:
-            # Build action for each extracted field (or one action per field)
+            # Build action for each extracted field
             for field, value in extracted.items():
                 action = {
                     "action": "update_character_attribute",
@@ -115,12 +117,18 @@ class DMChatHandler:
                 }
                 validated = self.world_controller.authority_system.validate_creation_action(action, {})
                 if not validated.valid:
-                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+                    error_action = {"action": "error", "parameters": {"message": validated.message}}
+                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(error_action, {})
+                    return {"narrative": narrative}
                 # If valid, apply
                 self.world_controller.session_system.update_character_data(session_id, {field: value})
             session = self.world_controller.session_system.get_session(session_id)
-        session = self._ensure_creation_state(session_id, session)
-        
+
+        # --- NEW: Transition from not_started to gathering_info if we have valid data ---
+        if session.creation_state == "not_started":
+            self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+            session = self.world_controller.session_system.get_session(session_id)
+
         # 4. Decide next step based on state and data
         if session.creation_state == "gathering_info":
             if self._has_sufficient_data_for_class_suggestion(session.character_data):
@@ -136,10 +144,10 @@ class DMChatHandler:
                 }
                 validated = self.world_controller.authority_system.validate_creation_action(action, {})
                 if not validated.valid:
-                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+                    error_action = {"action": "error", "parameters": {"message": validated.message}}
+                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(error_action, {})
+                    return {"narrative": narrative}
 
-                session = self._ensure_creation_state(session_id, session) 
-                
                 # Store suggestion in session
                 updates = {
                     'suggested_class': class_info['primary_class'],
@@ -152,34 +160,40 @@ class DMChatHandler:
                 self.world_controller.session_system.set_awaiting_confirmation(session_id, True)
                 self.world_controller.session_system.set_pending_suggestion(session_id, class_info)
 
-                message = (f"Based on your description, I suggest {class_info['primary_class']} "
-                           f"{('with a dip into ' + class_info['secondary_class'] + ' ') if class_info['secondary_class'] else ''}"
-                           f"because: {class_info['explanation']}. Does this work for you?")
-                return {"narrative": [Dialog("DM", message, "narration")]}
+                # Generate narrative via consequence engine
+                narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+                return {"narrative": narrative}
 
             else:
                 # Not enough info – ask next question
-                session = self._ensure_creation_state(session_id, session)
                 next_q = self._determine_next_question(session.character_data, session_id)
-                return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
+                action = {
+                    "action": "ask_question",
+                    "parameters": {"question": next_q['question'], "category": next_q.get('category')}
+                }
+                narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+                return {"narrative": narrative}
 
         elif session.creation_state == "class_suggested":
             # Should not happen because we handle confirmation above, but just in case
-            return {
-                "narrative": [Dialog("DM", "I'm still waiting for your confirmation on the class suggestion. Does the suggested class work for you?", "narration")]
-            }
+            action = {"action": "error", "parameters": {"message": "I'm still waiting for your confirmation on the class suggestion."}}
+            narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+            return {"narrative": narrative}
 
         elif session.creation_state == "class_confirmed":
             if self._has_sufficient_character_data(session.character_data):
-                # Build and validate creation action
+                # Validate final creation
                 action = {
                     "action": "create_character",
                     "parameters": {"character_data": session.character_data}
                 }
                 validated = self.world_controller.authority_system.validate_creation_action(action, {})
                 if not validated.valid:
-                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+                    error_action = {"action": "error", "parameters": {"message": validated.message}}
+                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(error_action, {})
+                    return {"narrative": narrative}
 
+                # Create the character
                 character = self.world_controller.character_manager.create_character(
                     session.player_id,
                     session.character_data
@@ -190,25 +204,32 @@ class DMChatHandler:
                     )
                     self.world_controller.session_system.set_creation_state(session_id, "completed")
                     self.world_controller.session_system.set_active_character(session_id, character.id)
+                    # Generate success narrative
+                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {"character": character})
                     return {
-                        "narrative": [Dialog("DM", f"Character {character.name} created successfully as a {session.character_data.get('class', 'adventurer')}!", "narration")],
+                        "narrative": narrative,
                         "character_data": session.character_data,
                         "character_id": character.id,
                     }
                 else:
-                    return {
-                        "narrative": [Dialog("DM", "Character data is complete, but no player is associated with this session. Please start over.", "system")]
-                    }
+                    error_action = {"action": "error", "parameters": {"message": "No player associated with this session."}}
+                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(error_action, {})
+                    return {"narrative": narrative}
             else:
                 # Fallback: ask next question (shouldn't happen)
                 next_q = self._determine_next_question(session.character_data, session_id)
-                return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
+                action = {
+                    "action": "ask_question",
+                    "parameters": {"question": next_q['question'], "category": next_q.get('category')}
+                }
+                narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+                return {"narrative": narrative}
 
         else:
             # Fallback
-            return {
-                "narrative": [Dialog("DM", "Let's continue creating your character. Tell me more about them.", "narration")]
-            }
+            action = {"action": "error", "parameters": {"message": "Let's continue creating your character. Tell me more about them."}}
+            narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+            return {"narrative": narrative}
 
     def _continue_creation_after_confirmation(self, session_id: str) -> Dict:
         """After a class confirmation, proceed with creation (may create character)."""

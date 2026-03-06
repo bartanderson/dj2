@@ -15,6 +15,41 @@ class ConsequenceEngine:
         self.response_generator = ResponseGenerator()
         self.dialog_history = []
 
+    def generate_creation_narrative(self, action: Dict, context: Dict) -> List[Dialog]:
+        """
+        Generate a narrative response for a character‑creation action.
+        action should contain at least "action" and "parameters".
+        """
+        action_type = action.get("action")
+        params = action.get("parameters", {})
+
+        if action_type == "ask_question":
+            question = params.get("question", "Tell me more about your character.")
+            return [Dialog("DM", question, "narration")]
+
+        elif action_type == "suggest_class":
+            suggestion = params.get("suggestion", {})
+            primary = suggestion.get("primary_class", "fighter")
+            explanation = suggestion.get("explanation", "")
+            # You can make this more dynamic by using AI later
+            text = f"Based on what you've told me, I think {primary} would be a great fit. {explanation} Does that sound right?"
+            return [Dialog("DM", text, "narration")]
+
+        elif action_type == "confirm_class":
+            return [Dialog("DM", "Great! Class confirmed. Let's continue.", "narration")]
+
+        elif action_type == "create_character":
+            char_data = params.get("character_data", {})
+            name = char_data.get("name", "Your character")
+            return [Dialog("DM", f"Wonderful! {name} is now ready to begin their adventure.", "narration")]
+
+        elif action_type == "error":
+            message = params.get("message", "Something went wrong.")
+            return [Dialog("DM", message, "system")]
+
+        else:
+            return [Dialog("DM", "Let's continue with your character.", "narration")]
+
     def generate_response_for_action(self, validated_action: Dict[str, Any], context: Dict) -> List[Dialog]:
         """
         Generate narrative responses based on a validated action.

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 from world.dm_chat_handler import DMChatHandler
 from world.session_system import SessionSystem
 from world.ai_dungeon_master import Dialog
@@ -25,6 +25,8 @@ def mock_world_controller(session_system, mock_ai):
     wc.character_manager = Mock()
     wc.authority_system = Mock()
     wc.consequence_engine = Mock()
+    # Default mock return for narrative
+    wc.consequence_engine.generate_creation_narrative.return_value = [Dialog("DM", "Mock narrative", "narration")]
     wc.players = {}
     return wc
 
@@ -33,7 +35,6 @@ def handler(mock_world_controller):
     return DMChatHandler(mock_world_controller)
 
 def test_resume_detection_returns_prompt(handler, session_system, mock_ai):
-    """Test that when a session has partial character data and no active character, a resume prompt is returned."""
     session_id = "test-session"
     player_id = "player123"
     session = session_system.get_or_create_session(session_id, player_id)
@@ -51,8 +52,7 @@ def test_resume_detection_returns_prompt(handler, session_system, mock_ai):
     assert "Welcome back" in result["narrative"][0].content
     assert session_system.get_session(session_id).character_data == {"name": "Thorin", "race": "dwarf"}
 
-def test_first_creation_message_sets_state_and_asks_question(handler, session_system, mock_ai):
-    """Test that the first message in a new session transitions to gathering_info and returns a question."""
+def test_first_creation_message_sets_state_and_asks_question(handler, session_system, mock_ai, mock_world_controller):
     session_id = "test-session"
     player_id = "player123"
     session = session_system.get_or_create_session(session_id, player_id)
@@ -64,17 +64,22 @@ def test_first_creation_message_sets_state_and_asks_question(handler, session_sy
     mock_ai.extract_character_data.return_value = {"name": "Thorin", "race": "dwarf"}
     mock_ai.suggest_next_question.return_value = {"question": "What class interests you?", "category": "class"}
 
+    # Mock authority to accept updates
+    mock_world_controller.authority_system.validate_creation_action.return_value = ValidatedAction(valid=True, message="OK")
+
     result = handler.process_message(session_id, "I want to be Thorin, a dwarf warrior.")
 
     updated_session = session_system.get_session(session_id)
     assert updated_session.creation_state == "gathering_info"
     assert updated_session.character_data == {"name": "Thorin", "race": "dwarf"}
-    assert "narrative" in result
-    assert len(result["narrative"]) == 1
-    assert result["narrative"][0].content == "What class interests you?"
+
+    # Verify consequence engine was called with ask_question action
+    mock_world_controller.consequence_engine.generate_creation_narrative.assert_called_once()
+    args, kwargs = mock_world_controller.consequence_engine.generate_creation_narrative.call_args
+    assert args[0]["action"] == "ask_question"
+    assert args[0]["parameters"]["question"] == "What class interests you?"
 
 def test_invalid_attribute_rejected(handler, session_system, mock_ai, mock_world_controller):
-    """Test that setting an invalid field (e.g., 'level') returns error and does not mutate."""
     session_id = "test-session"
     player_id = "player123"
     session = session_system.get_or_create_session(session_id, player_id)
@@ -91,25 +96,26 @@ def test_invalid_attribute_rejected(handler, session_system, mock_ai, mock_world
 
     result = handler.process_message(session_id, "I want to be level 5")
 
-    assert "narrative" in result
-    assert len(result["narrative"]) == 1
-    assert "cannot be set" in result["narrative"][0].content
+    # Consequence engine should be called with error action
+    mock_world_controller.consequence_engine.generate_creation_narrative.assert_called_once()
+    args, kwargs = mock_world_controller.consequence_engine.generate_creation_narrative.call_args
+    assert args[0]["action"] == "error"
+    assert "cannot be set" in args[0]["parameters"]["message"]
 
     updated_session = session_system.get_session(session_id)
-    assert updated_session.character_data == {}  # unchanged
-    assert updated_session.creation_state == "not_started"  # unchanged
+    assert updated_session.character_data == {}
+    assert updated_session.creation_state == "not_started"
 
 def test_create_character_authority_rejects(handler, session_system, mock_ai, mock_world_controller):
-    """Test that if authority rejects the final character creation, an error is returned."""
     session_id = "test-session"
     player_id = "player123"
     session = session_system.get_or_create_session(session_id, player_id)
     session.creation_state = "class_confirmed"
-    session.character_data = {"name": "Thorin", "race": "dwarf", "class": "fighter"}  # all fields present
+    session.character_data = {"name": "Thorin", "race": "dwarf", "class": "fighter"}
     session.active_character_id = None
 
     mock_ai.classify_intent.return_value = {"intent": "provide_info", "confidence": 0.9}
-    mock_ai.extract_character_data.return_value = {}  # no new data
+    mock_ai.extract_character_data.return_value = {}
 
     mock_world_controller.authority_system.validate_creation_action.return_value = ValidatedAction(
         valid=False, message="Invalid class: fighter"
@@ -117,8 +123,9 @@ def test_create_character_authority_rejects(handler, session_system, mock_ai, mo
 
     result = handler._process_creation_step("irrelevant", session_id)
 
-    assert "narrative" in result
-    assert len(result["narrative"]) == 1
-    assert "Invalid class" in result["narrative"][0].content
+    mock_world_controller.consequence_engine.generate_creation_narrative.assert_called_once()
+    args, kwargs = mock_world_controller.consequence_engine.generate_creation_narrative.call_args
+    assert args[0]["action"] == "error"
+    assert "Invalid class" in args[0]["parameters"]["message"]
 
     mock_world_controller.character_manager.create_character.assert_not_called()
