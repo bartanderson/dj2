@@ -2,6 +2,7 @@
 # coding=utf-8
 from typing import Dict, List, Optional, Tuple
 from world.ai_dungeon_master import Dialog  # Ensure Dialog is imported
+from world.session_system import SessionState
 
 class DMChatHandler:
     """
@@ -73,16 +74,19 @@ class DMChatHandler:
             details = ", ".join([f"{k}: {v}" for k, v in session.character_data.items() if v])
             return f"Welcome back! You were creating a character with these details: {details}. Would you like to continue or start over?"
 
+    def _ensure_creation_state(self, session_id: str, session) -> 'SessionState':
+        print(f"DEBUG: _ensure_creation_state called with state={session.creation_state}")
+        if session.creation_state == "not_started":
+            print(f"DEBUG: transitioning to gathering_info")
+            self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+            return self.world_controller.session_system.get_session(session_id)
+        return session
+
     def _process_creation_step(self, message: str, session_id: str) -> Dict:
         """Process a message during character creation. Returns dict with narrative."""
         session = self.world_controller.session_system.get_session(session_id)
         if not session:
             return {"narrative": [Dialog("DM", "Session error. Please start over.", "system")]}
-
-        # If first time, set state to gathering_info
-        if session.creation_state == "not_started":
-            self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
-            session = self.world_controller.session_system.get_session(session_id)
 
         # 1. INTERPRETATION: classify intent
         intent_result = self.world_controller.dm_chat_ai.classify_intent(
@@ -103,9 +107,20 @@ class DMChatHandler:
         # 3. Not awaiting confirmation – extract data and update session
         extracted = self.world_controller.dm_chat_ai.extract_character_data(message, session.character_data)
         if extracted:
-            self.world_controller.session_system.update_character_data(session_id, extracted)
+            # Build action for each extracted field (or one action per field)
+            for field, value in extracted.items():
+                action = {
+                    "action": "update_character_attribute",
+                    "parameters": {"field": field, "value": value}
+                }
+                validated = self.world_controller.authority_system.validate_creation_action(action, {})
+                if not validated.valid:
+                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+                # If valid, apply
+                self.world_controller.session_system.update_character_data(session_id, {field: value})
             session = self.world_controller.session_system.get_session(session_id)
-
+        session = self._ensure_creation_state(session_id, session)
+        
         # 4. Decide next step based on state and data
         if session.creation_state == "gathering_info":
             if self._has_sufficient_data_for_class_suggestion(session.character_data):
@@ -114,6 +129,17 @@ class DMChatHandler:
                     session.character_data.get('class', ''),
                     session.character_data
                 )
+                # Validate the suggestion action
+                action = {
+                    "action": "suggest_class",
+                    "parameters": {"suggestion": class_info}
+                }
+                validated = self.world_controller.authority_system.validate_creation_action(action, {})
+                if not validated.valid:
+                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+
+                session = self._ensure_creation_state(session_id, session) 
+                
                 # Store suggestion in session
                 updates = {
                     'suggested_class': class_info['primary_class'],
@@ -133,6 +159,7 @@ class DMChatHandler:
 
             else:
                 # Not enough info – ask next question
+                session = self._ensure_creation_state(session_id, session)
                 next_q = self._determine_next_question(session.character_data, session_id)
                 return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
 
@@ -144,7 +171,15 @@ class DMChatHandler:
 
         elif session.creation_state == "class_confirmed":
             if self._has_sufficient_character_data(session.character_data):
-                # Create the character
+                # Build and validate creation action
+                action = {
+                    "action": "create_character",
+                    "parameters": {"character_data": session.character_data}
+                }
+                validated = self.world_controller.authority_system.validate_creation_action(action, {})
+                if not validated.valid:
+                    return {"narrative": [Dialog("DM", validated.message, "system")]}
+
                 character = self.world_controller.character_manager.create_character(
                     session.player_id,
                     session.character_data
@@ -188,10 +223,18 @@ class DMChatHandler:
 
         # Now handle the class_confirmed state (same as in _process_creation_step)
         if self._has_sufficient_character_data(session.character_data):
+            action = {
+                "action": "create_character",
+                "parameters": {"character_data": session.character_data}
+            }
+            validated = self.world_controller.authority_system.validate_creation_action(action, {})
+            if not validated.valid:
+                return {"narrative": [Dialog("DM", validated.message, "system")]}
+
             character = self.world_controller.character_manager.create_character(
                 session.player_id,
                 session.character_data
-            )
+            ) 
             if session.player_id:
                 self.world_controller.character_manager.assign_character_to_player(
                     session.player_id, character.id
@@ -756,9 +799,18 @@ class DMChatHandler:
             assessment = self.world_controller.dm_chat_ai.interpret_confirmation(message, context)
             if assessment['is_confirmation'] and assessment['confidence'] > 0.7:
                 # Player confirmed the suggestion – update class and remove temporary fields
+                confirmed_class = session_state.character_data.get('suggested_class', '')
+                action = {
+                    "action": "confirm_class",
+                    "parameters": {"confirmed_class": confirmed_class}
+                }
+                validated = self.world_controller.authority_system.validate_creation_action(action, {})
+                if not validated.valid:
+                    return False, validated.message
+
                 self.world_controller.session_system.update_character_data(
                     session_id,
-                    {"class": session_state.character_data.get('suggested_class', '')}
+                    {"class": confirmed_class}
                 )
                 # Remove temporary suggestion fields
                 for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
@@ -770,9 +822,18 @@ class DMChatHandler:
 
             elif assessment['corrected_value'] and assessment['confidence'] > 0.6:
                 # Player provided a correction
+                corrected = assessment['corrected_value']
+                action = {
+                    "action": "confirm_class",
+                    "parameters": {"confirmed_class": corrected}
+                }
+                validated = self.world_controller.authority_system.validate_creation_action(action, {})
+                if not validated.valid:
+                    return False, validated.message
+
                 self.world_controller.session_system.update_character_data(
                     session_id,
-                    {"class": assessment['corrected_value']}
+                    {"class": corrected}
                 )
                 for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
                     self.world_controller.session_system.remove_character_data_field(session_id, field)

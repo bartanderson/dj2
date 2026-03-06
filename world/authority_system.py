@@ -65,6 +65,56 @@ class AuthoritySystem:
         )
         return validated
 
+    def validate_creation_action(self, action: Dict, context: Dict) -> ValidatedAction:
+        """Public entry point for creation action validation."""
+        return self._validate_creation_action(action, context)
+
+    def _validate_creation_action(self, action: Dict, context: Dict) -> ValidatedAction:
+        """Validate character‑creation actions."""
+        action_type = action.get("action")
+        params = action.get("parameters", {})
+
+        # Allowed fields that can be set during creation
+        ALLOWED_FIELDS = {"name", "race", "class", "background", "personality", 
+                          "fears", "motivations", "skills", "alignment"}
+
+        if action_type == "update_character_attribute":
+            field = params.get("field")
+            value = params.get("value")
+            if not field:
+                return ValidatedAction(valid=False, message="No field specified")
+            if field not in ALLOWED_FIELDS:
+                return ValidatedAction(valid=False, message=f"Field '{field}' cannot be set during creation")
+            # Optional: add more validation (e.g., value type, length, allowed race/class names)
+            return ValidatedAction(valid=True, message="OK", action_data=params)
+
+        elif action_type == "suggest_class":
+            # For suggestions, we might only validate that the suggestion itself is reasonable
+            # For now, accept any suggestion (AI is trusted)
+            return ValidatedAction(valid=True, message="OK", action_data=params)
+
+        elif action_type == "confirm_class":
+            confirmed_class = params.get("confirmed_class")
+            if not confirmed_class:
+                return ValidatedAction(valid=False, message="No class specified")
+            # Could check against list of valid classes
+            # from dnd_character import CLASSES
+            # if confirmed_class not in CLASSES:
+            #    return ValidatedAction(valid=False, message=f"'{confirmed_class}' is not a valid class")
+            return ValidatedAction(valid=True, message="OK", action_data=params)
+
+        elif action_type == "create_character":
+            char_data = params.get("character_data", {})
+            required = ["name", "race", "class"]
+            missing = [f for f in required if not char_data.get(f)]
+            if missing:
+                return ValidatedAction(valid=False, message=f"Missing required fields: {', '.join(missing)}")
+            # Optional: validate that race/class are valid
+            return ValidatedAction(valid=True, message="OK", action_data=params)
+
+        else:
+            return ValidatedAction(valid=False, message=f"Unknown creation action: {action_type}")
+
     def validate_and_prepare_action(self, intent: Dict[str, Any], context: Dict[str, Any]) -> ValidatedAction:
         """
         Validate action and prepare data for execution, including tool mapping and roll indication.
