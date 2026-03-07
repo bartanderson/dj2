@@ -136,9 +136,9 @@ class DMChatHandler:
         intent = intent_result.get("intent", "unknown")
         subintent = intent_result.get("parameters", {}).get("subintent", "")
 
-        # 2. Handle confirmation state FIRST – with explicit acknowledgment of diversion
+        # 2. Handle confirmation state
         if session.awaiting_confirmation:
-            if intent in ["confirmation", "clarification"]:
+            if intent == "confirmation":
                 is_confirmed, response = self._handle_confirmation(session_id, message, session)
                 self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
                 if is_confirmed:
@@ -147,16 +147,43 @@ class DMChatHandler:
                     action = {"action": "error", "parameters": {"message": response}}
                     narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
                     return {"narrative": narrative}
+            elif intent == "clarification":
+                # Answer the clarification question without clearing confirmation state
+                answer = self._answer_exploratory_question(message, session)
+                pending = session.pending_suggestion or {"primary_class": "that class"}
+                primary = pending.get("primary_class", "that class")
+                full_response = f"{answer}\n\nSo, about that suggestion: {primary} – does that work for you?"
+                return {"narrative": [Dialog("DM", full_response, "dm")]}
             else:
-                # Player diverted from confirmation – acknowledge this explicitly
+                # Player diverted from confirmation – acknowledge and clear
                 pending = session.pending_suggestion or "that choice"
                 acknowledgment = f"You had {pending} on the table, but let's set that aside for a moment. "
-                
                 self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
                 self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                
                 diverted_response = self._handle_diverted_confirmation(message, session, acknowledgment)
                 return diverted_response
+
+        # # 2. Handle confirmation state FIRST – with explicit acknowledgment of diversion
+        # if session.awaiting_confirmation:
+        #     if intent in ["confirmation", "clarification"]:
+        #         is_confirmed, response = self._handle_confirmation(session_id, message, session)
+        #         self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
+        #         if is_confirmed:
+        #             return self._continue_creation_after_confirmation(session_id)
+        #         else:
+        #             action = {"action": "error", "parameters": {"message": response}}
+        #             narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
+        #             return {"narrative": narrative}
+        #     else:
+        #         # Player diverted from confirmation – acknowledge this explicitly
+        #         pending = session.pending_suggestion or "that choice"
+        #         acknowledgment = f"You had {pending} on the table, but let's set that aside for a moment. "
+                
+        #         self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
+        #         self.world_controller.session_system.set_pending_suggestion(session_id, None)
+                
+        #         diverted_response = self._handle_diverted_confirmation(message, session, acknowledgment)
+        #         return diverted_response
 
         if intent == "character_creation":
             response = self._start_character_creation(session)
@@ -870,18 +897,25 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
         return 'mid'
 
 
-    def _format_context(self, recent) -> str:
-        """Convert conversation history to clean, readable string."""
-        if not recent:
-            return "No previous conversation."
+    # def _format_context(self, recent) -> str:
+    #     """Convert conversation history to clean, readable string."""
+    #     if not recent:
+    #         return "No previous conversation."
         
-        lines = []
-        for q, a in recent:
-            # Truncate long answers in context to prevent prompt bloat
-            a_short = a[:200] + "..." if len(a) > 200 else a
-            lines.append(f"Player: {q}\nDM: {a_short}")
+    #     lines = []
+    #     for q, a in recent:
+    #         # Truncate long answers in context to prevent prompt bloat
+    #         a_short = a[:200] + "..." if len(a) > 200 else a
+    #         lines.append(f"Player: {q}\nDM: {a_short}")
         
-        return "\n\n".join(lines)
+    #     return "\n\n".join(lines)
+
+    def _format_context(self, recent_str: str) -> str:
+        """Format recent conversation for the prompt."""
+        if not recent_str:
+            return "No recent conversation."
+        # The string already contains lines like "Player: ...\nDM: ..."
+        return recent_str
 
 
     def _build_character_guidance(self, character_data: dict) -> str:
