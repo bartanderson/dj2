@@ -33,14 +33,20 @@ class DMChatAI(AIBoundary):
         - Awaiting confirmation: {context.get('awaiting_confirmation', False)}
         
         DM-Specific Intent Categories:
-        1. character_creation - Discussing character options, classes, races, backgrounds
-        2. world_inquiry - Questions about the game world, lore, or story
-        3. action_request - Attempting to perform an in-game action
-        4. meta_dialogue - Questions about our conversation (summarize, recap, what did you ask)
-        5. rules_question - Questions about game rules or mechanics
-        6. narrative_input - Contributing to story or describing character actions
-        7. confirmation - Yes/no or confirming choices
-        8. clarification - Asking for more information or clarification
+        1. character_creation - Statements or questions that are about starting or proceeding with character creation, such as "I want to make a character", "Let's create a new character". NOT for questions about game rules or lore, even if related to character options.
+        2. world_inquiry - Questions about the game world, lore, or story. This includes any expression of desire to learn about aspects of the world, such as "I want to explore magic", "Tell me about dragons", "What kinds of magic exist?", "I'm curious about elves", etc.
+        3. action_request - Attempting to perform an in-game action.
+        4. meta_dialogue - Questions about our conversation (summarize, recap, what did you ask).
+        5. rules_question - Questions about game rules or mechanics, such as "How does magic work?" or "Can any class use magic?"
+        6. narrative_input - Contributing to story or describing character actions.
+        7. confirmation - Yes/no or confirming choices.
+        8. clarification - Asking for more information or clarification.
+        9. seeking_guidance - Asking for help, suggestions, or recommendations ("what should I do?", "help me decide").
+        10. declare_intent - Explicitly stating a character choice ("I want to be a wizard", "My character is an elf").
+        11. describe_character - Describing the character's personality, background, or appearance.
+        12. make_choice - Making a specific decision (selecting equipment, ability scores, etc.).
+        
+        Important: If the player is asking a question about how something works (e.g., magic, classes), use rules_question or world_inquiry, NOT character_creation. Character_creation is only for meta statements about the process itself.
         
         Return JSON with intent, confidence, target, and parameters.
         """
@@ -81,6 +87,8 @@ class DMChatAI(AIBoundary):
             intent = "rules_question"
         elif any(word in text_lower for word in ["yes", "no", "confirm", "agree", "disagree"]):
             intent = "confirmation"
+        elif any(word in text_lower for word in ["help", "suggest", "recommend", "what should", "any ideas"]):
+            intent = "seeking_guidance"
         elif "?" in text_lower:
             intent = "clarification"
         else:
@@ -231,6 +239,35 @@ class DMChatAI(AIBoundary):
                 "category": "race"
             }
     
+    def suggest_guidance(self, character_data: Dict, conversation_context: str = "") -> Dict[str, Any]:
+        """Suggest a gentle next direction when the player asks for help."""
+        prompt = f"""
+        Based on what we know so far about the player's character, suggest a gentle, open‑ended question or topic to explore.
+        CHARACTER DATA: {json.dumps(character_data)}
+        CONVERSATION CONTEXT: {conversation_context}
+        
+        Do NOT interrogate. Instead, offer an interesting possibility or ask what aspect they'd like to learn more about.
+        Examples:
+        - "You've mentioned an interest in magic. Would you like to hear about the different magical traditions in this world?"
+        - "Elves are known for their grace and long lives. Does that resonate with your idea?"
+        - "We haven't talked about your character's background yet. Were they a soldier, a scholar, or something else entirely?"
+        
+        Return JSON with:
+        - question: The suggestion or question
+        - category: The general area (e.g., race, class, background, etc.)
+        """
+        try:
+            return self.ai_system.generate_structured_data(prompt, {
+                "question": "string",
+                "category": "string"
+            })
+        except Exception as e:
+            print(f"Guidance suggestion failed: {e}")
+            return {
+                "question": "What part of your character would you like to explore next?",
+                "category": "general"
+            }
+
     def interpret_confirmation(self, message: str, context: Dict) -> Dict[str, Any]:
         """Interpret if a message is confirmation, correction, or neither"""
         prompt = f"""
