@@ -14,7 +14,7 @@ import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
 
-from dnd_character import CLASSES
+from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
 from world.world_map import WorldMap
@@ -518,15 +518,15 @@ class WorldController:
         
     def get_available_classes(self):
         """Get list of available classes"""
-        return list(CLASSES.keys())
+        return dnd_data.get_class_list()
         
     def get_starting_equipment_options(self, class_name):
         """Get starting equipment options for a class"""
-        char_class = CLASSES.get(class_name.lower())
+        char_class = dnd_data.get_class_object(class_name)
         if char_class:
             return {
-                "packages": char_class.starting_equipment,
-                "choices": char_class.player_options
+                "packages": getattr(char_class, 'starting_equipment', []),
+                "choices": getattr(char_class, 'player_options', {})
             }
         return {}
 

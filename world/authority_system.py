@@ -6,6 +6,7 @@ Phase: Authority (validates rules, permissions, dice rolls)
 from typing import Dict, Any, Optional, List
 import random
 from dataclasses import dataclass, field
+from world import dnd_data
 
 # FIX: Added fields for dice rolling
 @dataclass
@@ -75,32 +76,66 @@ class AuthoritySystem:
         params = action.get("parameters", {})
 
         # Allowed fields that can be set during creation
-        ALLOWED_FIELDS = {"name", "race", "class", "background", "personality", 
-                          "fears", "motivations", "skills", "alignment"}
+        ALLOWED_FIELDS = {
+            "name", "race", "subrace", "class", "background", "personality", 
+            "fears", "motivations", "skills", "alignment",
+            "ability_scores",      # e.g., {"strength": 15, "dexterity": 14, ...}
+            "traits",              # list of trait names (e.g., ["Darkvision", "Fey Ancestry"])
+            "proficiencies",       # list of skill/tool proficiencies
+            "cantrips",            # list of cantrip names
+            "spells_known"         # list of spell names (for known spells)
+        }
 
         if action_type == "update_character_attribute":
             field = params.get("field")
             value = params.get("value")
-            if not field:
-                return ValidatedAction(valid=False, message="No field specified")
+            # ... basic checks ...
             if field not in ALLOWED_FIELDS:
                 return ValidatedAction(valid=False, message=f"Field '{field}' cannot be set during creation")
-            # Optional: add more validation (e.g., value type, length, allowed race/class names)
-            return ValidatedAction(valid=True, message="OK", action_data=params)
+            
+            # Field‑specific validation
+            if field == "race":
+                from world import dnd_data
+                if not dnd_data.validate_race(value):
+                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid race")
+            elif field == "class":
+                from world import dnd_data
+                if not dnd_data.validate_class(value):
+                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid class")
+            elif field == "skills":
+                from world import dnd_data
+                if not dnd_data.validate_skill(value):
+                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid skill")
+            elif field == "ability_scores":
+                # value should be a dict of ability -> score; you could validate each ability name
+                if not isinstance(value, dict):
+                    return ValidatedAction(valid=False, message="Ability scores must be a dictionary")
+                for ability, score in value.items():
+                    if not dnd_data.validate_ability_score(ability):
+                        return ValidatedAction(valid=False, message=f"'{ability}' is not a valid ability")
+                    if not isinstance(score, int) or score < 1 or score > 30:
+                        return ValidatedAction(valid=False, message=f"Invalid score for {ability}")
+            elif field == "traits":
+                if not isinstance(value, list):
+                    return ValidatedAction(valid=False, message="Traits must be a list")
+                for trait in value:
+                    if not dnd_data.validate_trait(trait):
+                        return ValidatedAction(valid=False, message=f"'{trait}' is not a valid trait")
+            elif field == "proficiencies":
+                if not isinstance(value, list):
+                    return ValidatedAction(valid=False, message="Proficiencies must be a list")
+                for prof in value:
+                    if not dnd_data.validate_proficiency(prof):
+                        return ValidatedAction(valid=False, message=f"'{prof}' is not a valid proficiency")
 
-        elif action_type == "suggest_class":
-            # For suggestions, we might only validate that the suggestion itself is reasonable
-            # For now, accept any suggestion (AI is trusted)
             return ValidatedAction(valid=True, message="OK", action_data=params)
 
         elif action_type == "confirm_class":
             confirmed_class = params.get("confirmed_class")
             if not confirmed_class:
                 return ValidatedAction(valid=False, message="No class specified")
-            # Could check against list of valid classes
-            # from dnd_character import CLASSES
-            # if confirmed_class not in CLASSES:
-            #    return ValidatedAction(valid=False, message=f"'{confirmed_class}' is not a valid class")
+            if not dnd_data.validate_class(confirmed_class):
+                return ValidatedAction(valid=False, message=f"'{confirmed_class}' is not a valid class")
             return ValidatedAction(valid=True, message="OK", action_data=params)
 
         elif action_type == "create_character":
@@ -179,13 +214,13 @@ class AuthoritySystem:
         if not char_data.get("class"):
             return {"valid": False, "message": "Please choose a class"}
 
-        # FIX: Optionally verify class exists in dnd_character.CLASSES
-        # try:
-        #     from dnd_character import CLASSES
-        #     if char_data["class"].lower() not in CLASSES:
-        #         return {"valid": False, "message": "Invalid class"}
-        # except ImportError:
-        #     pass   # if module not available, skip
+        # Verify class exists in dnd_data
+        if not dnd_data.validate_class(char_data.get("class")):
+            return {"valid": False, "message": f"Invalid class: {char_data.get('class')}"}
+
+        # Verify race exists in dnd_data
+        if not dnd_data.validate_race(char_data.get("race")):
+            return {"valid": False, "message": f"Invalid race: {char_data.get('race')}"}
 
         return {"valid": True, "message": "Character creation valid", "action_data": char_data}
 

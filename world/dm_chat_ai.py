@@ -9,6 +9,7 @@ from ai.ai_boundary import AIBoundary
 import json
 import sys
 import os
+from world import dnd_data
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class DMChatAI(AIBoundary):
@@ -16,6 +17,111 @@ class DMChatAI(AIBoundary):
     
     def __init__(self, ai_system):
         super().__init__(ai_system)
+
+    def process_creation_turn(self, message: str, session_state: dict, game_data: dict) -> dict:
+        """
+        Process one turn of character creation.
+        session_state includes: character_data, creation_state, awaiting_confirmation, pending_suggestion, recent_topics, chat_history.
+        game_data includes: classes, races, backgrounds, spells, etc. (from dnd_data)
+        """
+        # Build a readable summary of current character data
+        char_summary = "\n".join([f"- {k}: {v}" for k, v in session_state['character_data'].items() if v]) or "None yet."
+        recent = session_state.get('chat_history', [])[-10:]  # last 10 exchanges
+        recent_text = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in recent])
+
+        current_class = session_state.character_data.get('class')
+        if current_class:
+            cantrips = dnd_data.get_cantrips(current_class)  # you'll need to implement this
+            spells = dnd_data.get_class_spells(current_class, 1)
+        else:
+            cantrips = []
+            spells = []
+
+        game_data = {
+            "races": dnd_data.get_race_list(),
+            "classes": dnd_data.get_class_list(),
+            "backgrounds": [],  # TODO
+            "skills": dnd_data.get_skill_list(),
+            "cantrips": cantrips,
+            "spells": spells,
+        }
+
+        prompt = f"""
+You are a Dungeon Master guiding a player through character creation in D&D 5e.
+
+Current character data (what's been chosen so far):
+{char_summary}
+
+Creation stage: {session_state['creation_state']}
+Awaiting confirmation: {session_state['awaiting_confirmation']}
+Pending suggestion: {session_state.get('pending_suggestion', 'None')}
+
+Recent conversation (last 10 messages):
+{recent_text}
+
+Available races (base race only): {', '.join(game_data['races'])}
+Available classes: {', '.join(game_data['classes'])}
+Available backgrounds: {', '.join(game_data.get('backgrounds', []))}
+Available skills: {', '.join(game_data.get('skills', []))}
+Available cantrips for {session_state['character_data'].get('class', 'any class')}: {', '.join(game_data.get('cantrips', []))}
+
+The player says: "{message}"
+
+Analyze the player's intent and current state. Refer to the current character data to remember what has already been chosen. Decide what to do next.
+
+You may propose updates to the character data. Use only the following allowed fields:
+- "name" (string)
+- "race" (string, base race name from the available races list, e.g., "elf")
+- "subrace" (string, optional, e.g., "high elf")
+- "class" (string, from available classes list)
+- "background" (string)
+- "personality", "fears", "motivations", "alignment" (strings)
+- "skills" (list of strings, each a valid skill name)
+- "ability_scores" (object, e.g., {{"strength": 15, "dexterity": 14}})
+- "traits" (list of strings, valid trait names)
+- "proficiencies" (list of strings, valid proficiency names)
+- "cantrips" (list of strings, valid cantrip names)
+- "spells_known" (list of strings, valid spell names)
+
+Do NOT use fields like "primary_class", "secondary_cantrip", "explanation" – those are not allowed.
+
+When the player has provided name, race, and class, and indicates they are ready (e.g., "I'm done", "That's all", "Create my character"), set state_change to "completed" and give a closing narrative.
+
+Return a JSON object with the following fields:
+- "narrative": a string, what you say to the player (be engaging, informative, and encouraging).
+- "updates": an object containing only allowed fields to update in character_data.
+- "state_change": optional new creation_state (one of "not_started", "gathering_info", "class_suggested", "class_confirmed", "completed").
+- "needs_confirmation": boolean, true if you are asking the player to confirm a suggestion.
+- "pending_suggestion": if needs_confirmation is true, an object containing the suggestion (e.g., {{"class": "wizard", "explanation": "..."}}). Otherwise null.
+- "error": optional error message.
+
+Examples:
+- Player: "I want to be an elf" -> {{"narrative": "An elf! A graceful choice.", "updates": {{"race": "elf"}}, "needs_confirmation": false}}
+- Player: "High elf" -> {{"narrative": "A High Elf! Excellent choice.", "updates": {{"subrace": "high elf"}}, "needs_confirmation": false}}
+- Player: "I choose Mage Hand as my cantrip" -> {{"narrative": "Mage Hand it is! A versatile choice.", "updates": {{"cantrips": ["mage hand"]}}, "needs_confirmation": false}}
+- Player: "I'm a wizard" -> {{"narrative": "Wizard! A studious path.", "updates": {{"class": "wizard"}}, "needs_confirmation": false}}
+- Player: "Yes" (after class suggestion) -> {{"narrative": "Great! Class confirmed.", "updates": {{"class": "wizard"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
+- Player: "No, I want to be a sorcerer" -> {{"narrative": "Sorcerer it is!", "updates": {{"class": "sorcerer"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
+- Player: "Tell me about magic" -> {{"narrative": "Magic comes in three forms...", "updates": {{}}, "needs_confirmation": false}}
+"""
+        try:
+            result = self.ai_system.generate_structured_data(prompt, {
+                "narrative": "string",
+                "updates": "object",
+                "state_change": "string?",
+                "needs_confirmation": "boolean",
+                "pending_suggestion": "object?",
+                "error": "string?"
+            })
+            return result
+        except Exception as e:
+            return {
+                "narrative": "I'm having trouble understanding. Could you rephrase?",
+                "updates": {},
+                "needs_confirmation": False,
+                "pending_suggestion": None,
+                "error": str(e)
+            }
         
     def classify_intent(self, player_input: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -33,8 +139,8 @@ class DMChatAI(AIBoundary):
         - Awaiting confirmation: {context.get('awaiting_confirmation', False)}
         
         DM-Specific Intent Categories:
-        1. character_creation - Statements or questions that are about starting or proceeding with character creation, such as "I want to make a character", "Let's create a new character". NOT for questions about game rules or lore, even if related to character options.
-        2. world_inquiry - Questions about the game world, lore, or story. This includes any expression of desire to learn about aspects of the world, such as "I want to explore magic", "Tell me about dragons", "What kinds of magic exist?", "I'm curious about elves", etc.
+        1. character_creation - Statements that are about starting or proceeding with character creation at a meta level, such as "I want to make a character", "Let's create a new character", "I'm ready to build". NOT for stating choices about the character itself.
+        2. world_inquiry - Questions about the game world, lore, or story. This includes asking about types of magic users, races, backgrounds, etc.
         3. action_request - Attempting to perform an in-game action.
         4. meta_dialogue - Questions about our conversation (summarize, recap, what did you ask).
         5. rules_question - Questions about game rules or mechanics, such as "How does magic work?" or "Can any class use magic?"
@@ -42,11 +148,14 @@ class DMChatAI(AIBoundary):
         7. confirmation - Yes/no or confirming choices.
         8. clarification - Asking for more information or clarification.
         9. seeking_guidance - Asking for help, suggestions, or recommendations ("what should I do?", "help me decide").
-        10. declare_intent - Explicitly stating a character choice ("I want to be a wizard", "My character is an elf").
+        10. declare_intent - Explicitly stating a character choice or preference, such as "I want to be a wizard", "My character is an elf", "I prefer divine magic", or correcting a previous choice ("No, I said enchantment").
         11. describe_character - Describing the character's personality, background, or appearance.
         12. make_choice - Making a specific decision (selecting equipment, ability scores, etc.).
-        
-        Important: If the player is asking a question about how something works (e.g., magic, classes), use rules_question or world_inquiry, NOT character_creation. Character_creation is only for meta statements about the process itself.
+
+        Important: 
+        - If the player is asking a question about how something works (e.g., magic, classes), use rules_question or world_inquiry, NOT character_creation.
+        - If the player is correcting a previous statement or clarifying their choice (e.g., "No, I meant enchantment", "I said high elf, not wood elf"), use declare_intent, NOT character_creation.
+        - Character_creation is only for meta statements about the process itself, like "I want to create a character" or "Let's start over".
         
         Return JSON with intent, confidence, target, and parameters.
         """
@@ -74,21 +183,28 @@ class DMChatAI(AIBoundary):
         """Fallback intent classification for DM chat"""
         text_lower = text.lower()
         
-        # DM-specific keyword matching
-        if any(word in text_lower for word in ["character", "create", "race", "class", "background"]):
-            intent = "character_creation"
-        elif any(word in text_lower for word in ["what is", "tell me about", "explain", "how does"]):
-            intent = "world_inquiry"
-        elif any(word in text_lower for word in ["i want to", "i try to", "attempt", "roll"]):
+        # Action requests: explicit physical actions (combat, movement, etc.)
+        if any(word in text_lower for word in ["attack", "hit", "strike", "move", "go to", "cast", "roll", "use"]):
             intent = "action_request"
-        elif any(word in text_lower for word in ["summarize", "recap", "what did we", "previous"]):
-            intent = "meta_dialogue"
+        # Character creation declarations: expressing character choices or corrections
+        elif any(word in text_lower for word in ["i want to be", "i'd like to be", "i am a", "my character is", "prefer", "instead"]):
+            intent = "declare_intent"
+        # World inquiries: questions about lore, world, etc.
+        elif any(word in text_lower for word in ["what is", "tell me about", "explain", "how does", "explore"]):
+            intent = "world_inquiry"
+        # Rules questions: questions about mechanics
         elif any(word in text_lower for word in ["rule", "mechanic", "how to", "can i"]):
             intent = "rules_question"
-        elif any(word in text_lower for word in ["yes", "no", "confirm", "agree", "disagree"]):
-            intent = "confirmation"
+        # Meta dialogue: about the conversation
+        elif any(word in text_lower for word in ["summarize", "recap", "what did we", "previous"]):
+            intent = "meta_dialogue"
+        # Seeking guidance: asking for help or suggestions
         elif any(word in text_lower for word in ["help", "suggest", "recommend", "what should", "any ideas"]):
             intent = "seeking_guidance"
+        # Confirmation: yes/no responses
+        elif any(word in text_lower for word in ["yes", "no", "confirm", "agree", "disagree"]):
+            intent = "confirmation"
+        # Clarification: questions that don't fit elsewhere
         elif "?" in text_lower:
             intent = "clarification"
         else:
@@ -170,6 +286,7 @@ class DMChatAI(AIBoundary):
             concept_parts.append(f"Desired class/concept: {character_concept}")
         rich_concept = "\n".join(concept_parts) if concept_parts else "No details provided yet."
 
+        class_list = ", ".join(dnd_data.get_class_list())
         prompt = f"""
         Based on this character concept, suggest the most appropriate D&D 5e class:
         

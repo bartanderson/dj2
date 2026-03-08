@@ -1,6 +1,6 @@
 # world/character_builder.py
-from dnd_character import Character
-from dnd_character.classes import CLASSES
+from dnd_character import Character # We'll leave the Character import as is. It's the base class for our custom Character subclass, and it's only used in character.py for inheritance.
+from world import dnd_data # This is standardized because of shared usage for consistency
 from .tool_system import tool
 from typing import Dict, Any, Optional
 
@@ -42,13 +42,10 @@ class CharacterBuilder:
                 }
 
             # Get character class object
-            class_key = char_data["class"].lower()
-            if class_key not in CLASSES:
-                return {
-                    "success": False,
-                    "message": f"Unknown class: {char_data['class']}"
-                }
-            char_class = CLASSES[class_key]
+            class_name = char_data["class"]
+            if not dnd_data.validate_class(class_name):
+                return {"success": False, "message": f"Unknown class: {class_name}"}
+            char_class = dnd_data.get_class_object(class_name)
 
             # Generate background story (may fail, we'll capture message)
             story_result = self.generate_background_story(char_data, context)

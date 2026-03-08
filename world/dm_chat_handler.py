@@ -8,6 +8,7 @@ import traceback
 from typing import Dict, List, Optional, Tuple
 from world.ai_dungeon_master import Dialog  # Ensure Dialog is imported
 from world.session_system import SessionState
+from world import dnd_data
 
 logger = logging.getLogger(__name__)
 
@@ -116,146 +117,137 @@ class DMChatHandler:
             )
 
     def _process_creation_step(self, message: str, session_id: str) -> Dict:
-        """Process a message during character creation – player‑driven exploration."""
         session = self.world_controller.session_system.get_session(session_id)
         if not session:
             return {"narrative": [Dialog("DM", "Session error. Please start over.", "system")]}
 
-        # 1. INTERPRETATION
-        intent_result = self.world_controller.dm_chat_ai.classify_intent(
-            message, {
-                "phase": "character_creation", 
-                "session": session.get_creation_context(),
-                "instruction": (
-                    "If the message contains BOTH a statement AND a question, "
-                    "classify based on the QUESTION. The question indicates player intent. "
-                    "Example: 'Arcana sounds interesting. What races are good?' → intent: world_inquiry"
+        # Build session state for AI
+        session_state = {
+            "character_data": session.character_data,
+            "creation_state": session.creation_state,
+            "awaiting_confirmation": session.awaiting_confirmation,
+            "pending_suggestion": session.pending_suggestion,
+            "recent_topics": list(session.conversation_topics),
+            "chat_history": session.chat_history[-5:]  # last few messages
+        }
+
+        # Get game data from dnd_data
+        from world import dnd_data
+        game_data = {
+            "races": dnd_data.get_race_list(),
+            "classes": dnd_data.get_class_list(),
+            "backgrounds": []  # TODO: add if available
+        }
+
+        # AI processes the turn
+        ai_result = self.world_controller.dm_chat_ai.process_creation_turn(
+            message, session_state, game_data
+        )
+
+        # If AI returned an error, just return the narrative (don't update state)
+        if ai_result.get("error"):
+            return {"narrative": [Dialog("DM", ai_result["narrative"], "dm")]}
+
+        # Validate and apply updates
+        updates = ai_result.get("updates", {})
+        applied = []
+        if updates:
+            # Get current character data (before any changes)
+            session = self.world_controller.session_system.get_session(session_id)
+            current_data = session.character_data.copy()
+            # Simulate the final state after applying all updates
+            simulated_data = current_data.copy()
+            simulated_data.update(updates)
+
+            validation_errors = []
+            validated_updates = {}
+            for field, value in updates.items():
+                if not value:
+                    continue
+                action = {
+                    "action": "update_character_attribute",
+                    "parameters": {"field": field, "value": value}
+                }
+                # Pass simulated_data as context (the state after all updates)
+                validated = self.world_controller.authority_system.validate_creation_action(
+                    action, {"character_data": simulated_data}
                 )
-            }
-        )
-        intent = intent_result.get("intent", "unknown")
-        subintent = intent_result.get("parameters", {}).get("subintent", "")
-
-        # 2. Handle confirmation state
-        if session.awaiting_confirmation:
-            if intent == "confirmation":
-                is_confirmed, response = self._handle_confirmation(session_id, message, session)
-                self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-                if is_confirmed:
-                    return self._continue_creation_after_confirmation(session_id)
+                if validated.valid:
+                    validated_updates[field] = value
                 else:
-                    action = {"action": "error", "parameters": {"message": response}}
-                    narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
-                    return {"narrative": narrative}
-            elif intent == "clarification":
-                # Answer the clarification question without clearing confirmation state
-                answer = self._answer_exploratory_question(message, session)
-                pending = session.pending_suggestion or {"primary_class": "that class"}
-                primary = pending.get("primary_class", "that class")
-                full_response = f"{answer}\n\nSo, about that suggestion: {primary} – does that work for you?"
-                return {"narrative": [Dialog("DM", full_response, "dm")]}
-            else:
-                # Player diverted from confirmation – acknowledge and clear
-                pending = session.pending_suggestion or "that choice"
-                acknowledgment = f"You had {pending} on the table, but let's set that aside for a moment. "
-                self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-                self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                diverted_response = self._handle_diverted_confirmation(message, session, acknowledgment)
-                return diverted_response
+                    validation_errors.append(f"{field}: {validated.message}")
 
-        # # 2. Handle confirmation state FIRST – with explicit acknowledgment of diversion
-        # if session.awaiting_confirmation:
-        #     if intent in ["confirmation", "clarification"]:
-        #         is_confirmed, response = self._handle_confirmation(session_id, message, session)
-        #         self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-        #         if is_confirmed:
-        #             return self._continue_creation_after_confirmation(session_id)
-        #         else:
-        #             action = {"action": "error", "parameters": {"message": response}}
-        #             narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
-        #             return {"narrative": narrative}
-        #     else:
-        #         # Player diverted from confirmation – acknowledge this explicitly
-        #         pending = session.pending_suggestion or "that choice"
-        #         acknowledgment = f"You had {pending} on the table, but let's set that aside for a moment. "
-                
-        #         self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-        #         self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                
-        #         diverted_response = self._handle_diverted_confirmation(message, session, acknowledgment)
-        #         return diverted_response
+            if validation_errors:
+                # Log errors and inform the user
+                error_msg = "I'm having trouble with some details: " + "; ".join(validation_errors) + " Could you rephrase?"
+                print(f"DEBUG: AI proposed invalid updates: {validation_errors}")
+                return {"narrative": [Dialog("DM", error_msg, "system")]}
 
-        if intent == "character_creation":
-            response = self._start_character_creation(session)
-            return {"narrative": [Dialog("DM", response, "dm")]}
+            # All updates valid – apply them in batch
+            for field, value in validated_updates.items():
+                self.world_controller.session_system.update_character_data(session_id, {field: value})
+                applied.append(field)
+            # Refresh session after updates
+            session = self.world_controller.session_system.get_session(session_id)
 
-        # 2.5: Detect and store expressed interests before handling inquiries
-        # This runs for ALL messages to catch "X sounds interesting" even in declarations
-        self._detect_and_store_interest(message, session)
+        # Apply state change if provided
+        if ai_result.get("state_change"):
+            self.world_controller.session_system.set_creation_state(session_id, ai_result["state_change"])
 
-        # 3. Exploratory questions – use the robust system we built
-        is_inquiry = (
-            intent in ["world_inquiry", "rules_question", "clarification", "meta_dialogue"]
-            or subintent in ["world_inquiry", "rules_question"]
-        )
-        
-        # Content-based override for mixed messages with questions
-        if not is_inquiry and '?' in message:
-            question_words = ['what', 'which', 'how', 'who', 'where', 'why', 'when']
-            has_question_word = any(w in message.lower() for w in question_words)
-            
-            world_keywords = ['race', 'class', 'magic', 'spell', 'god', 'faction', 'location', 'background', 'arcana', 'divine', 'primal']
-            asks_about_world = any(w in message.lower() for w in world_keywords)
-            
-            if has_question_word and asks_about_world:
-                is_inquiry = True
+        # Set confirmation flag and pending suggestion if needed
+        if ai_result.get("needs_confirmation"):
+            self.world_controller.session_system.set_awaiting_confirmation(session_id, True)
+            if ai_result.get("pending_suggestion"):
+                self.world_controller.session_system.set_pending_suggestion(session_id, ai_result["pending_suggestion"])
+        else:
+            self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
+            self.world_controller.session_system.set_pending_suggestion(session_id, None)
 
-        if is_inquiry:
-            # Check if we have interest context for targeted answer
-            interest = None
-            if hasattr(session, 'character_data') and session.character_data:
-                interest = session.character_data.get('interested_in')
-            
-            if interest and any(w in message.lower() for w in ['race', 'class', 'background', 'good', 'best', 'recommend', 'what', 'which']):
-                # Use interest-aware canned answer (no AI call)
-                return self._answer_with_interest(message, session, interest)
-            
-            # No interest—use AI
-            answer = self._answer_exploratory_question(message, session)
-            return {"narrative": [Dialog("DM", answer, "dm")]}
+        # --- FINALIZATION: If state became "completed", create the character ---
+        if ai_result.get("state_change") == "completed":
+            # Ensure we have the latest session data
+            session = self.world_controller.session_system.get_session(session_id)
+            char_data = session.character_data
 
-        # 4. Character data extraction ONLY on declarative/intent-to-build
-        extracted = None
-        if intent in ["declare_intent", "describe_character", "make_choice"]:
-            extracted = self.world_controller.dm_chat_ai.extract_character_data(message, session.character_data)
-            if extracted:
-                applied = []
-                for field, value in extracted.items():
-                    if value:
-                        action = {
-                            "action": "update_character_attribute",
-                            "parameters": {"field": field, "value": value}
-                        }
-                        validated = self.world_controller.authority_system.validate_creation_action(action, {})
-                        if validated.valid:
-                            self.world_controller.session_system.update_character_data(session_id, {field: value})
-                            applied.append(field)
-                
-                if applied:
-                    confirmation = self._acknowledge_updates(applied, session.character_data)
-                    return {"narrative": [Dialog("DM", confirmation, "dm")]}
+            # Validate required fields (just in case the AI messed up)
+            required = ["name", "race", "class"]
+            missing = [f for f in required if not char_data.get(f)]
+            if missing:
+                # AI shouldn't set completed without these, but if it does, roll back
+                error_msg = f"I'm missing some essential details: {', '.join(missing)}. Let's continue."
+                self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+                return {"narrative": [Dialog("DM", error_msg, "system")]}
 
-        # 4.5: Interest expressed but no hard data extracted—engage substantively
-        if intent in ["declare_intent", "describe_character"] and not extracted:
-            return self._engage_with_interest(message, session)
+            # Attempt to create the character
+            try:
+                character = self.world_controller.character_manager.create_character(
+                    session.player_id,
+                    char_data
+                )
+                # Assign character to player and set as active
+                self.world_controller.character_manager.assign_character_to_player(
+                    session.player_id, character.id
+                )
+                self.world_controller.session_system.set_active_character(session_id, character.id)
 
-        # 5. Guidance requests – explicit opt-in only
-        if intent in ["seeking_guidance", "help"]:
-            return self._offer_guided_help(session_id, session)
+                # Clear creation state (optional)
+                self.world_controller.session_system.set_creation_state(session_id, "completed")
 
-        # 6. Everything else – casual acknowledgment, NO AI pressure
-        response = self._casual_acknowledgment(message, session)
-        return {"narrative": [Dialog("DM", response, "dm")]}
+                # Return success with character data
+                return {
+                    "narrative": [Dialog("DM", ai_result["narrative"], "dm")],
+                    "character_data": char_data,
+                    "character_id": character.id
+                }
+            except Exception as e:
+                # Log error and tell user
+                print(f"DEBUG: Character creation failed: {e}")
+                error_msg = "Something went wrong creating your character. Let's try again."
+                self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
+                return {"narrative": [Dialog("DM", error_msg, "system")]}
+
+        # Return narrative
+        return {"narrative": [Dialog("DM", ai_result["narrative"], "dm")]}
 
     def _answer_with_interest(self, message: str, session, interest: str = None) -> Dict:
         """Answer question informed by expressed interest."""
@@ -351,80 +343,6 @@ class DMChatHandler:
         # Return random selection from appropriate answers
         return {"narrative": [Dialog("DM", random.choice(answers), "dm")]}
 
-    def _engage_with_interest(self, message: str, session) -> Dict:
-        """Player expressed interest in a topic—engage substantively."""
-        text_lower = message.lower()
-        
-        # Detect specific interest within broad category
-        interest = None
-        category = None
-        
-        if any(w in text_lower for w in ['magic', 'spell', 'arcane', 'cast', 'wizard', 'sorcerer']):
-            category = 'magic'
-            # Check if they specified which magic
-            if any(w in text_lower for w in ['arcane', 'wizard', 'sorcerer']):
-                interest = 'arcane'
-            elif any(w in text_lower for w in ['divine', 'cleric', 'paladin', 'god']):
-                interest = 'divine'
-            elif any(w in text_lower for w in ['primal', 'druid', 'ranger', 'nature']):
-                interest = 'primal'
-        
-        elif any(w in text_lower for w in ['fight', 'weapon', 'sword', 'combat', 'martial']):
-            category = 'martial'
-            # Could detect: heavy armor, rage, precision, etc.
-            
-        elif any(w in text_lower for w in ['sneak', 'stealth', 'rogue', 'thief', 'skill']):
-            category = 'stealth'
-            
-        elif any(w in text_lower for w in ['heal', 'support', 'help', 'buff']):
-            category = 'support'
-        
-        # Store for later contextualization
-        if interest:
-            self.world_controller.session_system.update_character_data(
-                session.session_id, 
-                {'interested_in': interest, 'interested_category': category}
-            )
-        
-        # Check if they asked a follow-up question
-        asked_followup = any(w in text_lower for w in ['race', 'class', 'good', 'best', 'what', 'which']) and '?' in message
-        
-        # If they specified interest AND asked followup, answer directly
-        if interest and asked_followup:
-            # Route to enhanced answer instead of generic menu
-            return self._answer_with_interest(message, session, interest)
-        
-        # If they specified interest but no followup, acknowledge specifically
-        if interest:
-            responses = {
-                'arcane': "Arcane magic—power through study or bloodline. Wizards master tomes, Sorcerers channel innate gifts. What draws you to it?",
-                'divine': "Divine magic—faith made manifest. Gods grant power to their servants. What calling do you feel?",
-                'primal': "Primal magic—the wild speaking through you. Nature's ally, not its master. What connection do you seek?"
-            }
-            return {"narrative": [Dialog("DM", responses[interest], "dm")]}
-        
-        # Broad category with no specification—show menu
-        if category == 'magic':
-            response = ("Magic comes in three main flavors: arcane (Wizards, Sorcerers—"
-                       "learned or innate), divine (Clerics, Paladins—granted by gods), "
-                       "and primal (Druids, Rangers—nature spirits). "
-                       "What sounds appealing?")
-        elif category == 'martial':
-            response = ("Fighters, Paladins, Rangers, Barbarians, and Monks all handle "
-                       "combat differently—heavy armor, rage, precision, or speed. "
-                       "What style catches your eye?")
-        elif category == 'stealth':
-            response = ("Rogues excel at precision damage and skills, but Bards and "
-                       "Rangers have their own tricks. Are you thinking criminal, spy, or scout?")
-        elif category == 'support':
-            response = ("Clerics are the classic healers, but Druids, Bards, and Paladins "
-                       "keep parties alive too. Do you want to be primarily support, or mix it with offense?")
-        else:
-            # Unknown interest
-            response = self._answer_exploratory_question(f"Tell me about {message}", session)
-        
-        return {"narrative": [Dialog("DM", response, "dm")]}
-
 
     def _start_character_creation(self, session) -> str:
         """Welcome the player to character creation with an open invitation."""
@@ -434,190 +352,6 @@ class DMChatHandler:
             return f"Welcome back! You've already told me: {summary}. Would you like to continue there, or start fresh?"
         # No data yet – broad invitation
         return "Great! Let's explore who your adventurer might be. You can ask me about races, classes, backgrounds, or just tell me what kind of character you're imagining."
-
-    def _handle_diverted_confirmation(self, message: str, session, acknowledgment: str) -> Dict:
-        """Handle when player ignores a confirmation to ask something else."""
-        # Process their new message through normal flow, then prepend acknowledgment
-        # Simplified: treat as exploratory question with context
-        answer = self._answer_exploratory_question(message, session)
-        full_response = acknowledgment + answer
-        return {"narrative": [Dialog("DM", full_response, "dm")]}
-
-
-    def _acknowledge_updates(self, applied_fields: list, character_data: dict) -> str:
-        """Generate tight acknowledgment of what was understood."""
-        
-        field_names = {
-            'race': 'race',
-            'class': 'class', 
-            'background': 'background',
-            'name': 'name',
-            'ability_scores': 'ability scores',
-            'equipment': 'equipment'
-        }
-        
-        described = [field_names.get(f, f) for f in applied_fields]
-        
-        if len(described) == 1:
-            templates = [
-                f"Got it—{described[0]} noted.",
-                f"Alright, {described[0]} locked in.",
-                f"Copy that on the {described[0]}."
-            ]
-        else:
-            items = ", ".join(described[:-1]) + f" and {described[-1]}"
-            templates = [
-                f"Got it—{items} noted.",
-                f"Alright, {items} locked in.",
-                f"Copy all that: {items}."
-            ]
-        
-        # Add gentle prompt only if character is incomplete
-        if not character_data.get('race') or not character_data.get('class'):
-            templates = [t + " What else?" for t in templates]
-        else:
-            templates = [t + " Anything to adjust?" for t in templates]
-        
-        return random.choice(templates)
-
-    def _answer_exploratory_question(self, message: str, session) -> str:
-        """Answer a question about lore, rules, or world using AI – naturally."""
-        
-        # Check for recent similar first
-        recent_str = self.world_controller.session_system.get_conversation_context(
-            session.session_id, message_count=5
-        )
-        recent_pairs = self._parse_conversation_context(recent_str)
-        if recent_pairs and (previous := self._find_similar_recent(message, recent_pairs)):
-            return f"As I mentioned: {previous} Want me to expand on anything?"
-        
-        # Build the good prompt
-        context = self._format_context(recent_str)
-        character_guidance = self._build_character_guidance(session.character_data)
-        creation_stage = self._estimate_creation_stage(session)
-        
-        stage_tone = {
-            'blank': "The player is just starting—be welcoming and broad.",
-            'early': "The player has begun choosing—connect concepts together.",
-            'mid': "The player has core choices—help them integrate and refine.",
-            'late': "The player is nearly done—help them finalize confidently."
-        }.get(creation_stage, "Be helpful and natural.")
-        
-        prompt1 = f"""You are a knowledgeable, friendly Dungeon Master helping create a D&D character.
-
-{stage_tone}
-
-Player asks: "{message}"
-
-{character_guidance}
-
-Recent conversation:
-{context}
-
-Answer directly (2-4 sentences). Be specific about game elements (names, mechanics, lore).
-Never ask "what would you like to know" or "what interests you"—provide substance immediately.
-If their question relates to their character choices, reference those connections."""
-
-        response = None
-        
-        try:
-            response = self.world_controller.ai_system.generate_text(prompt1)
-            if self._is_quality_response(response):
-                return response.strip()
-            logger.warning(f"Prompt1 failed quality check: {response[:100]}...")
-        except Exception as e:
-            logger.warning(f"Prompt1 exception: {e}")
-
-        # Prompt2: stripped down but still substantive
-        prompt2 = f"""The player asks: "{message}"
-
-Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sentences. Be concrete."""
-
-        try:
-            response = self.world_controller.ai_system.generate_text(prompt2)
-            # Use SAME quality check, not weaker one
-            if self._is_quality_response(response):
-                return response.strip()
-            logger.warning(f"Prompt2 failed quality check: {response[:100]}...")
-        except Exception as e:
-            logger.warning(f"Prompt2 exception: {e}")
-
-        # Both failed—use canned substantive answer or honest fallback
-        return self._handle_exploratory_failure(message, session)
-
-    def _handle_exploratory_failure(self, message: str, session) -> str:
-        """
-        Handle cases where _answer_exploratory_question falls through.
-        Categorizes the failure and responds appropriately.
-        """
-        
-        text_lower = message.lower().strip()
-        recent = self.world_controller.session_system.get_conversation_context(
-            session.session_id, message_count=5
-        )
-        
-        # Category 1: Gibberish/Nonsense
-        if self._is_gibberish(text_lower):
-            return random.choice([
-                "That isn't located in any of my advanced spellbooks, or lists of deities or rare monster guides.",
-                "I don't find that in my tomes—perhaps a dialect I'm unfamiliar with?",
-                "No record of that in the archives. Did you mean something else?"
-            ])
-        
-        # Category 2: Overly broad "how do I play"
-        if self._is_broad_play_question(text_lower):
-            return ("Since we're building your character, tell me about one you'd like to play, "
-                    "or was there a particular part of the game you wanted to discuss?")
-        
-        # Category 3: Minimal question with context
-        if self._is_minimal_question(message) and recent:
-            # Dredge memory for what we were discussing
-            last_topic = self._extract_last_topic(recent)
-            if last_topic:
-                return f"Yes, regarding {last_topic}—what specifically about it?"
-            return "Yes? What were we discussing?"
-        
-        # Category 4: Minimal question without context
-        if self._is_minimal_question(message):
-            return "That's a big question—what prompted that?"
-        
-        # Category 5: Meta/system questions
-        if self._is_meta_question(text_lower):
-            # Check if we actually have table rules stored
-            has_rules = self._has_table_rules(session)
-            if has_rules:
-                answer = self._check_rule(text_lower, session)
-                if answer:
-                    return f"Yes, {answer}" if answer.startswith("you can") else f"No, {answer}"
-            
-            # No specific rules or unclear—honest fallback
-            if "reroll" in text_lower:
-                return "I don't have specific reroll rules set for this table—shall we allow it or stick to standard?"
-            if "homebrew" in text_lower:
-                return "Homebrew depends on what we're allowing—do you have something specific in mind?"
-            return "That depends on the table rules—let me check what we're running."
-        
-        # Category 6: Setting/world questions
-        if self._is_setting_question(text_lower):
-            world_summary = self._get_world_summary()
-            if world_summary == "A generic fantasy world.":
-                return "I don't have a specific setting loaded—are we doing homebrew or a published world?"
-            
-            # We have world data, but AI failed to use it—give concise summary
-            return f"We're in {world_summary.split(chr(10))[0].replace('Setting: ', '')}. What would you like to know about it?"
-
-        # Category 7: Mechanics/stats questions (no interest required)
-        if any(w in text_lower for w in ['stat', 'stats', 'ability', 'score', 'modifier', 'attributes', 'modifier']):
-            return "Six abilities: Strength (melee, athletics), Dexterity (ranged, stealth), Constitution (health), Intelligence (knowledge, arcane), Wisdom (perception, divine), Charisma (social, magic). Scores range 3-20, with modifiers from -4 to +5."
-
-        # Category 8: General magic types (no specific interest yet)
-        if any(w in text_lower for w in ['magic', 'magical', 'spell', 'cast', 'types of magic']) and not session.character_data.get('interested_in'):
-            return "Three main types: arcane (Wizards, Sorcerers—learned or innate), divine (Clerics, Paladins—granted by gods), and primal (Druids, Rangers—drawn from nature spirits). Which intrigues you?"
-        
-        # True edge case: unrecognized failure
-        if '?' in message:
-            return "I'm drawing a blank on that specific detail—let me get my books and come back to you."
-        return "Still here. What were we looking at?"
 
 
     # Detection helpers
@@ -658,14 +392,6 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
         broad_indicators = ['how do i play', 'how to play', 'how does this work',
                            'what do i do', 'where do i start', 'help me play']
         return any(ind in text for ind in broad_indicators)
-
-
-    def _is_minimal_question(self, message: str) -> bool:
-        """Detect very short questions."""
-        if '?' not in message:
-            return False
-        words = message.replace('?', '').strip().split()
-        return len(words) <= 3
 
 
     def _extract_last_topic(self, recent) -> str:
@@ -748,274 +474,7 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
         if factions:
             summary += "Factions: " + ", ".join(f['name'] for f in factions) + "\n"
         
-        return summary.strip()
-
-    def _is_exploratory_question(self, message: str) -> bool:
-        """Check if message actually asks for information."""
-        text_lower = message.lower().strip()
-        
-        # Question marks are strong signal
-        if '?' in message and len(text_lower) > 3:
-            return True
-        
-        # Question starters
-        question_starters = [
-            'what', 'how', 'why', 'who', 'where', 'when', 'which',
-            'tell me', 'explain', 'describe', 'elaborate', 'clarify',
-            'can i', 'could i', 'do you', 'are there', 'is there',
-            'list', 'give me', 'show me', 'i want to know'
-        ]
-        
-        return any(text_lower.startswith(s) for s in question_starters)
-
-
-    def _casual_acknowledgment(self, message: str, session) -> str:
-        """Respond to non-questions with appropriate conversational momentum."""
-        
-        text_lower = message.lower().strip()
-        creation_stage = self._estimate_creation_stage(session)
-        
-        # Pattern detection
-        is_affirmation = any(w in text_lower for w in [
-            'ok', 'okay', 'yes', 'yeah', 'yep', 'sure', 'right', 'exactly',
-            'perfect', 'great', 'good', 'sounds good', 'that works', 'cool',
-            'awesome', 'nice', 'excellent', 'alright', 'fine', 'sure thing'
-        ])
-        
-        is_thinking = any(w in text_lower for w in [
-            'hmm', 'um', 'uh', 'let me see', 'wait', 'hold on',
-            'thinking', 'maybe', 'not sure', 'i dunno', 'huh'
-        ]) or text_lower.endswith('...')
-        
-        is_transition = any(w in text_lower for w in [
-            'so', 'anyway', 'next', 'moving on', 'what about', 'how about',
-            'alright then', 'ok then', 'well then'
-        ])
-        
-        is_hesitation = any(w in text_lower for w in [
-            'i guess', 'i suppose', 'probably', 'maybe', 'kind of', 'sort of'
-        ])
-        
-        # Stage-specific response pools
-        if is_affirmation:
-            if creation_stage == 'blank':
-                return random.choice([
-                    "Good. Where shall we start?",
-                    "Alright. What sounds interesting to you?",
-                    "Right then. Race, class, or something else first?",
-                    "Good. What's calling to you?"
-                ])
-            elif creation_stage == 'early':
-                return random.choice([
-                    "Good. What draws your eye next?",
-                    "Solid. Where shall we turn?",
-                    "Right then. What else is on your mind?",
-                    "Good good. Keep going."
-                ])
-            elif creation_stage == 'mid':
-                return random.choice([
-                    "Good. Seeing the shape of them yet?",
-                    "Solid. How are these pieces fitting together?",
-                    "Right then. What needs tightening?",
-                    "Good. Feeling like a real person yet?"
-                ])
-            else:  # late
-                return random.choice([
-                    "Excellent. Ready to take them for a spin?",
-                    "Perfect. Feeling good about this build?",
-                    "Good. Anything still nagging at you before we finish?",
-                    "Solid. Shall we lock it in?"
-                ])
-        
-        elif is_thinking:
-            return random.choice([
-                "Take your time. No rush.",
-                "Mull it over. I'll be here.",
-                "Think it through. What's your gut saying?",
-                "No pressure. Let it sit for a moment if you need.",
-                "I'll wait. Better to get it right."
-            ])
-        
-        elif is_transition:
-            return random.choice([
-                "Where to?",
-                "What are we looking at next?",
-                "What's next on your mind?",
-                "Lead the way.",
-                "I'm with you. Go ahead."
-            ])
-        
-        elif is_hesitation:
-            return random.choice([
-                "No commitment yet—just exploring. What feels closest?",
-                "Try it on mentally. See how it fits.",
-                "You can always change it. What's your instinct?",
-                "Hesitation's fine. What's giving you pause?"
-            ])
-        
-        # Very short/unclear input
-        if len(text_lower) < 4:
-            return random.choice([
-                "Mm?",
-                "Yeah?",
-                "I'm listening.",
-                "Go on.",
-                "Hmm?"
-            ])
-        
-        # Default fallback
-        return random.choice([
-            "Got it.",
-            "I hear you.",
-            "Alright.",
-            "Copy that."
-        ])
-
-
-    def _estimate_creation_stage(self, session) -> str:
-        """Rough heuristic for how far along character creation is."""
-        data = session.character_data or {}
-        
-        concrete_fields = ['race', 'class', 'background', 'name']
-        filled = sum(1 for f in concrete_fields if data.get(f))
-        
-        has_ability_scores = bool(data.get('ability_scores') or data.get('stats'))
-        has_equipment = bool(data.get('equipment') or data.get('gear'))
-        has_spells = bool(data.get('spells') or data.get('spell_slots'))
-        
-        if filled == 0:
-            return 'blank'
-        
-        elif filled <= 2 and not has_ability_scores:
-            return 'early'
-        
-        elif filled >= 3 or (filled >= 2 and has_ability_scores):
-            if has_equipment or has_spells:
-                return 'late'
-            return 'mid'
-        
-        return 'mid'
-
-
-    # def _format_context(self, recent) -> str:
-    #     """Convert conversation history to clean, readable string."""
-    #     if not recent:
-    #         return "No previous conversation."
-        
-    #     lines = []
-    #     for q, a in recent:
-    #         # Truncate long answers in context to prevent prompt bloat
-    #         a_short = a[:200] + "..." if len(a) > 200 else a
-    #         lines.append(f"Player: {q}\nDM: {a_short}")
-        
-    #     return "\n\n".join(lines)
-
-    def _format_context(self, recent_str: str) -> str:
-        """Format recent conversation for the prompt."""
-        if not recent_str:
-            return "No recent conversation."
-        # The string already contains lines like "Player: ...\nDM: ..."
-        return recent_str
-
-
-    def _build_character_guidance(self, character_data: dict) -> str:
-        """Create instructions for using character data in responses."""
-        if not character_data:
-            return "No character established yet—speak in general terms, but invite them to make choices."
-        
-        parts = ["Current character:"]
-        for key, value in character_data.items():
-            if value and not key.startswith('_'):
-                parts.append(f"- {key}: {value}")
-        
-        parts.append("\nWhen answering:")
-        parts.append("- Use 'you' to refer to their character-to-be")
-        parts.append("- If they say 'my people', 'my kind', etc., refer to their race")
-        parts.append("- If they ask about class features, reference their class if set")
-        parts.append("- Connect lore to their choices when natural")
-        
-        return "\n".join(parts)
-
-
-    def _find_similar_recent(self, message: str, recent_pairs: list, threshold: float = 0.8) -> Optional[str]:
-        """Check if similar question was asked recently using list of (q,a) tuples."""
-        import difflib
-        message_lower = message.lower().strip()
-        for q, a in recent_pairs:
-            if message_lower == q.lower().strip():
-                return a
-            similarity = difflib.SequenceMatcher(None, message_lower, q.lower()).ratio()
-            if similarity > threshold:
-                return a
-        return None
-
-
-    def _is_quality_response(self, text: str) -> bool:
-        """Detect substantive, non-generic responses."""
-        if not text:
-            return False
-        
-        text_lower = text.lower().strip()
-        words = text.split()
-        
-        # Hard minimum
-        if len(words) < 10:
-            return False
-        
-        # No question-bouncing
-        if text.count('?') > 0 and len(words) < 25:
-            return False
-        
-        # Must contain at least one concrete game term
-        concrete_terms = [
-            'arcane', 'divine', 'primal', 'nature', 'eldritch', 'psionic',
-            'wizard', 'sorcerer', 'cleric', 'druid', 'warlock', 'bard', 'paladin', 'ranger',
-            'spell', 'cantrip', 'ritual', 'component', 'school', 'abjuration', 'evocation',
-            'fireball', 'heal', 'magic missile', 'wild shape', 'sneak attack', 'rage',
-            'elf', 'dwarf', 'human', 'halfling', 'dragonborn', 'tiefling',
-            'sword', 'armor', 'shield', 'bow', 'dagger', 'axe',
-            'dexterity', 'strength', 'wisdom', 'constitution', 'intelligence', 'charisma',
-            'skill', 'proficiency', 'feat', 'background', 'trait', 'ideal', 'bond', 'flaw'
-        ]
-        
-        has_concrete = any(term in text_lower for term in concrete_terms)
-        if not has_concrete:
-            return False
-        
-        # No generic hedges without substance
-        hedge_phrases = [
-            'many possibilities', 'various options', 'several choices',
-            'interesting question', 'fascinating topic', 'great question',
-            'depends on', 'up to you', 'could be many things'
-        ]
-        has_hedge = any(phrase in text_lower for phrase in hedge_phrases)
-        
-        # If it hedges, it needs MORE concrete terms to compensate
-        if has_hedge and len([t for t in concrete_terms if t in text_lower]) < 3:
-            return False
-        
-        return True
-
-    def _simplify_prompt(self, message: str) -> str:
-        """Generate fallback prompt when primary fails."""
-        return f"""Answer this D&D question directly: "{message}"
-
-    Be specific. Name actual races, classes, spells, or mechanics. 2-3 sentences."""
-
-
-    def _graceful_fallback(self, message: str) -> str:
-        """Honest, non-blaming response when AI fails."""
-        # Don't lie about understanding
-        if '?' in message:
-            return "My mind's a bit clouded on that one—let me check my notes and circle back."
-        
-        return "I'm still here—just gathering my thoughts. What were we looking at?"       
-
-    def _offer_guidance(self, session) -> str:
-        """Offer gentle guidance when the player seems stuck or asks for help."""
-        context = self.world_controller.session_system.get_conversation_context(session.session_id)
-        suggestion = self.world_controller.dm_chat_ai.suggest_guidance(session.character_data, context)
-        return suggestion.get("question", "What would you like to explore?")
+        return summary.strip()      
 
 
     def _offer_guided_help(self, session_id: str, session) -> Dict:
@@ -1029,84 +488,6 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
             action = {"action": "ask_question", "parameters": {"question": guidance}}
             narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
             return {"narrative": narrative}
-
-    def _suggest_class(self, session_id: str, session) -> Dict:
-        """Generate a class suggestion and transition to class_suggested state."""
-        class_info = self._determine_character_class(
-            session.character_data.get('class', ''),
-            session.character_data
-        )
-        # Validate the suggestion action (optional, but we can keep)
-        action = {
-            "action": "suggest_class",
-            "parameters": {"suggestion": class_info}
-        }
-        validated = self.world_controller.authority_system.validate_creation_action(action, {})
-        if not validated.valid:
-            error_action = {"action": "error", "parameters": {"message": validated.message}}
-            narrative = self.world_controller.consequence_engine.generate_creation_narrative(error_action, {})
-            return {"narrative": narrative}
-
-        # Store suggestion in session
-        updates = {
-            'suggested_class': class_info['primary_class'],
-            'suggested_multiclass': class_info['secondary_class'],
-            'class_explanation': class_info['explanation'],
-            'custom_traits': class_info['custom_traits']
-        }
-        self.world_controller.session_system.update_character_data(session_id, updates)
-        self.world_controller.session_system.set_creation_state(session_id, "class_suggested")
-        self.world_controller.session_system.set_awaiting_confirmation(session_id, True)
-        self.world_controller.session_system.set_pending_suggestion(session_id, class_info)
-
-        # Generate narrative via consequence engine
-        narrative = self.world_controller.consequence_engine.generate_creation_narrative(action, {})
-        return {"narrative": narrative}
-
-    def _continue_creation_after_confirmation(self, session_id: str) -> Dict:
-        """After a class confirmation, proceed with creation (may create character)."""
-        session = self.world_controller.session_system.get_session(session_id)
-        if not session:
-            return {"narrative": [Dialog("DM", "Session error.", "system")]}
-
-        # If we just confirmed, the state should now be class_confirmed
-        if session.creation_state != "class_confirmed":
-            self.world_controller.session_system.set_creation_state(session_id, "class_confirmed")
-            session = self.world_controller.session_system.get_session(session_id)
-
-        # Now handle the class_confirmed state (same as in _process_creation_step)
-        if self._has_sufficient_character_data(session.character_data):
-            action = {
-                "action": "create_character",
-                "parameters": {"character_data": session.character_data}
-            }
-            validated = self.world_controller.authority_system.validate_creation_action(action, {})
-            if not validated.valid:
-                return {"narrative": [Dialog("DM", validated.message, "system")]}
-
-            character = self.world_controller.character_manager.create_character(
-                session.player_id,
-                session.character_data
-            ) 
-            if session.player_id:
-                self.world_controller.character_manager.assign_character_to_player(
-                    session.player_id, character.id
-                )
-                self.world_controller.session_system.set_creation_state(session_id, "completed")
-                self.world_controller.session_system.set_active_character(session_id, character.id)
-                return {
-                    "narrative": [Dialog("DM", f"Character {character.name} created successfully as a {session.character_data.get('class', 'adventurer')}!", "narration")],
-                    "character_data": session.character_data,
-                    "character_id": character.id,
-                }
-            else:
-                return {
-                    "narrative": [Dialog("DM", "Character data is complete, but no player is associated with this session. Please start over.", "system")]
-                }
-        else:
-            # Not enough data – should not happen if confirmation led here, but fallback
-            next_q = self._determine_next_question(session.character_data, session_id)
-            return {"narrative": [Dialog("DM", next_q['question'], "narration")]}
 
     def get_recent_topics(self, session_id: str) -> List[str]:
         """Get recent topics for a session"""
@@ -1170,41 +551,19 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
 
                 # Resume detection for interrupted character creation
                 print("DEBUG: Resume checkpoint")
-                print(f"DEBUG: resume check: character_id={character_id}, has_data={bool(session_state.character_data)}, creation_state={session_state.creation_state}, active_char={session_state.active_character_id}")
-                if (not character_id and 
-                    session_state.character_data and 
-                    session_state.creation_state != "not_started" and 
-                    not session_state.active_character_id):
-                    print(f"DEBUG: Resume triggered for session {session_id}")
-                    resume_message = self._generate_resume_prompt(session_id)
-                    # Store the user message? For now, just return the resume prompt without processing the message.
-                    # We'll add the user message to history later (optional).
-                    return {
-                        "narrative": [Dialog("DM", resume_message, "narration")],
-                        "tool_result": None
-                    }
-
-            # Check if we're in a confirmation state
-            if session_state.awaiting_confirmation:
-                is_confirmed, response = self._handle_confirmation(session_id, message, session_state)
-                # Use session system to clear confirmation flag
-                self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-
-                if is_confirmed:
-                    # Continue with character creation
-                    result = self._handle_character_creation_tools("", session_id)
-                    if result.get("action") == "character_created":
-                        return result
-                    else:
+                # --- Resume detection for interrupted character creation (only if no history) ---
+                if not session_state.chat_history:  # ← only on first message
+                    if (not character_id and 
+                        session_state.character_data and 
+                        session_state.creation_state != "not_started" and 
+                        not session_state.active_character_id):
+                        print(f"DEBUG: Resume triggered for session {session_id}")
+                        resume_message = self._generate_resume_prompt(session_id)
                         return {
-                            "narrative": [Dialog("DM", result["message"], "character_creation")],
+                            "narrative": [Dialog("DM", resume_message, "narration")],
                             "tool_result": None
                         }
-                else:
-                    return {
-                        "narrative": [Dialog("DM", response, "clarification")],
-                        "tool_result": None
-                    }
+                # --- END ---
 
             # Get character context if specified – use character_manager exclusively
             character_context = {}
@@ -1655,80 +1014,3 @@ Answer as a DM. Name specific D&D races, classes, spells, or mechanics. 2-3 sent
                 "explanation": "Fallback class due to analysis error",
                 "custom_traits": []
             }
-
-    def _determine_next_question(self, character_data, session_id):
-        conversation_context = self.world_controller.session_system.get_conversation_context(session_id)
-        try:
-            return self.world_controller.dm_chat_ai.suggest_next_question(character_data, conversation_context)
-        except Exception as e:
-            print(f"Error determining next question: {e}")
-            return {
-                "question": "What race would you like your character to be?",
-                "priority": "Medium",
-                "category": "race"
-            }
-
-    def _handle_confirmation(self, session_id: str, message: str, session_state) -> tuple:
-        context = {
-            "session_state": session_state,
-            "character_data": session_state.character_data
-        }
-        try:
-            assessment = self.world_controller.dm_chat_ai.interpret_confirmation(message, context)
-            if assessment['is_confirmation'] and assessment['confidence'] > 0.7:
-                # Player confirmed the suggestion – update class and remove temporary fields
-                confirmed_class = session_state.character_data.get('suggested_class', '')
-                action = {
-                    "action": "confirm_class",
-                    "parameters": {"confirmed_class": confirmed_class}
-                }
-                validated = self.world_controller.authority_system.validate_creation_action(action, {})
-                if not validated.valid:
-                    return False, validated.message
-
-                self.world_controller.session_system.update_character_data(
-                    session_id,
-                    {"class": confirmed_class}
-                )
-                # Remove temporary suggestion fields
-                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
-                    self.world_controller.session_system.remove_character_data_field(session_id, field)
-
-                self.world_controller.session_system.set_creation_state(session_id, "class_confirmed")
-                self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                return True, "Great! Class confirmed. Let's continue with your character."
-
-            elif assessment['corrected_value'] and assessment['confidence'] > 0.6:
-                # Player provided a correction
-                corrected = assessment['corrected_value']
-                action = {
-                    "action": "confirm_class",
-                    "parameters": {"confirmed_class": corrected}
-                }
-                validated = self.world_controller.authority_system.validate_creation_action(action, {})
-                if not validated.valid:
-                    return False, validated.message
-
-                self.world_controller.session_system.update_character_data(
-                    session_id,
-                    {"class": corrected}
-                )
-                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
-                    self.world_controller.session_system.remove_character_data_field(session_id, field)
-
-                self.world_controller.session_system.set_creation_state(session_id, "class_confirmed")
-                self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                return True, f"Understood, I'll use {assessment['corrected_value']} instead. Let's continue."
-
-            else:
-                # Not a confirmation or correction – treat as rejection or unclear
-                self.world_controller.session_system.set_awaiting_confirmation(session_id, False)
-                self.world_controller.session_system.set_creation_state(session_id, "gathering_info")
-                self.world_controller.session_system.set_pending_suggestion(session_id, None)
-                # Clear temporary suggestion fields
-                for field in ['suggested_class', 'suggested_multiclass', 'class_explanation']:
-                    self.world_controller.session_system.remove_character_data_field(session_id, field)
-                return False, "No problem! Let's keep exploring your character. Tell me more about what you're imagining."
-        except Exception as e:
-            print(f"Error handling confirmation: {e}")
-            return False, "I had trouble understanding your response. Could you please clarify?"
