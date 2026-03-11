@@ -1,0 +1,179 @@
+{
+  "settlement": {
+    "state_machines": {
+      "downtime": {
+        "states": [
+          "arrival",
+          "activity",
+          "event",
+          "departure"
+        ],
+        "initial": "arrival",
+        "transitions": {
+          "arrival": {
+            "on": "enter",
+            "to": "activity",
+            "procedure": "settleIn"
+          },
+          "activity": {
+            "on": "declare",
+            "to": "event",
+            "branches": {
+              "train": "trainingProcedure",
+              "carouse": "carousingProcedure",
+              "craft": "craftingModule",
+              "recruit": "recruitmentProcedure",
+              "research": "researchProcedure",
+              "rest": "restProcedure",
+              "invest": "investmentProcedure"
+            }
+          },
+          "event": {
+            "on": "resolve",
+            "to": "activity",
+            "branches": {
+              "continue": "activity",
+              "trouble": "troubleProcedure",
+              "opportunity": "opportunityProcedure",
+              "depart": "departure"
+            }
+          },
+          "departure": {
+            "on": "leave",
+            "to": null,
+            "procedure": "settlementConsequences"
+          }
+        }
+      }
+    },
+    "procedures": {
+      "training": {
+        "time": "1 week per skill rank gained",
+        "cost": "10g \u00c3\u2014 new rank",
+        "requirement": "Find trainer (Social TN 8-16 by skill rarity)",
+        "limit": "Max rank 3, one skill per downtime",
+        "masterTrainer": "Reduces time 50%, cost +100%, can teach secrets (rank 4, one only)"
+      },
+      "carousing": {
+        "cost": "10g (cheap), 50g (moderate), 200g (extravagant)",
+        "roll": "d20 + Will",
+        "results": {
+          "1-5": "Trouble: Debt, jail, duel challenge, stolen item, unwanted marriage proposal",
+          "6-10": "Hangover: Exhausted -1 tomorrow, no other effect",
+          "11-15": "Rumors: 1d4 useful facts about region",
+          "16-19": "Contact: Meet useful NPC, friendly disposition",
+          "20": "Jackpot: Rumors, contact, and they pay your tab"
+        },
+        "reputation": "Frequent carousing +1 local reputation, scandal -2"
+      },
+      "recruitment": {
+        "types": {
+          "hireling": {
+            "cost": "1g/day",
+            "skill": "0-1",
+            "loyalty": "gold"
+          },
+          "expert": {
+            "cost": "5g/day + share",
+            "skill": "2",
+            "loyalty": "contract"
+          },
+          "henchman": {
+            "cost": "half share",
+            "skill": "2-3",
+            "loyalty": "adventure",
+            "requirement": "Completed quest together"
+          },
+          "follower": {
+            "cost": "none",
+            "skill": "1",
+            "loyalty": "devotion",
+            "requirement": "Saved life or Charisma 20+ roll"
+          }
+        },
+        "loyaltyCheck": "Morale 2d6 + Will vs 7+losses suffered, failure = desertion"
+      },
+      "research": {
+        "time": "1 day per question",
+        "cost": "5g per day (library access)",
+        "roll": "Lore vs TN by obscurity (12 common, 16 rare, 20 lost)",
+        "libraries": {
+          "village": "TN +4, max 12",
+          "town": "Normal",
+          "city": "TN -2, max 20",
+          "academy": "TN -4, access to spells"
+        }
+      },
+      "investment": {
+        "propertyTypes": {
+          "tenement": {
+            "cost": "500g",
+            "income": "10g/month",
+            "risk": "Fire, plague"
+          },
+          "shop": {
+            "cost": "1000g",
+            "income": "25g/month",
+            "risk": "Theft, competition"
+          },
+          "inn": {
+            "cost": "2000g",
+            "income": "50g/month",
+            "risk": "Violence, fire, haunting"
+          },
+          "farm": {
+            "cost": "800g",
+            "income": "20g/month + food",
+            "risk": "Drought, raid"
+          },
+          "workshop": {
+            "cost": "1500g",
+            "income": "Craft at 75% cost, sell at 125%",
+            "risk": "Material shortage"
+          }
+        },
+        "management": "Absentee -25% income, hire manager (5g/month) for full",
+        "events": "Quarterly roll: 1-2 disaster (-1 month income), 3-10 normal, 11 boon (+1 month), 12 windfall (double 1 month)"
+      },
+      "rest": {
+        "comfortable": "Full HP, remove Exhausted, 1g/day",
+        "rough": "Full HP, Exhausted reduced by 1, free",
+        "luxury": "Full HP, +1 temp HP, +1 next roll, 5g/day"
+      }
+    },
+    "troubleTable": [
+      {
+        "result": "debt",
+        "effect": "Owe 2d6\u00c3\u201410g to dangerous person"
+      },
+      {
+        "result": "jail",
+        "effect": "Locked up 1d6 days or fine 50g"
+      },
+      {
+        "result": "duel",
+        "effect": "Insulted noble, fight at dawn or lose reputation"
+      },
+      {
+        "result": "theft",
+        "effect": "Lost valuable item, thief known or unknown"
+      },
+      {
+        "result": "scandal",
+        "effect": "Reputation -2 here, rumor spreads"
+      },
+      {
+        "result": "haunted",
+        "effect": "Lodging infested, need exorcism"
+      },
+      {
+        "result": "blackmail",
+        "effect": "Someone knows your secret"
+      },
+      {
+        "result": "recruitment",
+        "effect": "Press-ganged into militia or cult"
+      }
+    ]
+  }
+}

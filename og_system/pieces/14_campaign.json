@@ -1,0 +1,159 @@
+{
+  "campaign": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["og_system.progression", "og_system.modules.social.reputation"]
+    },
+    
+    "world_generation": {
+      "seed_structure": {
+        "world_seed": "string (hash for reproducibility)",
+        "generation_timestamp": "ISO8601",
+        "og_system_version": "string (compatibility check)"
+      },
+      
+      "world_layers": {
+        "surface": {
+          "hex_grid": {
+            "size": "20x20 to 100x100",
+            "scale": "6 miles per hex",
+            "terrain_types": ["plains", "forest", "mountain", "swamp", "desert", "coast", "urban"]
+          },
+          "regions": [
+            {
+              "id": "string",
+              "name": "string",
+              "terrain_tags": ["array"],
+              "faction_control": "faction_id or contested",
+              "danger_level": "1-20 (maps to CR)",
+              "discovered": "boolean",
+              "explored": "percentage",
+              "settlements": ["settlement_id"],
+              "dungeons": ["dungeon_id"],
+              "active_quests": ["quest_id"]
+            }
+          ]
+        },
+        
+        "underworld": {
+          "depth_layers": [
+            {
+              "depth": "1-10",
+              "name": "string (e.g., 'The Upper Dark', 'The Deep')",
+              "light": "none",
+              "terrain": "stone, fungal, volcanic, drowned",
+              "danger_modifier": "+2 to +10",
+              "connected_regions": ["surface_region_id"]
+            }
+          ]
+        }
+      }
+    },
+    
+    "faction_system": {
+      "factions": [
+        {
+          "id": "string",
+          "name": "string",
+          "type": ["political", "religious", "criminal", "mercantile", "military", "monstrous"],
+          "goals": ["string"],
+          "resources": "wealth 1-10, force 1-10, influence 1-10, secrets 1-10",
+          "relationships": {
+            "faction_id": "hostile|unfriendly|neutral|friendly|allied"
+          },
+          "territory": ["region_id"],
+          "notable_npcs": ["npc_id"],
+          "player_standing": -5
+        }
+      ],
+      
+      "faction_turn": {
+        "trigger": "in-game week or significant player action",
+        "procedure": "roll faction goals vs resources, update territory, spawn quests"
+      }
+    },
+    
+    "quest_system": {
+      "quest_archetypes": {
+        "recover": "Retrieve object from dangerous place",
+        "destroy": "Eliminate threat permanently",
+        "escort": "Protect NPC to destination",
+        "investigate": "Discover truth behind mystery",
+        "negotiate": "Settle dispute between factions",
+        "survive": "Endure environmental challenge",
+        "transform": "Change something fundamental"
+      },
+      
+      "quest_structure": {
+        "id": "string",
+        "archetype": "reference",
+        "patron": "npc_id or faction_id",
+        "target": "location_id, npc_id, or object_id",
+        "opposition": ["faction_id", "monster_id", "environment"],
+        "stages": [
+          {
+            "order": 1,
+            "type": "clue|travel|challenge|revelation|confrontation",
+            "location": "region_id or dungeon_id",
+            "completion_condition": "string",
+            "rewards": ["xp", "reputation", "loot_table", "information"]
+          }
+        ],
+        "consequences": {
+          "success": ["faction_standing_changes", "world_state_changes"],
+          "failure": ["faction_standing_changes", "worsening_threat"],
+          "ignored": ["faction_standing_changes", "opportunity_cost"]
+        },
+        "time_pressure": {
+          "exists": "boolean",
+          "deadline": "in-game date",
+          "escalation": "what worsens if delayed"
+        }
+      }
+    },
+    
+    "time_tracking": {
+      "calendar": {
+        "days_per_week": 7,
+        "weeks_per_month": 4,
+        "months_per_year": 12,
+        "seasons": ["spring", "summer", "fall", "winter"],
+        "moon_phases": ["new", "waxing", "full", "waning"],
+        "lunar_effects": {
+          "full_moon": "lycanthropes active, divination +1",
+          "new_moon": "shadow magic +1, darkness deeper"
+        }
+      },
+      
+      "time_passage": {
+        "combat": "6 seconds per round",
+        "dungeon_turn": "10 minutes",
+        "hex_travel": "1 day per hex (clear), 2 days (difficult)",
+        "settlement_activity": "1 day to 1 week",
+        "downtime_training": "1 week per skill rank",
+        "long_term": "monthly faction turns, seasonal world events"
+      }
+    },
+    
+    "world_state": {
+      "current_date": {
+        "day": 1,
+        "week": 1,
+        "month": 1,
+        "year": 1,
+        "season": "spring",
+        "moon": "waxing"
+      },
+      
+      "persistent_changes": {
+        "destroyed_locations": ["location_id"],
+        "dead_npcs": ["npc_id"],
+        "claimed_territory": [{"faction_id": "region_id"}],
+        "unlocked_dungeons": ["dungeon_id"],
+        "sealed_dungeons": ["dungeon_id"],
+        "active_plagues": ["region_id"],
+        "prosperous_settlements": ["settlement_id"]
+      }
+    }
+  }
+}

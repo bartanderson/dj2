@@ -1,0 +1,9 @@
+<div id="ability-scores-container">
+    <label>Ability Scores (standard array):</label>
+    {% for ability in abilities %}
+    <div>
+        <label>{{ ability }}:</label>
+        <input type="number" name="ability_{{ ability }}" value="{{ ability_scores.get(ability, '') }}" min="1" max="20">
+    </div>
+    {% endfor %}
+</div>

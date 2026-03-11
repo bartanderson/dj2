@@ -1,0 +1,179 @@
+{
+  "consequence_engine": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["player_narrative.connection_web", "campaign.faction_system", "campaign.world_state"],
+      "purpose": "Track actions, propagate effects through time and space, surface unexpected results"
+    },
+
+    "action_registry": {
+      "action_types": {
+        "violence": {
+          "subtypes": ["killed", "spared", "defeated_humiliated", "defeated_honored", "threatened", "protected"],
+          "track": "target_identity, method, witnesses, location"
+        },
+        "theft": {
+          "subtypes": ["stolen", "returned", "destroyed", "duplicated", "revealed"],
+          "track": "item_significance, original_owner, new_owner"
+        },
+        "truth": {
+          "subtypes": ["revealed", "concealed", "fabricated", "confirmed", "denied"],
+          "track": "who_knew, who_learned, who_was_deceived"
+        },
+        "allegiance": {
+          "subtypes": ["joined", "betrayed", "abandoned", "saved", "opposed", "manipulated"],
+          "track": "faction_id, individual_id, public_or_secret"
+        },
+        "creation": {
+          "subtypes": ["built", "repaired", "destroyed", "corrupted", "purified"],
+          "track": "location_id, item_id, method, original_state"
+        },
+        "intimacy": {
+          "subtypes": ["trusted", "deceived", "loved", "hated", "saved", "damned"],
+          "track": "individual_id, emotional_valence, reciprocated_or_not"
+        }
+      },
+
+      "action_record": {
+        "id": "uuid",
+        "session_id": "reference",
+        "timestamp": "in-game date",
+        "pc_actor": "pc_id",
+        "action_type": "reference",
+        "subtype": "reference",
+        "target": "world_element_id or pc_id",
+        "context": "brief description",
+        "intensity": "minor|moderate|major|defining",
+        "publicity": "secret|witnessed|rumored|known",
+        "immediate_result": "what happened now"
+      }
+    },
+
+    "ripple_propagation": {
+      "time_delays": {
+        "immediate": "0-1 day",
+        "short": "2-7 days",
+        "medium": "1-4 weeks",
+        "long": "1-6 months",
+        "generational": "years, may affect new PC"
+      },
+
+      "distance_decay": {
+        "local": "same region, full effect",
+        "regional": "adjacent regions, effect -1 intensity",
+        "distant": "same continent, effect -2 or transformed",
+        "foreign": "other continent, rumor only unless major",
+        "planar": "other planes, symbolic or magical only"
+      },
+
+      "propagation_paths": {
+        "social": "through factions, NPCs, reputation",
+        "economic": "through trade, resources, scarcity",
+        "magical": "through ley lines, spells, curses",
+        "ecological": "through monster migration, blight, blessing",
+        "narrative": "through prophecy, story, song, dream"
+      },
+
+      "ripple_generation": {
+        "trigger": "action_record created",
+        "step_1": "Identify all connection_web nodes within range of target",
+        "step_2": "For each path (social, economic, magical, ecological, narrative), check if action could propagate",
+        "step_3": "Roll time_delay based on path (social fast, ecological slow)",
+        "step_4": "Apply distance_decay",
+        "step_5": "Generate consequence_event, schedule for future session",
+        "step_6": "If consequence affects PC backstory element, flag for revelation"
+      }
+    },
+
+    "consequence_events": {
+      "scheduled": {
+        "trigger_date": "in-game date",
+        "source_action": "action_record_id",
+        "affected_party": "faction_id, npc_id, region_id, or pc_id",
+        "consequence_type": "opportunity|threat|transformation|revelation",
+        "description": "what happens",
+        "mechanical_effect": "optional",
+        "narrative_weight": "background|scene|session|arc",
+        "flexibility": "fixed|adaptable|optional"
+      },
+
+      "consequence_types": {
+        "opportunity": {
+          "examples": [
+            "The faction you spared offers alliance",
+            "The item you returned unlocks hidden power",
+            "The NPC you saved appears with vital information",
+            "The reputation you earned opens forbidden door"
+          ],
+          "timing": "player can seize or ignore"
+        },
+        "threat": {
+          "examples": [
+            "The enemy you humiliated seeks revenge",
+            "The secret you revealed triggers witch hunt",
+            "The place you desecrated becomes cursed",
+            "The ally you betrayed leads ambush"
+          ],
+          "timing": "arrives regardless, player must respond"
+        },
+        "transformation": {
+          "examples": [
+            "The region you liberated becomes prosperous (new problems)",
+            "The faction you destroyed is replaced by worse",
+            "The power you used changes you (corruption, enlightenment)",
+            "The vow you completed leaves you hollow"
+          ],
+          "timing": "gradual, noticed in retrospect"
+        },
+        "revelation": {
+          "examples": [
+            "The NPC you trusted reveals your secret to enemy",
+            "The place you visited mirrors your wound",
+            "The item you carry whispers your true name",
+            "The enemy you killed was your unknown sibling"
+          ],
+          "timing": "dramatic moment, optimally staged"
+        }
+      }
+    },
+
+    "moral_weight": {
+      "tracking": {
+        "cruelty": "unnecessary suffering, broken trust, desecration",
+        "kindness": "mercy to enemies, aid to strangers, restoration",
+        "pragmatism": "neutral efficiency, cost-benefit, survival",
+        "principle": "keeping vows, upholding ideals, accepting cost"
+      },
+
+      "accumulation": {
+        "method": "tally with context, not raw count",
+        "example": "Sparing 10 bandits: +kindness. Sparing the bandit who killed your sister: +principle, +kindness, potential -vow_progress"
+      },
+
+      "endings": {
+        "cruel_domination": "You rule through fear. The world is orderly. You are alone.",
+        "kindred_salvation": "You saved them all. The cost was you. They remember, mostly.",
+        "pragmatic_survival": "You endured. Others fell. The world continues, indifferent.",
+        "principled_sacrifice": "You kept your word. The ending was bitter. You do not regret.",
+        "corrupted_victory": "You won. You are what you fought. The next hero comes for you.",
+        "unexpected_redemption": "You failed, then tried again. The world forgives slowly. You live."
+      }
+    },
+
+    "query_interface": {
+      "for_ai_dm": [
+        "What consequences are due this session?",
+        "What opportunities can I offer based on past actions?",
+        "What threats should emerge from PC history?",
+        "What moral weight trends suggest which ending?",
+        "What revelation is optimally timed now?"
+      ],
+      "for_code": [
+        "schedule_consequence(action_record, delay, path)",
+        "get_pending_consequences(session_date, region_filter)",
+        "update_moral_weight(pc_id, action_type, context)",
+        "check_revelation_triggers(pc_id, current_scene)"
+      ]
+    }
+  }
+}

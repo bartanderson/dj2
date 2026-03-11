@@ -1,0 +1,9 @@
+<select name="race" 
+        hx-get="/character-creation/subrace-options" 
+        hx-trigger="change" 
+        hx-target="#subrace-container">
+    <option value="">-- Choose Race --</option>
+    {% for race in races %}
+    <option value="{{ race }}">{{ race }}</option>
+    {% endfor %}
+</select>

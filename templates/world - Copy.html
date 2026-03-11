@@ -6,7 +6,6 @@
     <title>Dungeon World Explorer</title>
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <style>
         /* Mode-based visibility */
         body[data-mode="world"] .world-only {
@@ -601,33 +600,20 @@ document.addEventListener('DOMContentLoaded', checkMode);
             
             <!-- Character Tab -->
             <div id="character-tab" class="tab-content">
-                <!-- Main creation form container -->
-                <div id="creation-form-container"
-                     hx-get="/character-creation/form"
-                     hx-trigger="load"
-                     hx-target="this"
-                     hx-indicator="#loading">
-                    Loading character creation...
+                <div class="tab-panel">
+                    <h2>Character Sheet</h2>
+                    <div id="character-sheet" style="display: none;">
+                        <div class="character-details">
+                            <p><strong>Name:</strong> <span id="char-name">Not set</span></p>
+                            <p><strong>Race:</strong> <span id="char-race">Not set</span></p>
+                            <p><strong>Class:</strong> <span id="char-class">Not set</span></p>
+                            <p><strong>Background:</strong> <span id="char-background">Not set</span></p>
+                            <p><strong>Personality:</strong> <span id="char-personality">Not set</span></p>
+                        </div>
+                        <button id="finalize-character" class="btn" style="display: none; margin-top: 15px;">Finalize Character</button>
+                    </div>
+                    <p id="no-character-message">Use the Chat button to create a character!</p>
                 </div>
-
-                <!-- Help chat panel (initially hidden) -->
-                <div id="help-chat-panel" style="display:none; margin-top:20px;">
-                    <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
-                    <form hx-post="/character-creation/help" 
-                          hx-target="#chat-messages" 
-                          hx-swap="beforeend"
-                          hx-indicator="#chat-indicator">
-                        <input type="text" name="question" placeholder="Ask a question..." required>
-                        <button type="submit">Send</button>
-                        <span id="chat-indicator" class="htmx-indicator">Thinking...</span>
-                    </form>
-                </div>
-
-                <!-- Button to toggle help chat -->
-                <button onclick="document.getElementById('help-chat-panel').style.display = 'block';">Need Help?</button>
-
-                <!-- Loading indicator -->
-                <div id="loading" class="htmx-indicator" style="display:none;">Loading...</div>
             </div>
             
             <!-- Party Tab -->

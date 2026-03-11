@@ -1,0 +1,193 @@
+{
+  "crafting": {
+    "state_machines": {
+      "project": {
+        "states": [
+          "gathering",
+          "preparation",
+          "creation",
+          "completion"
+        ],
+        "initial": "gathering",
+        "transitions": {
+          "gathering": {
+            "on": "acquire",
+            "to": "preparation",
+            "condition": "allMaterialsPresent"
+          },
+          "preparation": {
+            "on": "prepare",
+            "to": "creation",
+            "procedure": "toolCheck"
+          },
+          "creation": {
+            "on": "craft",
+            "to": "completion",
+            "procedure": "craftingRoll",
+            "branches": {
+              "interrupted": "suspended",
+              "rushed": "completionWithFlaw"
+            }
+          },
+          "completion": {
+            "on": "finish",
+            "to": null,
+            "procedure": "determineQuality"
+          }
+        }
+      }
+    },
+    "procedures": {
+      "materialGathering": {
+        "sources": {
+          "monsterParts": "CR determines rarity: 1-5 common, 6-10 uncommon, 11-15 rare, 16+ legendary",
+          "minerals": "Mining check Craft TN 12, quantity by vein quality",
+          "plants": "Survival check TN 8-16 by rarity, season matters",
+          "salvage": "From ruins, Lore to identify value"
+        },
+        "preservation": "Fresh 3 days, salted 2 weeks, magical indefinite"
+      },
+      "craftingRoll": {
+        "base": "Craft skill + Wits (complex) or Brawn (sturdy)",
+        "time": "1 day per 100g value, minimum half day",
+        "tools": "Appropriate tools required, improvised -2",
+        "assistance": "Helper with Craft +1, master craftsman +2",
+        "roll": "d20 + modifier vs TN by item complexity",
+        "success": "Item created, standard quality",
+        "successBy5": "Fine quality, +1 to function or +50% value",
+        "failure": "Item flawed, functions at -1 or 50% uses",
+        "failureBy5": "Ruined, materials lost"
+      },
+      "failureTable": {
+        "weapon": [
+          {
+            "roll": "1-2",
+            "flaw": "Brittle",
+            "effect": "Breaks on natural 1"
+          },
+          {
+            "roll": "3-4",
+            "flaw": "Unbalanced",
+            "effect": "-1 to hit"
+          },
+          {
+            "roll": "5-6",
+            "flaw": "Cursed",
+            "effect": "Wielder -1 Will, feels wrong"
+          },
+          {
+            "roll": "7-8",
+            "flaw": "Noisy",
+            "effect": "Stealth impossible while carried"
+          },
+          {
+            "roll": "9-10",
+            "flaw": "Ugly",
+            "effect": "-2 Social, no mechanical penalty"
+          }
+        ],
+        "armor": [
+          {
+            "roll": "1-2",
+            "flaw": "Cracked",
+            "effect": "-1 DR, breaks on crit against"
+          },
+          {
+            "roll": "3-4",
+            "flaw": "Heavy",
+            "effect": "Double movement penalty"
+          },
+          {
+            "roll": "5-6",
+            "flaw": "Cursed",
+            "effect": "Cannot remove without ritual"
+          },
+          {
+            "roll": "7-8",
+            "flaw": "Noisy",
+            "effect": "Stealth at -4"
+          },
+          {
+            "roll": "9-10",
+            "flaw": "Ugly",
+            "effect": "-2 Social"
+          }
+        ],
+        "potion": [
+          {
+            "roll": "1-2",
+            "flaw": "Weak",
+            "effect": "Half effect, half duration"
+          },
+          {
+            "roll": "3-4",
+            "flaw": "Unstable",
+            "effect": "Explodes if shaken (2d6)"
+          },
+          {
+            "roll": "5-6",
+            "flaw": "Cursed",
+            "effect": "Opposite intended effect"
+          },
+          {
+            "roll": "7-8",
+            "flaw": "Addictive",
+            "effect": "Crave more, -1 all until next dose"
+          },
+          {
+            "roll": "9-10",
+            "flaw": "Foul",
+            "effect": "Vomit, lose action next turn"
+          }
+        ]
+      },
+      "alchemy": {
+        "special": true,
+        "risk": "Volatile reagents, failure = explosion 2d6 10ft",
+        "identification": "Lore TN 12 to identify unknown potion, taste test 50% accurate"
+      }
+    },
+    "recipes": {
+      "healingPotion": {
+        "materials": [
+          "herbs x3",
+          "crystal water",
+          "binding agent"
+        ],
+        "time": "1 day",
+        "tn": 12,
+        "value": "50g"
+      },
+      "silveredWeapon": {
+        "materials": [
+          "weapon",
+          "silver 100g"
+        ],
+        "time": "half day",
+        "tn": 8,
+        "value": "+100g"
+      },
+      "antitoxin": {
+        "materials": [
+          "monster venom",
+          "herbs x2",
+          "alcohol"
+        ],
+        "time": "1 day",
+        "tn": 14,
+        "value": "25g"
+      },
+      "elementalBomb": {
+        "materials": [
+          "elemental core",
+          "clay vessel",
+          "fuse"
+        ],
+        "time": "2 days",
+        "tn": 16,
+        "value": "200g",
+        "risk": "Explodes on crafting failure"
+      }
+    }
+  }
+}

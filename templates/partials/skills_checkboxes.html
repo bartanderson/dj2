@@ -1,0 +1,10 @@
+<div id="skills-container">
+    <label>Skills (choose up to 2):</label>
+    {% for skill in skills %}
+    <div>
+        <input type="checkbox" name="skills" value="{{ skill }}" 
+               {% if skill in selected_skills %}checked{% endif %}>
+        <label>{{ skill }}</label>
+    </div>
+    {% endfor %}
+</div>

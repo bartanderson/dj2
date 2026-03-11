@@ -1,0 +1,184 @@
+{
+  "revelation_system": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["player_narrative.secret_generation", "consequence_engine.ripple_propagation", "campaign.world_state"],
+      "purpose": "Manage hidden truths, clue distribution, dramatic irony, layered discovery"
+    },
+
+    "hidden_truth_database": {
+      "truth_structure": {
+        "id": "uuid",
+        "category": "world_fact|pc_secret|npc_secret|faction_secret|cosmic_truth",
+        "content": "the actual truth, stated plainly",
+        "implications": ["what follows if known"],
+        "emotional_valence": "hope|dread|guilt|relief|wonder|horror",
+        
+        "concealment": {
+          "who_knows": ["faction_id", "npc_id", "location_id"],
+          "who_suspects": ["faction_id", "npc_id", "pc_id"],
+          "who_completely_ignorant": ["default: everyone else"],
+          "why_hidden": "shame|power|protection|fear|accident|cosmic_indifference"
+        },
+
+        "discovery_state": {
+          "player_knowledge": "none|partial|full",
+          "pc_knowledge": "none|rumor|suspected|confirmed",
+          "public_knowledge": "none|legend|fact",
+          "dramatic_irony": "player knows more than PC|PC knows more than player|synchronized"
+        }
+      },
+
+      "truth_categories": {
+        "world_fact": {
+          "examples": [
+            "The king has been dead for three years; the 'king' is a possessed suit of armor",
+            "The plague is not disease but escaped spell component from wizard war",
+            "The mountains are sleeping titans; mining wakes them"
+          ],
+          "discovery_methods": "exploration, research, divination, NPC confession"
+        },
+        "pc_secret": {
+          "examples": [
+            "You were swapped at birth; the bandit king is your twin",
+            "Your 'luck' is a demon feeding on your future children's souls",
+            "You died in that fall; you are a revenant with 7 days"
+          ],
+          "discovery_methods": "transformation trigger, NPC recognition, item resonance, dream"
+        },
+        "npc_secret": {
+          "examples": [
+            "The quest-giver is the villain's estranged parent, testing you",
+            "The ally who saved you was the one who put you in danger",
+            "The enemy general is three children in a suit; they want to stop"
+          ],
+          "discovery_methods": "social investigation, combat revelation, consequence surfacing"
+        },
+        "faction_secret": {
+          "examples": [
+            "The paladin order worships the same entity as the demon cult, different aspect",
+            "The merchant guild caused the famine they profit from",
+            "The revolution is funded by foreign powers planning invasion"
+          ],
+          "discovery_methods": "infiltration, document theft, high-rank defection, magical communion"
+        },
+        "cosmic_truth": {
+          "examples": [
+            "Gods are spells that achieved self-awareness; prayer is casting",
+            "The world is a prison for something that dreams reality",
+            "Death is a bureaucratic error; the true afterlife was lost"
+          ],
+          "discovery_methods": "apotheosis, planar travel, ancient artifact, mad prophet"
+        }
+      }
+    },
+
+    "clue_propagation": {
+      "clue_types": {
+        "direct": "states truth plainly (rare, usually final confirmation)",
+        "circumstantial": "implies truth through evidence (blood type, timing, location)",
+        "testimonial": "someone says it's true (reliability varies)",
+        "resonant": "PC's specific history makes this meaningful (only they notice)",
+        "symbolic": "dream, art, omen encodes truth (requires interpretation)",
+        "absence": "what should be there isn't (the dog didn't bark)"
+      },
+
+      "propagation_network": {
+        "description": "Each truth has multiple clues leading to it; each clue connects to multiple truths",
+        "density": "3-5 clues per truth, 1-3 truths per clue (overlapping)",
+        "redundancy": "Multiple paths to same truth; no single point of failure",
+        "noise": "False clues, dead ends, intentional misdirection"
+      },
+
+      "distribution_methods": {
+        "environmental_embedding": "Scene description contains clue (only noticed if PC background matches)",
+        "npc_monologue": "Character speaks clue (may be lying, mad, or misinformed)",
+        "document_fragment": "Partial text requires collection and assembly",
+        "magical_vision": "True seeing, commune, legend lore (reliability check)",
+        "physical_transformation": "PC body changes (scar, mark, mutation reveals lineage)",
+        "consequence_surfacing": "Ripple effect from past action reveals connection"
+      },
+
+      "clue_scheduling": {
+        "principle": "Distribute so that partial knowledge generates interesting wrong theories",
+        "early_clues": "Ambiguous, multiple interpretations, raise questions",
+        "mid_clues": "Confirm some theories, eliminate others, deepen mystery",
+        "late_clues": "Resolve ambiguity, force confrontation with truth",
+        "final_clue": "Irrefutable, often delivered through transformation or confrontation"
+      }
+    },
+
+    "dramatic_irony_engine": {
+      "states": {
+        "synchronized": "Player and PC know same things",
+        "player_ahead": "Player knows truth PC doesn't (dread hope, protective frustration)",
+        "pc_ahead": "PC knows truth player doesn't (mystery, unreliable narration)",
+        "both_partial": "Different fragments, combined understanding needed"
+      },
+
+      "transitions": {
+        "to_player_ahead": "Clue delivered out of character (vision, document, flashback)",
+        "to_pc_ahead": "Off-screen action, secret roll, hidden perception",
+        "to_synchronized": "Revelation scene where both learn together",
+        "to_both_partial": "Complex scene with multiple information sources"
+      },
+
+      "management": {
+        "player_ahead_tension": "How long can player keep secret? Does PC act on partial info?",
+        "pc_ahead_mystery": "What hints does player get? Can they deduce?",
+        "documentation": "Track separately: player_notes vs. pc_knowledge_log"
+      }
+    },
+
+    "revelation_scenes": {
+      "optimal_conditions": {
+        "emotional_investment": "PC has stake in outcome",
+        "stakes_clear": "What changes when truth known",
+        "choice_possible": "Truth doesn't arrive too late to act",
+        "surprise_possible": "Not guessed, or guessed but denied",
+        "resonance": "Connects to PC wound, vow, or shadow_fear"
+      },
+
+      "scene_archetypes": {
+        "the_confession": "NPC reveals, vulnerable or weaponized",
+        "the_confrontation": "Antagonist uses truth as attack",
+        "the_moment_of_clarity": "PC realizes during action (combat, spell, crisis)",
+        "the_unveiling": "Environment transforms to reveal (statue weeps, mirror shows true face)",
+        "the_reckoning": "Multiple truths collide, PC must choose which to believe",
+        "the_inheritance": "Truth passed from dying, mad, or transcendent source"
+      },
+
+      "failure_modes": {
+        "too_early": "PC doesn't care, revelation wasted, later reprise needed",
+        "too_late": "PC committed, revelation tragic or irrelevant",
+        "too_obvious": "Guessed sessions ago, anticlimax",
+        "too_obscure": "Never found, secret dies, potential lost",
+        "mismatched_tone": "Horror revelation in comic scene, emotional whiplash"
+      }
+    },
+
+    "runtime_procedures": {
+      "revelation_readiness_check": {
+        "when": "Session prep, scene generation, consequence scheduling",
+        "check_1": "Any hidden_truth has all optimal_conditions met?",
+        "check_2": "Any clue has been distributed enough for partial theory?",
+        "check_3": "Any dramatic_irony transition is overdue?",
+        "output": "Prioritized list of stageable revelations"
+      },
+
+      "clue_insertion": {
+        "when": "Any scene description generation",
+        "check": "Does this scene's location/NPC/theme connect to any undistributed clue?",
+        "if_yes": "Embed clue appropriate to pc_knowledge level",
+        "if_no": "Roll for ambient clue (random chance of unrelated discovery)"
+      },
+
+      "dramatic_irony_maintenance": {
+        "when": "Session transitions, player questions",
+        "check": "Is current irony state still valid? Has knowledge leaked?",
+        "if_leaked": "Force transition to synchronized or adjust documentation",
+        "reminder": "Update player_notes and pc_knowledge_log separately"
+      }
+    }
+  }
+}

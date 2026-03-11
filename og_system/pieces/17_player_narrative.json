@@ -1,0 +1,222 @@
+{
+  "player_narrative": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["og_system.attributes", "campaign.quest_system", "campaign.faction_system"],
+      "purpose": "Weave PC backstory into world events, generate personalized revelations"
+    },
+
+    "backstory_framework": {
+      "creation_method": "guided_prompting",
+      "phases": [
+        {
+          "phase": "origin",
+          "prompts": [
+            "Where were you born? (region_id or create)",
+            "What was your family's standing? (poor/working/merchant/noble/outcast)",
+            "What did you leave behind? (person, place, obligation, secret)",
+            "Why did you leave?"
+          ],
+          "outputs": {
+            "origin_region": "region_id",
+            "family_standing": "string",
+            "left_behind": {
+              "type": "person|place|obligation|secret",
+              "description": "string",
+              "emotional_weight": "positive|negative|mixed"
+            },
+            "departure_reason": "string"
+          }
+        },
+        {
+          "phase": "formative_wound",
+          "prompts": [
+            "What happened that changed you? (betrayal, loss, failure, revelation, violation, choice)",
+            "Who was involved? (faction, individual, institution)",
+            "What did you vow? (revenge, protection, never again, discovery, redemption)",
+            "What do you fear is true about yourself?"
+          ],
+          "outputs": {
+            "wound_type": "betrayal|loss|failure|revelation|violation|choice",
+            "wound_actor": {
+              "type": "faction|individual|institution",
+              "id": "reference or generate",
+              "relationship": "family|friend|authority|stranger|lover"
+            },
+            "vow": {
+              "type": "revenge|protection|never_again|discovery|redemption",
+              "target": "string",
+              "progress": "unfulfilled|partial|complete|corrupted"
+            },
+            "shadow_fear": "string (what PC fears they are)"
+          }
+        },
+        {
+          "phase": "recent_history",
+          "prompts": [
+            "What were you doing 6 months ago?",
+            "Who did you wrong or who wronged you?",
+            "What opportunity did you miss or seize?",
+            "What item, skill, or debt did you acquire?"
+          ],
+          "outputs": {
+            "recent_situation": "string",
+            "outstanding_debt": {
+              "to": "faction|individual",
+              "nature": "favor|money|life|secret",
+              "urgency": "dormant|pressing|critical"
+            },
+            "acquired_asset": {
+              "type": "item|skill|contact|information",
+              "description": "string",
+              "complication": "string or null"
+            }
+          }
+        }
+      ],
+
+      "secret_generation": {
+        "procedure": "For each PC, generate 1-2 secrets unknown to them",
+        "types": {
+          "lineage": "You are not who you believe (bastard, switched, adopted, transformed)",
+          "connection": "Someone you know is not who they appear (ally is enemy, enemy is family)",
+          "prophecy": "Your actions were foretold; you may be fulfilling or defying",
+          "infection": "Something is inside you (curse, parasite, dormant power, geas)",
+          "duplicity": "You did something you don't remember (possession, blackouts, alternate self)",
+          "obligation": "Someone paid your debts; you are owned without knowing"
+        },
+        "revelation_triggers": [
+          "encounter specific monster or location",
+          "meet specific NPC",
+          "suffer specific condition",
+          "complete specific quest archetype",
+          "use specific spell or item",
+          "specific date or moon phase"
+        ]
+      }
+    },
+
+    "connection_web": {
+      "description": "How PC stories interlink with world elements",
+      
+      "node_types": {
+        "pc_backstory": {
+          "id": "pc_name:origin|wound|recent",
+          "content": "reference to backstory_framework output"
+        },
+        "world_element": {
+          "types": ["region", "faction", "npc", "dungeon", "item", "event"],
+          "id": "reference"
+        },
+        "narrative_thread": {
+          "description": "string explaining the thematic or causal link",
+          "tension": "harmony|irony|tragedy|hope|mystery",
+          "visibility": "hidden|hinted|known"
+        }
+      },
+
+      "connection_types": {
+        "direct": "PC backstory element IS the world element (your brother is the bandit king)",
+        "reflection": "World element mirrors PC element (the cursed mine reflects your family shame)",
+        "consequence": "World element results from PC past action (the plague started where you abandoned your post)",
+        "parallel": "World element faces same choice as PC (the NPC must make your unmade choice)",
+        "inversion": "World element achieved what PC failed (the rival succeeded where you vowed)",
+        "prophecy": "World element foretells PC fate (the dying crone described your death)"
+      },
+
+      "web_generation": {
+        "step_1": "Map all PC backstory nodes",
+        "step_2": "Map all active world elements",
+        "step_3": "Roll or select connection_type for each PC-world pair",
+        "step_4": "Validate: each PC needs 2-3 active connections, 1 hidden secret connection",
+        "step_5": "Check inter-PC connections: shared history, opposed goals, mutual unknowns",
+        "step_6": "Flag revelation_triggers for hidden connections"
+      }
+    },
+
+    "revelation_system": {
+      "revelation_types": {
+        "confirmation": "What you suspected is true (suspense resolved)",
+        "denial": "What you believed is false (foundation shaken)",
+        "complication": "What you knew has deeper layer (rabbit hole)",
+        "connection": "Two separate truths link (pattern recognized)",
+        "responsibility": "You caused this (guilt assigned)",
+        "potential": "You could become this (future foreshadowed)",
+        "identity": "You are this (self redefined)"
+      },
+
+      "revelation_timing": {
+        "too_early": "PC not invested, revelation wasted",
+        "optimal": "PC invested, stakes clear, choice possible",
+        "too_late": "PC committed, revelation tragic or ironic",
+        "never": "Secret dies with world, haunting possibility"
+      },
+
+      "delivery_methods": {
+        "environmental": "Scene description contains truth (bloodstain matches your wound)",
+        "npc_slip": "Character reveals unintentionally (drunk, angry, dying)",
+        "confrontation": "Antagonist uses as weapon (I killed your father)",
+        "dream_vision": "Unconscious processing surfaces (symbolic, partial)",
+        "item_resonance": "Object responds to your presence (sword remembers your hand)",
+        "transformation": "Your body reveals (scar matches map, eye sees truth)",
+        "research": "Lore check connects dots (your name in ancient record)",
+        "betrayal": "Ally reveals hidden allegiance (was always their agent)"
+      },
+
+      "insight_generation": {
+        "description": "What the PC realizes, not what the player knew",
+        
+        "insight_triggers": [
+          "revelation occurs",
+          "PC acts on incomplete information",
+          "PC fails at vowed goal",
+          "PC succeeds at vowed goal",
+          "PC encounters parallel to wound",
+          "PC must choose similar to formative choice"
+        ],
+
+        "insight_content": {
+          "about_self": "I am capable of... / I am not immune to... / I have become...",
+          "about_other": "They acted because... / They see me as... / They are also...",
+          "about_world": "This place remembers... / This system rewards... / This cycle continues...",
+          "about_possibility": "I could still... / It might not be too late to... / There is another way..."
+        },
+
+        "mechanical_expression": {
+          "optional": true,
+          "effect": "temporary attribute shift, new skill access, vow progress, shadow_fear realization"
+        }
+      }
+    },
+
+    "narrative_weaving_procedures": {
+      "session_prep": {
+        "step_1": "Load active connection_web for current region/faction/quest",
+        "step_2": "Check revelation_triggers: any conditions met this session?",
+        "step_3": "Select 0-2 revelations to stage (optimal timing check)",
+        "step_4": "Prepare delivery_method for selected revelations",
+        "step_5": "Identify insight opportunities from likely PC actions",
+        "step_6": "Flag if PC choice will advance/corrupt/complete any vow",
+        "step_7": "Prepare narrative_banks content for emotional texture"
+      },
+
+      "scene_weaving": {
+        "trigger": "Any scene generation (exploration, combat, social)",
+        "check": "Does this location/NPC/event connect to any PC backstory?",
+        "if_yes": "Stage revelation or insight opportunity, adjust description",
+        "if_no": "Check for parallel construction (this resembles their wound)",
+        "fallback": "Plant seed for future connection (NPC mentions unknown name)"
+      },
+
+      "consequence_weaving": {
+        "trigger": "Any significant PC action (combat choice, social outcome, quest decision)",
+        "check": "Does this mirror, fulfill, or betray any PC vow?",
+        "if_yes": "Update vow progress, flag for insight opportunity",
+        "check_2": "Does this affect any connection_web node?",
+        "if_yes": "Update visibility (hidden→hinted→known), adjust tension",
+        "check_3": "Does this trigger any secret's revelation_trigger?",
+        "if_yes": "Stage revelation, prepare delivery_method"
+      }
+    }
+  }
+}

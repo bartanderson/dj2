@@ -1,0 +1,307 @@
+{
+  "classes": {
+    "warrior": {
+      "name": "Warrior",
+      "hp_per_level": 3,
+      "sp_per_level": 0,
+      "core_mechanic": {
+        "name": "Stunts",
+        "description": "Add d6 to attack, damage, or maneuver",
+        "uses": "2 per encounter"
+      },
+      "starting_gear": [
+        "mail",
+        "longsword",
+        "shield",
+        "10g"
+      ],
+      "subclasses": {
+        "berserker": {
+          "name": "Berserker",
+          "level": 3,
+          "mechanic": "Rage: +2 damage, -1 Defense, immune fear, 1 min/day per level"
+        },
+        "knight": {
+          "name": "Knight",
+          "level": 3,
+          "mechanic": "Challenge: Foe -2 to attack others, +1 Armor, mount gains half your HP"
+        },
+        "duelist": {
+          "name": "Duelist",
+          "level": 3,
+          "mechanic": "Precision: +1 Defense per adjacent foe beyond first, riposte on miss"
+        }
+      },
+      "capstones": {
+        "5": "Whirlwind: Attack all adjacent",
+        "10": "Indomitable: Reroll failed save 1/encounter",
+        "15": "Warlord: Allies +1 damage within 10ft"
+      }
+    },
+    "rogue": {
+      "name": "Rogue",
+      "hp_per_level": 2,
+      "sp_per_level": 0,
+      "core_mechanic": {
+        "name": "Exploits",
+        "description": "Advantage = roll damage twice take best. Backstab: +d6 if unseen",
+        "uses": "Passive"
+      },
+      "starting_gear": [
+        "leather",
+        "shortsword",
+        "bow",
+        "lockpicks",
+        "15g"
+      ],
+      "subclasses": {
+        "assassin": {
+          "name": "Assassin",
+          "level": 3,
+          "mechanic": "Death strike: Surprised foes save or die (TN 8+your level)"
+        },
+        "thief": {
+          "name": "Thief",
+          "level": 3,
+          "mechanic": "Supreme sneak: Hide in plain sight, climb sheer surfaces"
+        },
+        "pirate": {
+          "name": "Pirate",
+          "level": 3,
+          "mechanic": "Boarding: Grapple as move, fight in water, pistol d8 range 30"
+        }
+      },
+      "capstones": {
+        "5": "Shadow step: Teleport to unseen spot 60ft",
+        "10": "Reflexes: Never surprised, Evasion: half damage on area saves",
+        "15": "Masterstroke: Auto-crit once per encounter"
+      }
+    },
+    "mage": {
+      "name": "Mage",
+      "hp_per_level": 1,
+      "sp_per_level": 3,
+      "core_mechanic": {
+        "name": "Arcane",
+        "description": "Learn 2 schools. Cast: Wits vs TN 12, spend SP. Overcast: double SP, auto-succeed",
+        "uses": "SP pool"
+      },
+      "starting_gear": [
+        "staff",
+        "robes",
+        "spellbook",
+        "5g"
+      ],
+      "subclasses": {
+        "elementalist": {
+          "name": "Elementalist",
+          "level": 3,
+          "mechanic": "+1 damage die chosen element, immune that element, resist opposite"
+        },
+        "necromancer": {
+          "name": "Necromancer",
+          "level": 3,
+          "mechanic": "Animate: 1 SP = 2 skeletons, max 4\u00c3\u2014level, command as action"
+        },
+        "illusionist": {
+          "name": "Illusionist",
+          "level": 3,
+          "mechanic": "Real: Illusions deal 1 psychic damage per SP, save disbelieves"
+        }
+      },
+      "capstones": {
+        "5": "Spell mastery: One spell free 1/encounter",
+        "10": "Arcane sight: See magic, counterspell as reaction",
+        "15": "Metamagic: Double range, duration, or targets at no extra cost"
+      }
+    },
+    "priest": {
+      "name": "Priest",
+      "hp_per_level": 2,
+      "sp_per_level": 2,
+      "core_mechanic": {
+        "name": "Divine",
+        "description": "Learn 1 school + Healing. Turn Undead: Will+Social vs undead Will, stun 1 round",
+        "uses": "SP pool"
+      },
+      "starting_gear": [
+        "mace",
+        "holy symbol",
+        "medium armor",
+        "8g"
+      ],
+      "subclasses": {
+        "crusader": {
+          "name": "Crusader",
+          "level": 3,
+          "mechanic": "Smite: +d8 damage vs opposed alignment, +1 Armor"
+        },
+        "oracle": {
+          "name": "Oracle",
+          "level": 3,
+          "mechanic": "Prophecy: 1/day declare future event, happens within 1 hour"
+        },
+        "warden": {
+          "name": "Warden",
+          "level": 3,
+          "mechanic": "Sanctuary: Allies +1 Defense within 10ft, heal 1 HP/round to one ally"
+        }
+      },
+      "capstones": {
+        "5": "Miracle: 1/day any spell from any school at SP cost only",
+        "10": "Divine intervention: 1/week, deity answers prayer directly",
+        "15": "Avatar: Resist all damage 1 round, 1/day"
+      }
+    },
+    "ranger": {
+      "name": "Ranger",
+      "hp_per_level": 2,
+      "sp_per_level": 1,
+      "core_mechanic": {
+        "name": "Wild",
+        "description": "Track no roll in favored terrain (pick 2). Animal companion: half your HP, d6 damage",
+        "uses": "Passive + companion"
+      },
+      "starting_gear": [
+        "leather",
+        "bow",
+        "shortsword",
+        "12g"
+      ],
+      "subclasses": {
+        "beastmaster": {
+          "name": "Beastmaster",
+          "level": 3,
+          "mechanic": "Companion becomes monstrous: flying, burrowing, or venomous"
+        },
+        "stalker": {
+          "name": "Stalker",
+          "level": 3,
+          "mechanic": "Ambush: First round, auto-crit if you win initiative"
+        },
+        "wayfarer": {
+          "name": "Wayfarer",
+          "level": 3,
+          "mechanic": "Never lost, find food/water anywhere, immune exhaustion"
+        }
+      },
+      "capstones": {
+        "5": "Beast lord: Companion +10 HP, +d8 damage",
+        "10": "Hunter's mark: +d6 damage, no concentration, know location",
+        "15": "Nature's ally: Summon 2d6 beasts 1/day"
+      }
+    },
+    "bard": {
+      "name": "Bard",
+      "hp_per_level": 2,
+      "sp_per_level": 2,
+      "core_mechanic": {
+        "name": "Weave",
+        "description": "Spells are songs\u00e2\u20ac\u201dcast while fighting at -2. Inspire: allies +1 to rolls while you perform",
+        "uses": "SP pool + performance"
+      },
+      "starting_gear": [
+        "rapier",
+        "lute",
+        "flashy clothes",
+        "10g"
+      ],
+      "subclasses": {
+        "lorekeeper": {
+          "name": "Lorekeeper",
+          "level": 3,
+          "mechanic": "Know any legend, +2 Lore, speak any language"
+        },
+        "dervish": {
+          "name": "Dervish",
+          "level": 3,
+          "mechanic": "Battle dance: Move between attacks, +1 attack/round at level 10"
+        },
+        "dirgesinger": {
+          "name": "Dirgesinger",
+          "level": 3,
+          "mechanic": "Death song: Dying foes rise as spirits (1 SP each, serve 1 hour)"
+        }
+      },
+      "capstones": {
+        "5": "Legend: Your stories become real\u00e2\u20ac\u201d1/day narrate flashback that changes present",
+        "10": "Masterpiece: Performance affects all who hear, no save",
+        "15": "Epic: Allies immune fear/charm while you perform"
+      }
+    },
+    "monk": {
+      "name": "Monk",
+      "hp_per_level": 2,
+      "sp_per_level": 1,
+      "core_mechanic": {
+        "name": "Ki",
+        "description": "Unarmed d6, Defense +1 unarmored. Flurry: 2 attacks, -2 each",
+        "uses": "Passive + flurry"
+      },
+      "starting_gear": [
+        "robes",
+        "staff",
+        "5g"
+      ],
+      "subclasses": {
+        "iron_soul": {
+          "name": "Iron Soul",
+          "level": 3,
+          "mechanic": "Immune non-magic damage, +2 Armor unarmored"
+        },
+        "void_hand": {
+          "name": "Void Hand",
+          "level": 3,
+          "mechanic": "Touch ignores armor, crit: blind/deafen/stun (choose)"
+        },
+        "drunken_master": {
+          "name": "Drunken Master",
+          "level": 3,
+          "mechanic": "Fortitude: Drunk = +1 all rolls, -1 Defense, no hangover"
+        }
+      },
+      "capstones": {
+        "5": "Empty hand: Unarmed d10, immune non-magic weapons",
+        "10": "Quivering palm: Touch, foe saves or dies 1/day",
+        "15": "Transcendence: Fly, ethereal jaunt, no need to breathe"
+      }
+    },
+    "warlock": {
+      "name": "Warlock",
+      "hp_per_level": 2,
+      "sp_per_level": 2,
+      "core_mechanic": {
+        "name": "Pact",
+        "description": "No Wits roll to cast. 1 spell/turn free, then HP cost. Patron demands favors",
+        "uses": "HP conversion"
+      },
+      "starting_gear": [
+        "dagger",
+        "odd trinket",
+        "3g"
+      ],
+      "subclasses": {
+        "chain_master": {
+          "name": "Chain Master",
+          "level": 3,
+          "mechanic": "Familiar: Imp/Quasit (fly, invis, shapechange), spy for you"
+        },
+        "tome_bearer": {
+          "name": "Tome Bearer",
+          "level": 3,
+          "mechanic": "Rituals in 1 min, learn any spell from defeated caster"
+        },
+        "blade_pact": {
+          "name": "Blade Pact",
+          "level": 3,
+          "mechanic": "Pact weapon: +1 damage per 4 levels, returns when thrown"
+        }
+      },
+      "capstones": {
+        "5": "True name: Command patron's servants, no HP cost 1/day",
+        "10": "Eldritch blast: At-will d10 force damage, range 120",
+        "15": "Patron's embrace: Resurrect 1/week if patron finds you useful"
+      }
+    }
+  }
+}

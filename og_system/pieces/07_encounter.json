@@ -1,0 +1,68 @@
+{
+  "encounter_balance": {
+    "formula": "CR = party_level + difficulty_mod",
+    "difficulty": {
+      "easy": -2,
+      "medium": 0,
+      "hard": 2,
+      "deadly": 4
+    },
+    "multipliers": {
+      "single": 1,
+      "pair": 1.5,
+      "group_3_6": 2,
+      "horde_7_12": 2.5,
+      "army_13_plus": 3
+    }
+  },
+  "ai_protocol": {
+    "tags": [
+      "fire",
+      "loud",
+      "ritual",
+      "aoe",
+      "touch",
+      "concentration",
+      "beast",
+      "humanoid",
+      "undead",
+      "construct",
+      "fey",
+      "aberration",
+      "dragon",
+      "fiend",
+      "celestial",
+      "ooze",
+      "swarm",
+      "incorporeal",
+      "cosmic",
+      "prince"
+    ],
+    "escalation_ladder": {
+      "standard": {
+        "tn_mod": 0,
+        "damage_mod": "as rolled"
+      },
+      "dangerous": {
+        "tn_mod": 2,
+        "damage_mod": "+2 dice"
+      },
+      "deadly": {
+        "tn_mod": 4,
+        "damage_mod": "x2, wounded on any hit"
+      }
+    },
+    "scene_structure": [
+      "Setup: 2-3 sensory details, obvious threat/opportunity",
+      "Choice: Player declares action",
+      "Roll: Single check determines success degree",
+      "Consequence: Hit or miss, narrative moves forward",
+      "Twist: On 1 or 20, introduce complication/boon"
+    ],
+    "generation_rules": {
+      "monster_scaling": "Adjust HP \u00c2\u00b120% per CR difference, adjust damage die step",
+      "loot_generation": "CR 1-5: mundane + potion. CR 6-10: +1 weapon or armor. CR 11-15: rare consumable. CR 16+: legendary item or permanent boon",
+      "narrative_tags": "Every scene has 2 tags from [dark, wet, ancient, holy, corrupted, wild, urban, desolate]. Monsters match 1 tag."
+    }
+  }
+}

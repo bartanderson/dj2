@@ -1,0 +1,6 @@
+<select name="subrace" {% if not race_chosen %}disabled{% endif %}>
+    <option value="">-- Choose Subrace --</option>
+    {% for subrace in subraces %}
+    <option value="{{ subrace }}">{{ subrace }}</option>
+    {% endfor %}
+</select>

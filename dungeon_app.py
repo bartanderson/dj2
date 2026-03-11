@@ -16,6 +16,7 @@ app.campaign = TestCampaign()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('standalone_app')
+logger.setLevel(logging.ERROR)
 
 # ===== CORS CODE =====
 @app.before_request

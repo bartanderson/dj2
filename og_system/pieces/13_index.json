@@ -1,0 +1,151 @@
+{
+  "index": {
+    "byCategory": {
+      "coreMechanics": [
+        "resolution",
+        "attributes",
+        "skills",
+        "combat",
+        "progression"
+      ],
+      "characterCreation": [
+        "attributes",
+        "skills",
+        "races",
+        "classes",
+        "equipment"
+      ],
+      "magic": [
+        "magic.schools"
+      ],
+      "bestiary": [
+        "monsters"
+      ],
+      "adventuring": [
+        "modules.exploration",
+        "modules.social",
+        "modules.crafting",
+        "modules.settlement"
+      ],
+      "aiRuntime": [
+        "engine",
+        "ai_protocol"
+      ]
+    },
+    "byTag": {
+      "combat": [
+        "combat",
+        "weapons",
+        "armor",
+        "conditions",
+        "monsters"
+      ],
+      "exploration": [
+        "modules.exploration"
+      ],
+      "social": [
+        "modules.social",
+        "reputation"
+      ],
+      "crafting": [
+        "modules.crafting"
+      ],
+      "settlement": [
+        "modules.settlement"
+      ],
+      " GM_tools": [
+        "encounter_balance",
+        "ai_protocol",
+        "engine"
+      ]
+    },
+    "quickReference": {
+      "targetNumbers": "core_mechanics.resolution.target_numbers",
+      "conditions": "combat.conditions",
+      "spellSchools": "magic.schools",
+      "monsterByCR": "monsters sorted by cr"
+    }
+  },
+  "markdownGenerator": {
+    "templateStructure": {
+      "titlePage": [
+        "meta.name",
+        "meta.version",
+        "meta.description"
+      ],
+      "chapterOrder": [
+        "core_mechanics",
+        "character_creation",
+        "classes",
+        "magic",
+        "equipment",
+        "combat",
+        "monsters",
+        "exploration",
+        "social",
+        "crafting",
+        "settlement",
+        "ai_guide",
+        "appendices"
+      ],
+      "sectionTemplates": {
+        "attributes": {
+          "format": "table",
+          "columns": [
+            "name",
+            "abbreviation",
+            "governs",
+            "hp_per_point",
+            "sp_per_point"
+          ]
+        },
+        "classes": {
+          "format": "classBlock",
+          "elements": [
+            "name",
+            "hp_per_level",
+            "sp_per_level",
+            "core_mechanic",
+            "starting_gear",
+            "subclasses",
+            "capstones"
+          ]
+        },
+        "monsters": {
+          "format": "statBlock",
+          "elements": [
+            "name",
+            "cr",
+            "attributes",
+            "hp",
+            "defense",
+            "armor",
+            "damage",
+            "special",
+            "tags"
+          ]
+        },
+        "tables": {
+          "format": "rollableTable",
+          "elements": [
+            "roll",
+            "result",
+            "effect"
+          ]
+        }
+      }
+    },
+    "navigation": {
+      "tocDepth": 3,
+      "indexEntries": "allKeys",
+      "crossReferences": "autoLink",
+      "pageReferences": false
+    },
+    "outputFormats": {
+      "markdown": "full.md",
+      "html": "full.html",
+      "pdfReady": "print.md",
+      "quickReference": "qr.md"
+    }
+  }
+}

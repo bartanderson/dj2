@@ -22,11 +22,32 @@ from engine.game_engine import GameEngine, GamePhase, GameContext
 # Add to world_app.py, near other imports
 import requests
 
+from world.character_generator import ABILITY_SCORE_NAMES
+
+
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 app = Flask(__name__)
+
+# begin filtering timestamp
+import logging
+
+class AccessLogFilter(logging.Filter):
+    def filter(self, record):
+        # Return False to exclude access log lines, True to keep others
+        msg = record.getMessage()
+        # Exclude lines with HTTP method and status code
+        if ('"GET' in msg or '"POST' in msg or '"PUT' in msg or '"DELETE' in msg) and 'HTTP/1.' in msg:
+            # Check for status code (200, 404, etc.)
+            if any(f' {code} ' in msg for code in ['200', '201', '204', '300', '301', '302', '400', '401', '403', '404', '500']):
+                return False
+        return True
+
+# Apply filter to Werkzeug logger
+logging.getLogger('werkzeug').addFilter(AccessLogFilter())
+# end filtering timestamp
 
 avatar_dir = Path("static/character_avatars")
 t2i = None
@@ -1323,96 +1344,172 @@ def all_locations():
         print(f"Error in all_locations: {str(e)}")
         return jsonify({"locations": []})
 
+# ===== begin: Character Creation HTMX Endpoints =====
+@app.route('/character-creation/random-all', methods=['POST'])
+def random_all():
+    raw = request.form.to_dict(flat=False)
+    data = {}
+    for key, values in raw.items():
+        if key == 'skills':
+            data[key] = values
+        else:
+            data[key] = values[0] if values else ''
 
-# @app.route('/api/dm-response', methods=['POST'])
-# def dm_response():
-#     """Process DM chat with GameEngine phase compliance"""
-#     try:
-#         print("DEBUG: dm-response endpoint called with GameEngine")
-        
-#         # Check if GameEngine is available
-#         if not hasattr(app, 'game_engine') or app.game_engine is None:
-#             print("DEBUG: GameEngine not available, using legacy processing")
-#             return legacy_dm_response()  # Fallback to original implementation
-        
-#         data = request.get_json()
-#         message = data.get('message')
-#         character_id = data.get('character_id')
-        
-#         # Get session ID
-#         session_id = request.cookies.get('session_id')
-#         is_new_session = False
-        
-#         if not session_id:
-#             session_id = str(uuid.uuid4())
-#             is_new_session = True
-        
-#         # Get or create player
-#         player = app.world_controller.get_or_create_player(session_id)
-        
-#         # If character_id is specified, validate
-#         if character_id and character_id not in player.character_ids:
-#             return jsonify({'error': 'Character does not belong to player'}), 400
-        
-#         # Set active character
-#         active_character_id = character_id or player.active_character_id
-#         if active_character_id:
-#             player.set_active_character(active_character_id)
-        
-#         # Create GameContext for this interaction
-#         context = GameContext()
-#         context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
-#         context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
-#         context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
-        
-#         # Process through GameEngine
-#         engine_result = app.game_engine.advance(player_input=message, context=context)
-        
-#         # Extract UI data and narration
-#         ui_data = engine_result.get('ui_data', {})
-#         narration = ui_data.get('narration', '')
-        
-#         # Get any tool results from context
-#         tool_result = context.get_phase_data(GamePhase.AUTHORITY, "tool_result")
-        
-#         # Build response
-#         response_data = {
-#             'responses': [{
-#                 'speaker': 'DM',
-#                 'content': narration or "The DM considers your words...",
-#                 'type': 'narration'
-#             }],
-#             'tool_result': tool_result,
-#             'session_id': session_id,
-#             'character_id': active_character_id,
-#             'player_id': player.id,
-#             'phase_info': {
-#                 'current_phase': engine_result.get('current_phase'),
-#                 'violations': engine_result.get('violations', 0),
-#                 'warnings': engine_result.get('warnings', 0)
-#             }
-#         }
-        
-#         # Create response and set cookie if needed
-#         response = jsonify(response_data)
-#         if is_new_session:
-#             response.set_cookie(
-#                 'session_id', 
-#                 session_id, 
-#                 max_age=60*60*24*7,
-#                 path='/',
-#                 secure=False,
-#                 httponly=True,
-#                 samesite='Lax'
-#             )
-            
-#         return response
-        
-#     except Exception as e:
-#         print(f"Error in dm-response: {str(e)}")
-#         import traceback
-#         traceback.print_exc()
-#         return jsonify({'error': str(e)}), 500
+    from world import character_generator
+    complete = character_generator.random_fill_all(data)
+
+    from world import dnd_data
+    context = {
+        'races': dnd_data.get_race_list(),
+        'classes': dnd_data.get_class_list(),
+        'backgrounds': dnd_data.get_background_list(),
+        'skills_list': dnd_data.get_skill_list(),
+        'ability_names': dnd_data.get_ability_score_lower_names(),
+        'ability_display': dnd_data.get_ability_score_full_names(),
+    }
+    context.update(complete)
+
+    race = context.get('race')
+    class_name = context.get('class')
+    context['subraces'] = dnd_data.get_subraces_for_race(race) if race else []
+    context['fighting_styles'] = dnd_data.get_fighting_styles_for_class(class_name) if class_name else []
+
+    if class_name:
+        dnd_class = dnd_data.DnDClass.get(class_name.lower())
+        if dnd_class:
+            context['hit_die'] = dnd_class.hit_die
+            skill_choices = dnd_class.skill_choices()
+            context['class_skill_choose'] = skill_choices['choose']
+            context['class_skill_options'] = [s.name for s in skill_choices['from']]
+    else:
+        context['hit_die'] = None
+        context['class_skill_choose'] = 0
+        context['class_skill_options'] = []
+
+    return render_template('partials/creation_form.html', **context)
+    
+@app.route('/character-creation/submit', methods=['POST'])
+def submit_character():
+    data = request.form
+    session_id = request.cookies.get('session_id')
+    player = app.world_controller.get_or_create_player(session_id)
+    if not player:
+        return render_template('partials/error_message.html', errors=["Could not identify player"]), 400
+
+    # Convert to a mutable dict
+    char_data = data.to_dict()
+
+    # Handle skills (multi‑value)
+    skills = request.form.getlist('skills')
+    if skills:
+        char_data['skills'] = skills
+
+    # Add player_id
+    char_data['player_id'] = player.id
+
+    # Map ability scores from individual fields to the expected keys (strength, dexterity, etc.)
+    ability_map = {
+        'STR': 'strength',
+        'DEX': 'dexterity',
+        'CON': 'constitution',
+        'INT': 'intelligence',
+        'WIS': 'wisdom',
+        'CHA': 'charisma'
+    }
+    for api_ability, attr in ability_map.items():
+        key = f'ability_{api_ability}'
+        if key in char_data and char_data[key]:
+            try:
+                char_data[attr] = int(char_data[key])
+            except ValueError:
+                pass  # ignore invalid
+            del char_data[key]  # remove the original field
+
+    from world import character_generator
+    result = character_generator.create_character_from_form(
+        char_data,
+        builder=app.world_controller.character_builder
+    )
+
+    if result['success']:
+        # Set the active character in the session
+        app.world_controller.session_system.set_active_character(session_id, result['character'].id)
+        return render_template('partials/success_message.html', character=result['character'])
+    else:
+        return render_template('partials/error_message.html', errors=result['errors']), 400
+
+@app.route('/character-creation/form')
+def character_creation_form():
+    from world import dnd_data
+    context = {
+        'races': dnd_data.get_race_list(),
+        'classes': dnd_data.get_class_list(),
+        'backgrounds': dnd_data.get_background_list(),
+        'skills_list': dnd_data.get_skill_list(),
+        'ability_names': ABILITY_SCORE_NAMES,
+        'subraces': [],
+        'fighting_styles': [],
+        'name': '',
+        'race': '',
+        'subrace': '',
+        'class': '',
+        'fighting_style': '',
+        'background': '',
+        'selected_skills': [],
+        'ability_scores': {}
+    }
+    return render_template('partials/creation_form.html', **context)
+
+@app.route('/character-creation/update-form', methods=['POST'])
+def update_character_form():
+    from world import character_generator, dnd_data
+
+    raw_data = request.form.to_dict(flat=False)
+    data = {}
+    for key, values in raw_data.items():
+        if key == 'skills':
+            data[key] = values
+        else:
+            data[key] = values[0] if values else ''
+
+    normalized = character_generator.normalize_form_data(data)
+
+    # Static lists
+    normalized['races'] = dnd_data.get_race_list()
+    normalized['classes'] = dnd_data.get_class_list()
+    normalized['backgrounds'] = dnd_data.get_background_list()
+    normalized['skills_list'] = dnd_data.get_skill_list()
+    normalized['ability_names'] = dnd_data.get_ability_score_lower_names()   # for form field names
+    normalized['ability_display'] = dnd_data.get_ability_score_full_names()  # for labels
+
+    # Dependent lists
+    race = normalized.get('race')
+    class_name = normalized.get('class')
+    normalized['subraces'] = dnd_data.get_subraces_for_race(race) if race else []
+    normalized['fighting_styles'] = dnd_data.get_fighting_styles_for_class(class_name) if class_name else []
+
+    # Class‑specific data
+    if class_name:
+        dnd_class = dnd_data.DnDClass.get(class_name.lower())
+        if dnd_class:
+            normalized['hit_die'] = dnd_class.hit_die
+            skill_choices = dnd_class.skill_choices()
+            normalized['class_skill_choose'] = skill_choices['choose']
+            normalized['class_skill_options'] = [s.name for s in skill_choices['from']]
+        else:
+            normalized['hit_die'] = None
+            normalized['class_skill_choose'] = 0
+            normalized['class_skill_options'] = []
+    else:
+        normalized['hit_die'] = None
+        normalized['class_skill_choose'] = 0
+        normalized['class_skill_options'] = []
+
+    # Optional: ensure selected_skills exists
+    if 'selected_skills' not in normalized:
+        normalized['selected_skills'] = []
+
+    return render_template('partials/creation_form.html', **normalized)
 
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():

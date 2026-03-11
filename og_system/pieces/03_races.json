@@ -1,0 +1,159 @@
+{
+  "races": {
+    "human": {
+      "name": "Human",
+      "mechanical_bonus": {
+        "type": "attribute",
+        "value": "+1 any"
+      },
+      "knacks": [
+        "Adaptable",
+        "Diplomatic",
+        "Ambitious",
+        "Diverse"
+      ],
+      "tags": [
+        "versatile"
+      ]
+    },
+    "dwarf": {
+      "name": "Dwarf",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Brawn or +1 Armor from toughness"
+      },
+      "knacks": [
+        "Stone-sense",
+        "Darkvision 30ft",
+        "Poison resistance",
+        "Craft memory"
+      ],
+      "tags": [
+        "sturdy",
+        "underground"
+      ]
+    },
+    "elf": {
+      "name": "Elf",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Finesse or +1 Initiative"
+      },
+      "knacks": [
+        "Forest-track",
+        "Keen sight",
+        "Trance rest",
+        "Fae etiquette"
+      ],
+      "tags": [
+        "fey",
+        "perceptive"
+      ]
+    },
+    "halfling": {
+      "name": "Halfling",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Finesse or Lucky (reroll 1s 1/day)"
+      },
+      "knacks": [
+        "Hide in plain sight",
+        "Cook",
+        "Nimble",
+        "Home-sense"
+      ],
+      "tags": [
+        "small",
+        "lucky"
+      ]
+    },
+    "orc": {
+      "name": "Orc",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Brawn or Intimidate without roll vs weak foes"
+      },
+      "knacks": [
+        "War-cry",
+        "Scent-track",
+        "Savage endurance",
+        "Trophy-taker"
+      ],
+      "tags": [
+        "savage",
+        "intimidating"
+      ]
+    },
+    "goblin": {
+      "name": "Goblin",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Finesse or +2 Move"
+      },
+      "knacks": [
+        "Night sight",
+        "Tinker",
+        "Scurry",
+        "Pack-rat"
+      ],
+      "tags": [
+        "small",
+        "nimble",
+        "urban"
+      ]
+    },
+    "troll_blooded": {
+      "name": "Troll-blooded",
+      "mechanical_bonus": {
+        "type": "static",
+        "value": "Regenerate 1 HP/round unless fire/acid"
+      },
+      "knacks": [
+        "Scent",
+        "Iron stomach",
+        "Terrify",
+        "Claws d4 natural"
+      ],
+      "tags": [
+        "regeneration",
+        "monstrous"
+      ]
+    },
+    "construct": {
+      "name": "Construct",
+      "mechanical_bonus": {
+        "type": "compound",
+        "value": "No healing potions, immune poison/disease, +1 Armor"
+      },
+      "knacks": [
+        "No sleep",
+        "Perfect memory",
+        "No fear",
+        "Unliving"
+      ],
+      "tags": [
+        "construct",
+        "immune",
+        "relentless"
+      ]
+    },
+    "fae_touched": {
+      "name": "Fae-touched",
+      "mechanical_bonus": {
+        "type": "choice",
+        "value": "+1 Will or Glamour (disguise self 1/day)"
+      },
+      "knacks": [
+        "Iron sensitivity",
+        "Speak with beasts",
+        "Moon-sight",
+        "Pact sense"
+      ],
+      "tags": [
+        "fey",
+        "magical",
+        "vulnerable"
+      ]
+    }
+  }
+}

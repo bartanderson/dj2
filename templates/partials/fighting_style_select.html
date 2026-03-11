@@ -1,0 +1,9 @@
+<div id="fighting-style-container">
+    <label>Fighting Style (if applicable):</label>
+    <select name="fighting_style" {% if not class_chosen %}disabled{% endif %}>
+        <option value="">-- Choose Fighting Style --</option>
+        {% for style in styles %}
+        <option value="{{ style }}" {% if style == selected_fighting_style %}selected{% endif %}>{{ style }}</option>
+        {% endfor %}
+    </select>
+</div>

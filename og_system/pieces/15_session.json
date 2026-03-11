@@ -1,0 +1,143 @@
+{
+  "session": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["og_system.engine.stateTracking", "campaign.world_state"]
+    },
+    
+    "session_structure": {
+      "phases": [
+        {
+          "id": "arrival",
+          "name": "Arrival & Situation",
+          "duration": "5-15 minutes",
+          "procedures": ["establish_scene", "recap_quests", "note_time_passed"],
+          "ai_role": "Set tone, describe environment, remind of pending business"
+        },
+        {
+          "id": "exploration",
+          "name": "Exploration & Discovery",
+          "duration": "variable",
+          "procedures": ["dungeon_turn", "hex_crawl", "search", "interact"],
+          "ai_role": "Describe discoveries, manage pacing, escalate danger"
+        },
+        {
+          "id": "interaction",
+          "name": "Social Interaction",
+          "duration": "variable",
+          "procedures": ["reaction_roll", "social_moves", "negotiation"],
+          "ai_role": "Portray NPCs, voice drives, manage tension"
+        },
+        {
+          "id": "combat",
+          "name": "Combat & Crisis",
+          "duration": "10-30 minutes",
+          "procedures": ["encounter_state_machine", "turn_resolution", "morale"],
+          "ai_role": "Narrate action, describe wounds, manage retreat/surrender"
+        },
+        {
+          "id": "recovery",
+          "name": "Recovery & Inventory",
+          "duration": "5-10 minutes",
+          "procedures": ["healing", "resource_tracking", "identification"],
+          "ai_role": "Describe rest, hint at time pressure, foreshadow"
+        },
+        {
+          "id": "decision",
+          "name": "Decision & Departure",
+          "duration": "5-10 minutes",
+          "procedures": ["quest_update", "route_planning", "preparation"],
+          "ai_role": "Summarize options, clarify stakes, set next session hook"
+        },
+        {
+          "id": "bookkeeping",
+          "name": "Bookkeeping (invisible)",
+          "duration": "0 minutes (post-session)",
+          "procedures": ["xp_award", "reputation_update", "faction_turns", "world_time_advance"],
+          "ai_role": "none—automated"
+        }
+      ],
+      
+      "phase_transitions": {
+        "rules": [
+          "Arrival → Exploration (always)",
+          "Exploration → Interaction (discovered NPCs), Combat (encounter), or Recovery (rest)",
+          "Interaction → Exploration (end conversation), Combat (hostility), or Decision (agreement)",
+          "Combat → Recovery (victory), Exploration (retreat), or Decision (capture/surrender)",
+          "Recovery → Exploration (continue) or Decision (return)",
+          "Decision → Arrival (next location) or Bookkeeping (end session)"
+        ]
+      }
+    },
+    
+    "session_state": {
+      "session_id": "uuid",
+      "campaign_id": "reference",
+      "start_time": "real timestamp",
+      "in_game_start_date": "reference",
+      
+      "current_phase": "phase_id",
+      "phase_history": ["phase_id with timestamps"],
+      
+      "active_combat": {
+        "exists": "boolean",
+        "reference": "combatState from og_system"
+      },
+      
+      "active_social": {
+        "exists": "boolean",
+        "npc_id": "reference",
+        "current_disposition": "hostile|unfriendly|neutral|friendly|helpful",
+        "drives_revealed": ["drive_id"],
+        "secrets_uncovered": ["secret_id"]
+      },
+      
+      "exploration_state": {
+        "location_type": "dungeon|wilderness|settlement",
+        "location_id": "reference",
+        "turns_elapsed": 0,
+        "light_remaining": "torch_count or lantern_oil",
+        "resources_consumed": ["rations", "water", "ammo"],
+        "discovered_areas": ["area_id"],
+        "mapped_areas": ["area_id"],
+        "looted_containers": ["container_id"]
+      },
+      
+      "pending_decisions": [
+        {
+          "id": "string",
+          "description": "string",
+          "options": ["string"],
+          "consequences_known": ["string"],
+          "consequences_hidden": ["string"],
+          "deadline": "in-game date or null"
+        }
+      ],
+      
+      "narrative_log": [
+        {
+          "timestamp": "session_time",
+          "phase": "phase_id",
+          "type": "description|dialogue|mechanic|consequence",
+          "content": "string",
+          "mechanical_result": "optional JSON"
+        }
+      ],
+      
+      "temporary_modifiers": [
+        {
+          "name": "string",
+          "effect": "string",
+          "expires": "in-game condition or date",
+          "source": "blessing|curse|item|environment"
+        }
+      ]
+    },
+    
+    "persistence": {
+      "autosave_triggers": ["phase_transition", "combat_end", "significant_discovery"],
+      "snapshot_format": "full session_state + compressed narrative_log",
+      "archive_after": "session ends, successful save to campaign history"
+    }
+  }
+}

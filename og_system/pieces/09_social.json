@@ -1,0 +1,154 @@
+{
+  "social": {
+    "state_machines": {
+      "socialEncounter": {
+        "states": [
+          "firstImpression",
+          "engagement",
+          "maneuver",
+          "resolution"
+        ],
+        "initial": "firstImpression",
+        "transitions": {
+          "firstImpression": {
+            "on": "meet",
+            "to": "engagement",
+            "procedure": "reactionRoll"
+          },
+          "engagement": {
+            "on": "interact",
+            "to": "maneuver",
+            "procedure": "establishDrives"
+          },
+          "maneuver": {
+            "on": "attempt",
+            "to": "resolution",
+            "procedure": "resolveSocialMove",
+            "branches": {
+              "continue": "maneuver",
+              "shift": "engagement",
+              "end": "resolution"
+            }
+          },
+          "resolution": {
+            "on": "close",
+            "to": null,
+            "procedure": "updateReputation"
+          }
+        }
+      }
+    },
+    "procedures": {
+      "reactionRoll": {
+        "formula": "2d6 + modifiers",
+        "modifiers": {
+          "partyReputation": "-2 to +2",
+          "context": "-2 (bloodied) to +2 (bearing gifts)",
+          "alignmentMatch": "+1",
+          "priorHistory": "variable"
+        },
+        "results": {
+          "2": {
+            "disposition": "hostile",
+            "behavior": "Attack or drive off"
+          },
+          "3-5": {
+            "disposition": "unfriendly",
+            "behavior": "Refuse aid, threaten"
+          },
+          "6-8": {
+            "disposition": "neutral",
+            "behavior": "Wary, transactional"
+          },
+          "9-11": {
+            "disposition": "friendly",
+            "behavior": "Helpful, share information"
+          },
+          "12": {
+            "disposition": "helpful",
+            "behavior": "Risk themselves for you"
+          }
+        }
+      },
+      "establishDrives": {
+        "inputs": [
+          "npcType",
+          "context"
+        ],
+        "output": "drive, secret, obstacle",
+        "examples": {
+          "merchant": {
+            "drive": "Profit",
+            "secret": "In debt to crime lord",
+            "obstacle": "Suspicious of strangers"
+          },
+          "guard": {
+            "drive": "Protect post",
+            "secret": "Takes bribes",
+            "obstacle": "Duty vs corruption"
+          },
+          "noble": {
+            "drive": "Status",
+            "secret": "Illegitimate heir",
+            "obstacle": "Disdain for commoners"
+          },
+          "peasant": {
+            "drive": "Safety",
+            "secret": "Saw something strange",
+            "obstacle": "Fear of reprisal"
+          }
+        }
+      },
+      "resolveSocialMove": {
+        "moves": {
+          "charm": {
+            "attribute": "Will",
+            "skill": "Social",
+            "effect": "Shift disposition +1 if drives addressed"
+          },
+          "intimidate": {
+            "attribute": "Brawn or Will",
+            "skill": "Social",
+            "effect": "Force compliance, risk hostility"
+          },
+          "deceive": {
+            "attribute": "Wits",
+            "skill": "Social",
+            "effect": "Believed if plausible, exposed if contradicted"
+          },
+          "bribe": {
+            "attribute": "none",
+            "skill": "Social",
+            "effect": "Shift disposition based on offer vs need"
+          },
+          "appeal": {
+            "attribute": "Will",
+            "skill": "Social",
+            "effect": "If drive matches, automatic shift"
+          },
+          "investigate": {
+            "attribute": "Wits",
+            "skill": "Lore or Social",
+            "effect": "Discover secret or obstacle"
+          }
+        },
+        "success": "Shift disposition or gain concession",
+        "failure": "Disposition unchanged or worsens, obstacle reinforced",
+        "critical": "Disposition +2 or permanent ally, secret revealed",
+        "fumble": "Immediate hostility, secret used against party"
+      }
+    },
+    "reputation": {
+      "tracking": "Faction scores -5 to +5",
+      "effects": {
+        "-5": "Wanted dead, no safe haven",
+        "-3": "Refused service, attacked on sight in territory",
+        "0": "Unknown",
+        "+3": "Discounts, safe passage, warnings",
+        "+5": "Called upon for aid, named in songs"
+      },
+      "gains": "Complete quest +1, public heroism +1, betrayal -2, murder -3",
+      "decay": "Ignored -1 per year, scandal -1 instantly"
+    }
+  }
+}

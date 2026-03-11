@@ -1,0 +1,139 @@
+<form id="character-form" 
+      hx-post="/character-creation/update-form" 
+      hx-target="#character-form" 
+      hx-swap="outerHTML">
+    
+    <!-- Name -->
+    <div>
+        <label>Name:</label>
+        <input type="text" name="name" value="{{ name }}" 
+               hx-post="/character-creation/update-form" 
+               hx-trigger="change" 
+               hx-include="#character-form"
+               hx-target="#character-form" 
+               hx-swap="outerHTML">
+    </div>
+
+    <!-- Race -->
+    <div>
+        <label>Race:</label>
+        <select name="race" 
+                hx-post="/character-creation/update-form" 
+                hx-trigger="change" 
+                hx-include="#character-form"
+                hx-target="#character-form" 
+                hx-swap="outerHTML">
+            <option value="">-- Choose Race --</option>
+            {% for race_option in races %}
+            <option value="{{ race_option }}" {% if race_option == race %}selected{% endif %}>{{ race_option }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Subrace -->
+    <div>
+        <label>Subrace:</label>
+        <select name="subrace" 
+                hx-post="/character-creation/update-form" 
+                hx-trigger="change" 
+                hx-include="#character-form"
+                hx-target="#character-form" 
+                hx-swap="outerHTML">
+            <option value="">-- Choose Subrace --</option>
+            {% for subrace_option in subraces %}
+            <option value="{{ subrace_option }}" {% if subrace_option == subrace %}selected{% endif %}>{{ subrace_option }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Class -->
+    <div>
+        <label>Class:</label>
+        <select name="class" 
+                hx-post="/character-creation/update-form" 
+                hx-trigger="change" 
+                hx-include="#character-form"
+                hx-target="#character-form" 
+                hx-swap="outerHTML">
+            <option value="">-- Choose Class --</option>
+            {% for class_option in classes %}
+            <option value="{{ class_option }}" {% if class_option == class %}selected{% endif %}>{{ class_option }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Fighting Style -->
+    <div>
+        <label>Fighting Style (if applicable):</label>
+        <select name="fighting_style" 
+                hx-post="/character-creation/update-form" 
+                hx-trigger="change" 
+                hx-include="#character-form"
+                hx-target="#character-form" 
+                hx-swap="outerHTML">
+            <option value="">-- Choose Fighting Style --</option>
+            {% for style in fighting_styles %}
+            <option value="{{ style }}" {% if style == fighting_style %}selected{% endif %}>{{ style }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Background -->
+    <div>
+        <label>Background:</label>
+        <select name="background" 
+                hx-post="/character-creation/update-form" 
+                hx-trigger="change" 
+                hx-include="#character-form"
+                hx-target="#character-form" 
+                hx-swap="outerHTML">
+            <option value="">-- Choose Background --</option>
+            {% for bg in backgrounds %}
+            <option value="{{ bg }}" {% if bg == background %}selected{% endif %}>{{ bg }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Skills (checkboxes) -->
+    <div>
+        <label>Skills:</label>
+        {% for skill in skills_list %}
+        <div>
+            <input type="checkbox" name="skills" value="{{ skill }}" 
+                   {% if skill in selected_skills %}checked{% endif %}
+                   hx-post="/character-creation/update-form" 
+                   hx-trigger="change" 
+                   hx-include="#character-form"
+                   hx-target="#character-form" 
+                   hx-swap="outerHTML">
+            <label>{{ skill }}</label>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Ability Scores -->
+    <div>
+        <label>Ability Scores (standard array):</label>
+        {% for ability in ability_names %}
+        <div>
+            <label>{{ ability|upper }}:</label>
+            <input type="number" name="{{ ability }}" value="{{ ability_scores.get(ability, '') }}" 
+                   min="1" max="20"
+                   hx-post="/character-creation/update-form" 
+                   hx-trigger="change" 
+                   hx-include="#character-form"
+                   hx-target="#character-form" 
+                   hx-swap="outerHTML">
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Random All Button -->
+    <button type="button" 
+            hx-post="/character-creation/random-all" 
+            hx-target="#character-form" 
+            hx-swap="outerHTML">Random All</button>
+
+    <!-- Submit Button -->
+    <button type="submit">Create Character</button>
+</form>

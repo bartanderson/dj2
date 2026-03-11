@@ -1,0 +1,10 @@
+<select name="class"
+        hx-get="/character-creation/fighting-style-options"
+        hx-trigger="change"
+        hx-target="#fighting-style-container"
+        hx-indicator="#loading">
+    <option value="">-- Choose Class --</option>
+    {% for class in classes %}
+    <option value="{{ class }}" {% if class == selected_class %}selected{% endif %}>{{ class }}</option>
+    {% endfor %}
+</select>

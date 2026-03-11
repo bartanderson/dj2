@@ -1,0 +1,196 @@
+{
+  "content_packs": {
+    "meta": {
+      "schema_version": "1.0",
+      "depends_on": ["og_system.monsters", "og_system.equipment", "campaign.world_generation"]
+    },
+    
+    "dungeon_themes": {
+      "ancient_tomb": {
+        "name": "Ancient Tomb",
+        "tags": ["undead", "traps", "treasure", "claustrophobic"],
+        "monster_weights": {
+          "skeleton": 3,
+          "zombie": 2,
+          "wraith_knight": 1,
+          "bone_colossus": 1,
+          "lich": 0.2
+        },
+        "hazard_table": "og_system.modules.exploration.tables.dungeonHazards",
+        "room_types": [
+          {"type": "entrance", "weight": 1, "features": ["sealed door", "warning inscriptions"]},
+          {"type": "corridor", "weight": 4, "features": ["traps", "sconces", "frescoes"]},
+          {"type": "chamber", "weight": 3, "features": ["sarcophagi", "offerings", "secret doors"]},
+          {"type": "shrine", "weight": 2, "features": ["altar", "possessed statue", "holy water font"]},
+          {"type": "treasury", "weight": 1, "features": ["locked vault", "cursed gold", "guardian"]},
+          {"type": "crypt", "weight": 2, "features": ["mummy", "canopic jars", "plague"]}
+        ],
+        "loot_tables": ["cr_appropriate", "funerary_goods", "ancient_weapons"],
+        "atmosphere": "Dry dust, stale air, whispers, sudden chills",
+        "light": "dark",
+        "sound": "echoing footsteps, grinding stone, distant moaning"
+      },
+      
+      "fungal_caverns": {
+        "name": "Fungal Caverns",
+        "tags": ["aberration", "poison", "bioluminescence", "verticality"],
+        "monster_weights": {
+          "ochre_jelly": 2,
+          "black_pudding": 1,
+          "gibbering_mouther": 2,
+          "mind_flayer": 0.5,
+          "beholder": 0.1
+        },
+        "hazard_table": "custom_fungal_hazards",
+        "room_types": [
+          {"type": "mushroom_forest", "weight": 4, "features": ["spore clouds", "bioluminescent", "harvestable"]},
+          {"type": "slime_chute", "weight": 2, "features": ["vertical drop", "ooze current", "hidden exit"]},
+          {"type": "spore_nursery", "weight": 2, "features": ["breeding monsters", "exploding pods", "masks required"]},
+          {"type": "calcite_cathedral", "weight": 1, "features": ["alien geometry", "reality warps", "spell amplification"]}
+        ],
+        "loot_tables": ["spore_potions", "aberrant_artifacts", "fungal_armor"],
+        "atmosphere": "Wet, phosphorescent, spore-thick, disorienting echoes",
+        "light": "dim (bioluminescent)",
+        "sound": "drip, spore release, distant skittering, wet footsteps"
+      },
+      
+      "bandit_fortress": {
+        "name": "Bandit Fortress",
+        "tags": ["humanoid", "siege", "prisoners", "treachery"],
+        "monster_weights": {
+          "gnoll_war_party": 3,
+          "ogre_ravager": 2,
+          "troll_blooded": 1
+        },
+        "npc_factions": ["bandits", "prisoners", "merchants", "traitor_within"],
+        "room_types": [
+          {"type": "gatehouse", "weight": 1, "features": ["portcullis", "murder holes", "alarm bell"]},
+          {"type": "barracks", "weight": 3, "features": ["sleeping enemies", "weapon racks", "gambling debris"]},
+          {"type": "prison", "weight": 2, "features": ["cells", "torture equipment", "secret tunnel"]},
+          {"type": "chieftain_hall", "weight": 1, "features": ["throne", "map of raids", "hostages", "escape route"]},
+          {"type": "storeroom", "weight": 2, "features": ["stolen goods", "food", "ale", "trap"]}
+        ],
+        "loot_tables": ["stolen_merchandise", "bandit_gear", "ransom_notes"],
+        "atmosphere": "Smoke, sweat, rot, iron, raised voices, sudden silence",
+        "light": "torchlit",
+        "sound": "shouting, dice, groaning prisoners, boots on stone"
+      }
+    },
+    
+    "encounter_templates": {
+      "ambush": {
+        "setup": "Party is surprised, enemies have prepared positions",
+        "mechanics": "Surprise round, enemies attack with advantage, party Defense 10",
+        "twists": ["reinforcements arrive", "third party enters", "terrain collapses"]
+      },
+      
+      "siege": {
+        "setup": "Defending position against waves",
+        "mechanics": "Morale checks for attackers, resource depletion, structural damage",
+        "twists": ["traitor opens gate", "tunnel beneath walls", "disease outbreak"]
+      },
+      
+      "chase": {
+        "setup": "Pursuit through complex environment",
+        "mechanics": "Athletics/Finesse checks, obstacles, shortcuts, exhaustion",
+        "twists": ["prepared trap", "unexpected ally", "dead end with secret door"]
+      },
+      
+      "negotiation_under_duress": {
+        "setup": "Enemy has leverage (hostages, McGuffin, superior position)",
+        "mechanics": "Social moves with time pressure, failure escalates to combat",
+        "twists": ["hostage is traitor", "third party sniper", "sudden earthquake"]
+      },
+      
+      "escalating_threat": {
+        "setup": "Combat begins easy, reinforcements arrive in waves",
+        "mechanics": "CR increases each round, morale breaks or doubles down",
+        "twists": ["enemies merge into boss", "environment becomes hazard", "party ally arrives"]
+      }
+    },
+    
+    "quest_templates": {
+      "the_disappearing_village": {
+        "archetype": "investigate",
+        "stages": [
+          {"order": 1, "type": "clue", "location": "empty_village", "discovery": "no_bodies_just_gone"},
+          {"order": 2, "type": "challenge", "location": "fey_crossing", "obstacle": "kelpie_guardian"},
+          {"order": 3, "type": "revelation", "location": "fey_court", "truth": "villagers_stole_fey_child"},
+          {"order": 4, "type": "confrontation", "location": "fey_court", "choice": "return_child_or_bargain"}
+        ],
+        "consequences": {
+          "return_child": "villagers freed, fey owe favor",
+          "bargain": "villagers freed, party owes fey service",
+          "fail": "villagers enthralled forever, region cursed"
+        }
+      },
+      
+      "the_cursed_mine": {
+        "archetype": "recover + destroy",
+        "stages": [
+          {"order": 1, "type": "travel", "location": "mine_entrance", "obstacle": "bandit_blockade"},
+          {"order": 2, "type": "challenge", "location": "mine_shaft", "obstacle": "black_pudding_infestation"},
+          {"order": 3, "type": "revelation", "location": "mine_depths", "truth": "ancient_sealed_evil"},
+          {"order": 4, "type": "confrontation", "location": "sealed_chamber", "target": "lich_sealed_by_accident"}
+        ],
+        "consequences": {
+          "destroy_lich": "mine cleared, ore flows, region prospers",
+          "free_lich": "undead plague, mine lost, lich grateful",
+          "reseal": "status quo, lich waits, miners fear return"
+        }
+      }
+    },
+    
+    "narrative_banks": {
+      "sensory_details": {
+        "dark": ["taste of copper", "pressure behind eyes", "unseen dripping"],
+        "wet": ["mold bloom", "slip underfoot", "breath visible"],
+        "ancient": ["dust suspension", "crumbled inscription", "weight of years"],
+        "holy": ["incense residue", "warm stone", "hush not silence"],
+        "corrupted": ["wrong-colored lichen", "insect silence", "metallic taste"],
+        "wild": ["bird alarm calls", "crushed herb scent", "no trail"],
+        "urban": ["sewage undertone", "distant hammer", "crowd murmur"],
+        "desolate": ["wind shape", "no insect", "sun bleaching"]
+      },
+      
+      "combat_descriptions": {
+        "hit": ["blade bites", "impact shock", "spray of red", "crack of bone"],
+        "miss": ["whiff of displaced air", "stumble recovery", "parry spark", "dodge strain"],
+        "crit": ["perfect placement", "shock of connection", "enemy falter", "certain death"],
+        "fumble": ["weapon twist", "overbalance", "friendly fire risk", "exposed guard"]
+      },
+      
+      "reactions": {
+        "surprise": ["gasp", "freeze", "flinch", "blurt"],
+        "fear": ["whimper", "retreat step", "wide eyes", "protective gesture"],
+        "anger": ["snarl", "forward lean", "weapon raise", "flush"],
+        "relief": ["slump", "laugh", "touch check", "exhale"]
+      }
+    },
+    
+    "procedural_rules": {
+      "dungeon_population": {
+        "step_1": "Roll theme from dungeon_themes",
+        "step_2": "Determine depth/danger (CR = depth + base)",
+        "step_3": "Generate rooms: roll room_types by weight until target size",
+        "step_4": "Connect rooms: loop, branch, or hub-spoke",
+        "step_5": "Place monsters: roll encounter_check per room, scale to CR",
+        "step_6": "Place hazards: roll hazard_table for empty rooms",
+        "step_7": "Place loot: roll loot_table, guard with monster or trap",
+        "step_8": "Place secrets: 1-in-6 rooms have hidden area or information"
+      },
+      
+      "faction_reaction": {
+        "trigger": "player action affects faction",
+        "procedure": "update standing, check threshold, generate response",
+        "thresholds": {
+          "-5": "assassination_attempt",
+          "-3": "refuse_service",
+          "0": "neutral",
+          "+3": "offer_exclusive_job",
+          "+5": "faction_resource_access"
+        }
+      }
+    }
+  }
+}

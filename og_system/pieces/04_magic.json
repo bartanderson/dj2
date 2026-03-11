@@ -1,0 +1,485 @@
+{
+  "magic": {
+    "casting": {
+      "base_roll": "Wits vs TN 12",
+      "base_tn": 12,
+      "overcast": {
+        "cost_multiplier": 2,
+        "risk": "1 Wound (max HP -2 until long rest)"
+      },
+      "rituals": {
+        "time": "10 minutes",
+        "cost": "0 SP",
+        "requirement": "components"
+      }
+    },
+    "schools": {
+      "fire": {
+        "name": "Fire",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Spark",
+            "cost": 0,
+            "description": "Light torch, candle, or campfire",
+            "scaling": "None"
+          },
+          {
+            "name": "Flame Weapon",
+            "cost": 1,
+            "description": "Weapon +d4 fire damage 1 min",
+            "scaling": "+1d4 per extra SP"
+          },
+          {
+            "name": "Burst",
+            "cost": 2,
+            "description": "d6 fire 15ft radius",
+            "scaling": "+d6 per extra SP, +5ft radius"
+          },
+          {
+            "name": "Wall",
+            "cost": 3,
+            "description": "Block path 20ft long, 2d6 to cross",
+            "scaling": "+10ft, +1d6 per extra SP"
+          }
+        ],
+        "tags": [
+          "fire",
+          "loud",
+          "light"
+        ]
+      },
+      "water": {
+        "name": "Water",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Clean",
+            "cost": 0,
+            "description": "Purify water, wash object, dry clothes",
+            "scaling": "None"
+          },
+          {
+            "name": "Create Water",
+            "cost": 1,
+            "description": "10 gallons",
+            "scaling": "+10gal per SP"
+          },
+          {
+            "name": "Ice Slick",
+            "cost": 1,
+            "description": "Difficult terrain 10ft square",
+            "scaling": "+10ft per SP"
+          },
+          {
+            "name": "Ice Armor",
+            "cost": 2,
+            "description": "+1 Armor, melts in fire",
+            "scaling": "+1 Armor per extra SP"
+          },
+          {
+            "name": "Drown",
+            "cost": 3,
+            "description": "Target holds breath or take 2d6/round",
+            "scaling": "+1 target per 2 SP"
+          }
+        ],
+        "tags": [
+          "water",
+          "ice",
+          "quiet"
+        ]
+      },
+      "earth": {
+        "name": "Earth",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Shape Stone",
+            "cost": 1,
+            "description": "Move 1 cubic foot",
+            "scaling": "+1ft per SP"
+          },
+          {
+            "name": "Armor of Earth",
+            "cost": 2,
+            "description": "+2 Armor, slow -5ft",
+            "scaling": "+1 Armor per extra SP"
+          },
+          {
+            "name": "Spike",
+            "cost": 2,
+            "description": "d8 to single target, ground only",
+            "scaling": "+d8 per extra SP"
+          },
+          {
+            "name": "Quake",
+            "cost": 3,
+            "description": "Knock prone 30ft radius",
+            "scaling": "+15ft per SP, damage +d6"
+          }
+        ],
+        "tags": [
+          "earth",
+          "slow",
+          "grounded"
+        ]
+      },
+      "air": {
+        "name": "Air",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Gust",
+            "cost": 0,
+            "description": "Push 10ft, blow out candles",
+            "scaling": "+10ft per SP"
+          },
+          {
+            "name": "Message",
+            "cost": 0,
+            "description": "Whisper 100ft",
+            "scaling": "+100ft per SP"
+          },
+          {
+            "name": "Levitate Object",
+            "cost": 1,
+            "description": "100lb, 10ft, 1 min",
+            "scaling": "+100lb or +10ft per SP"
+          },
+          {
+            "name": "Fly",
+            "cost": 3,
+            "description": "Self, 10 min",
+            "scaling": "+1 target per 2 SP"
+          },
+          {
+            "name": "Lightning",
+            "cost": 3,
+            "description": "d10, line 60ft, loud",
+            "scaling": "+d10 per extra SP"
+          }
+        ],
+        "tags": [
+          "air",
+          "lightning",
+          "flight",
+          "loud"
+        ]
+      },
+      "healing": {
+        "name": "Healing",
+        "base_cost": 2,
+        "effects": [
+          {
+            "name": "Restore",
+            "cost": 2,
+            "description": "1d6 HP to touched",
+            "scaling": "+1d6 per extra SP"
+          },
+          {
+            "name": "Cure",
+            "cost": 2,
+            "description": "End poison or disease",
+            "scaling": "One condition per SP"
+          },
+          {
+            "name": "Regenerate",
+            "cost": 4,
+            "description": "1 HP/round for 1 min",
+            "scaling": "+1 target per 2 SP"
+          },
+          {
+            "name": "Revive",
+            "cost": 5,
+            "description": "Stabilize dying, restore 1 HP",
+            "scaling": "+1d6 HP per extra SP"
+          }
+        ],
+        "tags": [
+          "healing",
+          "holy",
+          "touch"
+        ]
+      },
+      "shadow": {
+        "name": "Shadow",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Darken",
+            "cost": 1,
+            "description": "30ft radius darkness",
+            "scaling": "+30ft per SP"
+          },
+          {
+            "name": "Silence",
+            "cost": 1,
+            "description": "15ft radius, no sound",
+            "scaling": "+15ft per SP"
+          },
+          {
+            "name": "Invisible",
+            "cost": 2,
+            "description": "Self, 1 min, ends if attack",
+            "scaling": "+1 min per SP"
+          },
+          {
+            "name": "Fear",
+            "cost": 2,
+            "description": "Target Wits save or flee 1 min",
+            "scaling": "+1 target per SP"
+          },
+          {
+            "name": "Pass Without Trace",
+            "cost": 3,
+            "description": "Party +10 Stealth, no tracks",
+            "scaling": "+1 hour per SP"
+          }
+        ],
+        "tags": [
+          "shadow",
+          "darkness",
+          "stealth",
+          "fear"
+        ]
+      },
+      "mind": {
+        "name": "Mind",
+        "base_cost": 2,
+        "effects": [
+          {
+            "name": "Suggestion",
+            "cost": 2,
+            "description": "Obey simple command, Wits save",
+            "scaling": "+1 target per 2 SP"
+          },
+          {
+            "name": "Read Thoughts",
+            "cost": 2,
+            "description": "Surface thoughts 1 min",
+            "scaling": "Deep secrets +2 SP"
+          },
+          {
+            "name": "Confuse",
+            "cost": 3,
+            "description": "Attack nearest, Wits save ends",
+            "scaling": "+1 target per SP"
+          },
+          {
+            "name": "Dominate",
+            "cost": 5,
+            "description": "Wits contest, full control 1 min",
+            "scaling": "+1 min per SP"
+          }
+        ],
+        "tags": [
+          "mind",
+          "enchantment",
+          "social"
+        ]
+      },
+      "force": {
+        "name": "Force",
+        "base_cost": 1,
+        "effects": [
+          {
+            "name": "Push",
+            "cost": 1,
+            "description": "10ft knockback, Brawn save",
+            "scaling": "+10ft per SP"
+          },
+          {
+            "name": "Shield",
+            "cost": 1,
+            "description": "+2 Defense 1 min",
+            "scaling": "+1 Defense per extra SP"
+          },
+          {
+            "name": "Bind",
+            "cost": 2,
+            "description": "Restrain, Brawn+Athletics to escape",
+            "scaling": "+1 target per SP"
+          },
+          {
+            "name": "Telekinesis",
+            "cost": 2,
+            "description": "Move 100lb 30ft",
+            "scaling": "+100lb or +30ft per SP"
+          },
+          {
+            "name": "Blast",
+            "cost": 3,
+            "description": "d8, knockback 10ft",
+            "scaling": "+d8 per extra SP"
+          }
+        ],
+        "tags": [
+          "force",
+          "invisible",
+          "utility"
+        ]
+      },
+      "flesh": {
+        "name": "Flesh",
+        "base_cost": 2,
+        "effects": [
+          {
+            "name": "Alter Face",
+            "cost": 2,
+            "description": "Disguise self, no roll",
+            "scaling": "+1 hour per SP"
+          },
+          {
+            "name": "Claws",
+            "cost": 2,
+            "description": "Natural d6, 1 min",
+            "scaling": "+d6 per extra SP"
+          },
+          {
+            "name": "Strength",
+            "cost": 2,
+            "description": "+2 Brawn 1 min",
+            "scaling": "+1 Brawn per extra SP"
+          },
+          {
+            "name": "Polymorph",
+            "cost": 4,
+            "description": "Beast form, keep mind, 10 min",
+            "scaling": "+10 min per SP"
+          },
+          {
+            "name": "Haste",
+            "cost": 4,
+            "description": "+1 action/round 1 min",
+            "scaling": "+1 target per 3 SP"
+          }
+        ],
+        "tags": [
+          "flesh",
+          "transformation",
+          "buff"
+        ]
+      },
+      "death": {
+        "name": "Death",
+        "base_cost": 3,
+        "effects": [
+          {
+            "name": "Drain",
+            "cost": 3,
+            "description": "1d6 HP to target, heal self",
+            "scaling": "+1d6 per extra SP"
+          },
+          {
+            "name": "Animate Dead",
+            "cost": 1,
+            "description": "Per skeleton, permanent",
+            "scaling": "Control max 4\u00c3\u2014level"
+          },
+          {
+            "name": "Speak Dead",
+            "cost": 3,
+            "description": "Ask corpse 3 questions",
+            "scaling": "+3 questions per SP"
+          },
+          {
+            "name": "Wither",
+            "cost": 4,
+            "description": "Reduce max HP by 5 until rest",
+            "scaling": "+5 per extra SP"
+          },
+          {
+            "name": "Finger of Death",
+            "cost": 6,
+            "description": "Save or die, save = 3d6",
+            "scaling": "+1 target per 3 SP"
+          }
+        ],
+        "tags": [
+          "death",
+          "necromancy",
+          "evil",
+          "drain"
+        ]
+      },
+      "time": {
+        "name": "Time",
+        "base_cost": 3,
+        "effects": [
+          {
+            "name": "Haste Self",
+            "cost": 3,
+            "description": "+1 action, no multi-target",
+            "scaling": "+1 min per SP"
+          },
+          {
+            "name": "Slow Enemy",
+            "cost": 3,
+            "description": "Lose action, Wits save ends",
+            "scaling": "+1 target per 2 SP"
+          },
+          {
+            "name": "Rewind",
+            "cost": 4,
+            "description": "Reroll any roll just made",
+            "scaling": "Immediate only"
+          },
+          {
+            "name": "Stasis",
+            "cost": 4,
+            "description": "Freeze 1 round, immune all",
+            "scaling": "+1 round per 2 SP"
+          },
+          {
+            "name": "See Future",
+            "cost": 3,
+            "description": "+2 next roll, 1 min",
+            "scaling": "+1 roll per SP"
+          }
+        ],
+        "tags": [
+          "time",
+          "rare",
+          "powerful"
+        ]
+      },
+      "luck": {
+        "name": "Luck",
+        "base_cost": 2,
+        "effects": [
+          {
+            "name": "Bless",
+            "cost": 2,
+            "description": "Ally +1 all rolls 1 min",
+            "scaling": "+1 ally per SP"
+          },
+          {
+            "name": "Curse",
+            "cost": 2,
+            "description": "Enemy -1 all rolls 1 min",
+            "scaling": "+1 enemy per SP"
+          },
+          {
+            "name": "Redirect",
+            "cost": 3,
+            "description": "Attack hits bystander instead",
+            "scaling": "Reaction"
+          },
+          {
+            "name": "Second Chance",
+            "cost": 3,
+            "description": "Auto-save failed save",
+            "scaling": "Reaction, 1/day free if 5 SP"
+          }
+        ],
+        "tags": [
+          "luck",
+          "blessing",
+          "curse",
+          "protection"
+        ]
+      }
+    }
+  }
+}

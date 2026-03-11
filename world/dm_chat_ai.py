@@ -25,26 +25,25 @@ class DMChatAI(AIBoundary):
         game_data includes: classes, races, backgrounds, spells, etc. (from dnd_data)
         """
         # Build a readable summary of current character data
-        char_summary = "\n".join([f"- {k}: {v}" for k, v in session_state['character_data'].items() if v]) or "None yet."
-        recent = session_state.get('chat_history', [])[-10:]  # last 10 exchanges
+        char_data = session_state['character_data']
+        char_summary = "\n".join([f"- {k}: {v}" for k, v in char_data.items() if v]) or "None yet."
+        recent = session_state.get('chat_history', [])[-3:]  # last 3 exchanges
         recent_text = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in recent])
 
-        current_class = session_state.character_data.get('class')
-        if current_class:
-            cantrips = dnd_data.get_cantrips(current_class)  # you'll need to implement this
-            spells = dnd_data.get_class_spells(current_class, 1)
-        else:
-            cantrips = []
-            spells = []
+        # Determine current class for spell lists
+        current_class = char_data.get('class')
 
-        game_data = {
-            "races": dnd_data.get_race_list(),
-            "classes": dnd_data.get_class_list(),
-            "backgrounds": [],  # TODO
-            "skills": dnd_data.get_skill_list(),
-            "cantrips": cantrips,
-            "spells": spells,
-        }
+        # Build lists for prompt
+        races_list = ", ".join(game_data.get('races', []))
+        classes_list = ", ".join(game_data.get('classes', []))
+        backgrounds_list = ", ".join(game_data.get('backgrounds', []))
+        skills_list = ", ".join(game_data.get('skills', []))
+        if current_class:
+            cantrips_list = ", ".join(game_data.get('cantrips', []))
+            spells_list = ", ".join(game_data.get('spells', []))
+        else:
+            cantrips_list = ""
+            spells_list = ""
 
         prompt = f"""
 You are a Dungeon Master guiding a player through character creation in D&D 5e.
@@ -59,33 +58,33 @@ Pending suggestion: {session_state.get('pending_suggestion', 'None')}
 Recent conversation (last 10 messages):
 {recent_text}
 
-Available races (base race only): {', '.join(game_data['races'])}
-Available classes: {', '.join(game_data['classes'])}
-Available backgrounds: {', '.join(game_data.get('backgrounds', []))}
-Available skills: {', '.join(game_data.get('skills', []))}
-Available cantrips for {session_state['character_data'].get('class', 'any class')}: {', '.join(game_data.get('cantrips', []))}
-
+Available races (base races only): {races_list}
+Available classes: {classes_list}
+Available backgrounds: {backgrounds_list}
+Available skills: {skills_list}
+{f"Available cantrips for {current_class}: {cantrips_list}" if current_class else ""}
+{f"Available level 1 spells for {current_class}: {spells_list}" if current_class else ""}
+{f"Available fighting styles for {current_class}: {', '.join(game_data.get('fighting_styles', []))}" if current_class and game_data.get('fighting_styles') else ""}
 The player says: "{message}"
 
 Analyze the player's intent and current state. Refer to the current character data to remember what has already been chosen. Decide what to do next.
 
-You may propose updates to the character data. Use only the following allowed fields:
-- "name" (string)
-- "race" (string, base race name from the available races list, e.g., "elf")
-- "subrace" (string, optional, e.g., "high elf")
-- "class" (string, from available classes list)
-- "background" (string)
-- "personality", "fears", "motivations", "alignment" (strings)
-- "skills" (list of strings, each a valid skill name)
-- "ability_scores" (object, e.g., {{"strength": 15, "dexterity": 14}})
-- "traits" (list of strings, valid trait names)
-- "proficiencies" (list of strings, valid proficiency names)
-- "cantrips" (list of strings, valid cantrip names)
-- "spells_known" (list of strings, valid spell names)
+RULES for updates:
+- Only include fields that are directly mentioned or can be clearly inferred from the player's message.
+- For a first message describing a character's appearance or a vague concept, do NOT set "ability_scores", "proficiencies", "cantrips", or "spells_known". Simply acknowledge and ask for more concrete details (race, class, etc.).
+- "ability_scores" should only be set when the player specifies numbers (e.g., "strength 15") or clearly indicates a high/low score (e.g., "very strong").
+- "proficiencies" should only be set when the player says they are skilled in something like "armor", "weapons", or a specific skill.
+- "spells_known" and "cantrips" should only be set when the player names specific spells (e.g., "I know magic missile").
+- Never include a field with a null or empty value, and never include a field that is not explicitly mentioned. If you don't have enough information, omit the field entirely.
+- When in doubt, omit the field and just narrate.
 
-Do NOT use fields like "primary_class", "secondary_cantrip", "explanation" – those are not allowed.
-
-When the player has provided name, race, and class, and indicates they are ready (e.g., "I'm done", "That's all", "Create my character"), set state_change to "completed" and give a closing narrative.
+IMPORTANT: Do NOT include fields with null or empty string values in "updates". Only include fields that actually change.
+IMPORTANT: You MUST only use values from the provided lists. For example:
+- race must be from the available races list (e.g., "elf", not "High Elf").
+- subrace must be from the available subraces list (e.g., "high elf").
+- class must be from the available classes list.
+- skills, cantrips, etc. must be from their respective lists.
+If the player uses an invalid name, do NOT output it in "updates". Instead, just narrate that it's not valid and ask them to choose from the list.
 
 Return a JSON object with the following fields:
 - "narrative": a string, what you say to the player (be engaging, informative, and encouraging).
@@ -96,13 +95,17 @@ Return a JSON object with the following fields:
 - "error": optional error message.
 
 Examples:
+- Player: "Archery" (after being asked about fighting style) -> {{"narrative": "Archery it is!", "updates": {{"fighting_style": "archery"}}, "needs_confirmation": false}}
+- Player: "I'd like to create a character with red hair and beard that is very large man and he swings a death dealing double-sided axe and has a blue ox companion named babe." -> {{"narrative": "A mighty barbarian with a loyal ox! Let's start with your race and class.", "updates": {{}}, "needs_confirmation": false}}
 - Player: "I want to be an elf" -> {{"narrative": "An elf! A graceful choice.", "updates": {{"race": "elf"}}, "needs_confirmation": false}}
 - Player: "High elf" -> {{"narrative": "A High Elf! Excellent choice.", "updates": {{"subrace": "high elf"}}, "needs_confirmation": false}}
+- Player: "I want to be a High Elf" -> {{"narrative": "A High Elf! Excellent choice.", "updates": {{"race": "elf", "subrace": "high elf"}}, "needs_confirmation": false}}
 - Player: "I choose Mage Hand as my cantrip" -> {{"narrative": "Mage Hand it is! A versatile choice.", "updates": {{"cantrips": ["mage hand"]}}, "needs_confirmation": false}}
 - Player: "I'm a wizard" -> {{"narrative": "Wizard! A studious path.", "updates": {{"class": "wizard"}}, "needs_confirmation": false}}
 - Player: "Yes" (after class suggestion) -> {{"narrative": "Great! Class confirmed.", "updates": {{"class": "wizard"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
 - Player: "No, I want to be a sorcerer" -> {{"narrative": "Sorcerer it is!", "updates": {{"class": "sorcerer"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
 - Player: "Tell me about magic" -> {{"narrative": "Magic comes in three forms...", "updates": {{}}, "needs_confirmation": false}}
+- When the player has provided name, race, and class, and indicates they are ready (e.g., "I'm done", "That's all", "Create my character"), set state_change to "completed" and give a closing narrative.
 """
         try:
             result = self.ai_system.generate_structured_data(prompt, {

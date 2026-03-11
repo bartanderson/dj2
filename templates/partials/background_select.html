@@ -1,0 +1,6 @@
+<select name="background">
+    <option value="">-- Choose Background --</option>
+    {% for bg in backgrounds %}
+    <option value="{{ bg }}" {% if bg == selected_background %}selected{% endif %}>{{ bg }}</option>
+    {% endfor %}
+</select>

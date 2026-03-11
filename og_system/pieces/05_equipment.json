@@ -1,0 +1,261 @@
+{
+  "equipment": {
+    "weapons": {
+      "dagger": {
+        "name": "Dagger",
+        "damage": "d4",
+        "properties": [
+          "concealable",
+          "thrown",
+          "cheap"
+        ],
+        "cost": "meager",
+        "tags": [
+          "light",
+          "blade"
+        ]
+      },
+      "club": {
+        "name": "Club",
+        "damage": "d4",
+        "properties": [
+          "stun",
+          "free"
+        ],
+        "cost": "free",
+        "tags": [
+          "blunt",
+          "simple"
+        ]
+      },
+      "staff": {
+        "name": "Staff",
+        "damage": "d4",
+        "properties": [
+          "+1 Defense",
+          "reach"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "simple",
+          "wizardly"
+        ]
+      },
+      "shortsword": {
+        "name": "Shortsword",
+        "damage": "d6",
+        "properties": [
+          "quick draw"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "blade",
+          "finesse"
+        ]
+      },
+      "spear": {
+        "name": "Spear",
+        "damage": "d6",
+        "properties": [
+          "reach",
+          "thrown",
+          "+1 initiative"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "polearm",
+          "versatile"
+        ]
+      },
+      "mace": {
+        "name": "Mace",
+        "damage": "d6",
+        "properties": [
+          "ignore 1 armor"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "blunt",
+          "armor-piercing"
+        ]
+      },
+      "axe": {
+        "name": "Axe",
+        "damage": "d6",
+        "properties": [
+          "thrown",
+          "hook (disarm on crit)"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "blade",
+          "thrown"
+        ]
+      },
+      "longsword": {
+        "name": "Longsword",
+        "damage": "d8",
+        "properties": [
+          "versatile +1 two-handed"
+        ],
+        "cost": "medium",
+        "tags": [
+          "blade",
+          "martial"
+        ]
+      },
+      "warhammer": {
+        "name": "Warhammer",
+        "damage": "d8",
+        "properties": [
+          "sunder (damage armor)"
+        ],
+        "cost": "medium",
+        "tags": [
+          "blunt",
+          "armor-piercing"
+        ]
+      },
+      "battleaxe": {
+        "name": "Battleaxe",
+        "damage": "d8",
+        "properties": [
+          "cleave (hit second on crit)"
+        ],
+        "cost": "medium",
+        "tags": [
+          "blade",
+          "cleave"
+        ]
+      },
+      "greatsword": {
+        "name": "Greatsword",
+        "damage": "d10",
+        "properties": [
+          "two-handed",
+          "heavy"
+        ],
+        "cost": "medium",
+        "tags": [
+          "blade",
+          "heavy"
+        ]
+      },
+      "polearm": {
+        "name": "Polearm",
+        "damage": "d10",
+        "properties": [
+          "reach",
+          "two-handed",
+          "brace (charge interrupt)"
+        ],
+        "cost": "medium",
+        "tags": [
+          "polearm",
+          "reach"
+        ]
+      },
+      "bow": {
+        "name": "Bow",
+        "damage": "d6",
+        "properties": [
+          "range 100",
+          "two hands",
+          "quiet"
+        ],
+        "cost": "cheap",
+        "tags": [
+          "ranged",
+          "bow"
+        ]
+      },
+      "crossbow": {
+        "name": "Crossbow",
+        "damage": "d8",
+        "properties": [
+          "range 80",
+          "two hands",
+          "loud",
+          "slow"
+        ],
+        "cost": "medium",
+        "tags": [
+          "ranged",
+          "crossbow"
+        ]
+      },
+      "sling": {
+        "name": "Sling",
+        "damage": "d4",
+        "properties": [
+          "range 60",
+          "free ammo",
+          "concealable"
+        ],
+        "cost": "free",
+        "tags": [
+          "ranged",
+          "simple"
+        ]
+      }
+    },
+    "gear": {
+      "healing_potion": {
+        "name": "Healing Potion",
+        "cost": 10,
+        "effect": "Heal 1d6 HP"
+      },
+      "antitoxin": {
+        "name": "Antitoxin",
+        "cost": 15,
+        "effect": "Cure poison, +1 save vs poison 1 hour"
+      },
+      "rope": {
+        "name": "Rope 50ft",
+        "cost": 1,
+        "effect": "Climb, bind, tie"
+      },
+      "climbing_kit": {
+        "name": "Climbing Kit",
+        "cost": 5,
+        "effect": "+1 Athletics climbing"
+      },
+      "lockpicks": {
+        "name": "Lockpicks",
+        "cost": 10,
+        "effect": "Required for Stealth vs locks"
+      },
+      "lantern": {
+        "name": "Lantern + oil",
+        "cost": 5,
+        "effect": "Light 30ft, 4 hours"
+      },
+      "rations": {
+        "name": "Rations (week)",
+        "cost": 2,
+        "effect": "Prevents starvation"
+      },
+      "tent": {
+        "name": "Tent",
+        "cost": 3,
+        "effect": "Sleep rough without exhaustion"
+      },
+      "healer_kit": {
+        "name": "Healer's Kit",
+        "cost": 5,
+        "effect": "Stabilize dying, +1d6 HP once/day"
+      },
+      "holy_water": {
+        "name": "Holy Water",
+        "cost": 25,
+        "effect": "2d6 vs undead/fiends, splash"
+      }
+    },
+    "wealth_tiers": {
+      "meager": "1-5g",
+      "cheap": "5-20g",
+      "medium": "20-100g",
+      "expensive": "100g+"
+    }
+  }
+}

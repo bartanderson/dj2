@@ -1,0 +1,880 @@
+{
+  "monsters": {
+    "carrion_beetle_swarm": {
+      "id": "carrion_beetle_swarm",
+      "name": "Carrion Beetle Swarm",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 2,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 8,
+      "defense": 12,
+      "armor": 0,
+      "damage": "2d4",
+      "special": [
+        "Swarm: Half weapon damage, full fire/area"
+      ],
+      "tags": [
+        "swarm",
+        "vermin"
+      ],
+      "cr": 1
+    },
+    "rot_grub_colony": {
+      "id": "rot_grub_colony",
+      "name": "Rot Grub Colony",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 1,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 6,
+      "defense": 10,
+      "armor": 0,
+      "damage": "d4+infest",
+      "special": [
+        "Infest: Hit = burrow, 1d6 next round unless fire"
+      ],
+      "tags": [
+        "vermin",
+        "parasite"
+      ],
+      "cr": 1
+    },
+    "gibbering_mouther": {
+      "id": "gibbering_mouther",
+      "name": "Gibbering Mouther",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 0,
+        "wits": 1,
+        "will": 2
+      },
+      "hp": 12,
+      "defense": 10,
+      "armor": 0,
+      "damage": "d6+grab",
+      "special": [
+        "Gibber: Wits save or confused 1 round",
+        "Ground is difficult terrain"
+      ],
+      "tags": [
+        "aberration",
+        "ooze-like"
+      ],
+      "cr": 2
+    },
+    "gnoll_war_party": {
+      "id": "gnoll_war_party",
+      "name": "Gnoll War Party",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 1,
+        "wits": 0,
+        "will": 1
+      },
+      "hp": 10,
+      "defense": 12,
+      "armor": 1,
+      "damage": "d8",
+      "special": [
+        "Pack tactics: +1 per adjacent ally, max +3"
+      ],
+      "tags": [
+        "humanoid",
+        "demon-touched"
+      ],
+      "cr": 2
+    },
+    "ogre_ravager": {
+      "id": "ogre_ravager",
+      "name": "Ogre Ravager",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 20,
+      "defense": 10,
+      "armor": 0,
+      "damage": "d12+2",
+      "special": [
+        "Sweep: Attack 2 adjacent",
+        "Throw rock: d8 range 60"
+      ],
+      "tags": [
+        "giant",
+        "brute"
+      ],
+      "cr": 3
+    },
+    "redcap": {
+      "id": "redcap",
+      "name": "Redcap",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 3,
+        "wits": 1,
+        "will": 1
+      },
+      "hp": 15,
+      "defense": 14,
+      "armor": 0,
+      "damage": "d8+iron_boots",
+      "special": [
+        "Blood soak: Heal half dealt",
+        "Iron boots: Kick d10",
+        "Hate holy symbols"
+      ],
+      "tags": [
+        "fey",
+        "evil"
+      ],
+      "cr": 3
+    },
+    "rust_monster": {
+      "id": "rust_monster",
+      "name": "Rust Monster",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 2,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 12,
+      "defense": 12,
+      "armor": 1,
+      "damage": "d4",
+      "special": [
+        "Rust: Hit metal = save or destroyed",
+        "Attracted to magic metal"
+      ],
+      "tags": [
+        "aberration",
+        "metal-eater"
+      ],
+      "cr": 3
+    },
+    "ochre_jelly": {
+      "id": "ochre_jelly",
+      "name": "Ochre Jelly",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 22,
+      "defense": 8,
+      "armor": 0,
+      "damage": "d6+acid",
+      "special": [
+        "Split: Lightning/slashing = 2 half-HP jellies",
+        "Climb walls",
+        "Immune lightning/slashing",
+        "Vuln cold"
+      ],
+      "tags": [
+        "ooze",
+        "split"
+      ],
+      "cr": 3
+    },
+    "manticore": {
+      "id": "manticore",
+      "name": "Manticore",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 2,
+        "wits": 1,
+        "will": 0
+      },
+      "hp": 25,
+      "defense": 14,
+      "armor": 1,
+      "damage": "d8x2",
+      "special": [
+        "Tail spikes: d6x3 ranged",
+        "Flight",
+        "Track by scent"
+      ],
+      "tags": [
+        "beast",
+        "monstrosity"
+      ],
+      "cr": 4
+    },
+    "bone_colossus": {
+      "id": "bone_colossus",
+      "name": "Bone Colossus",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 0,
+        "wits": 0,
+        "will": 2
+      },
+      "hp": 30,
+      "defense": 11,
+      "armor": 2,
+      "damage": "d10",
+      "special": [
+        "Reform: Unless holy water/smite, reforms 1d6 rounds after death"
+      ],
+      "tags": [
+        "undead",
+        "skeleton"
+      ],
+      "cr": 4
+    },
+    "cloaker": {
+      "id": "cloaker",
+      "name": "Cloaker",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 2,
+        "wits": 2,
+        "will": 2
+      },
+      "hp": 18,
+      "defense": 14,
+      "armor": 1,
+      "damage": "d6+engulf",
+      "special": [
+        "Engulf: Grappled = blinded, suffocating",
+        "Moan: Fear 30ft"
+      ],
+      "tags": [
+        "aberration",
+        "shadow"
+      ],
+      "cr": 4
+    },
+    "kelpie": {
+      "id": "kelpie",
+      "name": "Kelpie",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 2,
+        "wits": 2,
+        "will": 3
+      },
+      "hp": 20,
+      "defense": 13,
+      "armor": 0,
+      "damage": "d6+drown",
+      "special": [
+        "Lure: Social save or approach water",
+        "Grapple = drown 3 rounds"
+      ],
+      "tags": [
+        "fey",
+        "aquatic"
+      ],
+      "cr": 4
+    },
+    "black_pudding": {
+      "id": "black_pudding",
+      "name": "Black Pudding",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 35,
+      "defense": 9,
+      "armor": 0,
+      "damage": "d8+acid",
+      "special": [
+        "Dissolve: Metal armor -1 per hit",
+        "Split like jelly",
+        "Immune acid",
+        "Vuln cold"
+      ],
+      "tags": [
+        "ooze",
+        "acid"
+      ],
+      "cr": 5
+    },
+    "medusa": {
+      "id": "medusa",
+      "name": "Medusa",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 2,
+        "wits": 3,
+        "will": 3
+      },
+      "hp": 18,
+      "defense": 13,
+      "armor": 0,
+      "damage": "d6+snakes",
+      "special": [
+        "Petrify: Wits save or slow, fail by 5+ = stone"
+      ],
+      "tags": [
+        "monstrosity",
+        "gorgon"
+      ],
+      "cr": 5
+    },
+    "wraith_knight": {
+      "id": "wraith_knight",
+      "name": "Wraith Knight",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 3,
+        "wits": 2,
+        "will": 3
+      },
+      "hp": 22,
+      "defense": 15,
+      "armor": 2,
+      "damage": "d8+drain",
+      "special": [
+        "Incorporeal: Resist non-magic",
+        "Drain: Max HP -2 until rest",
+        "Command shadows"
+      ],
+      "tags": [
+        "undead",
+        "incorporeal"
+      ],
+      "cr": 5
+    },
+    "living_spell_fireball": {
+      "id": "living_spell_fireball",
+      "name": "Living Spell (Fireball)",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 3,
+        "wits": 2,
+        "will": 2
+      },
+      "hp": 20,
+      "defense": 14,
+      "armor": 0,
+      "damage": "3d6 fire",
+      "special": [
+        "Explode: Death = 20ft burst",
+        "Immune fire",
+        "Vuln cold",
+        "Fly"
+      ],
+      "tags": [
+        "elemental",
+        "spell"
+      ],
+      "cr": 5
+    },
+    "hollow_man": {
+      "id": "hollow_man",
+      "name": "Hollow Man",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 1,
+      "defense": 10,
+      "armor": 0,
+      "damage": "0",
+      "special": [
+        "Wear you: Hit = save or it wears your skin, you become hollow",
+        "It has your stats +2"
+      ],
+      "tags": [
+        "fey",
+        "horror",
+        "possession"
+      ],
+      "cr": 5
+    },
+    "hydra": {
+      "id": "hydra",
+      "name": "Hydra (5 heads)",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 1,
+        "wits": 0,
+        "will": 1
+      },
+      "hp": 40,
+      "defense": 12,
+      "armor": 2,
+      "damage": "d8x2",
+      "special": [
+        "Multiattack: Heads = attacks",
+        "Regrow head (1 HP) unless fire"
+      ],
+      "tags": [
+        "monstrosity",
+        "regeneration"
+      ],
+      "cr": 6
+    },
+    "flesh_golem": {
+      "id": "flesh_golem",
+      "name": "Flesh Golem",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 45,
+      "defense": 10,
+      "armor": 3,
+      "damage": "d12",
+      "special": [
+        "Berserk: Below half HP, attacks nearest",
+        "Immune magic except fire/electric"
+      ],
+      "tags": [
+        "construct",
+        "golem"
+      ],
+      "cr": 6
+    },
+    "mind_flayer": {
+      "id": "mind_flayer",
+      "name": "Mind Flayer",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 2,
+        "wits": 4,
+        "will": 4
+      },
+      "hp": 22,
+      "defense": 14,
+      "armor": 0,
+      "damage": "d4+tentacles",
+      "special": [
+        "Extract brain: Grappled = Wits save or stunned, then dead",
+        "Psionic blast: d8 stun 30ft"
+      ],
+      "tags": [
+        "aberration",
+        "psionic"
+      ],
+      "cr": 6
+    },
+    "succubus": {
+      "id": "succubus",
+      "name": "Succubus/Incubus",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 3,
+        "wits": 3,
+        "will": 4
+      },
+      "hp": 25,
+      "defense": 15,
+      "armor": 0,
+      "damage": "d6+drain",
+      "special": [
+        "Kiss: Will save or charmed, drain 1d6 max HP (heals them)",
+        "Ethereal jaunt",
+        "Immune non-magic"
+      ],
+      "tags": [
+        "fiend",
+        "shapechanger"
+      ],
+      "cr": 6
+    },
+    "wild_hunt": {
+      "id": "wild_hunt",
+      "name": "Wild Hunt",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 3,
+        "wits": 2,
+        "will": 3
+      },
+      "hp": 25,
+      "defense": 15,
+      "armor": 2,
+      "damage": "d8",
+      "special": [
+        "Squadron: 1d6+2 riders, share HP pool",
+        "Never stop chasing oath-breakers"
+      ],
+      "tags": [
+        "fey",
+        "spectral"
+      ],
+      "cr": 7
+    },
+    "kraken_spawn": {
+      "id": "kraken_spawn",
+      "name": "Kraken Spawn",
+      "attributes": {
+        "brawn": 5,
+        "finesse": 1,
+        "wits": 2,
+        "will": 3
+      },
+      "hp": 40,
+      "defense": 12,
+      "armor": 2,
+      "damage": "d10x2",
+      "special": [
+        "Tentacles: 4 attacks, grab (restrained), drag underwater"
+      ],
+      "tags": [
+        "elemental",
+        "aquatic"
+      ],
+      "cr": 7
+    },
+    "hezrou": {
+      "id": "hezrou",
+      "name": "Hezrou (Toad Demon)",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 1,
+        "wits": 1,
+        "will": 2
+      },
+      "hp": 40,
+      "defense": 12,
+      "armor": 2,
+      "damage": "d10x2",
+      "special": [
+        "Stench: 10ft, Brawn save or poisoned",
+        "Leap 30ft",
+        "Summon 2d6 dretches 1/day"
+      ],
+      "tags": [
+        "fiend",
+        "demon"
+      ],
+      "cr": 8
+    },
+    "vampire_lord": {
+      "id": "vampire_lord",
+      "name": "Vampire Lord",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 3,
+        "wits": 3,
+        "will": 4
+      },
+      "hp": 35,
+      "defense": 16,
+      "armor": 1,
+      "damage": "d8+drain",
+      "special": [
+        "Charm: Will save or obey",
+        "Mist form",
+        "Spawn vampire (killed foe rises night)"
+      ],
+      "tags": [
+        "undead",
+        "vampire"
+      ],
+      "cr": 8
+    },
+    "baba_yagas_hut": {
+      "id": "baba_yagas_hut",
+      "name": "Baba Yaga's Hut",
+      "attributes": {
+        "brawn": 5,
+        "finesse": 0,
+        "wits": 2,
+        "will": 4
+      },
+      "hp": 60,
+      "defense": 12,
+      "armor": 3,
+      "damage": "2d8",
+      "special": [
+        "Chicken legs: Kick or stomp",
+        "Inside bigger outside",
+        "Baba casts through windows"
+      ],
+      "tags": [
+        "construct",
+        "fey",
+        "legendary"
+      ],
+      "cr": 8
+    },
+    "moon_beast": {
+      "id": "moon_beast",
+      "name": "Moon Beast",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 4,
+        "wits": 3,
+        "will": 3
+      },
+      "hp": 50,
+      "defense": 16,
+      "armor": 0,
+      "damage": "d12+grab",
+      "special": [
+        "Dream hunt: Sleepers take damage here = damage there",
+        "Silver vulnerability",
+        "Lope 60ft"
+      ],
+      "tags": [
+        "aberration",
+        "cosmic"
+      ],
+      "cr": 8
+    },
+    "phoenix": {
+      "id": "phoenix",
+      "name": "Phoenix",
+      "attributes": {
+        "brawn": 3,
+        "finesse": 4,
+        "wits": 2,
+        "will": 3
+      },
+      "hp": 35,
+      "defense": 15,
+      "armor": 0,
+      "damage": "d8+fire",
+      "special": [
+        "Rebirth: 0 HP = egg, hatch 3 rounds full HP unless egg destroyed",
+        "Immune fire"
+      ],
+      "tags": [
+        "elemental",
+        "fire"
+      ],
+      "cr": 8
+    },
+    "lich": {
+      "id": "lich",
+      "name": "Lich",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 1,
+        "wits": 5,
+        "will": 5
+      },
+      "hp": 30,
+      "defense": 14,
+      "armor": 0,
+      "damage": "d6+spell",
+      "special": [
+        "Phylactery: True death only if phylactery destroyed",
+        "6 spells/encounter"
+      ],
+      "tags": [
+        "undead",
+        "arcane"
+      ],
+      "cr": 9
+    },
+    "beholder": {
+      "id": "beholder",
+      "name": "Beholder",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 1,
+        "wits": 4,
+        "will": 4
+      },
+      "hp": 45,
+      "defense": 13,
+      "armor": 0,
+      "damage": "d6 bite",
+      "special": [
+        "Eye rays: 3/round random (charm, sleep, disintegrate d20, fear, flesh to stone, death)",
+        "Anti-magic cone"
+      ],
+      "tags": [
+        "aberration",
+        "iconic"
+      ],
+      "cr": 9
+    },
+    "earth_tyrant": {
+      "id": "earth_tyrant",
+      "name": "Earth Tyrant",
+      "attributes": {
+        "brawn": 5,
+        "finesse": 0,
+        "wits": 1,
+        "will": 2
+      },
+      "hp": 55,
+      "defense": 11,
+      "armor": 4,
+      "damage": "2d8",
+      "special": [
+        "Siege: Ignore armor <3",
+        "Quake: Knock prone 30ft",
+        "Slow"
+      ],
+      "tags": [
+        "elemental",
+        "earth"
+      ],
+      "cr": 9
+    },
+    "adult_black_dragon": {
+      "id": "adult_black_dragon",
+      "name": "Adult Black Dragon",
+      "attributes": {
+        "brawn": 4,
+        "finesse": 3,
+        "wits": 3,
+        "will": 4
+      },
+      "hp": 70,
+      "defense": 15,
+      "armor": 2,
+      "damage": "d10x2",
+      "special": [
+        "Breath: 6d6 acid 60ft line",
+        "Swim",
+        "Corrupt water",
+        "Fear aura 60ft"
+      ],
+      "tags": [
+        "dragon",
+        "acid"
+      ],
+      "cr": 10
+    },
+    "gibbering_orb": {
+      "id": "gibbering_orb",
+      "name": "Gibbering Orb",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 0,
+        "wits": 5,
+        "will": 5
+      },
+      "hp": 55,
+      "defense": 12,
+      "armor": 0,
+      "damage": "d10x3",
+      "special": [
+        "Reality tear: 1/round random spell effect",
+        "Mouths eat magic (absorb SP)"
+      ],
+      "tags": [
+        "aberration",
+        "cosmic"
+      ],
+      "cr": 11
+    },
+    "pit_fiend": {
+      "id": "pit_fiend",
+      "name": "Pit Fiend",
+      "attributes": {
+        "brawn": 5,
+        "finesse": 3,
+        "wits": 3,
+        "will": 4
+      },
+      "hp": 60,
+      "defense": 16,
+      "armor": 3,
+      "damage": "d12+fire",
+      "special": [
+        "Command: Lesser devils obey",
+        "Flame whip reach 10ft",
+        "Fear aura",
+        "Regenerate 5",
+        "Only holy/silver hurt"
+      ],
+      "tags": [
+        "fiend",
+        "devil"
+      ],
+      "cr": 12
+    },
+    "solar": {
+      "id": "solar",
+      "name": "Solar",
+      "attributes": {
+        "brawn": 5,
+        "finesse": 4,
+        "wits": 4,
+        "will": 5
+      },
+      "hp": 70,
+      "defense": 17,
+      "armor": 2,
+      "damage": "d12+radiant",
+      "special": [
+        "Flying sword: Independent attack",
+        "Slaying arrow: Save or die 1/day",
+        "Heal 6d6 3/day",
+        "Immune non-magic"
+      ],
+      "tags": [
+        "celestial",
+        "angel"
+      ],
+      "cr": 15
+    },
+    "demon_prince_orcus": {
+      "id": "demon_prince_orcus",
+      "name": "Demon Prince (Orcus)",
+      "attributes": {
+        "brawn": 6,
+        "finesse": 2,
+        "wits": 5,
+        "will": 5
+      },
+      "hp": 90,
+      "defense": 15,
+      "armor": 2,
+      "damage": "2d8+necrotic",
+      "special": [
+        "Wand of Orcus: Touch = save or die",
+        "Create undead at will",
+        "Summon 1d6 vrocks",
+        "Flight",
+        "Telepathy 120ft"
+      ],
+      "tags": [
+        "fiend",
+        "demon",
+        "prince"
+      ],
+      "cr": 18
+    },
+    "tarrasque": {
+      "id": "tarrasque",
+      "name": "Tarrasque",
+      "attributes": {
+        "brawn": 6,
+        "finesse": 1,
+        "wits": 0,
+        "will": 2
+      },
+      "hp": 120,
+      "defense": 14,
+      "armor": 5,
+      "damage": "3d12",
+      "special": [
+        "Unstoppable: Regen 10/round",
+        "Immune fire",
+        "Reflect spells",
+        "Swallow: Grappled = 6d6 acid/round",
+        "Only divine can truly kill"
+      ],
+      "tags": [
+        "aberration",
+        "apex"
+      ],
+      "cr": 20
+    }
+  }
+}

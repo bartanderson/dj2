@@ -76,66 +76,123 @@ class AuthoritySystem:
         params = action.get("parameters", {})
 
         # Allowed fields that can be set during creation
-        ALLOWED_FIELDS = {
-            "name", "race", "subrace", "class", "background", "personality", 
-            "fears", "motivations", "skills", "alignment",
-            "ability_scores",      # e.g., {"strength": 15, "dexterity": 14, ...}
-            "traits",              # list of trait names (e.g., ["Darkvision", "Fey Ancestry"])
-            "proficiencies",       # list of skill/tool proficiencies
-            "cantrips",            # list of cantrip names
-            "spells_known"         # list of spell names (for known spells)
-        }
+        ALLOWED_FIELDS = {"name", "race", "subrace", "class", "background", "personality",
+                          "fears", "motivations", "skills", "alignment", "ability_scores",
+                          "traits", "proficiencies", "cantrips", "spells_known", "fighting_style"}
 
         if action_type == "update_character_attribute":
             field = params.get("field")
             value = params.get("value")
-            # ... basic checks ...
+            if not field:
+                return ValidatedAction(valid=False, message="No field specified")
             if field not in ALLOWED_FIELDS:
                 return ValidatedAction(valid=False, message=f"Field '{field}' cannot be set during creation")
-            
-            # Field‑specific validation
-            if field == "race":
+
+            # Define which fields are lists
+            list_fields = {"skills", "traits", "proficiencies", "cantrips", "spells_known"}
+            single_value_fields = {"name", "race", "subrace", "class", "background",
+                                   "personality", "fears", "motivations", "alignment", "fighting_style"}
+
+            if field in list_fields:
+                if not isinstance(value, list):
+                    return ValidatedAction(valid=False, message=f"Field '{field}' must be a list")
+                canonical_items = []
+                for item in value:
+                    if not isinstance(item, str):
+                        return ValidatedAction(valid=False, message=f"Items in '{field}' must be strings")
+                    from world import dnd_data
+                    # Semantic match based on field
+                    if field == "skills":
+                        matched = dnd_data.semantic_match_skill(item)
+                    elif field == "traits":
+                        matched = dnd_data.semantic_match_trait(item)
+                    elif field == "proficiencies":
+                        matched = dnd_data.semantic_match_proficiency(item)
+                    elif field == "cantrips":
+                        matched = dnd_data.semantic_match_spell(item)
+                    elif field == "spells_known":
+                        matched = dnd_data.semantic_match_spell(item)
+                    elif field == "fighting_style":
+                        from world import dnd_data
+                        current_class = context.get("character_data", {}).get("class")
+                        matched = dnd_data.semantic_match_fighting_style(value, current_class)
+                        if not matched:
+                            return ValidatedAction(valid=False, message=f"'{value}' is not a valid fighting style{f' for {current_class}' if current_class else ''}")
+                        value = matched
+                    else:
+                        matched = None  # Should not happen
+                    if not matched:
+                        return ValidatedAction(valid=False, message=f"Could not recognize {field} item '{item}'")
+                    canonical_items.append(matched)
+                # Replace value with canonical list
+                value = canonical_items
+                return ValidatedAction(valid=True, message="OK", action_data={field: value})
+
+            elif field in single_value_fields:
+                if not isinstance(value, str):
+                    return ValidatedAction(valid=False, message=f"Field '{field}' must be a string")
                 from world import dnd_data
-                if not dnd_data.validate_race(value):
-                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid race")
-            elif field == "class":
-                from world import dnd_data
-                if not dnd_data.validate_class(value):
-                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid class")
-            elif field == "skills":
-                from world import dnd_data
-                if not dnd_data.validate_skill(value):
-                    return ValidatedAction(valid=False, message=f"'{value}' is not a valid skill")
+                if field == "race":
+                    matched = dnd_data.semantic_match_race(value)
+                    if not matched:
+                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid race")
+                    value = matched
+                elif field == "subrace":
+                    matched = dnd_data.semantic_match_subrace(value)
+                    if not matched:
+                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid subrace")
+                    value = matched
+                    # Validate that subrace matches current race (if known)
+                    current_race = context.get("character_data", {}).get("race")
+                    if current_race:
+                        if not dnd_data.validate_subrace(value, current_race):
+                            return ValidatedAction(valid=False, message=f"'{value}' is not a valid subrace of {current_race}")
+                elif field == "class":
+                    matched = dnd_data.semantic_match_class(value)
+                    if not matched:
+                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid class")
+                    value = matched
+                elif field == "fighting_style":
+                    from world import dnd_data
+                    matched = dnd_data.semantic_match_fighting_style(value)
+                    if not matched:
+                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid fighting style")
+                    value = matched
+                # For other fields, no validation needed
+                return ValidatedAction(valid=True, message="OK", action_data={field: value})
+
             elif field == "ability_scores":
-                # value should be a dict of ability -> score; you could validate each ability name
                 if not isinstance(value, dict):
                     return ValidatedAction(valid=False, message="Ability scores must be a dictionary")
+                canonical_scores = {}
                 for ability, score in value.items():
-                    if not dnd_data.validate_ability_score(ability):
+                    from world import dnd_data
+                    matched_ability = dnd_data.semantic_match_ability_score(ability)
+                    if not matched_ability:
                         return ValidatedAction(valid=False, message=f"'{ability}' is not a valid ability")
                     if not isinstance(score, int) or score < 1 or score > 30:
                         return ValidatedAction(valid=False, message=f"Invalid score for {ability}")
-            elif field == "traits":
-                if not isinstance(value, list):
-                    return ValidatedAction(valid=False, message="Traits must be a list")
-                for trait in value:
-                    if not dnd_data.validate_trait(trait):
-                        return ValidatedAction(valid=False, message=f"'{trait}' is not a valid trait")
-            elif field == "proficiencies":
-                if not isinstance(value, list):
-                    return ValidatedAction(valid=False, message="Proficiencies must be a list")
-                for prof in value:
-                    if not dnd_data.validate_proficiency(prof):
-                        return ValidatedAction(valid=False, message=f"'{prof}' is not a valid proficiency")
+                    canonical_scores[matched_ability] = score
+                return ValidatedAction(valid=True, message="OK", action_data={"ability_scores": canonical_scores})
 
+            else:
+                return ValidatedAction(valid=False, message=f"Unknown field type: {field}")
+
+        elif action_type == "suggest_class":
+            # For suggestions, we might only validate that the suggestion itself is reasonable
+            # For now, accept any suggestion (AI is trusted)
             return ValidatedAction(valid=True, message="OK", action_data=params)
 
         elif action_type == "confirm_class":
             confirmed_class = params.get("confirmed_class")
             if not confirmed_class:
                 return ValidatedAction(valid=False, message="No class specified")
-            if not dnd_data.validate_class(confirmed_class):
+            from world import dnd_data
+            matched = dnd_data.semantic_match_class(confirmed_class)
+            if not matched:
                 return ValidatedAction(valid=False, message=f"'{confirmed_class}' is not a valid class")
+            # Use matched canonical class
+            params["confirmed_class"] = matched
             return ValidatedAction(valid=True, message="OK", action_data=params)
 
         elif action_type == "create_character":
@@ -144,8 +201,29 @@ class AuthoritySystem:
             missing = [f for f in required if not char_data.get(f)]
             if missing:
                 return ValidatedAction(valid=False, message=f"Missing required fields: {', '.join(missing)}")
-            # Optional: validate that race/class are valid
-            return ValidatedAction(valid=True, message="OK", action_data=params)
+            from world import dnd_data
+            # Validate and canonicalize race
+            race = char_data.get("race")
+            matched_race = dnd_data.semantic_match_race(race)
+            if not matched_race:
+                return ValidatedAction(valid=False, message=f"Invalid race: {race}")
+            char_data["race"] = matched_race
+            # Validate and canonicalize class
+            class_name = char_data.get("class")
+            matched_class = dnd_data.semantic_match_class(class_name)
+            if not matched_class:
+                return ValidatedAction(valid=False, message=f"Invalid class: {class_name}")
+            char_data["class"] = matched_class
+            # Validate subrace if present
+            if char_data.get("subrace"):
+                matched_subrace = dnd_data.semantic_match_subrace(char_data["subrace"])
+                if not matched_subrace:
+                    return ValidatedAction(valid=False, message=f"Invalid subrace: {char_data['subrace']}")
+                char_data["subrace"] = matched_subrace
+            # Validate that subrace belongs to race (optional, but good)
+            if char_data.get("subrace") and not dnd_data.validate_subrace(char_data["subrace"], char_data["race"]):
+                return ValidatedAction(valid=False, message=f"Subrace '{char_data['subrace']}' does not match race '{char_data['race']}'")
+            return ValidatedAction(valid=True, message="OK", action_data=char_data)
 
         else:
             return ValidatedAction(valid=False, message=f"Unknown creation action: {action_type}")

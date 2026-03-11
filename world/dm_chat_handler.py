@@ -89,32 +89,32 @@ class DMChatHandler:
             return self.world_controller.session_system.get_session(session_id)
         return session
 
-    def _detect_and_store_interest(self, message: str, session) -> None:
-        """Detect interest expressions and store them without responding."""
-        text_lower = message.lower()
+    # def _detect_and_store_interest(self, message: str, session) -> None:
+    #     """Detect interest expressions and store them without responding."""
+    #     text_lower = message.lower()
         
-        # Check for specific magic interests (avoid false positives by checking exclusivity)
-        arcane_words = ['arcana', 'arcane', 'wizard', 'sorcerer', 'warlock', 'mage', 'spellbook']
-        divine_words = ['divine', 'cleric', 'paladin', 'god', 'faith', 'holy', 'deity']
-        primal_words = ['primal', 'druid', 'ranger', 'nature', 'wild', 'beast', 'spirit']
+    #     # Check for specific magic interests (avoid false positives by checking exclusivity)
+    #     arcane_words = ['arcana', 'arcane', 'wizard', 'sorcerer', 'warlock', 'mage', 'spellbook']
+    #     divine_words = ['divine', 'cleric', 'paladin', 'god', 'faith', 'holy', 'deity']
+    #     primal_words = ['primal', 'druid', 'ranger', 'nature', 'wild', 'beast', 'spirit']
         
-        has_arcane = any(w in text_lower for w in arcane_words)
-        has_divine = any(w in text_lower for w in divine_words)
-        has_primal = any(w in text_lower for w in primal_words)
+    #     has_arcane = any(w in text_lower for w in arcane_words)
+    #     has_divine = any(w in text_lower for w in divine_words)
+    #     has_primal = any(w in text_lower for w in primal_words)
         
-        # Only store if clearly one category (not mixed)
-        if has_arcane and not has_divine and not has_primal:
-            self.world_controller.session_system.update_character_data(
-                session.session_id, {'interested_in': 'arcane'}
-            )
-        elif has_divine and not has_arcane and not has_primal:
-            self.world_controller.session_system.update_character_data(
-                session.session_id, {'interested_in': 'divine'}
-            )
-        elif has_primal and not has_arcane and not has_divine:
-            self.world_controller.session_system.update_character_data(
-                session.session_id, {'interested_in': 'primal'}
-            )
+    #     # Only store if clearly one category (not mixed)
+    #     if has_arcane and not has_divine and not has_primal:
+    #         self.world_controller.session_system.update_character_data(
+    #             session.session_id, {'interested_in': 'arcane'}
+    #         )
+    #     elif has_divine and not has_arcane and not has_primal:
+    #         self.world_controller.session_system.update_character_data(
+    #             session.session_id, {'interested_in': 'divine'}
+    #         )
+    #     elif has_primal and not has_arcane and not has_divine:
+    #         self.world_controller.session_system.update_character_data(
+    #             session.session_id, {'interested_in': 'primal'}
+    #         )
 
     def _process_creation_step(self, message: str, session_id: str) -> Dict:
         session = self.world_controller.session_system.get_session(session_id)
@@ -138,6 +138,12 @@ class DMChatHandler:
             "classes": dnd_data.get_class_list(),
             "backgrounds": []  # TODO: add if available
         }
+        current_class = session.character_data.get('class')
+        if current_class:
+            fighting_styles = dnd_data.get_fighting_styles_for_class(current_class)
+        else:
+            fighting_styles = []  # or a generic list?
+        game_data["fighting_styles"] = fighting_styles
 
         # AI processes the turn
         ai_result = self.world_controller.dm_chat_ai.process_creation_turn(
@@ -150,6 +156,8 @@ class DMChatHandler:
 
         # Validate and apply updates
         updates = ai_result.get("updates", {})
+        # Remove entries with None or empty string values (lists are kept even if empty)
+        updates = {k: v for k, v in updates.items() if v is not None and v != ""}
         applied = []
         if updates:
             # Get current character data (before any changes)
@@ -619,17 +627,14 @@ class DMChatHandler:
             self._update_conversation_topics(session_id, message, is_dm_response=False)
 
             # If in character creation mode (no active character), use the dedicated creation flow
+            # Determine if in character creation mode
             is_character_creation = not character_id and (not player or not player.active_character_id)
-
             if is_character_creation:
-                creation_result = self._process_creation_step(message, session_id)
-                narrative_responses = creation_result.get("narrative", [])
-                if "character_data" in creation_result:
-                    response_data['character_data'] = creation_result['character_data']
-                if "character_id" in creation_result:
-                    response_data['character_id'] = creation_result['character_id']
-                # Skip the rest of the in-game processing (the else branch will not run)
-
+                # Return a simple response directing to the form
+                return {
+                    "narrative": [Dialog("DM", "Please use the character creation form to build your character.", "system")],
+                    "tool_result": None
+                }
             else:
                 # ---- NEW: Use ConsequenceEngine instead of self.dm ---
                 # First, check if tool execution is needed
