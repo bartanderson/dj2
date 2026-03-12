@@ -1,7 +1,11 @@
-# character_generator.py – OG System version
+# character_generator.py – OG System version with enforced caps
 
 import random
-from world import dnd_data  # this is now your og_data module
+import logging
+from world import dnd_data
+from world.character import Character
+
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
 # Attribute point buy (OG System: 4 points, max 3 per attribute)
@@ -16,10 +20,9 @@ def random_attributes():
     attrs = {'brawn': 0, 'finesse': 0, 'wits': 0, 'will': 0}
     # Distribute points randomly, respecting max 3
     for _ in range(points):
-        # Choose a random attribute that is not already at max (3)
         eligible = [k for k in attrs if attrs[k] < 3]
         if not eligible:
-            break  # all at max (shouldn't happen with 4 points)
+            break
         chosen = random.choice(eligible)
         attrs[chosen] += 1
     return attrs
@@ -75,16 +78,13 @@ def random_fill_all(current_data=None):
     Also includes derived fields for compatibility (hit_die, class_skill_*)
     but those are handled in the endpoint.
     """
-    # Generate attributes together
     attrs = random_attributes()
-
-    # Pick random race, class, background
     race = random_fill_field('race')
     class_name = random_fill_field('class')
     background = random_fill_field('background')
     skills = random_fill_field('skills')
 
-    # Generate a simple name (optional)
+    # Generate a simple name
     name_prefixes = ['Aria', 'Borin', 'Cedric', 'Dorn', 'Elara', 'Finn', 'Greta', 'Hugo']
     name = random.choice(name_prefixes) + str(random.randint(1, 99))
 
@@ -98,7 +98,6 @@ def random_fill_all(current_data=None):
         'wits': attrs['wits'],
         'will': attrs['will'],
         'selected_skills': skills,
-        # For template compatibility (ability_scores dict)
         'ability_scores': {
             'brawn': attrs['brawn'],
             'finesse': attrs['finesse'],
@@ -109,24 +108,24 @@ def random_fill_all(current_data=None):
         'hit_die': None,
         'class_skill_choose': 0,
         'class_skill_options': [],
+        'subraces': [],
+        'fighting_styles': [],
     }
     return result
 
 # ----------------------------------------------------------------------
-# Character creation from form data (simplified)
+# Character creation from form data (with validation)
 # ----------------------------------------------------------------------
 def create_character_from_form(form_data, builder=None):
     """
     Create a Character object from validated form data.
     form_data is a dict (already normalized) containing:
         name, race, class, background,
-        brawn, finesse, wits, will (as ints),
+        brawn, finesse, wits, will (as ints or strings),
         skills (list of selected skill names),
         player_id
     Returns a dict with 'success', 'character', and optionally 'errors'.
     """
-    from world.character import Character  # your new og_character
-
     errors = []
 
     # Validate required fields
@@ -158,24 +157,33 @@ def create_character_from_form(form_data, builder=None):
         will = int(form_data.get('will', 1))
     except ValueError:
         errors.append("Attributes must be numbers")
+        # Set defaults to continue validation but will fail anyway
+        brawn = finesse = wits = will = 1
 
-    # Optional: enforce point buy total (if you want to prevent cheating)
-    if brawn + finesse + wits + will > 4:
-        errors.append("Total attribute points cannot exceed 4")
+    # Enforce attribute caps
+    total_points = brawn + finesse + wits + will
+    if total_points > 4:
+        errors.append(f"Total attribute points cannot exceed 4 (you have {total_points})")
     for attr, val in [('brawn', brawn), ('finesse', finesse), ('wits', wits), ('will', will)]:
         if val < 0 or val > 4:
-            errors.append(f"{attr.capitalize()} must be between 0 and 4")
+            errors.append(f"{attr.capitalize()} must be between 0 and 4 (got {val})")
 
     # Get selected skills (list)
     skills = form_data.get('skills', [])
     if not isinstance(skills, list):
         skills = [skills] if skills else []
+
+    # Enforce skill limit (OG: 2-3 starting skills)
+    if len(skills) > 3:
+        errors.append(f"You can select at most 3 skills (you selected {len(skills)})")
     # Validate each skill
     for skill in skills:
         if not dnd_data.validate_skill(skill):
             errors.append(f"Invalid skill: {skill}")
 
+    # If errors, return now
     if errors:
+        logger.warning(f"Character creation failed: {errors}")
         return {'success': False, 'errors': errors}
 
     # Create character
@@ -196,4 +204,5 @@ def create_character_from_form(form_data, builder=None):
     for skill in skills:
         char.add_skill(skill, rank=1)
 
+    logger.info(f"Character created: {char.name} ({char.race} {char.classs.name if char.classs else 'Unknown'})")
     return {'success': True, 'character': char}

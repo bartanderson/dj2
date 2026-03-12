@@ -1407,19 +1407,21 @@ def submit_character():
     # Add player_id
     char_data['player_id'] = player.id
 
-    # ⬇️ DELETE THE OLD ABILITY‑SCORE MAPPING BLOCK (lines 698‑711) ⬇️
-
     from world import character_generator
     result = character_generator.create_character_from_form(
         char_data,
         builder=app.world_controller.character_builder
     )
 
+    # Debug: print result
+    print("Submit result:", result)
+
     if result['success']:
         # Set the active character in the session
         app.world_controller.session_system.set_active_character(session_id, result['character'].id)
         return render_template('partials/success_message.html', character=result['character'])
     else:
+        print("Errors:", result['errors'])
         return render_template('partials/error_message.html', errors=result['errors']), 400
 
 @app.route('/character-creation/form')
@@ -1505,6 +1507,50 @@ def update_character_form():
     }
     
     return render_template('partials/creation_form.html', **context)
+
+@app.route('/character-creation/help', methods=['POST'])
+def character_creation_help():
+    question = request.form.get('question', '').lower()
+    response = "I can help with races, classes, attributes, skills, and backgrounds. Try asking about 'Warrior' or 'Brawn'."
+
+    # Simple keyword matching using og_data
+    from world import dnd_data
+
+    # Check races
+    for race in dnd_data.get_race_list():
+        if race.lower() in question:
+            race_obj = dnd_data.Race.get(race)
+            if race_obj:
+                bonus = race_obj.mechanical_bonus
+                response = f"{race}: {bonus.get('description', 'A playable race.')}"
+            break
+    else:
+        # Check classes
+        for cls in dnd_data.get_class_list():
+            if cls.lower() in question:
+                class_obj = dnd_data.OGClass.get(cls)
+                if class_obj:
+                    response = f"{cls}: HP per level {class_obj.hp_per_level}, SP per level {class_obj.sp_per_level}. Core: {class_obj.core_mechanic.get('description', '')}"
+                break
+        else:
+            # Check attributes
+            for attr in dnd_data.get_ability_score_full_names():
+                if attr.lower() in question:
+                    attr_key = attr.lower()
+                    attr_obj = dnd_data.Attribute.get(attr_key)
+                    if attr_obj:
+                        response = f"{attr}: {attr_obj.governs}"
+                    break
+            else:
+                # Check skills
+                for skill in dnd_data.get_skill_list():
+                    if skill.lower() in question:
+                        skill_obj = dnd_data.Skill.get(skill)
+                        if skill_obj:
+                            response = f"{skill}: {skill_obj.covers}"
+                        break
+
+    return render_template('partials/chat_message.html', sender='Helper', message=response)
 
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():

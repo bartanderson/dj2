@@ -57,10 +57,10 @@ class Character:
         
         # Handle class (can be string name or OGClass object)
         if isinstance(classs, str):
-            self.classs = og_data.OGClass.get(classs)
+            self.classs = dnd_data.OGClass.get(classs)
             if not self.classs:
                 # Create minimal class object
-                self.classs = og_data.OGClass(classs.lower(), {"name": classs, "hp_per_level": 2})
+                self.classs = dnd_data.OGClass(classs.lower(), {"name": classs, "hp_per_level": 2})
         else:
             self.classs = classs
         
@@ -140,7 +140,7 @@ class Character:
     
     def _apply_racial_bonuses(self):
         """Apply racial attribute bonuses from OG System"""
-        race_obj = og_data.Race.get(self.race)
+        race_obj = dnd_data.Race.get(self.race)
         if not race_obj:
             return
         
@@ -296,7 +296,7 @@ class Character:
     
     def add_skill(self, skill_name: str, rank: int = 1):
         """Add or improve a skill (max rank 3)"""
-        if og_data.validate_skill(skill_name):
+        if dnd_data.validate_skill(skill_name):
             current = self.skills.get(skill_name, 0)
             self.skills[skill_name] = min(3, current + rank)
     
@@ -432,18 +432,3 @@ class Character:
     
     def __repr__(self) -> str:
         return f"<Character {self.name} ({self.race} {self.classs.name if self.classs else 'Unknown'} L{self.level})>"
-# '''
-
-# with open('/mnt/kimi/output/og_character.py', 'w') as f:
-#     f.write(og_character_content)
-
-# print("Created og_character.py")
-# print("\nKey features:")
-# print("- Standalone Character class (no dnd_character dependency)")
-# print("- 4 OG System attributes: Brawn, Finesse, Wits, Will (0-4 scale)")
-# print("- HP: 6 + (Brawn × 2) + (level × class_hp_per_level)")
-# print("- SP: (Will × 2) + (level × class_sp_per_level)")
-# print("- Defense: 10 + Finesse + shield")
-# print("- Compatible to_dict/from_dict for serialization")
-# print("- Same interface as old Character: lock/unlock, join_party, equip_item, etc.")
-# print("- Properties for 5e compatibility (strength/dexterity/etc. for display)")
