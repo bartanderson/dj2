@@ -1,0 +1,27 @@
+{
+  "extraction_timestamp": "C:\\Users\\bartl\\dev\\dj2",
+  "layers": {
+    "system_map": "out\\layer1_system_map.json",
+    "capsules": "out\\layer2_capsules.json",
+    "interfaces": "out\\layer3_interfaces.json"
+  },
+  "statistics": {
+    "total_components": 50,
+    "blocked_by_dnd": 0,
+    "og_replacements_available": 2,
+    "integration_points": 11
+  },
+  "quick_access": {
+    "critical_path_components": [
+      "world\\character.py",
+      "world\\character_builder.py",
+      "world\\character_generator.py",
+      "world\\character_manager.py"
+    ],
+    "ready_to_migrate": [
+      "world\\campaign.py",
+      "world\\player.py"
+    ],
+    "needs_adapter": []
+  }
+}

@@ -1,0 +1,172 @@
+EXTRACTION MAP
+Table
+Piece File	Path in Master JSON
+01_core.json	{meta, core_mechanics, skills, skill_generation, combat, progression}
+02_classes.json	{classes}
+03_races.json	{races}
+04_magic.json	{magic}
+05_equipment.json	{equipment}
+06_monsters.json	{monsters}
+07_encounter.json	{encounter_balance, ai_protocol}
+08_exploration.json	{modules.exploration}
+09_social.json	{modules.social}
+10_crafting.json	{modules.crafting}
+11_settlement.json	{modules.settlement}
+12_engine.json	{engine}
+13_index.json	{index, markdownGenerator}
+EXTRACTION SCRIPT
+Python
+Copy
+
+Run it: python extract_pieces.py
+You get 13 clean files, ready to edit and remerge.
+Great and then I can see for myself the additions you mentioned by comparing new to old. Now I plan to be implementing these with as much code as possible rather than trying to have the AI keep this all in context because it has other important things to keep track of. It will have functions to manage the state of play and do rolls and move things around on the world and dungeon maps. It will be managing the campaign creation and modifications as game play proceeds and distributing things in the dungeon as play progresses. No sense in my mind to distribute things before they are needed. Thoughts about how using what you gave me will impact that type of implementation of rule engine driven by AI, where AI does the creative and code powers the mundane math and db does the remembering (memory + db backed store for large or historical etc allowing the AI to forget players till their stats are in question, they can be looked up and modified by circumstance for the event and then stored safely not letting the AI corrupt or lose anything. Thoughts?
+Edit
+Copy
+Share
+Your architecture is sound. Here's how the JSON data supports your specific implementation and where you might want to adjust.
+YOUR ARCHITECTURE vs. THE JSON
+Table
+Your Component	JSON Role	Implementation Notes
+Code (rule engine)	Reads engine.procedures, state_machines	Execute these as actual functions, not prompts
+Database (state)	Schema in engine.stateTracking	Store combatState, partyState exactly as defined
+AI (creative)	Uses ai_protocol, modules for narrative	Call functions, receive structured data back
+Lazy loading	monsters, modules referenced by ID	Only fetch when scene requires
+KEY ADJUSTMENTS FOR YOUR MODEL
+1. State Machines → Actual Code
+Don't give the AI the state machine JSON. Implement it:
+Python
+Copy
+class CombatEngine:
+    STATES = {
+        'setup': SetupPhase,
+        'initiative': InitiativePhase,
+        'turnCycle': TurnCyclePhase,
+        # ...
+    }
+    
+    def transition(self, event):
+        # JSON defines valid transitions
+        # Code enforces them
+        current = self.db.get_state()
+        valid = self.json_rules['state_machines']['encounter']['transitions'][current]
+        if event not in valid['on']:
+            raise InvalidTransition
+        return self.STATES[valid['to']]()
+The JSON is validation and documentation. The code is execution.
+2. Procedures → Function Registry
+Python
+Copy
+PROCEDURES = {
+    'resolveAttack': resolve_attack,
+    'resolveSpell': resolve_spell,
+    'rollEncounter': roll_encounter,
+    # ...
+}
+
+def execute(procedure_name, context):
+    """AI requests 'resolveAttack', code runs it, returns result"""
+    proc = PROCEDURES[procedure_name]
+    return proc(context, db)
+AI never rolls dice. It calls execute('resolveAttack', {...}) and receives:
+JSON
+Copy
+{
+  "hit": true,
+  "critical": false,
+  "damage": 7,
+  "new_hp": 12,
+  "conditions_applied": [],
+  "narrative": "Your blade bites into ogre flesh"
+}
+3. Lazy Content Loading
+Your dungeon generator should reference monster IDs, not embed data:
+Python
+Copy
+# In database
+room = {
+    "id": "room_17",
+    "monster_ids": ["goblin", "goblin", "ogre_ravager"],
+    "loot_table": "cr2_treasure",
+    "explored": false
+}
+
+# When entered
+if not room['explored']:
+    monsters = [load_monster(m) for m in room['monster_ids']]
+    # Load from og_system_master.json['monsters']
+4. AI Context Window Management
+Table
+What AI Holds	What Code/DB Holds
+Current scene description	Full character sheets
+Last 3 turns of combat	Complete combat history
+Active quest hooks	Faction reputation scores
+NPC current disposition	NPC secret drives and history
+Swap protocol:
+plain
+Copy
+AI: "The baron seems nervous"
+CODE: lookup_npc('baron_thaddeus') → returns {drive: "hide embezzlement", secret: "owes vampire", ...}
+AI: [incorporates into narrative without knowing why]
+5. Campaign State Schema
+Add this to your database layer (not in my JSON, you should extend):
+JSON
+Copy
+{
+  "campaign": {
+    "world_seed": "string",
+    "current_location": "hex_id",
+    "active_quests": ["quest_id"],
+    "completed_quests": ["quest_id"],
+    "faction_states": {"faction_id": "reputation_score"},
+    "dungeon_states": {"dungeon_id": "exploration_state"},
+    "timestamp": "in-game date"
+  },
+  "session": {
+    "log": ["entry"],
+    "pending_decisions": ["player_choice"],
+    "temporary_modifiers": ["blessing_until_moonrise"]
+  }
+}
+RECOMMENDED JSON MODIFICATIONS FOR YOUR USE
+Add these fields to support your architecture:
+To meta:
+JSON
+Copy
+"api_version": "1.0",
+"state_schema_version": "1.0"
+To each monster:
+JSON
+Copy
+"loot_table": "cr3_standard",
+"habitat": ["forest", "ruins"],
+"ai_tactics": "aggressive_charger"
+To spells:
+JSON
+Copy
+"ai_description": "Burns enemies, may start fires",
+"targeting": "self|touch|ranged|area"
+New top-level section:
+JSON
+Copy
+"content_packs": {
+  "dungeon_themes": [...],
+  "encounter_templates": [...],
+  "quest_archetypes": [...]
+}
+CRITICAL: DON'T GIVE AI THE FULL JSON
+Table
+Give AI	Keep in Code/DB
+ai_protocol tags	Full engine procedures
+Current monster names/stats	Complete monsters compendium
+Active spell effects	Full magic.schools data
+Scene tags (dark, ancient)	All tables and roll procedures
+AI gets context. Code gets rules. DB gets truth.
+SUMMARY
+Your plan is correct:
+JSON = single source of truth, human-editable
+Code = executes procedures, enforces rules
+DB = remembers everything, loads on demand
+AI = narrates, decides, creates—blind to mechanics it doesn't need
+The JSON I gave you is the contract between these layers. The code you write validates against it, the AI requests through it, the DB stores according to it.
+Want me to add the campaign and session schema extensions? Or the content_packs section for procedural generation?

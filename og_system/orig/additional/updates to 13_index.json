@@ -1,0 +1,121 @@
+{
+  "index": {
+    "byCategory": {
+      "coreMechanics": [
+        "resolution",
+        "attributes",
+        "skills",
+        "combat",
+        "progression",
+        "engine.state_machines",
+        "engine.procedures"
+      ],
+      "characterCreation": [
+        "attributes",
+        "skills",
+        "races",
+        "classes",
+        "equipment",
+        "player_narrative.backstory_framework"
+      ],
+      "magic": [
+        "magic.schools",
+        "revelation_system.cosmic_truth"
+      ],
+      "bestiary": [
+        "monsters",
+        "content_packs.dungeon_themes"
+      ],
+      "adventuring": [
+        "modules.exploration",
+        "modules.social",
+        "modules.crafting",
+        "modules.settlement",
+        "campaign.world_generation",
+        "session.session_structure"
+      ],
+      "narrativeSystems": [
+        "player_narrative.connection_web",
+        "consequence_engine.action_registry",
+        "revelation_system.hidden_truth_database",
+        "consequence_engine.ripple_propagation"
+      ],
+      "aiRuntime": [
+        "engine",
+        "ai_protocol",
+        "session.ai_role",
+        "consequence_engine.query_interface"
+      ]
+    },
+    "byTag": {
+      "combat": [
+        "combat",
+        "weapons",
+        "armor",
+        "conditions",
+        "monsters",
+        "engine.encounter",
+        "engine.turn"
+      ],
+      "exploration": [
+        "modules.exploration",
+        "campaign.world_layers",
+        "content_packs.dungeon_themes",
+        "session.exploration"
+      ],
+      "social": [
+        "modules.social",
+        "reputation",
+        "settlement.downtime",
+        "player_narrative.backstory_framework"
+      ],
+      "crafting": [
+        "modules.crafting",
+        "settlement.procedures.workshop"
+      ],
+      "settlement": [
+        "modules.settlement",
+        "settlement.state_machines",
+        "settlement.procedures"
+      ],
+      "narrative": [
+        "player_narrative",
+        "consequence_engine",
+        "revelation_system"
+      ],
+      "GM_tools": [
+        "encounter_balance",
+        "ai_protocol",
+        "engine",
+        "campaign.time_tracking",
+        "session.persistence"
+      ]
+    },
+    "fileManifest": {
+      "01_core.json": "Core rules, attributes, and skills",
+      "02_classes.json": "warrior, rogue, mage, priest, ranger, monk, bard, warlock",
+      "03_races.json": "human, dwarf, elf, halfling, orc, goblin, troll_blooded, construct, fae_touched",
+      "04_magic.json": "casting, schools: fire, water, earth, air, healing, shadow, mind, force, flesh, death, time, luck",
+      "05_equipment.json": "weapons, gear, wealth_tears",
+      "06_monsters.json": "long list of them",
+      "07_encounter.json": "encounter_balance, ai_protocol",
+      "08_exploration.json": "state_machines, prodedures, tables",
+      "09_social.json": "state_machines, procedures, reputation",
+      "10_crafting.json": "state_machines, procedures, recipes",
+      "11_settlement.json": "Downtime activities and settlement management",
+      "12_engine.json": "State machines for combat and turn resolution",
+      "14_campaign.json": "World generation, calendars, and hex-grid mapping",
+      "15_session.json": "Live play procedures and state persistence",
+      "16_content_packs.json": "Procedural dungeon themes and room generation",
+      "17_player_narrative.json": "PC backstory weaving and personal vows",
+      "18_consequence_engine.json": "Long-term tracking of PC actions and world ripples",
+      "19_revelation_system.json": "Hidden truth database and discovery mechanics"
+    },
+    "quickReference": {
+      "resolution": "d20 + attribute + skill vs TN",
+      "death_save": "hp <= 0 moves to wounded/dying state",
+      "downtime_event": "Quarterly settlement roll for boons or disasters",
+      "revelation_check": "Ready to stage if all optimal_conditions are met"
+    }
+  }
+}

@@ -22,8 +22,6 @@ from engine.game_engine import GameEngine, GamePhase, GameContext
 # Add to world_app.py, near other imports
 import requests
 
-from world.character_generator import ABILITY_SCORE_NAMES
-
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -1355,10 +1353,9 @@ def random_all():
         else:
             data[key] = values[0] if values else ''
 
-    from world import character_generator
-    complete = character_generator.random_fill_all(data)
+    from world import character_generator, dnd_data   # use dnd_data directly
+    complete = character_generator.random_fill_all(data)   # will be updated separately
 
-    from world import dnd_data
     context = {
         'races': dnd_data.get_race_list(),
         'classes': dnd_data.get_class_list(),
@@ -1369,18 +1366,21 @@ def random_all():
     }
     context.update(complete)
 
-    race = context.get('race')
+    # Class‑specific data – adapt from OGClass
     class_name = context.get('class')
-    context['subraces'] = dnd_data.get_subraces_for_race(race) if race else []
-    context['fighting_styles'] = dnd_data.get_fighting_styles_for_class(class_name) if class_name else []
-
     if class_name:
-        dnd_class = dnd_data.DnDClass.get(class_name.lower())
-        if dnd_class:
-            context['hit_die'] = dnd_class.hit_die
-            skill_choices = dnd_class.skill_choices()
+        og_class = dnd_data.OGClass.get(class_name.lower())
+        if og_class:
+            # Approximate hit die from hp_per_level (hp_per_level * 4 gives a die size)
+            approx_hit_die = og_class.hp_per_level * 4
+            context['hit_die'] = f'd{approx_hit_die}'   # e.g., d8 for hp_per_level=2
+            skill_choices = og_class.skill_choices()
             context['class_skill_choose'] = skill_choices['choose']
             context['class_skill_options'] = [s.name for s in skill_choices['from']]
+        else:
+            context['hit_die'] = None
+            context['class_skill_choose'] = 0
+            context['class_skill_options'] = []
     else:
         context['hit_die'] = None
         context['class_skill_choose'] = 0
@@ -1407,23 +1407,7 @@ def submit_character():
     # Add player_id
     char_data['player_id'] = player.id
 
-    # Map ability scores from individual fields to the expected keys (strength, dexterity, etc.)
-    ability_map = {
-        'STR': 'strength',
-        'DEX': 'dexterity',
-        'CON': 'constitution',
-        'INT': 'intelligence',
-        'WIS': 'wisdom',
-        'CHA': 'charisma'
-    }
-    for api_ability, attr in ability_map.items():
-        key = f'ability_{api_ability}'
-        if key in char_data and char_data[key]:
-            try:
-                char_data[attr] = int(char_data[key])
-            except ValueError:
-                pass  # ignore invalid
-            del char_data[key]  # remove the original field
+    # ⬇️ DELETE THE OLD ABILITY‑SCORE MAPPING BLOCK (lines 698‑711) ⬇️
 
     from world import character_generator
     result = character_generator.create_character_from_form(
@@ -1441,75 +1425,86 @@ def submit_character():
 @app.route('/character-creation/form')
 def character_creation_form():
     from world import dnd_data
+
     context = {
         'races': dnd_data.get_race_list(),
         'classes': dnd_data.get_class_list(),
         'backgrounds': dnd_data.get_background_list(),
         'skills_list': dnd_data.get_skill_list(),
-        'ability_names': ABILITY_SCORE_NAMES,
-        'subraces': [],
-        'fighting_styles': [],
+        'ability_names': dnd_data.get_ability_score_lower_names(),
+        'ability_display': dnd_data.get_ability_score_full_names(),
         'name': '',
         'race': '',
-        'subrace': '',
         'class': '',
-        'fighting_style': '',
         'background': '',
         'selected_skills': [],
-        'ability_scores': {}
+        'ability_scores': {},
+        'hit_die': None,
+        'class_skill_choose': 0,
+        'class_skill_options': []
     }
     return render_template('partials/creation_form.html', **context)
 
 @app.route('/character-creation/update-form', methods=['POST'])
 def update_character_form():
-    from world import character_generator, dnd_data
-
-    raw_data = request.form.to_dict(flat=False)
+    # Get all form fields (including multi‑value 'skills')
+    form_data = request.form.to_dict(flat=False)
+    
+    # Build a dict with single values (except skills)
     data = {}
-    for key, values in raw_data.items():
+    for key, values in form_data.items():
         if key == 'skills':
-            data[key] = values
+            data['selected_skills'] = values   # keep as list
         else:
             data[key] = values[0] if values else ''
-
-    normalized = character_generator.normalize_form_data(data)
-
-    # Static lists
-    normalized['races'] = dnd_data.get_race_list()
-    normalized['classes'] = dnd_data.get_class_list()
-    normalized['backgrounds'] = dnd_data.get_background_list()
-    normalized['skills_list'] = dnd_data.get_skill_list()
-    normalized['ability_names'] = dnd_data.get_ability_score_lower_names()   # for form field names
-    normalized['ability_display'] = dnd_data.get_ability_score_full_names()  # for labels
-
-    # Dependent lists
-    race = normalized.get('race')
-    class_name = normalized.get('class')
-    normalized['subraces'] = dnd_data.get_subraces_for_race(race) if race else []
-    normalized['fighting_styles'] = dnd_data.get_fighting_styles_for_class(class_name) if class_name else []
-
-    # Class‑specific data
-    if class_name:
-        dnd_class = dnd_data.DnDClass.get(class_name.lower())
-        if dnd_class:
-            normalized['hit_die'] = dnd_class.hit_die
-            skill_choices = dnd_class.skill_choices()
-            normalized['class_skill_choose'] = skill_choices['choose']
-            normalized['class_skill_options'] = [s.name for s in skill_choices['from']]
-        else:
-            normalized['hit_die'] = None
-            normalized['class_skill_choose'] = 0
-            normalized['class_skill_options'] = []
-    else:
-        normalized['hit_die'] = None
-        normalized['class_skill_choose'] = 0
-        normalized['class_skill_options'] = []
-
-    # Optional: ensure selected_skills exists
-    if 'selected_skills' not in normalized:
-        normalized['selected_skills'] = []
-
-    return render_template('partials/creation_form.html', **normalized)
+    
+    # Ensure all expected keys exist (set defaults if missing)
+    data.setdefault('name', '')
+    data.setdefault('race', '')
+    data.setdefault('class', '')
+    data.setdefault('background', '')
+    data.setdefault('brawn', '1')
+    data.setdefault('finesse', '1')
+    data.setdefault('wits', '1')
+    data.setdefault('will', '1')
+    data.setdefault('selected_skills', [])
+    
+    # Convert ability scores to int (they come as strings)
+    for attr in ['brawn', 'finesse', 'wits', 'will']:
+        try:
+            data[attr] = int(data[attr])
+        except ValueError:
+            data[attr] = 1   # fallback
+    
+    # Build full context for the template
+    from world import dnd_data
+    context = {
+        # Static lists from og_data (now dnd_data)
+        'races': dnd_data.get_race_list(),
+        'classes': dnd_data.get_class_list(),
+        'backgrounds': dnd_data.get_background_list(),
+        'skills_list': dnd_data.get_skill_list(),
+        'ability_names': dnd_data.get_ability_score_lower_names(),   # ['brawn', 'finesse', ...]
+        'ability_display': dnd_data.get_ability_score_full_names(),  # ['Brawn', 'Finesse', ...]
+        
+        # Current values (from form submission)
+        'name': data['name'],
+        'race': data['race'],
+        'class': data['class'],
+        'background': data['background'],
+        'ability_scores': {
+            'brawn': data['brawn'],
+            'finesse': data['finesse'],
+            'wits': data['wits'],
+            'will': data['will'],
+        },
+        'selected_skills': data['selected_skills'],
+        'hit_die': None,
+        'class_skill_choose': 0,
+        'class_skill_options': []
+    }
+    
+    return render_template('partials/creation_form.html', **context)
 
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():

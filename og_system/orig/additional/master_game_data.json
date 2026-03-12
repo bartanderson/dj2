@@ -1,0 +1,1478 @@
+{
+  "og_system": {
+    "meta": {
+      "name": "OG",
+      "version": "1.0.0",
+      "description": "Fast, flexible fantasy RPG designed for AI DMing",
+      "core_philosophy": "Roll once, know immediately. Single source of truth.",
+      "json_schema_version": "1.0"
+    },
+    
+    "core_mechanics": {
+      "resolution": {
+        "die": "d20",
+        "formula": "d20 + attribute + skill vs target_number",
+        "target_numbers": {
+          "easy": 8,
+          "medium": 12,
+          "hard": 16,
+          "extreme": 20
+        },
+        "critical_success": {
+          "trigger": "natural_20",
+          "options": ["double_effect", "no_cost", "narrative_control"]
+        },
+        "critical_failure": {
+          "trigger": "natural_1",
+          "options": ["succeed_with_complication", "fail_with_extra_hurt"]
+        }
+      },
+      
+      "attributes": {
+        "brawn": {
+          "name": "Brawn",
+          "abbreviation": "B",
+          "governs": ["melee_damage", "carry_capacity", "forced_entry", "poison_resistance"],
+          "hp_per_point": 2,
+          "sp_per_point": 0,
+          "defense_contribution": false,
+          "initiative_contribution": false
+        },
+        "finesse": {
+          "name": "Finesse",
+          "abbreviation": "F",
+          "governs": ["ranged_damage", "defense", "initiative", "stealth", "delicate_work"],
+          "hp_per_point": 0,
+          "sp_per_point": 0,
+          "defense_contribution": true,
+          "initiative_contribution": true
+        },
+        "wits": {
+          "name": "Wits",
+          "abbreviation": "W",
+          "governs": ["spellcasting", "knowledge", "perception", "trap_sense", "initiative"],
+          "hp_per_point": 0,
+          "sp_per_point": 0,
+          "defense_contribution": false,
+          "initiative_contribution": true
+        },
+        "will": {
+          "name": "Will",
+          "abbreviation": "Wi",
+          "governs": ["spell_points", "fear_resistance", "social_dominance", "morale"],
+          "hp_per_point": 0,
+          "sp_per_point": 2,
+          "defense_contribution": false,
+          "initiative_contribution": false
+        }
+      },
+      
+      "attribute_generation": {
+        "method": "point_buy",
+        "points": 4,
+        "max_in_one": 3,
+        "human_bonus": "+1 to any"
+      }
+    },
+    
+    "skills": {
+      "survival": {
+        "name": "Survival",
+        "covers": ["track", "hunt", "forage", "navigate_wilderness", "handle_animals"],
+        "typical_tn": "8-12",
+        "max_rank": 3,
+        "starting_ranks": 0
+      },
+      "lore": {
+        "name": "Lore",
+        "covers": ["history", "magic_theory", "legends", "ancient_languages", "appraise"],
+        "typical_tn": "12-16",
+        "max_rank": 3,
+        "starting_ranks": 0
+      },
+      "social": {
+        "name": "Social",
+        "covers": ["lie", "persuade", "intimidate", "haggle", "gather_rumors"],
+        "typical_tn": "8-16",
+        "max_rank": 3,
+        "starting_ranks": 0
+      },
+      "craft": {
+        "name": "Craft",
+        "covers": ["build", "repair", "smith", "alchemy_basics", "disarm_traps"],
+        "typical_tn": "12-16",
+        "max_rank": 3,
+        "starting_ranks": 0
+      },
+      "stealth": {
+        "name": "Stealth",
+        "covers": ["hide", "move_silent", "sleight_of_hand", "pick_pockets", "disguise"],
+        "typical_tn": "8-16",
+        "max_rank": 3,
+        "starting_ranks": 0
+      },
+      "athletics": {
+        "name": "Athletics",
+        "covers": ["climb", "swim", "jump", "grapple", "forced_march"],
+        "typical_tn": "8-16",
+        "max_rank": 3,
+        "starting_ranks": 0
+      }
+    },
+    
+    "skill_generation": {
+      "starting_skills": 3,
+      "starting_rank": 1,
+      "per_level_gain": 1
+    },
+    
+    "combat": {
+      "initiative": {
+        "formula": "d20 + Wits",
+        "tiebreaker": ["finesse", "wits", "player_choice"]
+      },
+      
+      "attack": {
+        "melee": {
+          "formula": "d20 + Brawn",
+          "damage": "weapon_die + Brawn - target_armor"
+        },
+        "ranged": {
+          "formula": "d20 + Finesse",
+          "damage": "weapon_die + Finesse - target_armor"
+        }
+      },
+      
+      "defense": {
+        "base": 10,
+        "formula": "10 + Finesse + shield_bonus",
+        "shield_bonuses": {
+          "buckler": 1,
+          "shield": 2
+        }
+      },
+      
+      "armor": {
+        "unarmored": {
+          "damage_reduction": 0,
+          "movement": "full",
+          "cost": "free",
+          "special": null
+        },
+        "light": {
+          "damage_reduction": 1,
+          "movement": "full",
+          "cost": "cheap",
+          "special": null
+        },
+        "medium": {
+          "damage_reduction": 2,
+          "movement": "-5ft",
+          "cost": "medium",
+          "special": null
+        },
+        "heavy": {
+          "damage_reduction": 3,
+          "movement": "-10ft, cannot_swim",
+          "cost": "expensive",
+          "special": null
+        }
+      },
+      
+      "health": {
+        "base_hp": 6,
+        "formula": "6 + (Brawn × 2) + (level × class_hp_per_level)",
+        "wounded_threshold": 0,
+        "dying_threshold": "negative_half_max_hp",
+        "dead_threshold": "negative_max_hp",
+        "death_saves": {
+          "enabled": false,
+          "comment": "Use thresholds instead"
+        }
+      },
+      
+      "healing": {
+        "short_rest": "1 HP per hour",
+        "long_rest": "all_hp",
+        "healer_kit": {
+          "effect": "1d6 HP",
+          "frequency": "once_per_day"
+        }
+      },
+      
+      "conditions": {
+        "blinded": {
+          "source": "flash, gouge, spell",
+          "effect": "Defense 10, no ranged, -4 Wits checks",
+          "removal": "1 minute or healing"
+        },
+        "deafened": {
+          "source": "thunder, blow",
+          "effect": "No initiative bonus, auto-surprised",
+          "removal": "1 minute"
+        },
+        "frightened": {
+          "source": "horror, dragon, magic",
+          "effect": "-2 all rolls, flee if possible",
+          "removal": "Will save or out of sight 1 minute"
+        },
+        "grappled": {
+          "source": "wrestle, tentacles",
+          "effect": "Speed 0, attack at -2",
+          "removal": "Beat Brawn+Athletics"
+        },
+        "prone": {
+          "source": "trip, fall",
+          "effect": "-2 Defense, stand costs half move",
+          "removal": "Stand up"
+        },
+        "restrained": {
+          "source": "net, spell, vines",
+          "effect": "Speed 0, Defense 10, no two-handed",
+          "removal": "Cut free (5 damage) or spell ends"
+        },
+        "stunned": {
+          "source": "bash, turn undead, crit",
+          "effect": "No actions, Defense 10",
+          "removal": "1 round"
+        },
+        "poisoned": {
+          "source": "venom, gas, sting",
+          "effect": "-1 all rolls, 1 HP per turn",
+          "removal": "Antitoxin or long rest"
+        },
+        "exhausted": {
+          "source": "forced march, no sleep, curse",
+          "effect": "-1 all per level (max 6 = dead)",
+          "removal": "1 rest per level"
+        }
+      }
+    },
+    
+    "progression": {
+      "levels": [
+        {"level": 1, "xp": 0, "hp_bonus": 2, "sp_bonus": 2, "skill_points": 3, "attribute_points": 4, "special": "Starting package"},
+        {"level": 2, "xp": 10, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": "Class feature improves"},
+        {"level": 3, "xp": 20, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": "Subclass choice"},
+        {"level": 4, "xp": 35, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 1, "special": null},
+        {"level": 5, "xp": 50, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": "Capstone I"},
+        {"level": 6, "xp": 70, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 7, "xp": 90, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 0, "special": "Class feature improves"},
+        {"level": 8, "xp": 120, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 1, "special": null},
+        {"level": 9, "xp": 150, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 10, "xp": 200, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 0, "special": "Capstone II"},
+        {"level": 11, "xp": 250, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 12, "xp": 310, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 13, "xp": 380, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 1, "special": null},
+        {"level": 14, "xp": 460, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 15, "xp": 550, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": "Capstone III"},
+        {"level": 16, "xp": 650, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 0, "special": null},
+        {"level": 17, "xp": 760, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": null},
+        {"level": 18, "xp": 880, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 1, "special": null},
+        {"level": 19, "xp": 1010, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 0, "attribute_points": 0, "special": null},
+        {"level": 20, "xp": 1150, "hp_bonus": 2, "sp_bonus": 1, "skill_points": 1, "attribute_points": 0, "special": "Legend: Immortal, Mythic, or Godslayer"}
+      ],
+      "xp_awards": {
+        "survival": "1",
+        "goal_completion": "2",
+        "clever_play": "1",
+        "boss_defeat": "5"
+      }
+    },
+    
+    "classes": {
+      "warrior": {
+        "name": "Warrior",
+        "hp_per_level": 3,
+        "sp_per_level": 0,
+        "core_mechanic": {
+          "name": "Stunts",
+          "description": "Add d6 to attack, damage, or maneuver",
+          "uses": "2 per encounter"
+        },
+        "starting_gear": ["mail", "longsword", "shield", "10g"],
+        "subclasses": {
+          "berserker": {
+            "name": "Berserker",
+            "level": 3,
+            "mechanic": "Rage: +2 damage, -1 Defense, immune fear, 1 min/day per level"
+          },
+          "knight": {
+            "name": "Knight",
+            "level": 3,
+            "mechanic": "Challenge: Foe -2 to attack others, +1 Armor, mount gains half your HP"
+          },
+          "duelist": {
+            "name": "Duelist",
+            "level": 3,
+            "mechanic": "Precision: +1 Defense per adjacent foe beyond first, riposte on miss"
+          }
+        },
+        "capstones": {
+          "5": "Whirlwind: Attack all adjacent",
+          "10": "Indomitable: Reroll failed save 1/encounter",
+          "15": "Warlord: Allies +1 damage within 10ft"
+        }
+      },
+      "rogue": {
+        "name": "Rogue",
+        "hp_per_level": 2,
+        "sp_per_level": 0,
+        "core_mechanic": {
+          "name": "Exploits",
+          "description": "Advantage = roll damage twice take best. Backstab: +d6 if unseen",
+          "uses": "Passive"
+        },
+        "starting_gear": ["leather", "shortsword", "bow", "lockpicks", "15g"],
+        "subclasses": {
+          "assassin": {
+            "name": "Assassin",
+            "level": 3,
+            "mechanic": "Death strike: Surprised foes save or die (TN 8+your level)"
+          },
+          "thief": {
+            "name": "Thief",
+            "level": 3,
+            "mechanic": "Supreme sneak: Hide in plain sight, climb sheer surfaces"
+          },
+          "pirate": {
+            "name": "Pirate",
+            "level": 3,
+            "mechanic": "Boarding: Grapple as move, fight in water, pistol d8 range 30"
+          }
+        },
+        "capstones": {
+          "5": "Shadow step: Teleport to unseen spot 60ft",
+          "10": "Reflexes: Never surprised, Evasion: half damage on area saves",
+          "15": "Masterstroke: Auto-crit once per encounter"
+        }
+      },
+      "mage": {
+        "name": "Mage",
+        "hp_per_level": 1,
+        "sp_per_level": 3,
+        "core_mechanic": {
+          "name": "Arcane",
+          "description": "Learn 2 schools. Cast: Wits vs TN 12, spend SP. Overcast: double SP, auto-succeed",
+          "uses": "SP pool"
+        },
+        "starting_gear": ["staff", "robes", "spellbook", "5g"],
+        "subclasses": {
+          "elementalist": {
+            "name": "Elementalist",
+            "level": 3,
+            "mechanic": "+1 damage die chosen element, immune that element, resist opposite"
+          },
+          "necromancer": {
+            "name": "Necromancer",
+            "level": 3,
+            "mechanic": "Animate: 1 SP = 2 skeletons, max 4×level, command as action"
+          },
+          "illusionist": {
+            "name": "Illusionist",
+            "level": 3,
+            "mechanic": "Real: Illusions deal 1 psychic damage per SP, save disbelieves"
+          }
+        },
+        "capstones": {
+          "5": "Spell mastery: One spell free 1/encounter",
+          "10": "Arcane sight: See magic, counterspell as reaction",
+          "15": "Metamagic: Double range, duration, or targets at no extra cost"
+        }
+      },
+      "priest": {
+        "name": "Priest",
+        "hp_per_level": 2,
+        "sp_per_level": 2,
+        "core_mechanic": {
+          "name": "Divine",
+          "description": "Learn 1 school + Healing. Turn Undead: Will+Social vs undead Will, stun 1 round",
+          "uses": "SP pool"
+        },
+        "starting_gear": ["mace", "holy symbol", "medium armor", "8g"],
+        "subclasses": {
+          "crusader": {
+            "name": "Crusader",
+            "level": 3,
+            "mechanic": "Smite: +d8 damage vs opposed alignment, +1 Armor"
+          },
+          "oracle": {
+            "name": "Oracle",
+            "level": 3,
+            "mechanic": "Prophecy: 1/day declare future event, happens within 1 hour"
+          },
+          "warden": {
+            "name": "Warden",
+            "level": 3,
+            "mechanic": "Sanctuary: Allies +1 Defense within 10ft, heal 1 HP/round to one ally"
+          }
+        },
+        "capstones": {
+          "5": "Miracle: 1/day any spell from any school at SP cost only",
+          "10": "Divine intervention: 1/week, deity answers prayer directly",
+          "15": "Avatar: Resist all damage 1 round, 1/day"
+        }
+      },
+      "ranger": {
+        "name": "Ranger",
+        "hp_per_level": 2,
+        "sp_per_level": 1,
+        "core_mechanic": {
+          "name": "Wild",
+          "description": "Track no roll in favored terrain (pick 2). Animal companion: half your HP, d6 damage",
+          "uses": "Passive + companion"
+        },
+        "starting_gear": ["leather", "bow", "shortsword", "12g"],
+        "subclasses": {
+          "beastmaster": {
+            "name": "Beastmaster",
+            "level": 3,
+            "mechanic": "Companion becomes monstrous: flying, burrowing, or venomous"
+          },
+          "stalker": {
+            "name": "Stalker",
+            "level": 3,
+            "mechanic": "Ambush: First round, auto-crit if you win initiative"
+          },
+          "wayfarer": {
+            "name": "Wayfarer",
+            "level": 3,
+            "mechanic": "Never lost, find food/water anywhere, immune exhaustion"
+          }
+        },
+        "capstones": {
+          "5": "Beast lord: Companion +10 HP, +d8 damage",
+          "10": "Hunter's mark: +d6 damage, no concentration, know location",
+          "15": "Nature's ally: Summon 2d6 beasts 1/day"
+        }
+      },
+      "bard": {
+        "name": "Bard",
+        "hp_per_level": 2,
+        "sp_per_level": 2,
+        "core_mechanic": {
+          "name": "Weave",
+          "description": "Spells are songs—cast while fighting at -2. Inspire: allies +1 to rolls while you perform",
+          "uses": "SP pool + performance"
+        },
+        "starting_gear": ["rapier", "lute", "flashy clothes", "10g"],
+        "subclasses": {
+          "lorekeeper": {
+            "name": "Lorekeeper",
+            "level": 3,
+            "mechanic": "Know any legend, +2 Lore, speak any language"
+          },
+          "dervish": {
+            "name": "Dervish",
+            "level": 3,
+            "mechanic": "Battle dance: Move between attacks, +1 attack/round at level 10"
+          },
+          "dirgesinger": {
+            "name": "Dirgesinger",
+            "level": 3,
+            "mechanic": "Death song: Dying foes rise as spirits (1 SP each, serve 1 hour)"
+          }
+        },
+        "capstones": {
+          "5": "Legend: Your stories become real—1/day narrate flashback that changes present",
+          "10": "Masterpiece: Performance affects all who hear, no save",
+          "15": "Epic: Allies immune fear/charm while you perform"
+        }
+      },
+      "monk": {
+        "name": "Monk",
+        "hp_per_level": 2,
+        "sp_per_level": 1,
+        "core_mechanic": {
+          "name": "Ki",
+          "description": "Unarmed d6, Defense +1 unarmored. Flurry: 2 attacks, -2 each",
+          "uses": "Passive + flurry"
+        },
+        "starting_gear": ["robes", "staff", "5g"],
+        "subclasses": {
+          "iron_soul": {
+            "name": "Iron Soul",
+            "level": 3,
+            "mechanic": "Immune non-magic damage, +2 Armor unarmored"
+          },
+          "void_hand": {
+            "name": "Void Hand",
+            "level": 3,
+            "mechanic": "Touch ignores armor, crit: blind/deafen/stun (choose)"
+          },
+          "drunken_master": {
+            "name": "Drunken Master",
+            "level": 3,
+            "mechanic": "Fortitude: Drunk = +1 all rolls, -1 Defense, no hangover"
+          }
+        },
+        "capstones": {
+          "5": "Empty hand: Unarmed d10, immune non-magic weapons",
+          "10": "Quivering palm: Touch, foe saves or dies 1/day",
+          "15": "Transcendence: Fly, ethereal jaunt, no need to breathe"
+        }
+      },
+      "warlock": {
+        "name": "Warlock",
+        "hp_per_level": 2,
+        "sp_per_level": 2,
+        "core_mechanic": {
+          "name": "Pact",
+          "description": "No Wits roll to cast. 1 spell/turn free, then HP cost. Patron demands favors",
+          "uses": "HP conversion"
+        },
+        "starting_gear": ["dagger", "odd trinket", "3g"],
+        "subclasses": {
+          "chain_master": {
+            "name": "Chain Master",
+            "level": 3,
+            "mechanic": "Familiar: Imp/Quasit (fly, invis, shapechange), spy for you"
+          },
+          "tome_bearer": {
+            "name": "Tome Bearer",
+            "level": 3,
+            "mechanic": "Rituals in 1 min, learn any spell from defeated caster"
+          },
+          "blade_pact": {
+            "name": "Blade Pact",
+            "level": 3,
+            "mechanic": "Pact weapon: +1 damage per 4 levels, returns when thrown"
+          }
+        },
+        "capstones": {
+          "5": "True name: Command patron's servants, no HP cost 1/day",
+          "10": "Eldritch blast: At-will d10 force damage, range 120",
+          "15": "Patron's embrace: Resurrect 1/week if patron finds you useful"
+        }
+      }
+    },
+    
+    "races": {
+      "human": {
+        "name": "Human",
+        "mechanical_bonus": {"type": "attribute", "value": "+1 any"},
+        "knacks": ["Adaptable", "Diplomatic", "Ambitious", "Diverse"],
+        "tags": ["versatile"]
+      },
+      "dwarf": {
+        "name": "Dwarf",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Brawn or +1 Armor from toughness"},
+        "knacks": ["Stone-sense", "Darkvision 30ft", "Poison resistance", "Craft memory"],
+        "tags": ["sturdy", "underground"]
+      },
+      "elf": {
+        "name": "Elf",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Finesse or +1 Initiative"},
+        "knacks": ["Forest-track", "Keen sight", "Trance rest", "Fae etiquette"],
+        "tags": ["fey", "perceptive"]
+      },
+      "halfling": {
+        "name": "Halfling",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Finesse or Lucky (reroll 1s 1/day)"},
+        "knacks": ["Hide in plain sight", "Cook", "Nimble", "Home-sense"],
+        "tags": ["small", "lucky"]
+      },
+      "orc": {
+        "name": "Orc",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Brawn or Intimidate without roll vs weak foes"},
+        "knacks": ["War-cry", "Scent-track", "Savage endurance", "Trophy-taker"],
+        "tags": ["savage", "intimidating"]
+      },
+      "goblin": {
+        "name": "Goblin",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Finesse or +2 Move"},
+        "knacks": ["Night sight", "Tinker", "Scurry", "Pack-rat"],
+        "tags": ["small", "nimble", "urban"]
+      },
+      "troll_blooded": {
+        "name": "Troll-blooded",
+        "mechanical_bonus": {"type": "static", "value": "Regenerate 1 HP/round unless fire/acid"},
+        "knacks": ["Scent", "Iron stomach", "Terrify", "Claws d4 natural"],
+        "tags": ["regeneration", "monstrous"]
+      },
+      "construct": {
+        "name": "Construct",
+        "mechanical_bonus": {"type": "compound", "value": "No healing potions, immune poison/disease, +1 Armor"},
+        "knacks": ["No sleep", "Perfect memory", "No fear", "Unliving"],
+        "tags": ["construct", "immune", "relentless"]
+      },
+      "fae_touched": {
+        "name": "Fae-touched",
+        "mechanical_bonus": {"type": "choice", "value": "+1 Will or Glamour (disguise self 1/day)"},
+        "knacks": ["Iron sensitivity", "Speak with beasts", "Moon-sight", "Pact sense"],
+        "tags": ["fey", "magical", "vulnerable"]
+      }
+    },
+    
+    "magic": {
+      "casting": {
+        "base_roll": "Wits vs TN 12",
+        "base_tn": 12,
+        "overcast": {
+          "cost_multiplier": 2,
+          "risk": "1 Wound (max HP -2 until long rest)"
+        },
+        "rituals": {
+          "time": "10 minutes",
+          "cost": "0 SP",
+          "requirement": "components"
+        }
+      },
+      "schools": {
+        "fire": {
+          "name": "Fire",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Spark", "cost": 0, "description": "Light torch, candle, or campfire", "scaling": "None"},
+            {"name": "Flame Weapon", "cost": 1, "description": "Weapon +d4 fire damage 1 min", "scaling": "+1d4 per extra SP"},
+            {"name": "Burst", "cost": 2, "description": "d6 fire 15ft radius", "scaling": "+d6 per extra SP, +5ft radius"},
+            {"name": "Wall", "cost": 3, "description": "Block path 20ft long, 2d6 to cross", "scaling": "+10ft, +1d6 per extra SP"}
+          ],
+          "tags": ["fire", "loud", "light"]
+        },
+        "water": {
+          "name": "Water",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Clean", "cost": 0, "description": "Purify water, wash object, dry clothes", "scaling": "None"},
+            {"name": "Create Water", "cost": 1, "description": "10 gallons", "scaling": "+10gal per SP"},
+            {"name": "Ice Slick", "cost": 1, "description": "Difficult terrain 10ft square", "scaling": "+10ft per SP"},
+            {"name": "Ice Armor", "cost": 2, "description": "+1 Armor, melts in fire", "scaling": "+1 Armor per extra SP"},
+            {"name": "Drown", "cost": 3, "description": "Target holds breath or take 2d6/round", "scaling": "+1 target per 2 SP"}
+          ],
+          "tags": ["water", "ice", "quiet"]
+        },
+        "earth": {
+          "name": "Earth",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Shape Stone", "cost": 1, "description": "Move 1 cubic foot", "scaling": "+1ft per SP"},
+            {"name": "Armor of Earth", "cost": 2, "description": "+2 Armor, slow -5ft", "scaling": "+1 Armor per extra SP"},
+            {"name": "Spike", "cost": 2, "description": "d8 to single target, ground only", "scaling": "+d8 per extra SP"},
+            {"name": "Quake", "cost": 3, "description": "Knock prone 30ft radius", "scaling": "+15ft per SP, damage +d6"}
+          ],
+          "tags": ["earth", "slow", "grounded"]
+        },
+        "air": {
+          "name": "Air",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Gust", "cost": 0, "description": "Push 10ft, blow out candles", "scaling": "+10ft per SP"},
+            {"name": "Message", "cost": 0, "description": "Whisper 100ft", "scaling": "+100ft per SP"},
+            {"name": "Levitate Object", "cost": 1, "description": "100lb, 10ft, 1 min", "scaling": "+100lb or +10ft per SP"},
+            {"name": "Fly", "cost": 3, "description": "Self, 10 min", "scaling": "+1 target per 2 SP"},
+            {"name": "Lightning", "cost": 3, "description": "d10, line 60ft, loud", "scaling": "+d10 per extra SP"}
+          ],
+          "tags": ["air", "lightning", "flight", "loud"]
+        },
+        "healing": {
+          "name": "Healing",
+          "base_cost": 2,
+          "effects": [
+            {"name": "Restore", "cost": 2, "description": "1d6 HP to touched", "scaling": "+1d6 per extra SP"},
+            {"name": "Cure", "cost": 2, "description": "End poison or disease", "scaling": "One condition per SP"},
+            {"name": "Regenerate", "cost": 4, "description": "1 HP/round for 1 min", "scaling": "+1 target per 2 SP"},
+            {"name": "Revive", "cost": 5, "description": "Stabilize dying, restore 1 HP", "scaling": "+1d6 HP per extra SP"}
+          ],
+          "tags": ["healing", "holy", "touch"]
+        },
+        "shadow": {
+          "name": "Shadow",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Darken", "cost": 1, "description": "30ft radius darkness", "scaling": "+30ft per SP"},
+            {"name": "Silence", "cost": 1, "description": "15ft radius, no sound", "scaling": "+15ft per SP"},
+            {"name": "Invisible", "cost": 2, "description": "Self, 1 min, ends if attack", "scaling": "+1 min per SP"},
+            {"name": "Fear", "cost": 2, "description": "Target Wits save or flee 1 min", "scaling": "+1 target per SP"},
+            {"name": "Pass Without Trace", "cost": 3, "description": "Party +10 Stealth, no tracks", "scaling": "+1 hour per SP"}
+          ],
+          "tags": ["shadow", "darkness", "stealth", "fear"]
+        },
+        "mind": {
+          "name": "Mind",
+          "base_cost": 2,
+          "effects": [
+            {"name": "Suggestion", "cost": 2, "description": "Obey simple command, Wits save", "scaling": "+1 target per 2 SP"},
+            {"name": "Read Thoughts", "cost": 2, "description": "Surface thoughts 1 min", "scaling": "Deep secrets +2 SP"},
+            {"name": "Confuse", "cost": 3, "description": "Attack nearest, Wits save ends", "scaling": "+1 target per SP"},
+            {"name": "Dominate", "cost": 5, "description": "Wits contest, full control 1 min", "scaling": "+1 min per SP"}
+          ],
+          "tags": ["mind", "enchantment", "social"]
+        },
+        "force": {
+          "name": "Force",
+          "base_cost": 1,
+          "effects": [
+            {"name": "Push", "cost": 1, "description": "10ft knockback, Brawn save", "scaling": "+10ft per SP"},
+            {"name": "Shield", "cost": 1, "description": "+2 Defense 1 min", "scaling": "+1 Defense per extra SP"},
+            {"name": "Bind", "cost": 2, "description": "Restrain, Brawn+Athletics to escape", "scaling": "+1 target per SP"},
+            {"name": "Telekinesis", "cost": 2, "description": "Move 100lb 30ft", "scaling": "+100lb or +30ft per SP"},
+            {"name": "Blast", "cost": 3, "description": "d8, knockback 10ft", "scaling": "+d8 per extra SP"}
+          ],
+          "tags": ["force", "invisible", "utility"]
+        },
+        "flesh": {
+          "name": "Flesh",
+          "base_cost": 2,
+          "effects": [
+            {"name": "Alter Face", "cost": 2, "description": "Disguise self, no roll", "scaling": "+1 hour per SP"},
+            {"name": "Claws", "cost": 2, "description": "Natural d6, 1 min", "scaling": "+d6 per extra SP"},
+            {"name": "Strength", "cost": 2, "description": "+2 Brawn 1 min", "scaling": "+1 Brawn per extra SP"},
+            {"name": "Polymorph", "cost": 4, "description": "Beast form, keep mind, 10 min", "scaling": "+10 min per SP"},
+            {"name": "Haste", "cost": 4, "description": "+1 action/round 1 min", "scaling": "+1 target per 3 SP"}
+          ],
+          "tags": ["flesh", "transformation", "buff"]
+        },
+        "death": {
+          "name": "Death",
+          "base_cost": 3,
+          "effects": [
+            {"name": "Drain", "cost": 3, "description": "1d6 HP to target, heal self", "scaling": "+1d6 per extra SP"},
+            {"name": "Animate Dead", "cost": 1, "description": "Per skeleton, permanent", "scaling": "Control max 4×level"},
+            {"name": "Speak Dead", "cost": 3, "description": "Ask corpse 3 questions", "scaling": "+3 questions per SP"},
+            {"name": "Wither", "cost": 4, "description": "Reduce max HP by 5 until rest", "scaling": "+5 per extra SP"},
+            {"name": "Finger of Death", "cost": 6, "description": "Save or die, save = 3d6", "scaling": "+1 target per 3 SP"}
+          ],
+          "tags": ["death", "necromancy", "evil", "drain"]
+        },
+        "time": {
+          "name": "Time",
+          "base_cost": 3,
+          "effects": [
+            {"name": "Haste Self", "cost": 3, "description": "+1 action, no multi-target", "scaling": "+1 min per SP"},
+            {"name": "Slow Enemy", "cost": 3, "description": "Lose action, Wits save ends", "scaling": "+1 target per 2 SP"},
+            {"name": "Rewind", "cost": 4, "description": "Reroll any roll just made", "scaling": "Immediate only"},
+            {"name": "Stasis", "cost": 4, "description": "Freeze 1 round, immune all", "scaling": "+1 round per 2 SP"},
+            {"name": "See Future", "cost": 3, "description": "+2 next roll, 1 min", "scaling": "+1 roll per SP"}
+          ],
+          "tags": ["time", "rare", "powerful"]
+        },
+        "luck": {
+          "name": "Luck",
+          "base_cost": 2,
+          "effects": [
+            {"name": "Bless", "cost": 2, "description": "Ally +1 all rolls 1 min", "scaling": "+1 ally per SP"},
+            {"name": "Curse", "cost": 2, "description": "Enemy -1 all rolls 1 min", "scaling": "+1 enemy per SP"},
+            {"name": "Redirect", "cost": 3, "description": "Attack hits bystander instead", "scaling": "Reaction"},
+            {"name": "Second Chance", "cost": 3, "description": "Auto-save failed save", "scaling": "Reaction, 1/day free if 5 SP"}
+          ],
+          "tags": ["luck", "blessing", "curse", "protection"]
+        }
+      }
+    },
+    
+    "equipment": {
+      "weapons": {
+        "dagger": {"name": "Dagger", "damage": "d4", "properties": ["concealable", "thrown", "cheap"], "cost": "meager", "tags": ["light", "blade"]},
+        "club": {"name": "Club", "damage": "d4", "properties": ["stun", "free"], "cost": "free", "tags": ["blunt", "simple"]},
+        "staff": {"name": "Staff", "damage": "d4", "properties": ["+1 Defense", "reach"], "cost": "cheap", "tags": ["simple", "wizardly"]},
+        "shortsword": {"name": "Shortsword", "damage": "d6", "properties": ["quick draw"], "cost": "cheap", "tags": ["blade", "finesse"]},
+        "spear": {"name": "Spear", "damage": "d6", "properties": ["reach", "thrown", "+1 initiative"], "cost": "cheap", "tags": ["polearm", "versatile"]},
+        "mace": {"name": "Mace", "damage": "d6", "properties": ["ignore 1 armor"], "cost": "cheap", "tags": ["blunt", "armor-piercing"]},
+        "axe": {"name": "Axe", "damage": "d6", "properties": ["thrown", "hook (disarm on crit)"], "cost": "cheap", "tags": ["blade", "thrown"]},
+        "longsword": {"name": "Longsword", "damage": "d8", "properties": ["versatile +1 two-handed"], "cost": "medium", "tags": ["blade", "martial"]},
+        "warhammer": {"name": "Warhammer", "damage": "d8", "properties": ["sunder (damage armor)"], "cost": "medium", "tags": ["blunt", "armor-piercing"]},
+        "battleaxe": {"name": "Battleaxe", "damage": "d8", "properties": ["cleave (hit second on crit)"], "cost": "medium", "tags": ["blade", "cleave"]},
+        "greatsword": {"name": "Greatsword", "damage": "d10", "properties": ["two-handed", "heavy"], "cost": "medium", "tags": ["blade", "heavy"]},
+        "polearm": {"name": "Polearm", "damage": "d10", "properties": ["reach", "two-handed", "brace (charge interrupt)"], "cost": "medium", "tags": ["polearm", "reach"]},
+        "bow": {"name": "Bow", "damage": "d6", "properties": ["range 100", "two hands", "quiet"], "cost": "cheap", "tags": ["ranged", "bow"]},
+        "crossbow": {"name": "Crossbow", "damage": "d8", "properties": ["range 80", "two hands", "loud", "slow"], "cost": "medium", "tags": ["ranged", "crossbow"]},
+        "sling": {"name": "Sling", "damage": "d4", "properties": ["range 60", "free ammo", "concealable"], "cost": "free", "tags": ["ranged", "simple"]}
+      },
+      "gear": {
+        "healing_potion": {"name": "Healing Potion", "cost": 10, "effect": "Heal 1d6 HP"},
+        "antitoxin": {"name": "Antitoxin", "cost": 15, "effect": "Cure poison, +1 save vs poison 1 hour"},
+        "rope": {"name": "Rope 50ft", "cost": 1, "effect": "Climb, bind, tie"},
+        "climbing_kit": {"name": "Climbing Kit", "cost": 5, "effect": "+1 Athletics climbing"},
+        "lockpicks": {"name": "Lockpicks", "cost": 10, "effect": "Required for Stealth vs locks"},
+        "lantern": {"name": "Lantern + oil", "cost": 5, "effect": "Light 30ft, 4 hours"},
+        "rations": {"name": "Rations (week)", "cost": 2, "effect": "Prevents starvation"},
+        "tent": {"name": "Tent", "cost": 3, "effect": "Sleep rough without exhaustion"},
+        "healer_kit": {"name": "Healer's Kit", "cost": 5, "effect": "Stabilize dying, +1d6 HP once/day"},
+        "holy_water": {"name": "Holy Water", "cost": 25, "effect": "2d6 vs undead/fiends, splash"}
+      },
+      "wealth_tiers": {
+        "meager": "1-5g",
+        "cheap": "5-20g",
+        "medium": "20-100g",
+        "expensive": "100g+"
+      }
+    },
+    
+    "monsters": {
+      "carrion_beetle_swarm": {"id": "carrion_beetle_swarm", "name": "Carrion Beetle Swarm", "attributes": {"brawn": 0, "finesse": 2, "wits": 0, "will": 0}, "hp": 8, "defense": 12, "armor": 0, "damage": "2d4", "special": ["Swarm: Half weapon damage, full fire/area"], "tags": ["swarm", "vermin"], "cr": 1},
+      "rot_grub_colony": {"id": "rot_grub_colony", "name": "Rot Grub Colony", "attributes": {"brawn": 0, "finesse": 1, "wits": 0, "will": 0}, "hp": 6, "defense": 10, "armor": 0, "damage": "d4+infest", "special": ["Infest: Hit = burrow, 1d6 next round unless fire"], "tags": ["vermin", "parasite"], "cr": 1},
+      "gibbering_mouther": {"id": "gibbering_mouther", "name": "Gibbering Mouther", "attributes": {"brawn": 2, "finesse": 0, "wits": 1, "will": 2}, "hp": 12, "defense": 10, "armor": 0, "damage": "d6+grab", "special": ["Gibber: Wits save or confused 1 round", "Ground is difficult terrain"], "tags": ["aberration", "ooze-like"], "cr": 2},
+      "gnoll_war_party": {"id": "gnoll_war_party", "name": "Gnoll War Party", "attributes": {"brawn": 2, "finesse": 1, "wits": 0, "will": 1}, "hp": 10, "defense": 12, "armor": 1, "damage": "d8", "special": ["Pack tactics: +1 per adjacent ally, max +3"], "tags": ["humanoid", "demon-touched"], "cr": 2},
+      "ogre_ravager": {"id": "ogre_ravager", "name": "Ogre Ravager", "attributes": {"brawn": 4, "finesse": 0, "wits": 0, "will": 0}, "hp": 20, "defense": 10, "armor": 0, "damage": "d12+2", "special": ["Sweep: Attack 2 adjacent", "Throw rock: d8 range 60"], "tags": ["giant", "brute"], "cr": 3},
+      "redcap": {"id": "redcap", "name": "Redcap", "attributes": {"brawn": 2, "finesse": 3, "wits": 1, "will": 1}, "hp": 15, "defense": 14, "armor": 0, "damage": "d8+iron_boots", "special": ["Blood soak: Heal half dealt", "Iron boots: Kick d10", "Hate holy symbols"], "tags": ["fey", "evil"], "cr": 3},
+      "rust_monster": {"id": "rust_monster", "name": "Rust Monster", "attributes": {"brawn": 1, "finesse": 2, "wits": 0, "will": 0}, "hp": 12, "defense": 12, "armor": 1, "damage": "d4", "special": ["Rust: Hit metal = save or destroyed", "Attracted to magic metal"], "tags": ["aberration", "metal-eater"], "cr": 3},
+      "ochre_jelly": {"id": "ochre_jelly", "name": "Ochre Jelly", "attributes": {"brawn": 2, "finesse": 0, "wits": 0, "will": 0}, "hp": 22, "defense": 8, "armor": 0, "damage": "d6+acid", "special": ["Split: Lightning/slashing = 2 half-HP jellies", "Climb walls", "Immune lightning/slashing", "Vuln cold"], "tags": ["ooze", "split"], "cr": 3},
+      "manticore": {"id": "manticore", "name": "Manticore", "attributes": {"brawn": 3, "finesse": 2, "wits": 1, "will": 0}, "hp": 25, "defense": 14, "armor": 1, "damage": "d8x2", "special": ["Tail spikes: d6x3 ranged", "Flight", "Track by scent"], "tags": ["beast", "monstrosity"], "cr": 4},
+      "bone_colossus": {"id": "bone_colossus", "name": "Bone Colossus", "attributes": {"brawn": 3, "finesse": 0, "wits": 0, "will": 2}, "hp": 30, "defense": 11, "armor": 2, "damage": "d10", "special": ["Reform: Unless holy water/smite, reforms 1d6 rounds after death"], "tags": ["undead", "skeleton"], "cr": 4},
+      "cloaker": {"id": "cloaker", "name": "Cloaker", "attributes": {"brawn": 2, "finesse": 2, "wits": 2, "will": 2}, "hp": 18, "defense": 14, "armor": 1, "damage": "d6+engulf", "special": ["Engulf: Grappled = blinded, suffocating", "Moan: Fear 30ft"], "tags": ["aberration", "shadow"], "cr": 4},
+      "kelpie": {"id": "kelpie", "name": "Kelpie", "attributes": {"brawn": 3, "finesse": 2, "wits": 2, "will": 3}, "hp": 20, "defense": 13, "armor": 0, "damage": "d6+drown", "special": ["Lure: Social save or approach water", "Grapple = drown 3 rounds"], "tags": ["fey", "aquatic"], "cr": 4},
+      "black_pudding": {"id": "black_pudding", "name": "Black Pudding", "attributes": {"brawn": 3, "finesse": 0, "wits": 0, "will": 0}, "hp": 35, "defense": 9, "armor": 0, "damage": "d8+acid", "special": ["Dissolve: Metal armor -1 per hit", "Split like jelly", "Immune acid", "Vuln cold"], "tags": ["ooze", "acid"], "cr": 5},
+      "medusa": {"id": "medusa", "name": "Medusa", "attributes": {"brawn": 1, "finesse": 2, "wits": 3, "will": 3}, "hp": 18, "defense": 13, "armor": 0, "damage": "d6+snakes", "special": ["Petrify: Wits save or slow, fail by 5+ = stone"], "tags": ["monstrosity", "gorgon"], "cr": 5},
+      "wraith_knight": {"id": "wraith_knight", "name": "Wraith Knight", "attributes": {"brawn": 2, "finesse": 3, "wits": 2, "will": 3}, "hp": 22, "defense": 15, "armor": 2, "damage": "d8+drain", "special": ["Incorporeal: Resist non-magic", "Drain: Max HP -2 until rest", "Command shadows"], "tags": ["undead", "incorporeal"], "cr": 5},
+      "living_spell_fireball": {"id": "living_spell_fireball", "name": "Living Spell (Fireball)", "attributes": {"brawn": 0, "finesse": 3, "wits": 2, "will": 2}, "hp": 20, "defense": 14, "armor": 0, "damage": "3d6 fire", "special": ["Explode: Death = 20ft burst", "Immune fire", "Vuln cold", "Fly"], "tags": ["elemental", "spell"], "cr": 5},
+      "hollow_man": {"id": "hollow_man", "name": "Hollow Man", "attributes": {"brawn": 0, "finesse": 0, "wits": 0, "will": 0}, "hp": 1, "defense": 10, "armor": 0, "damage": "0", "special": ["Wear you: Hit = save or it wears your skin, you become hollow", "It has your stats +2"], "tags": ["fey", "horror", "possession"], "cr": 5},
+      "hydra": {"id": "hydra", "name": "Hydra (5 heads)", "attributes": {"brawn": 4, "finesse": 1, "wits": 0, "will": 1}, "hp": 40, "defense": 12, "armor": 2, "damage": "d8x2", "special": ["Multiattack: Heads = attacks", "Regrow head (1 HP) unless fire"], "tags": ["monstrosity", "regeneration"], "cr": 6},
+      "flesh_golem": {"id": "flesh_golem", "name": "Flesh Golem", "attributes": {"brawn": 4, "finesse": 0, "wits": 0, "will": 0}, "hp": 45, "defense": 10, "armor": 3, "damage": "d12", "special": ["Berserk: Below half HP, attacks nearest", "Immune magic except fire/electric"], "tags": ["construct", "golem"], "cr": 6},
+      "mind_flayer": {"id": "mind_flayer", "name": "Mind Flayer", "attributes": {"brawn": 1, "finesse": 2, "wits": 4, "will": 4}, "hp": 22, "defense": 14, "armor": 0, "damage": "d4+tentacles", "special": ["Extract brain: Grappled = Wits save or stunned, then dead", "Psionic blast: d8 stun 30ft"], "tags": ["aberration", "psionic"], "cr": 6},
+      "succubus": {"id": "succubus", "name": "Succubus/Incubus", "attributes": {"brawn": 1, "finesse": 3, "wits": 3, "will": 4}, "hp": 25, "defense": 15, "armor": 0, "damage": "d6+drain", "special": ["Kiss: Will save or charmed, drain 1d6 max HP (heals them)", "Ethereal jaunt", "Immune non-magic"], "tags": ["fiend", "shapechanger"], "cr": 6},
+      "wild_hunt": {"id": "wild_hunt", "name": "Wild Hunt", "attributes": {"brawn": 3, "finesse": 3, "wits": 2, "will": 3}, "hp": 25, "defense": 15, "armor": 2, "damage": "d8", "special": ["Squadron: 1d6+2 riders, share HP pool", "Never stop chasing oath-breakers"], "tags": ["fey", "spectral"], "cr": 7},
+      "kraken_spawn": {"id": "kraken_spawn", "name": "Kraken Spawn", "attributes": {"brawn": 5, "finesse": 1, "wits": 2, "will": 3}, "hp": 40, "defense": 12, "armor": 2, "damage": "d10x2", "special": ["Tentacles: 4 attacks, grab (restrained), drag underwater"], "tags": ["elemental", "aquatic"], "cr": 7},
+      "hezrou": {"id": "hezrou", "name": "Hezrou (Toad Demon)", "attributes": {"brawn": 4, "finesse": 1, "wits": 1, "will": 2}, "hp": 40, "defense": 12, "armor": 2, "damage": "d10x2", "special": ["Stench: 10ft, Brawn save or poisoned", "Leap 30ft", "Summon 2d6 dretches 1/day"], "tags": ["fiend", "demon"], "cr": 8},
+      "vampire_lord": {"id": "vampire_lord", "name": "Vampire Lord", "attributes": {"brawn": 3, "finesse": 3, "wits": 3, "will": 4}, "hp": 35, "defense": 16, "armor": 1, "damage": "d8+drain", "special": ["Charm: Will save or obey", "Mist form", "Spawn vampire (killed foe rises night)"], "tags": ["undead", "vampire"], "cr": 8},
+      "baba_yagas_hut": {"id": "baba_yagas_hut", "name": "Baba Yaga's Hut", "attributes": {"brawn": 5, "finesse": 0, "wits": 2, "will": 4}, "hp": 60, "defense": 12, "armor": 3, "damage": "2d8", "special": ["Chicken legs: Kick or stomp", "Inside bigger outside", "Baba casts through windows"], "tags": ["construct", "fey", "legendary"], "cr": 8},
+      "moon_beast": {"id": "moon_beast", "name": "Moon Beast", "attributes": {"brawn": 4, "finesse": 4, "wits": 3, "will": 3}, "hp": 50, "defense": 16, "armor": 0, "damage": "d12+grab", "special": ["Dream hunt: Sleepers take damage here = damage there", "Silver vulnerability", "Lope 60ft"], "tags": ["aberration", "cosmic"], "cr": 8},
+      "phoenix": {"id": "phoenix", "name": "Phoenix", "attributes": {"brawn": 3, "finesse": 4, "wits": 2, "will": 3}, "hp": 35, "defense": 15, "armor": 0, "damage": "d8+fire", "special": ["Rebirth: 0 HP = egg, hatch 3 rounds full HP unless egg destroyed", "Immune fire"], "tags": ["elemental", "fire"], "cr": 8},
+      "lich": {"id": "lich", "name": "Lich", "attributes": {"brawn": 1, "finesse": 1, "wits": 5, "will": 5}, "hp": 30, "defense": 14, "armor": 0, "damage": "d6+spell", "special": ["Phylactery: True death only if phylactery destroyed", "6 spells/encounter"], "tags": ["undead", "arcane"], "cr": 9},
+      "beholder": {"id": "beholder", "name": "Beholder", "attributes": {"brawn": 1, "finesse": 1, "wits": 4, "will": 4}, "hp": 45, "defense": 13, "armor": 0, "damage": "d6 bite", "special": ["Eye rays: 3/round random (charm, sleep, disintegrate d20, fear, flesh to stone, death)", "Anti-magic cone"], "tags": ["aberration", "iconic"], "cr": 9},
+      "earth_tyrant": {"id": "earth_tyrant", "name": "Earth Tyrant", "attributes": {"brawn": 5, "finesse": 0, "wits": 1, "will": 2}, "hp": 55, "defense": 11, "armor": 4, "damage": "2d8", "special": ["Siege: Ignore armor <3", "Quake: Knock prone 30ft", "Slow"], "tags": ["elemental", "earth"], "cr": 9},
+      "adult_black_dragon": {"id": "adult_black_dragon", "name": "Adult Black Dragon", "attributes": {"brawn": 4, "finesse": 3, "wits": 3, "will": 4}, "hp": 70, "defense": 15, "armor": 2, "damage": "d10x2", "special": ["Breath: 6d6 acid 60ft line", "Swim", "Corrupt water", "Fear aura 60ft"], "tags": ["dragon", "acid"], "cr": 10},
+      "gibbering_orb": {"id": "gibbering_orb", "name": "Gibbering Orb", "attributes": {"brawn": 0, "finesse": 0, "wits": 5, "will": 5}, "hp": 55, "defense": 12, "armor": 0, "damage": "d10x3", "special": ["Reality tear: 1/round random spell effect", "Mouths eat magic (absorb SP)"], "tags": ["aberration", "cosmic"], "cr": 11},
+      "pit_fiend": {"id": "pit_fiend", "name": "Pit Fiend", "attributes": {"brawn": 5, "finesse": 3, "wits": 3, "will": 4}, "hp": 60, "defense": 16, "armor": 3, "damage": "d12+fire", "special": ["Command: Lesser devils obey", "Flame whip reach 10ft", "Fear aura", "Regenerate 5", "Only holy/silver hurt"], "tags": ["fiend", "devil"], "cr": 12},
+      "solar": {"id": "solar", "name": "Solar", "attributes": {"brawn": 5, "finesse": 4, "wits": 4, "will": 5}, "hp": 70, "defense": 17, "armor": 2, "damage": "d12+radiant", "special": ["Flying sword: Independent attack", "Slaying arrow: Save or die 1/day", "Heal 6d6 3/day", "Immune non-magic"], "tags": ["celestial", "angel"], "cr": 15},
+      "demon_prince_orcus": {"id": "demon_prince_orcus", "name": "Demon Prince (Orcus)", "attributes": {"brawn": 6, "finesse": 2, "wits": 5, "will": 5}, "hp": 90, "defense": 15, "armor": 2, "damage": "2d8+necrotic", "special": ["Wand of Orcus: Touch = save or die", "Create undead at will", "Summon 1d6 vrocks", "Flight", "Telepathy 120ft"], "tags": ["fiend", "demon", "prince"], "cr": 18},
+      "tarrasque": {"id": "tarrasque", "name": "Tarrasque", "attributes": {"brawn": 6, "finesse": 1, "wits": 0, "will": 2}, "hp": 120, "defense": 14, "armor": 5, "damage": "3d12", "special": ["Unstoppable: Regen 10/round", "Immune fire", "Reflect spells", "Swallow: Grappled = 6d6 acid/round", "Only divine can truly kill"], "tags": ["aberration", "apex"], "cr": 20}
+    },
+    
+    "encounter_balance": {
+      "formula": "CR = party_level + difficulty_mod",
+      "difficulty": {
+        "easy": -2,
+        "medium": 0,
+        "hard": 2,
+        "deadly": 4
+      },
+      "multipliers": {
+        "single": 1,
+        "pair": 1.5,
+        "group_3_6": 2,
+        "horde_7_12": 2.5,
+        "army_13_plus": 3
+      }
+    },
+    
+    "ai_protocol": {
+      "tags": ["fire", "loud", "ritual", "aoe", "touch", "concentration", "beast", "humanoid", "undead", "construct", "fey", "aberration", "dragon", "fiend", "celestial", "ooze", "swarm", "incorporeal", "cosmic", "prince"],
+      "escalation_ladder": {
+        "standard": {"tn_mod": 0, "damage_mod": "as rolled"},
+        "dangerous": {"tn_mod": 2, "damage_mod": "+2 dice"},
+        "deadly": {"tn_mod": 4, "damage_mod": "x2, wounded on any hit"}
+      },
+      "scene_structure": ["Setup: 2-3 sensory details, obvious threat/opportunity", "Choice: Player declares action", "Roll: Single check determines success degree", "Consequence: Hit or miss, narrative moves forward", "Twist: On 1 or 20, introduce complication/boon"],
+      "generation_rules": {
+        "monster_scaling": "Adjust HP ±20% per CR difference, adjust damage die step",
+        "loot_generation": "CR 1-5: mundane + potion. CR 6-10: +1 weapon or armor. CR 11-15: rare consumable. CR 16+: legendary item or permanent boon",
+        "narrative_tags": "Every scene has 2 tags from [dark, wet, ancient, holy, corrupted, wild, urban, desolate]. Monsters match 1 tag."
+      }
+    }
+  },
+  
+  "modules": {
+    "exploration": {
+      "state_machines": {
+        "dungeon_turn": {
+          "states": ["begin", "action", "check", "event", "end"],
+          "initial": "begin",
+          "duration": "10 minutes",
+          "transitions": {
+            "begin": {"on": "startTurn", "to": "action", "procedure": "consumeLight"},
+            "action": {"on": "declare", "to": "check", "branches": {"move": "checkEncounter", "search": "checkSearch", "rest": "checkRest", "force": "checkForce"}},
+            "check": {"on": "resolve", "to": "event", "procedure": "rollEncounter"},
+            "event": {"on": "trigger", "to": "end", "branches": {"nothing": "end", "encounter": "combatState", "hazard": "hazardResolution", "discovery": "discoveryResolution"}},
+            "end": {"on": "cleanup", "to": "begin", "procedure": "incrementTurnCounter"}
+          }
+        },
+        "hex_crawl": {
+          "states": ["depart", "navigate", "travel", "encounter", "camp"],
+          "initial": "depart",
+          "transitions": {
+            "depart": {"on": "leave", "to": "navigate", "procedure": "setDestination"},
+            "navigate": {"on": "orient", "to": "travel", "procedure": "navigationCheck", "branches": {"lost": "wander"}},
+            "travel": {"on": "march", "to": "encounter", "procedure": "consumeProvisions", "branches": {"forcedMarch": "exhaustionCheck"}},
+            "encounter": {"on": "roll", "to": "camp", "procedure": "hexEncounterTable"},
+            "camp": {"on": "rest", "to": "depart", "procedure": "overnightChecks"}
+          }
+        }
+      },
+      "procedures": {
+        "consumeLight": {
+          "torch": "6 turns per torch, -1 per turn",
+          "lantern": "24 turns per oil flask",
+          "darkness": "If no light, blinded, Wits checks at -4, monsters attack at advantage"
+        },
+        "rollEncounter": {
+          "baseChance": "1-in-6",
+          "escalated": "1-in-4 if loud action taken this turn",
+          "modifier": "+1 if dungeon level deeper, +1 if cursed, +1 if blood spilled",
+          "roll": "d6, encounter on 1 (or 1-2 escalated)"
+        },
+        "navigationCheck": {
+          "clearTerrain": "Survival TN 8",
+          "difficultTerrain": "Survival TN 12",
+          "featureless": "Survival TN 16, no landmarks",
+          "failure": "Wander 1 hex random direction, lose day"
+        },
+        "forcedMarch": {
+          "firstDay": "Brawn save TN 12 or Exhausted -1",
+          "secondDay": "Brawn save TN 16 or Exhausted -2",
+          "thirdDay": "Automatic Exhausted -3, Brawn save TN 12 or collapse"
+        },
+        "starvation": {
+          "day1": "-1 all rolls",
+          "day2": "-2 all rolls, -1 Brawn",
+          "day3": "-3 all rolls, -1 Brawn, dying without water",
+          "recovery": "Full food and rest restores 1 Brawn per day"
+        }
+      },
+      "tables": {
+        "dungeonHazards": [
+          {"roll": "1", "hazard": "Ceiling collapse", "save": "Finesse 12", "damage": "3d6"},
+          {"roll": "2", "hazard": "Gas pocket", "save": "Brawn 12", "effect": "Poisoned 1 hour"},
+          {"roll": "3", "hazard": "Slime patch", "save": "Finesse 8", "effect": "Prone, lose action"},
+          {"roll": "4", "hazard": "Trap (spikes)", "save": "Wits 12", "damage": "2d6"},
+          {"roll": "5", "hazard": "Illusion pit", "save": "Wits 16", "effect": "Fall 20ft, 2d6, prone"},
+          {"roll": "6", "hazard": "Shadow touch", "save": "Will 12", "effect": "Drained 1 max HP until sunlight"}
+        ],
+        "hexEncounters": {
+          "plains": {"day": "2d6: 2-5 nothing, 6-8 tracks, 9-10 encounter, 11-12 discovery", "night": "2d6: 2-4 nothing, 5-7 sounds, 8-10 encounter, 11-12 discovery"},
+          "forest": {"day": "2d6: 2-4 lost, 5-7 nothing, 8-9 tracks, 10-11 encounter, 12 discovery", "night": "2d6: 2-3 lost, 4-5 nothing, 6-7 sounds, 8-10 encounter, 11-12 discovery"},
+          "mountain": {"day": "2d6: 2-3 weather, 4-5 nothing, 6-8 tracks, 9-10 encounter, 11-12 discovery", "night": "2d6: 2-4 weather, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"},
+          "swamp": {"day": "2d6: 2-3 hazard, 4-5 nothing, 6-7 tracks, 8-10 encounter, 11-12 discovery", "night": "2d6: 2-4 hazard, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"},
+          "desert": {"day": "2d6: 2-3 heat, 4-5 nothing, 6-7 tracks, 8-10 encounter, 11-12 discovery", "night": "2d6: 2-4 cold, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"}
+        },
+        "discoveries": [
+          {"type": "ruin", "description": "Ancient structure, possible treasure, definite danger"},
+          {"type": "lair", "description": "Monster home, tracks lead here, high risk/high reward"},
+          {"type": "resource", "description": "Water, food, herbs, ore—survival or crafting material"},
+          {"type": "shrine", "description": "Holy or unholy site, blessing or curse available"},
+          {"type": "settlement", "description": "Remote homestead, hermit, or outpost"},
+          {"type": "oddity", "description": "Weird terrain feature, portal, or impossible geometry"}
+        ]
+      }
+    },
+    
+    "social": {
+      "state_machines": {
+        "socialEncounter": {
+          "states": ["firstImpression", "engagement", "maneuver", "resolution"],
+          "initial": "firstImpression",
+          "transitions": {
+            "firstImpression": {"on": "meet", "to": "engagement", "procedure": "reactionRoll"},
+            "engagement": {"on": "interact", "to": "maneuver", "procedure": "establishDrives"},
+            "maneuver": {"on": "attempt", "to": "resolution", "procedure": "resolveSocialMove", "branches": {"continue": "maneuver", "shift": "engagement", "end": "resolution"}},
+            "resolution": {"on": "close", "to": null, "procedure": "updateReputation"}
+          }
+        }
+      },
+      "procedures": {
+        "reactionRoll": {
+          "formula": "2d6 + modifiers",
+          "modifiers": {
+            "partyReputation": "-2 to +2",
+            "context": "-2 (bloodied) to +2 (bearing gifts)",
+            "alignmentMatch": "+1",
+            "priorHistory": "variable"
+          },
+          "results": {
+            "2": {"disposition": "hostile", "behavior": "Attack or drive off"},
+            "3-5": {"disposition": "unfriendly", "behavior": "Refuse aid, threaten"},
+            "6-8": {"disposition": "neutral", "behavior": "Wary, transactional"},
+            "9-11": {"disposition": "friendly", "behavior": "Helpful, share information"},
+            "12": {"disposition": "helpful", "behavior": "Risk themselves for you"}
+          }
+        },
+        "establishDrives": {
+          "inputs": ["npcType", "context"],
+          "output": "drive, secret, obstacle",
+          "examples": {
+            "merchant": {"drive": "Profit", "secret": "In debt to crime lord", "obstacle": "Suspicious of strangers"},
+            "guard": {"drive": "Protect post", "secret": "Takes bribes", "obstacle": "Duty vs corruption"},
+            "noble": {"drive": "Status", "secret": "Illegitimate heir", "obstacle": "Disdain for commoners"},
+            "peasant": {"drive": "Safety", "secret": "Saw something strange", "obstacle": "Fear of reprisal"}
+          }
+        },
+        "resolveSocialMove": {
+          "moves": {
+            "charm": {"attribute": "Will", "skill": "Social", "effect": "Shift disposition +1 if drives addressed"},
+            "intimidate": {"attribute": "Brawn or Will", "skill": "Social", "effect": "Force compliance, risk hostility"},
+            "deceive": {"attribute": "Wits", "skill": "Social", "effect": "Believed if plausible, exposed if contradicted"},
+            "bribe": {"attribute": "none", "skill": "Social", "effect": "Shift disposition based on offer vs need"},
+            "appeal": {"attribute": "Will", "skill": "Social", "effect": "If drive matches, automatic shift"},
+            "investigate": {"attribute": "Wits", "skill": "Lore or Social", "effect": "Discover secret or obstacle"}
+          },
+          "success": "Shift disposition or gain concession",
+          "failure": "Disposition unchanged or worsens, obstacle reinforced",
+          "critical": "Disposition +2 or permanent ally, secret revealed",
+          "fumble": "Immediate hostility, secret used against party"
+        }
+      },
+      "reputation": {
+        "tracking": "Faction scores -5 to +5",
+        "effects": {
+          "-5": "Wanted dead, no safe haven",
+          "-3": "Refused service, attacked on sight in territory",
+          "0": "Unknown",
+          "+3": "Discounts, safe passage, warnings",
+          "+5": "Called upon for aid, named in songs"
+        },
+        "gains": "Complete quest +1, public heroism +1, betrayal -2, murder -3",
+        "decay": "Ignored -1 per year, scandal -1 instantly"
+      }
+    },
+    
+    "crafting": {
+      "state_machines": {
+        "project": {
+          "states": ["gathering", "preparation", "creation", "completion"],
+          "initial": "gathering",
+          "transitions": {
+            "gathering": {"on": "acquire", "to": "preparation", "condition": "allMaterialsPresent"},
+            "preparation": {"on": "prepare", "to": "creation", "procedure": "toolCheck"},
+            "creation": {"on": "craft", "to": "completion", "procedure": "craftingRoll", "branches": {"interrupted": "suspended", "rushed": "completionWithFlaw"}},
+            "completion": {"on": "finish", "to": null, "procedure": "determineQuality"}
+          }
+        }
+      },
+      "procedures": {
+        "materialGathering": {
+          "sources": {
+            "monsterParts": "CR determines rarity: 1-5 common, 6-10 uncommon, 11-15 rare, 16+ legendary",
+            "minerals": "Mining check Craft TN 12, quantity by vein quality",
+            "plants": "Survival check TN 8-16 by rarity, season matters",
+            "salvage": "From ruins, Lore to identify value"
+          },
+          "preservation": "Fresh 3 days, salted 2 weeks, magical indefinite"
+        },
+        "craftingRoll": {
+          "base": "Craft skill + Wits (complex) or Brawn (sturdy)",
+          "time": "1 day per 100g value, minimum half day",
+          "tools": "Appropriate tools required, improvised -2",
+          "assistance": "Helper with Craft +1, master craftsman +2",
+          "roll": "d20 + modifier vs TN by item complexity",
+          "success": "Item created, standard quality",
+          "successBy5": "Fine quality, +1 to function or +50% value",
+          "failure": "Item flawed, functions at -1 or 50% uses",
+          "failureBy5": "Ruined, materials lost"
+        },
+        "failureTable": {
+          "weapon": [
+            {"roll": "1-2", "flaw": "Brittle", "effect": "Breaks on natural 1"},
+            {"roll": "3-4", "flaw": "Unbalanced", "effect": "-1 to hit"},
+            {"roll": "5-6", "flaw": "Cursed", "effect": "Wielder -1 Will, feels wrong"},
+            {"roll": "7-8", "flaw": "Noisy", "effect": "Stealth impossible while carried"},
+            {"roll": "9-10", "flaw": "Ugly", "effect": "-2 Social, no mechanical penalty"}
+          ],
+          "armor": [
+            {"roll": "1-2", "flaw": "Cracked", "effect": "-1 DR, breaks on crit against"},
+            {"roll": "3-4", "flaw": "Heavy", "effect": "Double movement penalty"},
+            {"roll": "5-6", "flaw": "Cursed", "effect": "Cannot remove without ritual"},
+            {"roll": "7-8", "flaw": "Noisy", "effect": "Stealth at -4"},
+            {"roll": "9-10", "flaw": "Ugly", "effect": "-2 Social"}
+          ],
+          "potion": [
+            {"roll": "1-2", "flaw": "Weak", "effect": "Half effect, half duration"},
+            {"roll": "3-4", "flaw": "Unstable", "effect": "Explodes if shaken (2d6)"},
+            {"roll": "5-6", "flaw": "Cursed", "effect": "Opposite intended effect"},
+            {"roll": "7-8", "flaw": "Addictive", "effect": "Crave more, -1 all until next dose"},
+            {"roll": "9-10", "flaw": "Foul", "effect": "Vomit, lose action next turn"}
+          ]
+        },
+        "alchemy": {
+          "special": true,
+          "risk": "Volatile reagents, failure = explosion 2d6 10ft",
+          "identification": "Lore TN 12 to identify unknown potion, taste test 50% accurate"
+        }
+      },
+      "recipes": {
+        "healingPotion": {"materials": ["herbs x3", "crystal water", "binding agent"], "time": "1 day", "tn": 12, "value": "50g"},
+        "silveredWeapon": {"materials": ["weapon", "silver 100g"], "time": "half day", "tn": 8, "value": "+100g"},
+        "antitoxin": {"materials": ["monster venom", "herbs x2", "alcohol"], "time": "1 day", "tn": 14, "value": "25g"},
+        "elementalBomb": {"materials": ["elemental core", "clay vessel", "fuse"], "time": "2 days", "tn": 16, "value": "200g", "risk": "Explodes on crafting failure"}
+      }
+    },
+    
+    "settlement": {
+      "state_machines": {
+        "downtime": {
+          "states": ["arrival", "activity", "event", "departure"],
+          "initial": "arrival",
+          "transitions": {
+            "arrival": {"on": "enter", "to": "activity", "procedure": "settleIn"},
+            "activity": {"on": "declare", "to": "event", "branches": {"train": "trainingProcedure", "carouse": "carousingProcedure", "craft": "craftingModule", "recruit": "recruitmentProcedure", "research": "researchProcedure", "rest": "restProcedure", "invest": "investmentProcedure"}},
+            "event": {"on": "resolve", "to": "activity", "branches": {"continue": "activity", "trouble": "troubleProcedure", "opportunity": "opportunityProcedure", "depart": "departure"}},
+            "departure": {"on": "leave", "to": null, "procedure": "settlementConsequences"}
+          }
+        }
+      },
+      "procedures": {
+        "training": {
+          "time": "1 week per skill rank gained",
+          "cost": "10g × new rank",
+          "requirement": "Find trainer (Social TN 8-16 by skill rarity)",
+          "limit": "Max rank 3, one skill per downtime",
+          "masterTrainer": "Reduces time 50%, cost +100%, can teach secrets (rank 4, one only)"
+        },
+        "carousing": {
+          "cost": "10g (cheap), 50g (moderate), 200g (extravagant)",
+          "roll": "d20 + Will",
+          "results": {
+            "1-5": "Trouble: Debt, jail, duel challenge, stolen item, unwanted marriage proposal",
+            "6-10": "Hangover: Exhausted -1 tomorrow, no other effect",
+            "11-15": "Rumors: 1d4 useful facts about region",
+            "16-19": "Contact: Meet useful NPC, friendly disposition",
+            "20": "Jackpot: Rumors, contact, and they pay your tab"
+          },
+          "reputation": "Frequent carousing +1 local reputation, scandal -2"
+        },
+        "recruitment": {
+          "types": {
+            "hireling": {"cost": "1g/day", "skill": "0-1", "loyalty": "gold"},
+            "expert": {"cost": "5g/day + share", "skill": "2", "loyalty": "contract"},
+            "henchman": {"cost": "half share", "skill": "2-3", "loyalty": "adventure", "requirement": "Completed quest together"},
+            "follower": {"cost": "none", "skill": "1", "loyalty": "devotion", "requirement": "Saved life or Charisma 20+ roll"}
+          },
+          "loyaltyCheck": "Morale 2d6 + Will vs 7+losses suffered, failure = desertion"
+        },
+        "research": {
+          "time": "1 day per question",
+          "cost": "5g per day (library access)",
+          "roll": "Lore vs TN by obscurity (12 common, 16 rare, 20 lost)",
+          "libraries": {
+            "village": "TN +4, max 12",
+            "town": "Normal",
+            "city": "TN -2, max 20",
+            "academy": "TN -4, access to spells"
+          }
+        },
+        "investment": {
+          "propertyTypes": {
+            "tenement": {"cost": "500g", "income": "10g/month", "risk": "Fire, plague"},
+            "shop": {"cost": "1000g", "income": "25g/month", "risk": "Theft, competition"},
+            "inn": {"cost": "2000g", "income": "50g/month", "risk": "Violence, fire, haunting"},
+            "farm": {"cost": "800g", "income": "20g/month + food", "risk": "Drought, raid"},
+            "workshop": {"cost": "1500g", "income": "Craft at 75% cost, sell at 125%", "risk": "Material shortage"}
+          },
+          "management": "Absentee -25% income, hire manager (5g/month) for full",
+          "events": "Quarterly roll: 1-2 disaster (-1 month income), 3-10 normal, 11 boon (+1 month), 12 windfall (double 1 month)"
+        },
+        "rest": {
+          "comfortable": "Full HP, remove Exhausted, 1g/day",
+          "rough": "Full HP, Exhausted reduced by 1, free",
+          "luxury": "Full HP, +1 temp HP, +1 next roll, 5g/day"
+        }
+      },
+      "troubleTable": [
+        {"result": "debt", "effect": "Owe 2d6×10g to dangerous person"},
+        {"result": "jail", "effect": "Locked up 1d6 days or fine 50g"},
+        {"result": "duel", "effect": "Insulted noble, fight at dawn or lose reputation"},
+        {"result": "theft", "effect": "Lost valuable item, thief known or unknown"},
+        {"result": "scandal", "effect": "Reputation -2 here, rumor spreads"},
+        {"result": "haunted", "effect": "Lodging infested, need exorcism"},
+        {"result": "blackmail", "effect": "Someone knows your secret"},
+        {"result": "recruitment", "effect": "Press-ganged into militia or cult"}
+      ]
+    }
+  },
+  
+  "engine": {
+    "state_machines": {
+      "encounter": {
+        "states": ["setup", "initiative", "turnCycle", "resolution", "end"],
+        "initial": "setup",
+        "transitions": {
+          "setup": {"on": "beginCombat", "to": "initiative", "procedure": "encounterSetup"},
+          "initiative": {"on": "rollInitiative", "to": "turnCycle", "procedure": "determineOrder"},
+          "turnCycle": {"on": "nextTurn", "to": "turnCycle", "procedure": "executeTurn", "branches": {"combatEnd": "resolution", "timeout": "resolution"}},
+          "resolution": {"on": "resolve", "to": "end", "procedure": "distributeRewards"},
+          "end": {"on": "cleanup", "to": null, "procedure": "resetState"}
+        }
+      },
+      "turn": {
+        "states": ["start", "action", "bonus", "reaction", "end"],
+        "initial": "start",
+        "transitions": {
+          "start": {"on": "beginTurn", "to": "action", "procedure": "applyStartEffects"},
+          "action": {"on": "declareAction", "to": "bonus", "procedure": "resolveAction", "branches": {"actionToBonus": "bonus", "actionToReaction": "reaction"}},
+          "bonus": {"on": "declareBonus", "to": "reaction", "procedure": "resolveBonus", "optional": true},
+          "reaction": {"on": "triggerReaction", "to": "end", "procedure": "resolveReaction", "interrupt": true},
+          "end": {"on": "endTurn", "to": null, "procedure": "applyEndEffects"}
+        }
+      },
+      "combatant": {
+        "states": ["healthy", "wounded", "dying", "dead", "removed"],
+        "initial": "healthy",
+        "transitions": {
+          "healthy": {"on": "hpZero", "to": "wounded", "condition": "hp <= 0 and hp > -halfMax"},
+          "wounded": {"on": "stabilize", "to": "healthy", "procedure": "recoveryCheck"},
+          "wounded": {"on": "moreDamage", "to": "dying", "condition": "hp <= -halfMax"},
+          "dying": {"on": "bleedOut", "to": "dead", "condition": "dyingTimer <= 0"},
+          "dying": {"on": "stabilize", "to": "wounded", "procedure": "medicineCheck"},
+          "dead": {"on": "resurrect", "to": "wounded", "procedure": "magicResurrection"},
+          "any": {"on": "instantDeath", "to": "dead", "condition": "hp <= -maxHP or massiveDamage"}
+        }
+      }
+    },
+    "procedures": {
+      "encounterSetup": {
+        "inputs": ["party", "monsters", "environment"],
+        "steps": [
+          "Validate all combatants have required fields: hp, attributes, defense",
+          "Calculate surprise: Compare party Stealth vs monster Wits",
+          "Apply surprise condition to losers: Skip first turn",
+          "Set environment tags: cover, light, terrain",
+          "Initialize turn order array"
+        ],
+        "output": "combatState"
+      },
+      "determineOrder": {
+        "inputs": ["combatants"],
+        "steps": [
+          "For each combatant: roll d20 + Wits",
+          "Sort descending by result",
+          "Tiebreaker: Higher Finesse, then higher Wits, then player choice",
+          "Store initiative order array with current index"
+        ],
+        "output": "turnOrder"
+      },
+      "executeTurn": {
+        "inputs": ["activeCombatant", "combatState"],
+        "steps": [
+          "Check conditions: Stunned = skip to end, Prone = -2 Defense until stand",
+          "Present valid actions: Attack, Cast, Move, Use Item, Disengage, Dodge, Help",
+          "Await player declaration or generate AI declaration",
+          "Validate action: Has action? Resources? Range? Line of sight?",
+          "Resolve action via appropriate procedure",
+          "Check state transitions: HP changes, condition applications",
+          "Increment turn index, loop or end"
+        ],
+        "output": "updatedState"
+      },
+      "resolveAction": {
+        "branches": {
+          "attack": "procedure.resolveAttack",
+          "cast": "procedure.resolveSpell",
+          "move": "procedure.resolveMovement",
+          "item": "procedure.resolveItem",
+          "disengage": "procedure.resolveDisengage",
+          "dodge": "procedure.resolveDodge",
+          "help": "procedure.resolveHelp"
+        }
+      },
+      "resolveAttack": {
+        "inputs": ["attacker", "target", "weapon"],
+        "steps": [
+          "Determine attack attribute: Brawn (melee) or Finesse (ranged)",
+          "Calculate modifier: Attribute + skill if proficient",
+          "Roll d20 + modifier",
+          "Check critical: Natural 20 = crit, Natural 1 = fumble",
+          "Compare vs target Defense",
+          "If hit: Roll weapon damage + attribute - target Armor",
+          "If crit: Choose double dice, max dice, or effect",
+          "If fumble: Determine complication via table or narrative",
+          "Apply damage to target HP, check combatant state transition",
+          "Apply weapon properties: Stun, Cleave, Disarm, etc."
+        ],
+        "output": "damageDealt, newHP, conditions"
+      },
+      "resolveSpell": {
+        "inputs": ["caster", "spell", "targets", "spending"],
+        "steps": [
+          "Validate caster has SP >= cost",
+          "Determine if Overcast: SP × 2, auto-success but take Wound",
+          "If normal cast: Roll Wits vs TN 12",
+          "Check critical: 20 = enhanced effect, 1 = fizzle lose half SP",
+          "If success: Apply spell effect, deduct SP",
+          "If fail: Fizzle, lose half SP (round down)",
+          "Apply scaling: +effect per extra SP spent",
+          "Check spell tags: [Loud] alerts enemies, [Ritual] requires 10min",
+          "Apply conditions, damage, or narrative effect"
+        ],
+        "output": "effectResult, spRemaining, overcastWound"
+      },
+      "resolveMovement": {
+        "inputs": ["combatant", "destination", "terrain"],
+        "steps": [
+          "Calculate speed: Base 30ft + modifiers - armor penalty",
+          "Check terrain: Difficult = half speed, Impassable = blocked",
+          "Check opportunity attacks: Leaving threatened square triggers",
+          "Resolve opportunity attacks if any",
+          "Update position",
+          "Check hidden enemies: Move through threatened? Perception vs Stealth"
+        ],
+        "output": "newPosition, opportunityAttacksTriggered"
+      },
+      "resolveReaction": {
+        "triggers": ["opportunityAttack", "readiedAction", "spellCounter", "shieldBlock"],
+        "steps": [
+          "Validate reaction available: Not used this round",
+          "Determine if trigger condition met",
+          "Resolve as normal action but limited options",
+          "Mark reaction consumed"
+        ],
+        "output": "reactionResult"
+      }
+    },
+    "rollProcedures": {
+      "abilityCheck": {
+        "formula": "d20 + attribute(0-4) + skill(0-3)",
+        "target": "TN from context",
+        "degrees": {
+          "failBy5": "Critical failure or extra bad",
+          "fail": "Failure",
+          "success": "Success",
+          "successBy5": "Critical success or extra good"
+        }
+      },
+      "savingThrow": {
+        "formula": "d20 + attribute + bonuses",
+        "types": {
+          "brawn": ["poison", "paralysis", "death"],
+          "finesse": ["dodge", "reflex", "trap"],
+          "wits": ["illusion", "charm", "confusion"],
+          "will": ["fear", "possession", "domination"]
+        }
+      },
+      "deathSave": {
+        "formula": "d20",
+        "success": "10+",
+        "failure": "1-9",
+        "criticalSuccess": "20: Stabilize and 1 HP",
+        "criticalFailure": "1: Two failures",
+        "track": "3 successes = stable, 3 failures = dead"
+      }
+    },
+    "aiDMFunctions": {
+      "generateMonster": {
+        "inputs": ["cr", "tags", "environment"],
+        "procedure": "Select base from monsters[], scale HP ±20% per CR diff, adjust damage die step, add environment synergy"
+      },
+      "scaleEncounter": {
+        "inputs": ["partyLevel", "difficulty", "partySize"],
+        "procedure": "TargetCR = partyLevel + difficultyMod, Select monsters to sum to TargetCR × partySize multiplier, Adjust for action economy"
+      },
+      "narrate": {
+        "inputs": ["event", "tone", "previousContext"],
+        "procedure": "Generate 2-3 sensory details, Describe mechanical result in fiction, Foreshadow next threat or opportunity"
+      },
+      "adjudicate": {
+        "inputs": ["playerDeclaration", "currentState"],
+        "procedure": "Map declaration to closest rule, If gap: Determine appropriate attribute+skill, Set TN based on difficulty, Roll and narrate"
+      }
+    },
+    "stateTracking": {
+      "combatState": {
+        "round": "integer",
+        "turnOrder": ["combatantID"],
+        "currentIndex": "integer",
+        "combatants": {
+          "id": {
+            "hp": "integer",
+            "maxHP": "integer",
+            "sp": "integer",
+            "conditions": ["conditionID"],
+            "position": "coordinates",
+            "reactionAvailable": "boolean",
+            "actionAvailable": "boolean",
+            "bonusAvailable": "boolean"
+          }
+        },
+        "environment": {
+          "light": "bright/dim/dark",
+          "terrain": ["difficult", "cover", "hazard"],
+          "zones": ["description"]
+        }
+      },
+      "partyState": {
+        "members": ["characterData"],
+        "resources": {
+          "hp": "pooled or individual",
+          "sp": "individual",
+          "inventory": "shared or individual"
+        },
+        "questFlags": ["string"],
+        "reputation": "faction scores"
+      }
+    }
+  },
+  
+  "index": {
+    "byCategory": {
+      "coreMechanics": ["resolution", "attributes", "skills", "combat", "progression"],
+      "characterCreation": ["attributes", "skills", "races", "classes", "equipment"],
+      "magic": ["magic.schools"],
+      "bestiary": ["monsters"],
+      "adventuring": ["modules.exploration", "modules.social", "modules.crafting", "modules.settlement"],
+      "aiRuntime": ["engine", "ai_protocol"]
+    },
+    "byTag": {
+      "combat": ["combat", "weapons", "armor", "conditions", "monsters"],
+      "exploration": ["modules.exploration"],
+      "social": ["modules.social", "reputation"],
+      "crafting": ["modules.crafting"],
+      "settlement": ["modules.settlement"],
+      " GM_tools": ["encounter_balance", "ai_protocol", "engine"]
+    },
+    "quickReference": {
+      "targetNumbers": "core_mechanics.resolution.target_numbers",
+      "conditions": "combat.conditions",
+      "spellSchools": "magic.schools",
+      "monsterByCR": "monsters sorted by cr"
+    }
+  },
+  
+  "markdownGenerator": {
+  "templateStructure": {
+    "titlePage": ["meta.name", "meta.version", "meta.description"],
+    "chapterOrder": [
+      "core_mechanics",
+      "character_creation",
+      "classes",
+      "magic",
+      "equipment",
+      "combat",
+      "monsters",
+      "exploration",
+      "social",
+      "crafting",
+      "settlement",
+      "ai_guide",
+      "appendices"
+    ],
+    "sectionTemplates": {
+      "attributes": {
+        "format": "table",
+        "columns": ["name", "abbreviation", "governs", "hp_per_point", "sp_per_point"]
+      },
+      "classes": {
+        "format": "classBlock",
+        "elements": ["name", "hp_per_level", "sp_per_level", "core_mechanic", "starting_gear", "subclasses", "capstones"]
+      },
+      "monsters": {
+        "format": "statBlock",
+        "elements": ["name", "cr", "attributes", "hp", "defense", "armor", "damage", "special", "tags"]
+      },
+      "tables": {
+        "format": "rollableTable",
+        "elements": ["roll", "result", "effect"]
+      }
+    }
+  },
+  "navigation": {
+    "tocDepth": 3,
+    "indexEntries": "allKeys",
+    "crossReferences": "autoLink",
+    "pageReferences": false
+  },
+  "outputFormats": {
+    "markdown": "full.md",
+    "html": "full.html",
+    "pdfReady": "print.md",
+    "quickReference": "qr.md"
+  }
+}
+}

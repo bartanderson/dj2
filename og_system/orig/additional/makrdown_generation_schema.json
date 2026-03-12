@@ -1,0 +1,52 @@
+{
+  "markdownGenerator": {
+    "templateStructure": {
+      "titlePage": ["meta.name", "meta.version", "meta.description"],
+      "chapterOrder": [
+        "core_mechanics",
+        "character_creation",
+        "classes",
+        "magic",
+        "equipment",
+        "combat",
+        "monsters",
+        "exploration",
+        "social",
+        "crafting",
+        "settlement",
+        "ai_guide",
+        "appendices"
+      ],
+      "sectionTemplates": {
+        "attributes": {
+          "format": "table",
+          "columns": ["name", "abbreviation", "governs", "hp_per_point", "sp_per_point"]
+        },
+        "classes": {
+          "format": "classBlock",
+          "elements": ["name", "hp_per_level", "sp_per_level", "core_mechanic", "starting_gear", "subclasses", "capstones"]
+        },
+        "monsters": {
+          "format": "statBlock",
+          "elements": ["name", "cr", "attributes", "hp", "defense", "armor", "damage", "special", "tags"]
+        },
+        "tables": {
+          "format": "rollableTable",
+          "elements": ["roll", "result", "effect"]
+        }
+      }
+    },
+    "navigation": {
+      "tocDepth": 3,
+      "indexEntries": "allKeys",
+      "crossReferences": "autoLink",
+      "pageReferences": false
+    },
+    "outputFormats": {
+      "markdown": "full.md",
+      "html": "full.html",
+      "pdfReady": "print.md",
+      "quickReference": "qr.md"
+    }
+  }
+}

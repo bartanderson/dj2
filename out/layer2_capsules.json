@@ -1,0 +1,947 @@
+{
+  "world\\ai_dungeon_master.py": {
+    "name": "ai_dungeon_master",
+    "folder": "world",
+    "path": "world\\ai_dungeon_master.py",
+    "type": "service",
+    "responsibilities": [
+      "manages actiontype state",
+      "manages choiceoutcome state",
+      "manages character state"
+    ],
+    "key_exports": [
+      "class:ActionType(0 methods)",
+      "class:ChoiceOutcome(0 methods)",
+      "class:Character(0 methods)",
+      "class:Choice(1 methods)",
+      "class:GameState(0 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 301,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\ai_integration.py": {
+    "name": "ai_integration",
+    "folder": "world",
+    "path": "world\\ai_integration.py",
+    "type": "service",
+    "responsibilities": [
+      "manages baseai state",
+      "manages worldai state",
+      "manages dungeonai state"
+    ],
+    "key_exports": [
+      "class:BaseAI(8 methods)",
+      "class:WorldAI(5 methods)",
+      "class:DungeonAI(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 380,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\ai_prompts.py": {
+    "name": "ai_prompts",
+    "folder": "world",
+    "path": "world\\ai_prompts.py",
+    "type": "service",
+    "responsibilities": [
+      "generates location_description",
+      "generates npc_dialogue"
+    ],
+    "key_exports": [
+      "func:generate_location_description",
+      "func:generate_npc_dialogue"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 31,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\authority_system.py": {
+    "name": "authority_system",
+    "folder": "world",
+    "path": "world\\authority_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages validatedaction state",
+      "manages authoritysystem state"
+    ],
+    "key_exports": [
+      "class:ValidatedAction(0 methods)",
+      "class:AuthoritySystem(21 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 535,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\campaign.py": {
+    "name": "campaign",
+    "folder": "world",
+    "path": "world\\campaign.py",
+    "type": "service",
+    "responsibilities": [
+      "manages location state",
+      "manages npc state",
+      "manages quest state"
+    ],
+    "key_exports": [
+      "class:Location(2 methods)",
+      "class:NPC(2 methods)",
+      "class:Quest(2 methods)",
+      "class:Faction(2 methods)",
+      "class:CampaignState(12 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [
+      "pieces\\14_campaign.json"
+    ],
+    "complexity_score": 149,
+    "implementation_status": "unknown",
+    "notes": "REPLACEMENT READY: 1 og_system equivalents found"
+  },
+  "world\\character.py": {
+    "name": "character",
+    "folder": "world",
+    "path": "world\\character.py",
+    "type": "service",
+    "responsibilities": [
+      "manages character state"
+    ],
+    "key_exports": [
+      "class:Character(11 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 132,
+    "implementation_status": "unknown",
+    "notes": "CRITICAL PATH: Character generation integration point"
+  },
+  "world\\character_builder.py": {
+    "name": "character_builder",
+    "folder": "world",
+    "path": "world\\character_builder.py",
+    "type": "service",
+    "responsibilities": [
+      "manages characterbuilder state"
+    ],
+    "key_exports": [
+      "class:CharacterBuilder(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 291,
+    "implementation_status": "unknown",
+    "notes": "CRITICAL PATH: Character generation integration point"
+  },
+  "world\\character_generator.py": {
+    "name": "character_generator",
+    "folder": "world",
+    "path": "world\\character_generator.py",
+    "type": "service",
+    "responsibilities": [
+      "generates create_character_from_form"
+    ],
+    "key_exports": [
+      "func:normalize_form_data",
+      "func:random_fill_field",
+      "func:random_fill_all",
+      "func:create_character_from_form"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 186,
+    "implementation_status": "unknown",
+    "notes": "CRITICAL PATH: Character generation integration point"
+  },
+  "world\\character_manager.py": {
+    "name": "character_manager",
+    "folder": "world",
+    "path": "world\\character_manager.py",
+    "type": "service",
+    "responsibilities": [
+      "manages charactermanager state"
+    ],
+    "key_exports": [
+      "class:CharacterManager(11 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 127,
+    "implementation_status": "unknown",
+    "notes": "CRITICAL PATH: Character generation integration point"
+  },
+  "world\\consequence_engine.py": {
+    "name": "consequence_engine",
+    "folder": "world",
+    "path": "world\\consequence_engine.py",
+    "type": "service",
+    "responsibilities": [
+      "manages consequenceengine state"
+    ],
+    "key_exports": [
+      "class:ConsequenceEngine(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 89,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\db.py": {
+    "name": "db",
+    "folder": "world",
+    "path": "world\\db.py",
+    "type": "service",
+    "responsibilities": [
+      "manages database state"
+    ],
+    "key_exports": [
+      "class:Database(4 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 50,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\dm_chat_ai.py": {
+    "name": "dm_chat_ai",
+    "folder": "world",
+    "path": "world\\dm_chat_ai.py",
+    "type": "service",
+    "responsibilities": [
+      "manages dmchatai state"
+    ],
+    "key_exports": [
+      "class:DMChatAI(15 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 541,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\dm_chat_handler.py": {
+    "name": "dm_chat_handler",
+    "folder": "world",
+    "path": "world\\dm_chat_handler.py",
+    "type": "service",
+    "responsibilities": [
+      "manages dmchathandler state"
+    ],
+    "key_exports": [
+      "class:DMChatHandler(33 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 1021,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\dm_tools.py": {
+    "name": "dm_tools",
+    "folder": "world",
+    "path": "world\\dm_tools.py",
+    "type": "service",
+    "responsibilities": [
+      "manages dmtools state"
+    ],
+    "key_exports": [
+      "class:DMTools(4 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 450,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\dnd_data.py": {
+    "name": "dnd_data",
+    "folder": "world",
+    "path": "world\\dnd_data.py",
+    "type": "data_source",
+    "responsibilities": [
+      "manages dndobject state",
+      "manages abilityscore state",
+      "manages skill state"
+    ],
+    "key_exports": [
+      "func:_get_embedder",
+      "class:DnDObject(6 methods)",
+      "class:AbilityScore(2 methods)",
+      "class:Skill(1 methods)",
+      "class:Proficiency(1 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 505,
+    "implementation_status": "working",
+    "notes": "Standard component"
+  },
+  "world\\entity.py": {
+    "name": "entity",
+    "folder": "world",
+    "path": "world\\entity.py",
+    "type": "service",
+    "responsibilities": [
+      "manages entity state"
+    ],
+    "key_exports": [
+      "class:Entity(2 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 20,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\image_generator.py": {
+    "name": "image_generator",
+    "folder": "world",
+    "path": "world\\image_generator.py",
+    "type": "service",
+    "responsibilities": [
+      "manages imagegenerator state"
+    ],
+    "key_exports": [
+      "class:ImageGenerator(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 36,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\map_utils.py": {
+    "name": "map_utils",
+    "folder": "world",
+    "path": "world\\map_utils.py",
+    "type": "service",
+    "responsibilities": [
+      "manages maputils state"
+    ],
+    "key_exports": [
+      "class:MapUtils(2 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 73,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\movement_service.py": {
+    "name": "movement_service",
+    "folder": "world",
+    "path": "world\\movement_service.py",
+    "type": "service",
+    "responsibilities": [
+      "manages charactermovementservice state",
+      "manages movementservice state"
+    ],
+    "key_exports": [
+      "class:CharacterMovementService(2 methods)",
+      "class:MovementService(8 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 182,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\narrative_engine.py": {
+    "name": "narrative_engine",
+    "folder": "world",
+    "path": "world\\narrative_engine.py",
+    "type": "service",
+    "responsibilities": [
+      "manages narrativeengine state"
+    ],
+    "key_exports": [
+      "class:NarrativeEngine(12 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 163,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\narrative_system.py": {
+    "name": "narrative_system",
+    "folder": "world",
+    "path": "world\\narrative_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages narrativeguide state",
+      "manages consequencesystem state",
+      "manages motivationtracker state"
+    ],
+    "key_exports": [
+      "class:NarrativeGuide(5 methods)",
+      "class:ConsequenceSystem(5 methods)",
+      "class:MotivationTracker(3 methods)",
+      "class:ChoiceArchitect(4 methods)",
+      "class:PacingController(8 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 1071,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\overlay.py": {
+    "name": "overlay",
+    "folder": "world",
+    "path": "world\\overlay.py",
+    "type": "service",
+    "responsibilities": [
+      "manages overlay state"
+    ],
+    "key_exports": [
+      "class:Overlay(2 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 131,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\party_manager.py": {
+    "name": "party_manager",
+    "folder": "world",
+    "path": "world\\party_manager.py",
+    "type": "service",
+    "responsibilities": [
+      "manages partymanager state"
+    ],
+    "key_exports": [
+      "class:PartyManager(12 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 124,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\party_system.py": {
+    "name": "party_system",
+    "folder": "world",
+    "path": "world\\party_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages partysystem state"
+    ],
+    "key_exports": [
+      "class:PartySystem(10 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 127,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\paths.py": {
+    "name": "paths",
+    "folder": "world",
+    "path": "world\\paths.py",
+    "type": "service",
+    "responsibilities": [
+      "manages pathgenerator state"
+    ],
+    "key_exports": [
+      "class:PathGenerator(11 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 307,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\persistence.py": {
+    "name": "persistence",
+    "folder": "world",
+    "path": "world\\persistence.py",
+    "type": "service",
+    "responsibilities": [
+      "manages worldmanager state"
+    ],
+    "key_exports": [
+      "class:WorldManager(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 261,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\player.py": {
+    "name": "player",
+    "folder": "world",
+    "path": "world\\player.py",
+    "type": "service",
+    "responsibilities": [
+      "manages player state"
+    ],
+    "key_exports": [
+      "class:Player(3 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [
+      "pieces\\17_player_narrative.json"
+    ],
+    "complexity_score": 34,
+    "implementation_status": "unknown",
+    "notes": "REPLACEMENT READY: 1 og_system equivalents found"
+  },
+  "world\\quest_manager.py": {
+    "name": "quest_manager",
+    "folder": "world",
+    "path": "world\\quest_manager.py",
+    "type": "service",
+    "responsibilities": [
+      "manages questmanager state"
+    ],
+    "key_exports": [
+      "class:QuestManager(9 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 116,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\session_system.py": {
+    "name": "session_system",
+    "folder": "world",
+    "path": "world\\session_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages sessionstate state",
+      "manages sessionsystem state"
+    ],
+    "key_exports": [
+      "class:SessionState(2 methods)",
+      "class:SessionSystem(16 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 138,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\t2i.py": {
+    "name": "t2i",
+    "folder": "world",
+    "path": "world\\t2i.py",
+    "type": "service",
+    "responsibilities": [
+      "manages texttoimage state"
+    ],
+    "key_exports": [
+      "class:TextToImage(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 379,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\terrain.py": {
+    "name": "terrain",
+    "folder": "world",
+    "path": "world\\terrain.py",
+    "type": "service",
+    "responsibilities": [
+      "manages terraingenerator state"
+    ],
+    "key_exports": [
+      "class:TerrainGenerator(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 233,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\tool_system.py": {
+    "name": "tool_system",
+    "folder": "world",
+    "path": "world\\tool_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages tool state",
+      "manages toolregistry state"
+    ],
+    "key_exports": [
+      "class:Tool(3 methods)",
+      "class:ToolRegistry(6 methods)",
+      "func:tool"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 65,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\travel_system.py": {
+    "name": "travel_system",
+    "folder": "world",
+    "path": "world\\travel_system.py",
+    "type": "service",
+    "responsibilities": [
+      "manages travelsystem state"
+    ],
+    "key_exports": [
+      "class:TravelSystem(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 96,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\utils.py": {
+    "name": "utils",
+    "folder": "world",
+    "path": "world\\utils.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [
+      "func:convex_hull",
+      "func:cross"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 28,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\world_builder.py": {
+    "name": "world_builder",
+    "folder": "world",
+    "path": "world\\world_builder.py",
+    "type": "service",
+    "responsibilities": [
+      "manages worldbuilder state"
+    ],
+    "key_exports": [
+      "class:WorldBuilder(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 296,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\world_controller.py": {
+    "name": "world_controller",
+    "folder": "world",
+    "path": "world\\world_controller.py",
+    "type": "service",
+    "responsibilities": [
+      "manages worldcontroller state"
+    ],
+    "key_exports": [
+      "class:WorldController(35 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 1150,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\world_generator.py": {
+    "name": "world_generator",
+    "folder": "world",
+    "path": "world\\world_generator.py",
+    "type": "service",
+    "responsibilities": [
+      "manages worldgenerator state",
+      "manages minimalstate state",
+      "manages namegenerator state"
+    ],
+    "key_exports": [
+      "class:WorldGenerator(16 methods)",
+      "class:MinimalState(1 methods)",
+      "class:NameGenerator(4 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 577,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\world_map.py": {
+    "name": "world_map",
+    "folder": "world",
+    "path": "world\\world_map.py",
+    "type": "service",
+    "responsibilities": [
+      "manages worldmap state"
+    ],
+    "key_exports": [
+      "class:WorldMap(10 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 98,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\world_session.py": {
+    "name": "world_session",
+    "folder": "world",
+    "path": "world\\world_session.py",
+    "type": "service",
+    "responsibilities": [
+      "manages sessionmanager state"
+    ],
+    "key_exports": [
+      "class:SessionManager(7 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 109,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "world\\__init__.py": {
+    "name": "__init__",
+    "folder": "world",
+    "path": "world\\__init__.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 0,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "core\\dungeon.py": {
+    "name": "dungeon",
+    "folder": "core",
+    "path": "core\\dungeon.py",
+    "type": "service",
+    "responsibilities": [
+      "manages dungeonsystem state"
+    ],
+    "key_exports": [
+      "class:DungeonSystem(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 112,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "core\\dungeon_standalone.py": {
+    "name": "dungeon_standalone",
+    "folder": "core",
+    "path": "core\\dungeon_standalone.py",
+    "type": "service",
+    "responsibilities": [
+      "manages dungeonsystem state"
+    ],
+    "key_exports": [
+      "class:DungeonSystem(6 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 114,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "core\\game_state.py": {
+    "name": "game_state",
+    "folder": "core",
+    "path": "core\\game_state.py",
+    "type": "service",
+    "responsibilities": [
+      "manages gamestate state"
+    ],
+    "key_exports": [
+      "class:GameState(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 22,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "core\\__init__.py": {
+    "name": "__init__",
+    "folder": "core",
+    "path": "core\\__init__.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 0,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "ai\\ai_boundary.py": {
+    "name": "ai_boundary",
+    "folder": "ai",
+    "path": "ai\\ai_boundary.py",
+    "type": "service",
+    "responsibilities": [
+      "manages aiboundary state"
+    ],
+    "key_exports": [
+      "class:AIBoundary(8 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 208,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "ai\\__init__.py": {
+    "name": "__init__",
+    "folder": "ai",
+    "path": "ai\\__init__.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 0,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "routes\\api.py": {
+    "name": "api",
+    "folder": "routes",
+    "path": "routes\\api.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [
+      "func:handle_movement",
+      "func:download_debug",
+      "func:get_debug_grid",
+      "func:handle_ai_command",
+      "func:debug_state"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 181,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "routes\\__init__.py": {
+    "name": "__init__",
+    "folder": "routes",
+    "path": "routes\\__init__.py",
+    "type": "service",
+    "responsibilities": [],
+    "key_exports": [],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 0,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "engine\\game_engine.py": {
+    "name": "game_engine",
+    "folder": "engine",
+    "path": "engine\\game_engine.py",
+    "type": "service",
+    "responsibilities": [
+      "manages gamephase state",
+      "manages gamecontext state",
+      "manages gameengine state"
+    ],
+    "key_exports": [
+      "class:GamePhase(0 methods)",
+      "class:GameContext(6 methods)",
+      "class:GameEngine(17 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 748,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  },
+  "engine\\phases.py": {
+    "name": "phases",
+    "folder": "engine",
+    "path": "engine\\phases.py",
+    "type": "service",
+    "responsibilities": [
+      "manages phaseerror state",
+      "manages inputphase state",
+      "manages interpretationphase state"
+    ],
+    "key_exports": [
+      "class:PhaseError(0 methods)",
+      "class:InputPhase(3 methods)",
+      "class:InterpretationPhase(3 methods)",
+      "class:AuthorityPhase(5 methods)",
+      "class:StateMutationPhase(5 methods)"
+    ],
+    "dependencies": [],
+    "dnd_character_touches": [],
+    "og_system_counterparts": [],
+    "complexity_score": 592,
+    "implementation_status": "unknown",
+    "notes": "Standard component"
+  }
+}

@@ -1,505 +1,460 @@
+
+# og_data.py - replaces dnd_data.py interface with og_system JSON loading
+
 """
-Object‑oriented access to cached D&D 5e data from the 5e API.
-All data is loaded lazily from the JSON files in CACHE_DIR.
-Relationships (e.g., skill -> ability score) are resolved as object references.
+Object‑oriented access to OG System JSON data.
+Loads from og_system JSON files, provides same interface as dnd_data.py
 """
 
 import json
 import logging
-import pickle
-import random
 from pathlib import Path
 from typing import List, Dict, Optional, Any, Union
 
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
-
-from dnd_character import CLASSES as LEGACY_CLASSES
-from dnd_character.spellcasting import SPELLS
-
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path("data/dnd_cache")
+# Get the directory where this file (og_data.py) lives
+_BASE_DIR = Path(__file__).parent
+OG_SYSTEM_DIR = _BASE_DIR.parent / "og_system"
 
 # ----------------------------------------------------------------------
-# Embedding model (lazy loaded)
+# JSON Loading Helpers
 # ----------------------------------------------------------------------
-_EMBEDDER = None
+_og_cache = {}
 
-def _get_embedder():
-    global _EMBEDDER
-    if _EMBEDDER is None:
-        _EMBEDDER = SentenceTransformer('all-MiniLM-L6-v2')
-    return _EMBEDDER
+def _load_og_json(filename: str) -> dict:
+    """Load and cache OG system JSON files"""
+    if filename in _og_cache:
+        return _og_cache[filename]
+    
+    path = OG_SYSTEM_DIR / filename
+    if not path.exists():
+        # Try with number prefix
+        for p in OG_SYSTEM_DIR.glob(f"*_{filename}"):
+            path = p
+            break
+    
+    if not path.exists():
+        logger.error(f"OG System file not found: {filename}")
+        return {}
+    
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    _og_cache[filename] = data
+    return data
 
-# ----------------------------------------------------------------------
-# Base class for all cached objects
-# ----------------------------------------------------------------------
-class DnDObject:
-    """Base class for all cached objects. Subclasses define their own _cache and _data_file."""
-    _data_file = None  # to be overridden
+def _get_core_data() -> dict:
+    """Load 01_core.json - attributes, skills, combat, progression"""
+    return _load_og_json("01_core.json")
 
-    @classmethod
-    def _load_json(cls):
-        """Load the JSON file for this class and return the list of raw dicts."""
-        if cls._data_file is None:
-            raise NotImplementedError(f"{cls.__name__} must set _data_file")
-        path = CACHE_DIR / cls._data_file
-        if not path.exists():
-            logger.error(f"Cache file not found: {path}")
-            return []
-        with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+def _get_classes_data() -> dict:
+    """Load 02_classes.json - all class definitions"""
+    return _load_og_json("02_classes.json")
 
-    @classmethod
-    def _build_cache(cls):
-        """Create instances from raw JSON and store them in the class's _cache by index."""
-        if hasattr(cls, '_cache') and cls._cache:
-            return
-        # Initialize cache if not present
-        if not hasattr(cls, '_cache'):
-            cls._cache = {}
-        raw_list = cls._load_json()
-        for raw in raw_list:
-            idx = raw.get("index")
-            if idx:
-                cls._cache[idx] = cls(raw)
+def _get_races_data() -> dict:
+    """Load 03_races.json - all race definitions"""
+    return _load_og_json("03_races.json")
 
-    @classmethod
-    def get(cls, index: str) -> Optional['DnDObject']:
-        """Retrieve an object by its API index (e.g., 'fighter', 'acrobatics')."""
-        cls._build_cache()
-        return cls._cache.get(index)
-
-    @classmethod
-    def all(cls) -> List['DnDObject']:
-        """Return a list of all objects of this type."""
-        cls._build_cache()
-        return list(cls._cache.values())
-
-    @classmethod
-    def names(cls) -> List[str]:
-        """Return a list of all object names (for dropdowns)."""
-        return [obj.name for obj in cls.all()]
-
-    def __init__(self, data: dict):
-        self._data = data
-        self.index = data.get("index")
-        self.name = data.get("name")
-        self.url = data.get("url")
+def _get_magic_data() -> dict:
+    """Load 04_magic.json - spell schools"""
+    return _load_og_json("04_magic.json")
 
 # ----------------------------------------------------------------------
-# Ability Score
+# Attribute (replaces AbilityScore)
 # ----------------------------------------------------------------------
-class AbilityScore(DnDObject):
-    _cache = {}
-    _data_file = "ability-scores.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.full_name = data.get("full_name", self.name)  # e.g., "STRENGTH" -> "Strength"
-        self.desc = data.get("desc", [])
-
+class Attribute:
+    """OG System attribute: Brawn, Finesse, Wits, Will"""
+    
+    def __init__(self, key: str, data: dict):
+        self.key = key
+        self.name = data.get("name", key.capitalize())
+        self.abbreviation = data.get("abbreviation", key[0].upper())
+        self.governs = data.get("governs", [])
+        self.hp_per_point = data.get("hp_per_point", 0)
+        self.sp_per_point = data.get("sp_per_point", 0)
+        self.defense_contribution = data.get("defense_contribution", False)
+        self.initiative_contribution = data.get("initiative_contribution", False)
+    
     @property
     def lower_name(self) -> str:
-        """Return lowercase full name (e.g., 'strength') for use in form fields."""
-        return self.full_name.lower()
+        return self.name.lower()
+    
+    @classmethod
+    def all(cls) -> List['Attribute']:
+        core = _get_core_data()
+        attrs = core.get("core_mechanics", {}).get("attributes", {})
+        return [cls(k, v) for k, v in attrs.items()]
+    
+    @classmethod
+    def get(cls, key: str) -> Optional['Attribute']:
+        core = _get_core_data()
+        attrs = core.get("core_mechanics", {}).get("attributes", {})
+        if key.lower() in attrs:
+            return cls(key.lower(), attrs[key.lower()])
+        # Try by name
+        for k, v in attrs.items():
+            if v.get("name", "").lower() == key.lower():
+                return cls(k, v)
+        return None
 
 # ----------------------------------------------------------------------
-# Skill
+# Skill (OG System has 6 skills)
 # ----------------------------------------------------------------------
-class Skill(DnDObject):
-    _cache = {}
-    _data_file = "skills.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        # Resolve ability score reference
-        ability_ref = data.get("ability_score")
-        if ability_ref and isinstance(ability_ref, dict):
-            self.ability_score = AbilityScore.get(ability_ref["index"])
-        else:
-            self.ability_score = None
-        self.desc = data.get("desc", [])
-
-# ----------------------------------------------------------------------
-# Proficiency
-# ----------------------------------------------------------------------
-class Proficiency(DnDObject):
-    _cache = {}
-    _data_file = "proficiencies.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.type = data.get("type")  # e.g., "Skills", "Armor", "Weapons"
-        ref = data.get("reference")
-        if ref and isinstance(ref, dict):
-            self.reference = {
-                "index": ref.get("index"),
-                "name": ref.get("name")
-            }
-        else:
-            self.reference = None
-
-# ----------------------------------------------------------------------
-# Trait
-# ----------------------------------------------------------------------
-class Trait(DnDObject):
-    _cache = {}
-    _data_file = "traits.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.desc = data.get("desc", [])
+class Skill:
+    """OG System skill: Survival, Lore, Social, Craft, Stealth, Athletics"""
+    
+    def __init__(self, key: str, data: dict):
+        self.key = key
+        self.name = data.get("name", key.capitalize())
+        self.covers = data.get("covers", [])
+        self.typical_tn = data.get("typical_tn", "12")
+        self.max_rank = data.get("max_rank", 3)
+        self.starting_ranks = data.get("starting_ranks", 0)
+    
+    @classmethod
+    def all(cls) -> List['Skill']:
+        core = _get_core_data()
+        skills = core.get("skills", {})
+        return [cls(k, v) for k, v in skills.items()]
+    
+    @classmethod
+    def get(cls, name: str) -> Optional['Skill']:
+        core = _get_core_data()
+        skills = core.get("skills", {})
+        # Try by key
+        if name.lower() in skills:
+            return cls(name.lower(), skills[name.lower()])
+        # Try by name
+        for k, v in skills.items():
+            if v.get("name", "").lower() == name.lower():
+                return cls(k, v)
+        return None
 
 # ----------------------------------------------------------------------
 # Race
 # ----------------------------------------------------------------------
-class Race(DnDObject):
-    _cache = {}
-    _data_file = "races.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.speed = data.get("speed")
-        self.ability_bonuses = data.get("ability_bonuses", [])
-        self.alignment = data.get("alignment")
-        self.age = data.get("age")
-        self.size = data.get("size")
-        self.size_description = data.get("size_description")
-        # Languages
-        self.languages = []
-        for lang_ref in data.get("languages", []):
-            self.languages.append(lang_ref.get("name"))
-        self.language_desc = data.get("language_desc")
-        # Traits
-        self.traits = []
-        for trait_ref in data.get("traits", []):
-            trait = Trait.get(trait_ref["index"])
-            if trait:
-                self.traits.append(trait)
-        # Subraces (indices for lazy loading)
-        self.subrace_indices = [sub["index"] for sub in data.get("subraces", [])]
-
-    def subraces(self) -> List['Subrace']:
-        """Return list of Subrace objects belonging to this race."""
-        result = []
-        for idx in self.subrace_indices:
-            sub = Subrace.get(idx)
-            if sub:
-                result.append(sub)
-        return result
-
-# ----------------------------------------------------------------------
-# Subrace
-# ----------------------------------------------------------------------
-class Subrace(DnDObject):
-    _cache = {}
-    _data_file = "subraces.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.desc = data.get("desc", "")
-        race_ref = data.get("race")
-        if race_ref and isinstance(race_ref, dict):
-            self.race = Race.get(race_ref["index"])
-        else:
-            self.race = None
-        self.ability_bonuses = data.get("ability_bonuses", [])
-        self.traits = []
-        for trait_ref in data.get("racial_traits", []):
-            trait = Trait.get(trait_ref["index"])
-            if trait:
-                self.traits.append(trait)
+class Race:
+    """OG System race with mechanical bonus"""
+    
+    def __init__(self, key: str, data: dict):
+        self.key = key
+        self.name = data.get("name", key.capitalize())
+        self.mechanical_bonus = data.get("mechanical_bonus", {})
+        self.knacks = data.get("knacks", [])
+        self.tags = data.get("tags", [])
+    
+    @property
+    def index(self) -> str:
+        return self.key
+    
+    def subraces(self) -> List['Race']:
+        """OG System doesn't have subraces, return empty list for compatibility"""
+        return []
+    
+    @classmethod
+    def all(cls) -> List['Race']:
+        data = _get_races_data()
+        races = data.get("races", {})
+        return [cls(k, v) for k, v in races.items()]
+    
+    @classmethod
+    def get(cls, key: str) -> Optional['Race']:
+        data = _get_races_data()
+        races = data.get("races", {})
+        if key.lower() in races:
+            return cls(key.lower(), races[key.lower()])
+        # Try by name
+        for k, v in races.items():
+            if v.get("name", "").lower() == key.lower():
+                return cls(k, v)
+        return None
 
 # ----------------------------------------------------------------------
 # Class
 # ----------------------------------------------------------------------
-class DnDClass(DnDObject):
-    _cache = {}
-    _data_file = "classes.json"
-
-    def __init__(self, data: dict):
-        super().__init__(data)
-        self.hit_die = data.get("hit_die")
-        self.class_levels_url = data.get("class_levels")
-
-        # Saving throws
-        self.saving_throws = []
-        for st_ref in data.get("saving_throws", []):
-            ab = AbilityScore.get(st_ref["index"])
-            if ab:
-                self.saving_throws.append(ab)
-
-        # Proficiencies (automatic)
-        self.proficiencies = []
-        for prof_ref in data.get("proficiencies", []):
-            prof = Proficiency.get(prof_ref["index"])
-            if prof:
-                self.proficiencies.append(prof)
-
-        # Proficiency choices (skills, etc.)
-        self.proficiency_choices = data.get("proficiency_choices", [])
-
+class OGClass:
+    """OG System class: Warrior, Rogue, Mage, Priest, Ranger, Bard, Monk, Warlock"""
+    
+    def __init__(self, key: str, data: dict):
+        self.key = key
+        self.name = data.get("name", key.capitalize())
+        self.hp_per_level = data.get("hp_per_level", 2)
+        self.sp_per_level = data.get("sp_per_level", 0)
+        self.core_mechanic = data.get("core_mechanic", {})
+        self.starting_gear = data.get("starting_gear", [])
+        self.subclasses = data.get("subclasses", {})
+        self.capstones = data.get("capstones", {})
+    
+    @property
+    def index(self) -> str:
+        return self.key
+    
+    @property
+    def hit_die(self) -> int:
+        """Return effective hit die (hp_per_level * 4 roughly equivalent)"""
+        return self.hp_per_level * 4
+    
     def skill_choices(self) -> Dict[str, Any]:
-        """
-        Return a dict with 'choose' (int) and 'from' (list of Skill objects)
-        for the first proficiency choice that is of type 'proficiencies' and
-        refers to skills.
-        """
-        for choice in self.proficiency_choices:
-            if choice.get("type") != "proficiencies":
-                continue
-            choose = choice.get("choose", 0)
-            options = []
-            for opt in choice.get("from", {}).get("options", []):
-                if opt.get("option_type") == "reference":
-                    item = opt.get("item", {})
-                    prof = Proficiency.get(item.get("index"))
-                    if prof and prof.type == "Skills" and prof.reference:
-                        skill = Skill.get(prof.reference["index"])
-                        if skill:
-                            options.append(skill)
-            return {"choose": choose, "from": options}
-        return {"choose": 0, "from": []}
+        """OG System: 3 skills at rank 1 to start"""
+        core = _get_core_data()
+        skills = list(core.get("skills", {}).keys())
+        return {
+            "choose": 3,
+            "from": [Skill(k, {"name": k.capitalize()}) for k in skills]
+        }
+    
+    @classmethod
+    def all(cls) -> List['OGClass']:
+        data = _get_classes_data()
+        classes = data.get("classes", {})
+        return [cls(k, v) for k, v in classes.items()]
+    
+    @classmethod
+    def get(cls, key: str) -> Optional['OGClass']:
+        data = _get_classes_data()
+        classes = data.get("classes", {})
+        if key.lower() in classes:
+            return cls(key.lower(), classes[key.lower()])
+        # Try by name
+        for k, v in classes.items():
+            if v.get("name", "").lower() == key.lower():
+                return cls(k, v)
+        return None
 
 # ----------------------------------------------------------------------
-# Fighting styles (hardcoded fallback)
+# Proficiency (compatibility layer)
 # ----------------------------------------------------------------------
-FALLBACK_FIGHTING_STYLES = {
-    "fighter": ["Archery", "Defense", "Dueling", "Great Weapon Fighting", "Protection", "Two-Weapon Fighting"],
-    "paladin": ["Defense", "Dueling", "Great Weapon Fighting", "Protection"],
-    "ranger": ["Archery", "Defense", "Dueling", "Two-Weapon Fighting"]
-}
-
-def get_fighting_styles_for_class(class_name: str) -> List[str]:
-    return FALLBACK_FIGHTING_STYLES.get(class_name.lower(), [])
+class Proficiency:
+    """OG System doesn't have proficiencies like 5e, but we need compatibility"""
+    
+    def __init__(self, name: str, prof_type: str = "skill"):
+        self.name = name
+        self.type = prof_type
+        self.reference = None
+    
+    @classmethod
+    def get(cls, key: str) -> Optional['Proficiency']:
+        # Check if it's a skill
+        skill = Skill.get(key)
+        if skill:
+            return cls(skill.name, "Skills")
+        return None
+    
+    @classmethod
+    def all(cls) -> List['Proficiency']:
+        return [cls(s.name, "Skills") for s in Skill.all()]
 
 # ----------------------------------------------------------------------
-# Backgrounds (hardcoded)
+# Trait (compatibility - OG System uses knacks)
+# ----------------------------------------------------------------------
+class Trait:
+    """OG System knacks treated as traits for compatibility"""
+    
+    def __init__(self, name: str, desc: str = ""):
+        self.name = name
+        self.desc = [desc] if desc else []
+        self.index = name.lower().replace(" ", "_")
+    
+    @classmethod
+    def get(cls, key: str) -> Optional['Trait']:
+        # Search in race knacks
+        for race in Race.all():
+            for knack in race.knacks:
+                if knack.lower() == key.lower() or knack.lower().replace(" ", "_") == key.lower():
+                    return cls(knack, f"Racial knack: {knack}")
+        return None
+    
+    @classmethod
+    def all(cls) -> List['Trait']:
+        traits = []
+        for race in Race.all():
+            for knack in race.knacks:
+                traits.append(cls(knack, f"Racial knack: {knack}"))
+        return traits
+
+# ----------------------------------------------------------------------
+# Convenience functions for dropdown lists (same interface as dnd_data)
+# ----------------------------------------------------------------------
+
+def get_race_list() -> List[str]:
+    """Return list of race names"""
+    return [r.name for r in Race.all()]
+
+def get_subraces_for_race(race_name: str) -> List[str]:
+    """OG System doesn't have subraces, return empty list"""
+    return []
+
+def get_race_for_subrace(subrace_name: str) -> Optional[str]:
+    """No subraces in OG System"""
+    return None
+
+def get_class_list() -> List[str]:
+    """Return list of class names"""
+    return [c.name for c in OGClass.all()]
+
+def get_skill_list() -> List[str]:
+    """Return list of skill names"""
+    return [s.name for s in Skill.all()]
+
+def get_ability_score_list() -> List[str]:
+    """Return list of attribute keys (brawn, finesse, wits, will)"""
+    return [a.key for a in Attribute.all()]
+
+def get_ability_score_full_names() -> List[str]:
+    """Return list of attribute full names (Brawn, Finesse, Wits, Will)"""
+    return [a.name for a in Attribute.all()]
+
+def get_ability_score_lower_names() -> List[str]:
+    """Return list of lowercase attribute names"""
+    return [a.lower_name for a in Attribute.all()]
+
+# ----------------------------------------------------------------------
+# Backgrounds (hardcoded - OG System doesn't define these)
 # ----------------------------------------------------------------------
 BACKGROUNDS = [
     "Acolyte", "Charlatan", "Criminal", "Entertainer", "Folk Hero",
     "Gladiator", "Guild Artisan", "Hermit", "Knight", "Noble",
-    "Outlander", "Pirate", "Sage", "Sailor", "Soldier", "Urchin"
+    "Outlander", "Pirate", "Sage", "Sailor", "Soldier", "Urchin",
+    "Mercenary", "Spy", "Cultist", "Hermit", "Wanderer"
 ]
 
 def get_background_list() -> List[str]:
     return BACKGROUNDS
 
 # ----------------------------------------------------------------------
-# Convenience functions for dropdown lists
+# Validation functions (same interface as dnd_data)
 # ----------------------------------------------------------------------
-def get_race_list() -> List[str]:
-    return [r.name for r in Race.all()]
 
-def get_subraces_for_race(race_name: str) -> List[str]:
-    race = Race.get(race_name.lower())
-    if race:
-        return [s.name for s in race.subraces()]
-    return []
-
-def get_class_list() -> List[str]:
-    return [c.name for c in DnDClass.all()]
-
-def get_skill_list() -> List[str]:
-    # Direct JSON load to avoid any cache pollution
-    path = CACHE_DIR / "skills.json"
-    if not path.exists():
-        logger.error(f"Skills file not found: {path}")
-        return []
-    with open(path, 'r', encoding='utf-8') as f:
-        skills = json.load(f)
-    return [s["name"] for s in skills]
-
-def get_ability_score_list() -> List[str]:
-    """Return list of ability score names as they appear in the API (e.g., 'STR')."""
-    return [a.name for a in AbilityScore.all()]
-
-def get_ability_score_full_names() -> List[str]:
-    """Return list of full names (e.g., 'Strength')."""
-    return [a.full_name for a in AbilityScore.all()]
-
-def get_ability_score_lower_names() -> List[str]:
-    """Return list of lowercase full names (e.g., 'strength') for form fields."""
-    return [a.lower_name for a in AbilityScore.all()]
-
-# ----------------------------------------------------------------------
-# Validation (exact match)
-# ----------------------------------------------------------------------
 def validate_race(race_name: str) -> bool:
-    return Race.get(race_name.lower()) is not None
-
-def validate_subrace(subrace_name: str, race_name: str = None) -> bool:
-    sub = Subrace.get(subrace_name.lower())
-    if not sub:
-        return False
-    if race_name:
-        return sub.race and sub.race.index == race_name.lower()
-    return True
+    return Race.get(race_name) is not None
 
 def validate_class(class_name: str) -> bool:
-    return DnDClass.get(class_name.lower()) is not None
+    return OGClass.get(class_name) is not None
 
 def validate_skill(skill_name: str) -> bool:
-    # Use direct JSON to avoid cache issues
-    all_skills = get_skill_list()
-    return skill_name in all_skills
+    return Skill.get(skill_name) is not None
 
 def validate_ability_score(score_name: str) -> bool:
-    return AbilityScore.get(score_name.lower()) is not None
+    return Attribute.get(score_name) is not None
 
 def validate_spell(spell_name: str) -> bool:
-    return spell_name.lower() in SPELLS
+    """Check if spell exists in magic schools"""
+    magic = _get_magic_data()
+    schools = magic.get("magic", {}).get("schools", {})
+    for school_data in schools.values():
+        for effect in school_data.get("effects", []):
+            if effect.get("name", "").lower() == spell_name.lower():
+                return True
+    return False
 
 def validate_trait(trait_name: str) -> bool:
-    return Trait.get(trait_name.lower()) is not None
+    return Trait.get(trait_name) is not None
 
 def validate_proficiency(prof_name: str) -> bool:
-    return Proficiency.get(prof_name.lower()) is not None
+    return validate_skill(prof_name)
 
 # ----------------------------------------------------------------------
-# Embedding-based semantic matching
+# Legacy compatibility functions
 # ----------------------------------------------------------------------
-def _compute_embeddings(items: List[str], cache_name: str) -> Dict[str, np.ndarray]:
-    cache_file = CACHE_DIR / f"{cache_name}_embeddings.pkl"
-    if cache_file.exists():
-        with open(cache_file, 'rb') as f:
-            return pickle.load(f)
-    embedder = _get_embedder()
-    embeddings = embedder.encode(items)
-    result = {item: emb for item, emb in zip(items, embeddings)}
-    with open(cache_file, 'wb') as f:
-        pickle.dump(result, f)
-    return result
 
-def _get_embeddings(category: str, names: List[str]) -> Dict[str, np.ndarray]:
-    if not hasattr(_get_embeddings, "cache"):
-        _get_embeddings.cache = {}
-    if category not in _get_embeddings.cache:
-        _get_embeddings.cache[category] = _compute_embeddings(names, category)
-    return _get_embeddings.cache[category]
-
-def semantic_match(raw: str, category: str, names: List[str], threshold: float = 0.7) -> Optional[str]:
-    if not names:
-        return None
-    embeddings = _get_embeddings(category, names)
-    embedder = _get_embedder()
-    raw_emb = embedder.encode([raw])
-    best_name = None
-    best_score = -1
-    for name, emb in embeddings.items():
-        score = cosine_similarity(raw_emb, emb.reshape(1, -1))[0][0]
-        if score > best_score:
-            best_score = score
-            best_name = name
-    if best_score >= threshold:
-        return best_name
-    return None
-
-# ----------------------------------------------------------------------
-# Category-specific semantic matchers
-# ----------------------------------------------------------------------
-def semantic_match_spell(raw: str) -> Optional[str]:
-    names = list(SPELLS.keys())
-    return semantic_match(raw, "spells", names)
-
-def semantic_match_skill(raw: str) -> Optional[str]:
-    names = get_skill_list()
-    return semantic_match(raw, "skills", names)
-
-def semantic_match_race(raw: str) -> Optional[str]:
-    names = get_race_list()
-    return semantic_match(raw, "races", names)
-
-def semantic_match_subrace(raw: str) -> Optional[str]:
-    names = [s.name for s in Subrace.all()]
-    return semantic_match(raw, "subraces", names)
-
-def semantic_match_class(raw: str) -> Optional[str]:
-    names = get_class_list()
-    return semantic_match(raw, "classes", names)
-
-def semantic_match_trait(raw: str) -> Optional[str]:
-    names = [t.name for t in Trait.all()]
-    return semantic_match(raw, "traits", names)
-
-def semantic_match_proficiency(raw: str) -> Optional[str]:
-    names = [p.name for p in Proficiency.all()]
-    return semantic_match(raw, "proficiencies", names)
-
-def semantic_match_ability_score(raw: str) -> Optional[str]:
-    names = get_ability_score_list()
-    return semantic_match(raw, "ability_scores", names)
-
-def semantic_match_fighting_style(raw: str, class_name: str = None) -> Optional[str]:
-    if class_name:
-        names = get_fighting_styles_for_class(class_name)
-    else:
-        all_styles = set()
-        for styles in FALLBACK_FIGHTING_STYLES.values():
-            all_styles.update(styles)
-        names = list(all_styles)
-    return semantic_match(raw, "fighting_styles", names)
-
-# ----------------------------------------------------------------------
-# Spell helpers (from dnd_character)
-# ----------------------------------------------------------------------
-def get_spell_list() -> List[str]:
-    return list(SPELLS.keys())
-
-def get_spell_description(spell_name: str) -> str:
-    spell = SPELLS.get(spell_name.lower())
-    if spell and hasattr(spell, 'desc') and spell.desc:
-        full_desc = ' '.join(spell.desc)
-        return full_desc[:200] + ('...' if len(full_desc) > 200 else '')
-    return "No description available."
-
-# ----------------------------------------------------------------------
-# Class helpers (from legacy dnd_character)
-# ----------------------------------------------------------------------
-def get_legacy_class_list() -> List[str]:
-    return list(LEGACY_CLASSES.keys())
-
-def get_class_object(class_name: str) -> Optional[Any]:
-    return LEGACY_CLASSES.get(class_name.lower())
+def get_class_object(class_name: str) -> Optional[OGClass]:
+    """Return class object for character creation"""
+    return OGClass.get(class_name)
 
 def get_class_description(class_name: str) -> str:
-    cls_obj = get_class_object(class_name)
-    if cls_obj and cls_obj.__doc__:
-        desc = cls_obj.__doc__.strip().split('.')[0]
-        if desc:
-            return desc + '.'
+    """Get description of class"""
+    cls = OGClass.get(class_name)
+    if cls and cls.core_mechanic:
+        return cls.core_mechanic.get("description", f"A {class_name} character.")
     return f"A {class_name} character."
 
 def get_spellcasting_ability(class_name: str) -> Optional[str]:
-    cls_obj = get_class_object(class_name)
-    if not cls_obj or not hasattr(cls_obj, 'spellcasting') or not cls_obj.spellcasting:
+    """OG System: Mages/Priests use Wits, Warlocks use Will"""
+    cls = OGClass.get(class_name)
+    if not cls:
         return None
-    ability_dict = cls_obj.spellcasting.get('spellcasting_ability')
-    if ability_dict:
-        return ability_dict.get('name', '').upper()
+    if class_name.lower() in ["mage", "priest"]:
+        return "WITS"
+    elif class_name.lower() == "warlock":
+        return "WILL"
     return None
 
+def get_spell_list() -> List[str]:
+    """Return list of all spell effect names"""
+    spells = []
+    magic = _get_magic_data()
+    schools = magic.get("magic", {}).get("schools", {})
+    for school_data in schools.values():
+        for effect in school_data.get("effects", []):
+            spells.append(effect.get("name", ""))
+    return spells
+
+def get_spell_description(spell_name: str) -> str:
+    """Get description of a spell"""
+    magic = _get_magic_data()
+    schools = magic.get("magic", {}).get("schools", {})
+    for school_data in schools.values():
+        for effect in school_data.get("effects", []):
+            if effect.get("name", "").lower() == spell_name.lower():
+                return effect.get("description", "No description available.")
+    return "No description available."
+
 # ----------------------------------------------------------------------
-# Initialization check (optional)
+# Semantic matching (stub - can be enhanced later)
+# ----------------------------------------------------------------------
+
+def semantic_match(raw: str, category: str, names: List[str], threshold: float = 0.7) -> Optional[str]:
+    """Simple exact match fallback"""
+    raw_lower = raw.lower()
+    for name in names:
+        if name.lower() == raw_lower:
+            return name
+    return None
+
+def semantic_match_spell(raw: str) -> Optional[str]:
+    return semantic_match(raw, "spells", get_spell_list())
+
+def semantic_match_skill(raw: str) -> Optional[str]:
+    return semantic_match(raw, "skills", get_skill_list())
+
+def semantic_match_race(raw: str) -> Optional[str]:
+    return semantic_match(raw, "races", get_race_list())
+
+def semantic_match_subrace(raw: str) -> Optional[str]:
+    return None  # No subraces
+
+def semantic_match_class(raw: str) -> Optional[str]:
+    return semantic_match(raw, "classes", get_class_list())
+
+def semantic_match_trait(raw: str) -> Optional[str]:
+    return semantic_match(raw, "traits", [t.name for t in Trait.all()])
+
+def semantic_match_proficiency(raw: str) -> Optional[str]:
+    return semantic_match_skill(raw)
+
+def semantic_match_ability_score(raw: str) -> Optional[str]:
+    return semantic_match(raw, "attributes", get_ability_score_full_names())
+
+def semantic_match_fighting_style(raw: str, class_name: str = None) -> Optional[str]:
+    return None  # No fighting styles
+
+# ----------------------------------------------------------------------
+# Initialization check
 # ----------------------------------------------------------------------
 def verify_data():
-    """Force load all caches and log counts."""
+    """Force load all data and log counts."""
     races = Race.all()
-    subraces = Subrace.all()
-    classes = DnDClass.all()
+    classes = OGClass.all()
     skills = Skill.all()
-    abilities = AbilityScore.all()
-    traits = Trait.all()
-    proficiencies = Proficiency.all()
-    logger.info(f"Loaded {len(races)} races.")
-    logger.info(f"Loaded {len(subraces)} subraces.")
-    logger.info(f"Loaded {len(classes)} classes.")
-    logger.info(f"Loaded {len(skills)} skills.")
-    logger.info(f"Loaded {len(abilities)} ability scores.")
-    logger.info(f"Loaded {len(traits)} traits.")
-    logger.info(f"Loaded {len(proficiencies)} proficiencies.")
-    logger.info(f"Loaded {len(SPELLS)} spells from dnd_character.")
-    logger.info(f"Loaded {len(LEGACY_CLASSES)} legacy classes from dnd_character.")
+    attrs = Attribute.all()
+    logger.info(f"Loaded {len(races)} races from OG System.")
+    logger.info(f"Loaded {len(classes)} classes from OG System.")
+    logger.info(f"Loaded {len(skills)} skills from OG System.")
+    logger.info(f"Loaded {len(attrs)} attributes from OG System.")
+    logger.info(f"Attributes: {[a.name for a in attrs]}")
+
+if __name__ == "__main__":
+    print(f"Looking for og_system at: {OG_SYSTEM_DIR}")
+    print(f"Exists? {OG_SYSTEM_DIR.exists()}")
+    verify_data()   # this loads JSON and logs counts

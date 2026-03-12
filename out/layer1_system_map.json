@@ -1,0 +1,30 @@
+{
+  "project_root": "C:\\Users\\bartl\\dev\\dj2",
+  "total_files": 120,
+  "components": {
+    "world": "World generation (40 py, 0 templates)",
+    "core": "Core systems/data (4 modules)",
+    "ai": "AI/decision engines (2 modules)",
+    "templates": "UI templates (19 html, 0 py)",
+    "routes": "Web routes/API (2 endpoints)",
+    "engine": "Game engine mechanics (2 modules)"
+  },
+  "data_flows": [
+    "world generation -> entity placement",
+    "character creation -> stat generation",
+    "encounter -> combat resolution",
+    "player action -> skill check -> outcome"
+  ],
+  "integration_hotspots": [
+    "character generation: dnd_character -> og_system entities",
+    "monster stats: hardcoded -> og_system bestiary",
+    "item data: scattered -> og_system equipment"
+  ],
+  "current_blockers": [
+    "world\\character.py: from dnd_character import Character as DnDCharacter",
+    "world\\character.py: from dnd_character.equipment import Item",
+    "world\\character_builder.py: from dnd_character import Character # We'll leave the Character import as is. It's the base class for our custom Character subclass, and it's only used in character.py for inheritance.",
+    "world\\dnd_data.py: from dnd_character import CLASSES as LEGACY_CLASSES",
+    "world\\dnd_data.py: from dnd_character.spellcasting import SPELLS"
+  ]
+}

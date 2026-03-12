@@ -45,67 +45,31 @@ class DMChatAI(AIBoundary):
             cantrips_list = ""
             spells_list = ""
 
-        prompt = f"""
-You are a Dungeon Master guiding a player through character creation in D&D 5e.
+        prompt = f"""You are the AI Dungeon Master for an OG System game.
+The OG System uses 4 attributes: Brawn, Finesse, Wits, Will (each 0-4, point buy with 4 points total).
+Skills: {', '.join(game_data['skills'])}.
+Classes: {', '.join(game_data['classes'])}.
+Races: {', '.join(game_data['races'])}.
+Backgrounds: {', '.join(game_data['backgrounds'])}.
+Spells (magical effects): {', '.join(game_data['spells'][:20])}... (and more).
 
-Current character data (what's been chosen so far):
-{char_summary}
+Character creation steps:
+1. Choose race and class.
+2. Distribute 4 (total maximum) attribute points among Brawn, Finesse, Wits, Will (max 3 per attribute).
+3. Choose 2-3 skills.
+4. Optionally pick a background (narrative only).
+5. If a spellcaster (Mage, Priest, Warlock, Bard), choose spells known.
 
-Creation stage: {session_state['creation_state']}
-Awaiting confirmation: {session_state['awaiting_confirmation']}
-Pending suggestion: {session_state.get('pending_suggestion', 'None')}
+Respond in JSON with this structure:
+{{
+  "narrative": "Your response to the player, guiding them through creation or reacting to their input.",
+  "updates": {{}}  // any character field updates (e.g., {{"race": "Elf", "class": "Mage"}})
+  "needs_confirmation": false  // true if you need the player to confirm a choice
+}}
 
-Recent conversation (last 10 messages):
-{recent_text}
-
-Available races (base races only): {races_list}
-Available classes: {classes_list}
-Available backgrounds: {backgrounds_list}
-Available skills: {skills_list}
-{f"Available cantrips for {current_class}: {cantrips_list}" if current_class else ""}
-{f"Available level 1 spells for {current_class}: {spells_list}" if current_class else ""}
-{f"Available fighting styles for {current_class}: {', '.join(game_data.get('fighting_styles', []))}" if current_class and game_data.get('fighting_styles') else ""}
+Always keep your responses helpful, immersive, and consistent with OG System rules.
+Current character state: {session.character_data}
 The player says: "{message}"
-
-Analyze the player's intent and current state. Refer to the current character data to remember what has already been chosen. Decide what to do next.
-
-RULES for updates:
-- Only include fields that are directly mentioned or can be clearly inferred from the player's message.
-- For a first message describing a character's appearance or a vague concept, do NOT set "ability_scores", "proficiencies", "cantrips", or "spells_known". Simply acknowledge and ask for more concrete details (race, class, etc.).
-- "ability_scores" should only be set when the player specifies numbers (e.g., "strength 15") or clearly indicates a high/low score (e.g., "very strong").
-- "proficiencies" should only be set when the player says they are skilled in something like "armor", "weapons", or a specific skill.
-- "spells_known" and "cantrips" should only be set when the player names specific spells (e.g., "I know magic missile").
-- Never include a field with a null or empty value, and never include a field that is not explicitly mentioned. If you don't have enough information, omit the field entirely.
-- When in doubt, omit the field and just narrate.
-
-IMPORTANT: Do NOT include fields with null or empty string values in "updates". Only include fields that actually change.
-IMPORTANT: You MUST only use values from the provided lists. For example:
-- race must be from the available races list (e.g., "elf", not "High Elf").
-- subrace must be from the available subraces list (e.g., "high elf").
-- class must be from the available classes list.
-- skills, cantrips, etc. must be from their respective lists.
-If the player uses an invalid name, do NOT output it in "updates". Instead, just narrate that it's not valid and ask them to choose from the list.
-
-Return a JSON object with the following fields:
-- "narrative": a string, what you say to the player (be engaging, informative, and encouraging).
-- "updates": an object containing only allowed fields to update in character_data.
-- "state_change": optional new creation_state (one of "not_started", "gathering_info", "class_suggested", "class_confirmed", "completed").
-- "needs_confirmation": boolean, true if you are asking the player to confirm a suggestion.
-- "pending_suggestion": if needs_confirmation is true, an object containing the suggestion (e.g., {{"class": "wizard", "explanation": "..."}}). Otherwise null.
-- "error": optional error message.
-
-Examples:
-- Player: "Archery" (after being asked about fighting style) -> {{"narrative": "Archery it is!", "updates": {{"fighting_style": "archery"}}, "needs_confirmation": false}}
-- Player: "I'd like to create a character with red hair and beard that is very large man and he swings a death dealing double-sided axe and has a blue ox companion named babe." -> {{"narrative": "A mighty barbarian with a loyal ox! Let's start with your race and class.", "updates": {{}}, "needs_confirmation": false}}
-- Player: "I want to be an elf" -> {{"narrative": "An elf! A graceful choice.", "updates": {{"race": "elf"}}, "needs_confirmation": false}}
-- Player: "High elf" -> {{"narrative": "A High Elf! Excellent choice.", "updates": {{"subrace": "high elf"}}, "needs_confirmation": false}}
-- Player: "I want to be a High Elf" -> {{"narrative": "A High Elf! Excellent choice.", "updates": {{"race": "elf", "subrace": "high elf"}}, "needs_confirmation": false}}
-- Player: "I choose Mage Hand as my cantrip" -> {{"narrative": "Mage Hand it is! A versatile choice.", "updates": {{"cantrips": ["mage hand"]}}, "needs_confirmation": false}}
-- Player: "I'm a wizard" -> {{"narrative": "Wizard! A studious path.", "updates": {{"class": "wizard"}}, "needs_confirmation": false}}
-- Player: "Yes" (after class suggestion) -> {{"narrative": "Great! Class confirmed.", "updates": {{"class": "wizard"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
-- Player: "No, I want to be a sorcerer" -> {{"narrative": "Sorcerer it is!", "updates": {{"class": "sorcerer"}}, "state_change": "class_confirmed", "needs_confirmation": false}}
-- Player: "Tell me about magic" -> {{"narrative": "Magic comes in three forms...", "updates": {{}}, "needs_confirmation": false}}
-- When the player has provided name, race, and class, and indicates they are ready (e.g., "I'm done", "That's all", "Create my character"), set state_change to "completed" and give a closing narrative.
 """
         try:
             result = self.ai_system.generate_structured_data(prompt, {

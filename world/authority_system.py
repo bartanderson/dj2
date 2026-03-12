@@ -76,9 +76,9 @@ class AuthoritySystem:
         params = action.get("parameters", {})
 
         # Allowed fields that can be set during creation
-        ALLOWED_FIELDS = {"name", "race", "subrace", "class", "background", "personality",
+        ALLOWED_FIELDS = {"name", "race", "class", "background", "personality",
                           "fears", "motivations", "skills", "alignment", "ability_scores",
-                          "traits", "proficiencies", "cantrips", "spells_known", "fighting_style"}
+                          "traits", "proficiencies", "cantrips", "spells_known"}
 
         if action_type == "update_character_attribute":
             field = params.get("field")
@@ -90,8 +90,8 @@ class AuthoritySystem:
 
             # Define which fields are lists
             list_fields = {"skills", "traits", "proficiencies", "cantrips", "spells_known"}
-            single_value_fields = {"name", "race", "subrace", "class", "background",
-                                   "personality", "fears", "motivations", "alignment", "fighting_style"}
+            single_value_fields = {"name", "race", "class", "background",
+                                   "personality", "fears", "motivations", "alignment"}
 
             if field in list_fields:
                 if not isinstance(value, list):
@@ -112,13 +112,6 @@ class AuthoritySystem:
                         matched = dnd_data.semantic_match_spell(item)
                     elif field == "spells_known":
                         matched = dnd_data.semantic_match_spell(item)
-                    elif field == "fighting_style":
-                        from world import dnd_data
-                        current_class = context.get("character_data", {}).get("class")
-                        matched = dnd_data.semantic_match_fighting_style(value, current_class)
-                        if not matched:
-                            return ValidatedAction(valid=False, message=f"'{value}' is not a valid fighting style{f' for {current_class}' if current_class else ''}")
-                        value = matched
                     else:
                         matched = None  # Should not happen
                     if not matched:
@@ -137,26 +130,10 @@ class AuthoritySystem:
                     if not matched:
                         return ValidatedAction(valid=False, message=f"'{value}' is not a valid race")
                     value = matched
-                elif field == "subrace":
-                    matched = dnd_data.semantic_match_subrace(value)
-                    if not matched:
-                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid subrace")
-                    value = matched
-                    # Validate that subrace matches current race (if known)
-                    current_race = context.get("character_data", {}).get("race")
-                    if current_race:
-                        if not dnd_data.validate_subrace(value, current_race):
-                            return ValidatedAction(valid=False, message=f"'{value}' is not a valid subrace of {current_race}")
                 elif field == "class":
                     matched = dnd_data.semantic_match_class(value)
                     if not matched:
                         return ValidatedAction(valid=False, message=f"'{value}' is not a valid class")
-                    value = matched
-                elif field == "fighting_style":
-                    from world import dnd_data
-                    matched = dnd_data.semantic_match_fighting_style(value)
-                    if not matched:
-                        return ValidatedAction(valid=False, message=f"'{value}' is not a valid fighting style")
                     value = matched
                 # For other fields, no validation needed
                 return ValidatedAction(valid=True, message="OK", action_data={field: value})

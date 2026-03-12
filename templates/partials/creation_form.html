@@ -1,6 +1,6 @@
 <form id="character-form" 
-      hx-post="/character-creation/update-form" 
-      hx-target="#character-form" 
+      hx-post="/character-creation/submit" 
+      hx-target="#creation-form-container" 
       hx-swap="outerHTML">
     
     <!-- Name -->
@@ -30,22 +30,6 @@
         </select>
     </div>
 
-    <!-- Subrace -->
-    <div>
-        <label>Subrace:</label>
-        <select name="subrace" 
-                hx-post="/character-creation/update-form" 
-                hx-trigger="change" 
-                hx-include="#character-form"
-                hx-target="#character-form" 
-                hx-swap="outerHTML">
-            <option value="">-- Choose Subrace --</option>
-            {% for subrace_option in subraces %}
-            <option value="{{ subrace_option }}" {% if subrace_option == subrace %}selected{% endif %}>{{ subrace_option }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
     <!-- Class -->
     <div>
         <label>Class:</label>
@@ -58,22 +42,6 @@
             <option value="">-- Choose Class --</option>
             {% for class_option in classes %}
             <option value="{{ class_option }}" {% if class_option == class %}selected{% endif %}>{{ class_option }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <!-- Fighting Style -->
-    <div>
-        <label>Fighting Style (if applicable):</label>
-        <select name="fighting_style" 
-                hx-post="/character-creation/update-form" 
-                hx-trigger="change" 
-                hx-include="#character-form"
-                hx-target="#character-form" 
-                hx-swap="outerHTML">
-            <option value="">-- Choose Fighting Style --</option>
-            {% for style in fighting_styles %}
-            <option value="{{ style }}" {% if style == fighting_style %}selected{% endif %}>{{ style }}</option>
             {% endfor %}
         </select>
     </div>
@@ -116,9 +84,10 @@
         <label>Ability Scores (standard array):</label>
         {% for ability in ability_names %}
         <div>
-            <label>{{ ability|upper }}:</label>
-            <input type="number" name="{{ ability }}" value="{{ ability_scores.get(ability, '') }}" 
-                   min="1" max="20"
+            <label>{{ ability_display[loop.index0] }}:</label>
+            <input type="number" name="{{ ability }}" 
+                   value="{{ ability_scores.get(ability, 1) }}" 
+                   min="0" max="4"
                    hx-post="/character-creation/update-form" 
                    hx-trigger="change" 
                    hx-include="#character-form"

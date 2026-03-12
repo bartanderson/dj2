@@ -1,0 +1,112 @@
+[
+  {
+    "source": "world/character",
+    "target": "og_system/entities/character",
+    "mechanism": "data_replacement",
+    "context": "Character stat generation",
+    "files_involved": [
+      "world\\character.py"
+    ],
+    "impedance_notes": "Ready for integration"
+  },
+  {
+    "source": "world/character_builder",
+    "target": "og_system/entities/character",
+    "mechanism": "data_replacement",
+    "context": "Character stat generation",
+    "files_involved": [
+      "world\\character_builder.py"
+    ],
+    "impedance_notes": "Ready for integration"
+  },
+  {
+    "source": "world/character_generator",
+    "target": "og_system/entities/character",
+    "mechanism": "data_replacement",
+    "context": "Character stat generation",
+    "files_involved": [
+      "world\\character_generator.py"
+    ],
+    "impedance_notes": "Ready for integration"
+  },
+  {
+    "source": "world/character_manager",
+    "target": "og_system/entities/character",
+    "mechanism": "data_replacement",
+    "context": "Character stat generation",
+    "files_involved": [
+      "world\\character_manager.py"
+    ],
+    "impedance_notes": "Ready for integration"
+  },
+  {
+    "source": "templates/world - Copy.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\world - Copy.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/world.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\world.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/class_select.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\partials\\class_select.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/creation_form.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\partials\\creation_form.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/form_fields.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\partials\\form_fields.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/race_select.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\partials\\race_select.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  },
+  {
+    "source": "templates/success_message.html",
+    "target": "world/character_generator",
+    "mechanism": "template_data_binding",
+    "context": "Character sheet rendering",
+    "files_involved": [
+      "templates\\partials\\success_message.html"
+    ],
+    "impedance_notes": "May need field name updates"
+  }
+]

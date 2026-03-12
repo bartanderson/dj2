@@ -89,33 +89,6 @@ class DMChatHandler:
             return self.world_controller.session_system.get_session(session_id)
         return session
 
-    # def _detect_and_store_interest(self, message: str, session) -> None:
-    #     """Detect interest expressions and store them without responding."""
-    #     text_lower = message.lower()
-        
-    #     # Check for specific magic interests (avoid false positives by checking exclusivity)
-    #     arcane_words = ['arcana', 'arcane', 'wizard', 'sorcerer', 'warlock', 'mage', 'spellbook']
-    #     divine_words = ['divine', 'cleric', 'paladin', 'god', 'faith', 'holy', 'deity']
-    #     primal_words = ['primal', 'druid', 'ranger', 'nature', 'wild', 'beast', 'spirit']
-        
-    #     has_arcane = any(w in text_lower for w in arcane_words)
-    #     has_divine = any(w in text_lower for w in divine_words)
-    #     has_primal = any(w in text_lower for w in primal_words)
-        
-    #     # Only store if clearly one category (not mixed)
-    #     if has_arcane and not has_divine and not has_primal:
-    #         self.world_controller.session_system.update_character_data(
-    #             session.session_id, {'interested_in': 'arcane'}
-    #         )
-    #     elif has_divine and not has_arcane and not has_primal:
-    #         self.world_controller.session_system.update_character_data(
-    #             session.session_id, {'interested_in': 'divine'}
-    #         )
-    #     elif has_primal and not has_arcane and not has_divine:
-    #         self.world_controller.session_system.update_character_data(
-    #             session.session_id, {'interested_in': 'primal'}
-    #         )
-
     def _process_creation_step(self, message: str, session_id: str) -> Dict:
         session = self.world_controller.session_system.get_session(session_id)
         if not session:
@@ -132,18 +105,19 @@ class DMChatHandler:
         }
 
         # Get game data from dnd_data
-        from world import dnd_data
         game_data = {
-            "races": dnd_data.get_race_list(),
-            "classes": dnd_data.get_class_list(),
-            "backgrounds": []  # TODO: add if available
+            "classes": dnd_data.get_class_list(),                     # e.g., ['Warrior', 'Mage', ...]
+            "races": dnd_data.get_race_list(),                         # e.g., ['Human', 'Elf', ...]
+            "skills": dnd_data.get_skill_list(),                       # e.g., ['Survival', 'Lore', ...]
+            "attributes": dnd_data.get_ability_score_full_names(),     # ['Brawn', 'Finesse', 'Wits', 'Will']
+            "spells": dnd_data.get_spell_list(),                       # list of spell effect names
+            "backgrounds": dnd_data.get_background_list()              # existing hardcoded list
         }
-        current_class = session.character_data.get('class')
+        # Optionally include class-specific spells if needed
         if current_class:
-            fighting_styles = dnd_data.get_fighting_styles_for_class(current_class)
-        else:
-            fighting_styles = []  # or a generic list?
-        game_data["fighting_styles"] = fighting_styles
+            # If OG system has class-specific spell lists, add them here
+            # For now, just include all spells
+            pass
 
         # AI processes the turn
         ai_result = self.world_controller.dm_chat_ai.process_creation_turn(
