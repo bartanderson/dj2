@@ -62,7 +62,7 @@ class DungeonGeneratorNeo:
         if options:
             self.opts.update(options)
 
-        print (self.opts['seed'])
+        print ("generator_neo.py should this be 42 like the others?", self.opts['seed'])
             
         if self.opts['seed'] is None:
             self.opts['seed'] = random.randint(1, 100000)

@@ -15,7 +15,8 @@ from typing import Dict, List, Optional
 
 class Location:
     def __init__(self, id: str, name: str, type: str, description: str,
-                 x: int = 0, y: int = 0,
+                 col: int = 0, row: int = 0,   # new grid coordinates
+                 x: int = None, y: int = None, # optional legacy pixel coordinates
                  dungeon_type: Optional[str] = None, dungeon_level: int = 1,
                  image_url: Optional[str] = None,
                  features: Optional[List[str]] = None,
@@ -25,14 +26,24 @@ class Location:
         self.name = name
         self.type = type
         self.description = description
-        self.x = x
-        self.y = y
+        self.col = col
+        self.row = row
+        # If x,y not provided, compute from col,row using simple conversion
+        # (will be replaced by proper hex-to-pixel later)
+        if x is None:
+            self.x = col * 60  # placeholder
+        else:
+            self.x = x
+        if y is None:
+            self.y = row * 60  # placeholder
+        else:
+            self.y = y
         self.dungeon_type = dungeon_type
         self.dungeon_level = dungeon_level
         self.features = features or []
         self.services = services or []
         self.image_url = image_url
-        self.quests: List[str] = []          # quest IDs
+        self.quests: List[str] = []
         self.discovered = discovered
 
     def to_dict(self) -> dict:
@@ -41,6 +52,8 @@ class Location:
             "name": self.name,
             "type": self.type,
             "description": self.description,
+            "col": self.col,
+            "row": self.row,
             "x": self.x,
             "y": self.y,
             "dungeon_type": self.dungeon_type,

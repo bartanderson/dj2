@@ -13,6 +13,7 @@ import uuid
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
+from collections import Counter
 
 from world import dnd_data
 from world.db import Database
@@ -135,6 +136,7 @@ class WorldController:
             campaign_json = {"campaign": {}}
 
         campaign_data = campaign_json.get("campaign", {})
+        self.campaign_data = campaign_data
 
         # Create CampaignState with seed and metadata
         self.campaign_state = CampaignState(
@@ -167,11 +169,9 @@ class WorldController:
 
 
 
-
-
-
         # Minimal world generation (placeholder)
-        self.generate_world_structure()
+        if not self.campaign_state.surface_regions:
+            self.generate_world_structure()
 
         # Initialize world manager and load world data
         self.world_manager = WorldManager(ai_system)
@@ -183,8 +183,13 @@ class WorldController:
         # Set starting location
         starting_location = None
         self.starting_location_id = None
+        # After loading all locations, find the tavern and set its grid position
+        grid_w = self.campaign_state.grid_width
+        grid_h = self.campaign_state.grid_height
+        if grid_w and grid_h:
+            center_col = grid_w // 2
         for location in self.world_map.locations.values():
-            if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
+            if location.type == "tavern" and "adventurer" in location.name.lower(): #and "respite" in location.name.lower():
                 starting_location = location
                 break
 
@@ -254,9 +259,240 @@ class WorldController:
 
 
     def generate_world_structure(self):
-        """Minimal world generation for now."""
-        # This will be expanded later
-        pass
+        """Generate hex grid and regions from seed and campaign parameters."""
+        import random
+        import math
+        from collections import defaultdict
+
+        # Get generation parameters from stored campaign_data
+        world_gen = self.campaign_data.get("world_generation", {})
+        surface = world_gen.get("world_layers", {}).get("surface", {})
+        hex_grid_params = surface.get("hex_grid", {})
+        size_str = hex_grid_params.get("size", "50x50")
+        try:
+            w, h = map(int, size_str.split('x'))
+        except:
+            w, h = 50, 50
+        self.campaign_state.grid_width = w
+        self.campaign_state.grid_height = h
+        self.campaign_state.hex_size = 60  # could also come from JSON
+
+        terrain_types = hex_grid_params.get("terrain_types", 
+            ["plains", "forest", "mountain", "swamp", "desert", "coast", "urban"])
+
+        # Use a deterministic RNG based on the seed
+        seed = int(self.campaign_state.world_seed) if self.campaign_state.world_seed else 42
+        rng = random.Random(seed)
+
+        # Generate a simple terrain grid (random with smoothing)
+        terrain_grid = [[rng.choice(terrain_types) for _ in range(w)] for _ in range(h)]
+
+        # ----- Smoothing pass to create larger contiguous areas -----
+        smooth_iterations = 3  # adjust as needed; more iterations = larger regions
+        # Define neighbor offsets for hex grid (flat-top, axial coordinates)
+        # For a given (x,y) in a rectangular grid approximating hexes, we use:
+        neighbors = [
+            (1, 0), (-1, 0), (0, 1), (0, -1),
+            (1, 1), (-1, -1)  # these approximate diagonals for hex connectivity
+        ]
+        for _ in range(smooth_iterations):
+            new_grid = [row[:] for row in terrain_grid]  # copy
+            for y in range(h):
+                for x in range(w):
+                    # Collect terrain of current cell and its valid neighbors
+                    terrain_counts = Counter()
+                    terrain_counts[terrain_grid[y][x]] += 1
+                    for dx, dy in neighbors:
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < w and 0 <= ny < h:
+                            terrain_counts[terrain_grid[ny][nx]] += 1
+                    # Set to most common terrain (mode)
+                    most_common = terrain_counts.most_common(1)[0][0]
+                    new_grid[y][x] = most_common
+            terrain_grid = new_grid
+        # -------------------------------------------------------------
+
+        # Convert to hex list (axial coordinates or pixel coordinates)
+        hexes = []
+        for y in range(h):
+            for x in range(w):
+                # Convert to pixel coordinates (flat-top hex grid)
+                x_pos = x * self.campaign_state.hex_size * 0.75
+                y_pos = y * self.campaign_state.hex_size + (self.campaign_state.hex_size/2 if x % 2 else 0)
+                hexes.append({
+                    "x": x_pos,
+                    "y": y_pos,
+                    "grid_x": x,
+                    "grid_y": y,
+                    "terrain": terrain_grid[y][x],
+                    "region_id": None
+                })
+
+        # Cluster hexes into regions using flood fill
+        region_id_counter = 0
+        visited = set()
+        regions = {}  # This will hold the region objects keyed by ID
+
+        def flood_fill(start_x, start_y, terrain):
+            stack = [(start_x, start_y)]
+            region_hexes = []
+            while stack:
+                cx, cy = stack.pop()
+                if (cx, cy) in visited or cx < 0 or cx >= w or cy < 0 or cy >= h:
+                    continue
+                if terrain_grid[cy][cx] != terrain:
+                    continue
+                visited.add((cx, cy))
+                region_hexes.append((cx, cy))
+                # Add neighbors (axial neighbors for hex grid)
+                # For simplicity, we'll use 4-directional neighbors plus two diagonals
+                # Adjust based on actual hex connectivity
+                for dx, dy in [(1,0), (-1,0), (0,1), (0,-1), (1,1), (-1,-1)]:
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        stack.append((nx, ny))
+            return region_hexes
+
+        for y in range(h):
+            for x in range(w):
+                if (x, y) not in visited:
+                    terrain = terrain_grid[y][x]
+                    hex_list = flood_fill(x, y, terrain)
+                    if hex_list:
+                        region_id = f"region_{region_id_counter}"
+                        region_id_counter += 1
+                        # Compute region centroid (average grid coordinates)
+                        avg_col = sum(hx for hx, hy in hex_list) / len(hex_list)
+                        avg_row = sum(hy for hx, hy in hex_list) / len(hex_list)
+                        # Determine danger level based on terrain
+                        danger = self._terrain_danger(terrain)
+                        # Create Region object (import Region from campaign)
+                        from world.campaign import Region
+                        region = Region(
+                            id=region_id,
+                            name=f"{terrain.capitalize()} Region",
+                            terrain_tags=[terrain],
+                            faction_control="contested",
+                            danger_level=danger,
+                            discovered=False,
+                            explored=0.0,
+                            settlements=[],
+                            dungeons=[],
+                            active_quests=[]
+                        )
+                        regions[region_id] = region
+                        # Assign region_id to hexes
+                        for hx, hy in hex_list:
+                            for hex_item in hexes:
+                                if hex_item["grid_x"] == hx and hex_item["grid_y"] == hy:
+                                    hex_item["region_id"] = region_id
+                                    break
+
+        # Store in campaign_state
+        self.campaign_state.surface_regions = regions
+        self.campaign_state.hex_grid = hexes
+        self.campaign_state.terrain_grid = terrain_grid
+
+        # Initialize potential_locations dict if not present
+        if not hasattr(self.campaign_state, 'potential_locations'):
+            self.campaign_state.potential_locations = {}
+
+        # Generate potential locations for each region
+        for region_id, region in regions.items():
+            # Number of settlements (0-3) based on region terrain
+            if region.terrain_tags[0] in ["plains", "coast"]:
+                num_settlements = rng.randint(0, 3)
+            else:
+                num_settlements = rng.randint(0, 2)
+            for i in range(num_settlements):
+                # Get all hexes in this region
+                region_hexes = [(h["grid_x"], h["grid_y"]) for h in hexes if h["region_id"] == region_id]
+                if not region_hexes:
+                    continue
+                col, row = rng.choice(region_hexes)
+                pot_id = f"settlement_{region_id}_{i}"
+                region.settlements.append(pot_id)
+                self.campaign_state.potential_locations[pot_id] = {
+                    "region_id": region_id,
+                    "col": col,
+                    "row": row,
+                    "type": "settlement"
+                }
+            # Number of dungeons (0-2) based on terrain
+            if region.terrain_tags[0] in ["mountain", "forest", "swamp"]:
+                num_dungeons = rng.randint(0, 2)
+            else:
+                num_dungeons = rng.randint(0, 1)
+            for i in range(num_dungeons):
+                region_hexes = [(h["grid_x"], h["grid_y"]) for h in hexes if h["region_id"] == region_id]
+                if not region_hexes:
+                    continue
+                col, row = rng.choice(region_hexes)
+                pot_id = f"dungeon_{region_id}_{i}"
+                region.dungeons.append(pot_id)
+                self.campaign_state.potential_locations[pot_id] = {
+                    "region_id": region_id,
+                    "col": col,
+                    "row": row,
+                    "type": "dungeon"
+                }
+
+        print(f"[WORLD] Generated {len(regions)} regions, {len(self.campaign_state.potential_locations)} potential locations")
+
+    def _terrain_danger(self, terrain: str) -> int:
+        """Return danger level (1-5) for a given terrain type."""
+        mapping = {
+            "plains": 1,
+            "forest": 2,
+            "hills": 3,
+            "mountain": 5,
+            "swamp": 4,
+            "desert": 3,
+            "coast": 1,
+            "urban": 1,
+            "ocean": 0,      # not typically traversable
+            "lake": 0,
+            "river": 0
+        }
+        return mapping.get(terrain, 1)  # default 1 for unknown terrains
+    
+    def generate_location_from_potential(self, pot_id: str) -> Optional[Location]:
+        pot = self.campaign_state.potential_locations.get(pot_id)
+        if not pot:
+            return None
+        region = self.campaign_state.surface_regions.get(pot["region_id"])
+        if not region:
+            return None
+
+        loc_seed = f"{self.campaign_state.world_seed}:{pot_id}"
+        rng = random.Random(loc_seed)
+
+        if pot["type"] == "settlement":
+            name = self._generate_settlement_name(region, rng)
+            loc_type = self._determine_settlement_type(region, rng)
+            dungeon_type = None
+            dungeon_level = None
+        else:
+            name = self._generate_dungeon_name(region, rng)
+            loc_type = "dungeon"
+            dungeon_type = self._determine_dungeon_type(region, rng)
+            dungeon_level = region.danger_level
+
+        description = f"A {loc_type} in the {region.name}."
+
+        location = Location(
+            id=pot_id,
+            name=name,
+            type=loc_type,
+            description=description,
+            col=pot["col"],
+            row=pot["row"],
+            dungeon_type=dungeon_type,
+            dungeon_level=dungeon_level,
+            discovered=False
+        )
+        self.world_map.add_location(location)
+        return location
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
@@ -278,13 +514,18 @@ class WorldController:
                 name=loc["name"],
                 type=loc["type"],
                 description=loc["description"],
+                # Set grid coordinates – for now, default to (0,0) or calculate
+                col=loc.get("col", 0),   # if saved, use; else default
+                row=loc.get("row", 0),
+                # Legacy pixel coordinates (still read from DB if present)
                 x=loc.get("x", 0),
                 y=loc.get("y", 0),
                 dungeon_type=loc.get("dungeon_type"),
                 dungeon_level=loc.get("dungeon_level", 1),
                 image_url=loc.get("image_url"),
                 features=loc.get("features", []),
-                services=loc.get("services", [])
+                services=loc.get("services", []),
+                discovered=loc.get("discovered", False)
             )
             
             # Set discovery status
@@ -488,18 +729,16 @@ class WorldController:
         return paths
 
     def get_map_data(self) -> dict:
-        """Get complete map data for rendering"""
         locations = []
         for loc in self.world_map.locations.values():
             loc_dict = loc.to_dict()
-            loc_dict["imageUrl"] = loc.image_url
             locations.append(loc_dict)
 
-        # Ensure we have a valid seed
-        seed = getattr(self, 'seed', 42)  # Use 42 as fallback if seed doesn't exist
+        seed = getattr(self, 'seed', 42)
         connections = self.map_utils.get_connections(self.world_map)
-        # Return generation parameters instead of terrain data
-        return {
+
+        # Build the base map data as before
+        map_data = {
             "width": 1000,
             "height": 800,
             "connections": connections,
@@ -516,6 +755,22 @@ class WorldController:
             "starting_location": self.starting_location_id,
             "seed": seed
         }
+
+        # Add new fields from campaign_state (they may be empty initially)
+        map_data["regions"] = [r.to_dict() for r in self.campaign_state.surface_regions.values()]
+        map_data["potentialLocations"] = [
+            {
+                "id": pid,
+                "col": p["col"],
+                "row": p["row"],
+                "type": p["type"],
+                "generated": False
+            }
+            for pid, p in self.campaign_state.potential_locations.items()
+            if pid not in self.world_map.locations
+        ]
+
+        return map_data
 
     def get_current_location_data(self) -> dict:
         if not self.current_location:
