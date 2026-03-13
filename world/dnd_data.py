@@ -1,5 +1,5 @@
 
-# og_data.py - replaces dnd_data.py interface with og_system JSON loading
+# dnd_data.py - replaces old dnd_data.py interface with og_system JSON loading
 
 """
 Object‑oriented access to OG System JSON data.
@@ -59,6 +59,12 @@ def _get_races_data() -> dict:
 def _get_magic_data() -> dict:
     """Load 04_magic.json - spell schools"""
     return _load_og_json("04_magic.json")
+#---5-13
+def _get_campaign_data() -> dict:
+    """Load 14_magic.json - spell schools"""
+    return _load_og_json("14_campaign.json")
+#---15-19
+
 
 # ----------------------------------------------------------------------
 # Attribute (replaces AbilityScore)

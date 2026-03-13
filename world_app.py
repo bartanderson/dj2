@@ -16,6 +16,7 @@ from world.t2i import TextToImage  # Import the image generator
 from world.persistence import WorldManager
 from world.ai_integration import BaseAI, WorldAI
 
+
 # Add GameEngine imports
 from engine.game_engine import GameEngine, GamePhase, GameContext
 
@@ -28,6 +29,8 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 app = Flask(__name__)
+from routes.api import api_bp
+app.register_blueprint(api_bp, url_prefix='/api')
 
 # begin filtering timestamp
 import logging
@@ -591,6 +594,19 @@ def health_check():
             'message': 'World controller is not ready yet'
         }), 503  # Service Unavailable status code
 
+@app.route('/api/game/date', methods=['GET'])
+def get_game_date():
+    """Return formatted current date for display."""
+    if not hasattr(app, 'world_controller') or app.world_controller is None:
+        return "Date unavailable", 503
+    try:
+        date_dict = app.world_controller.campaign_state.get_current_date()
+        # Format as "D3 W2 M5 Y1 - Morning" (compact)
+        formatted = f"D{date_dict['day']} W{date_dict['week']} M{date_dict['month']} Y{date_dict['year']} - {date_dict['time_of_day'].capitalize()}"
+        return formatted
+    except Exception as e:
+        return f"Date error", 500
+
 def get_world_controller():
     """Safely get the world controller instance"""
     if hasattr(app, 'world_controller') and app.world_controller is not None:
@@ -737,7 +753,7 @@ def setup_world_system():
         
         # 7. Verify everything is working
         print(f"[OK] World loaded with {len(world_controller.world_map.locations)} locations")
-        print(f"[OK] Starting at: {world_controller.campaign_state.starting_location_id}")
+        print(f"[OK] Starting at: {world_controller.starting_location_id}")
         
         return world_controller, world_id
         

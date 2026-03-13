@@ -6,6 +6,11 @@
     <title>Dungeon World Explorer</title>
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        htmx.config.historyCacheSize = 0;  // optional
+        // Suppress logging
+        htmx.logger = function() {};  // empty function silences logs
+    </script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <style>
         /* Mode-based visibility */
@@ -52,13 +57,7 @@
         }
     </style>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-        <!-- Mode indicator -->
-        <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
-            <span>Mode: </span>
-            <span id="current-mode">world</span>
-            <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
-            <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
-        </div>
+
     <script>
 function checkMode() {
     console.log("Checking current mode...");
@@ -470,9 +469,9 @@ document.addEventListener('DOMContentLoaded', checkMode);
         .btn.secondary:hover { background: #5a6268; }
         
         .action-btn {
-            display: flex; flex-direction: column; align-items: center; padding: 10px;
+            display: flex; flex-direction: column; align-items: center; padding: 3px;
             background: rgba(78, 204, 163, 0.2); border: 1px solid #4ecca3; border-radius: 6px;
-            color: white; cursor: pointer; transition: all 0.3s ease; min-width: 80px;
+            color: white; cursor: pointer; transition: all 0.3s ease; min-width: 20px;
         }
         .action-btn:hover { background: rgba(78, 204, 163, 0.4); transform: translateY(-2px); }
         .action-btn.active { background: rgba(78, 204, 163, 0.6); border-color: #fff; }
@@ -504,7 +503,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
         
         /* ===== CONNECTION STATUS ===== */
         #connection-status {
-            padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; font-weight: bold;
+            padding: 8px 15px; max-width: 105px; border-radius: 20px; font-size: 0.9rem; font-weight: bold;
             background: #4CAF50; color: white;
         }
         
@@ -524,7 +523,19 @@ document.addEventListener('DOMContentLoaded', checkMode);
         <header class="app-header">
             <div class="logo">Dungeon World</div>
             <div class="header-controls">
-                <div id="connection-status">Connected</div>
+                <!-- Mode indicator -->
+                <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
+                    <span>Mode: </span>
+                    <span id="current-mode">world</span>
+                    <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
+                    <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
+                </div>
+                <div id="game-date" class="game-date" 
+                     hx-get="/api/game/date" 
+                     hx-trigger="every 5s" 
+                     hx-swap="innerHTML">
+                    <!-- Date will be loaded here -->
+                </div>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
                         <i class="fas fa-walking"></i>
@@ -551,14 +562,18 @@ document.addEventListener('DOMContentLoaded', checkMode);
                         <span>Chat</span>
                     </button>
                 </div>
-                <button class="btn" id="settings-btn"><i class="fas fa-cog"></i> Settings</button>
+
             </div>
         </header>
         
         <!-- SIDEBAR TABS -->
         <nav class="app-sidebar">
             <div class="menu-section">
+                <div>
+                <div id="connection-status">Connected</div>
+                <button class="btn" id="settings-btn"><i class="fas fa-cog"></i> Settings</button>
                 <div class="menu-header">Navigation</div>
+            </div>
                 <button class="tab-btn active" data-tab="map-tab">
                     <div class="tab-icon"><i class="fas fa-map-marked-alt"></i></div>
                     <span>World Map</span>

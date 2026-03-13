@@ -80,16 +80,6 @@
     "impedance_notes": "May need field name updates"
   },
   {
-    "source": "templates/form_fields.html",
-    "target": "world/character_generator",
-    "mechanism": "template_data_binding",
-    "context": "Character sheet rendering",
-    "files_involved": [
-      "templates\\partials\\form_fields.html"
-    ],
-    "impedance_notes": "May need field name updates"
-  },
-  {
     "source": "templates/race_select.html",
     "target": "world/character_generator",
     "mechanism": "template_data_binding",

@@ -17,8 +17,8 @@ from typing import Dict, List, Optional, Set, Any
 from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
-from world.world_map import WorldMap
-from world.campaign import Location, Quest, Faction, CampaignState
+from world.world_map import WorldMap, Location
+from world.campaign import Region, Faction, Quest, CampaignState
 from world.narrative_system import NarrativeSystem
 from world.character_builder import CharacterBuilder
 from world.character import Character
@@ -85,6 +85,7 @@ class WorldController:
         self.path_generator = PathGenerator(seed)
         self.map_utils = MapUtils(seed)
         self.world_map = WorldMap()
+        self.starting_location_id = None
         
         # Create dm_chat_ai FIRST (needed by many systems)
         self.dm_chat_ai = DMChatAI(ai_system)
@@ -115,17 +116,9 @@ class WorldController:
         self.terrain_types = self.terrain_generator.terrain_types
         self.fog_of_war = True
 
-        # Create CampaignState instance
-        self.campaign_state = CampaignState()
-
         # Initialize state tracking
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
-        
-        # Set core game state via campaign_state
-        self.campaign_state.time = 0
-        self.campaign_state.time_factor = 1  
-        self.campaign_state.game_started = False
         
         self.default_party_id = "main_party"
 
@@ -133,6 +126,53 @@ class WorldController:
         self.players: Dict[str, Player] = {}
         self.session_players: Dict[str, str] = {}  # session_id -> player_id
         
+        
+
+        # Load OG System campaign data
+        campaign_json = dnd_data._get_campaign_data()   # returns the whole 14_campaign.json dict
+        if not campaign_json:
+            print("[WARN] Campaign data not found; using minimal defaults.")
+            campaign_json = {"campaign": {}}
+
+        campaign_data = campaign_json.get("campaign", {})
+
+        # Create CampaignState with seed and metadata
+        self.campaign_state = CampaignState(
+            world_seed=str(self.seed),
+            generation_timestamp=datetime.now().isoformat(),
+            og_system_version=campaign_data.get("meta", {}).get("schema_version", "1.0")
+        )
+
+        # Set core game state via campaign_state
+        self.campaign_state.game_time = 0
+        self.campaign_state.time_factor = 1  
+        self.campaign_state.game_started = False
+
+
+        # Load calendar rules
+        time_tracking = campaign_data.get("time_tracking", {})
+        calendar_data = time_tracking.get("calendar", {})
+        self.campaign_state.load_calendar_rules(calendar_data)
+
+
+        # Load static factions from JSON
+        factions_data = campaign_data.get("faction_system", {}).get("factions", [])
+        for f_data in factions_data:
+            faction = Faction.from_json(f_data)
+            self.campaign_state.factions[faction.id] = faction
+
+        # Store quest archetypes for later generation
+        self.quest_archetypes = campaign_data.get("quest_system", {}).get("quest_archetypes", {})
+
+
+
+
+
+
+
+        # Minimal world generation (placeholder)
+        self.generate_world_structure()
+
         # Initialize world manager and load world data
         self.world_manager = WorldManager(ai_system)
         self.world_data = self.world_manager.load_from_db(world_id)
@@ -142,27 +182,27 @@ class WorldController:
         
         # Set starting location
         starting_location = None
-        self.campaign_state.starting_location_id = None
+        self.starting_location_id = None
         for location in self.world_map.locations.values():
             if location.type == "tavern" and "adventurer" in location.name.lower() and "respite" in location.name.lower():
                 starting_location = location
                 break
-        
+
         if starting_location:
             print("Found starting location")
-            self.campaign_state.starting_location_id = starting_location.id
+            self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
             self.travel_to_location(starting_location.id)
         else:
             # Fallback to first location if no tavern found
             first_location_id = list(self.world_map.locations.keys())[0]
-            self.campaign_state.starting_location_id = first_location_id
+            self.starting_location_id = first_location_id
             self.reveal_location(first_location_id)
             self.travel_to_location(first_location_id)
 
         # Initialize managers
         self.quest_manager = QuestManager()
-        self.party_manager = PartyManager(self.campaign_state.starting_location_id)
+        self.party_manager = PartyManager(self.starting_location_id)
         self.character_manager = CharacterManager(self.character_builder)
 
         # Give character_manager a reference to this world controller
@@ -205,6 +245,18 @@ class WorldController:
         self.dm_chat_handler = DMChatHandler(self)
 
         print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
+
+
+
+
+        print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
+        print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
+
+
+    def generate_world_structure(self):
+        """Minimal world generation for now."""
+        # This will be expanded later
+        pass
 
     def setup_world(self, world_data):
         """Load world data into game systems"""
@@ -251,33 +303,42 @@ class WorldController:
         
         # 3. Load quests
         for quest_data in world_data["quests"]:
-            # Handle both database and JSON formats
-            if "data" in quest_data:  # Database format
+            if "data" in quest_data:
                 q = quest_data["data"]
-            else:  # Direct JSON format
+            else:
                 q = quest_data
-                
+            # Create quest using the new Quest class (which expects more fields)
+            # We need to map old fields to new structure. For now, we'll create a minimal Quest
+            # that matches the new schema. We'll use archetype=None, etc., because old data may not have them.
             quest = Quest(
                 id=q["id"],
-                title=q["title"],
-                description=q["description"],
-                objectives=q["objectives"],
-                location_id=q["location_id"],
-                dungeon_required=q.get("dungeon_required", False),
+                archetype=q.get("archetype", "unknown"),   # fallback
+                patron=q.get("patron", ""),                 # fallback
+                target=q["location_id"],                     # treat location as target
+                opposition=q.get("opposition", []),
+                stages=[{                                     # create a single stage from old data
+                    "order": 1,
+                    "type": "travel",
+                    "location": q["location_id"],
+                    "completion_condition": "arrive",
+                    "rewards": []
+                }],
+                consequences={
+                    "success": {},
+                    "failure": {},
+                    "ignored": {}
+                },
+                time_pressure={"exists": False},
                 completed=q.get("completed", False)
             )
-            
-            # Store quest in global dictionary
-            self.quest_manager.quests[quest.id] = quest
-            
-            # Add quest reference to location
-            location = self.world_map.get_location(quest.location_id)
+            self.campaign_state.quests[quest.id] = quest    # store in campaign state
+
+            # Update location quest list (if location exists)
+            location = self.world_map.get_location(quest.target)
             if location:
                 if not hasattr(location, 'quests'):
                     location.quests = []
                 location.quests.append(quest.id)
-            else:
-                print(f"Warning: Location {quest.location_id} not found for quest {quest.id}")
         
         # 4. Load factions (if any)
         for faction_data in world_data.get("factions", []):
@@ -309,69 +370,20 @@ class WorldController:
         location_dicts = [loc.to_dict() for loc in self.world_map.locations.values()]
         self.paths = self.path_generator.generate_paths(location_dicts, self.hexes)
 
-    def load_world_data(self, world_id):
-        conn = Database.get_connection()
-        try:
-            with conn.cursor() as cur:
-                # Load world metadata
-                cur.execute("SELECT theme, seed FROM worlds WHERE id = %s", (world_id,))
-                world_row = cur.fetchone()
-                if world_row:
-                    self.theme, self.seed = world_row
-                
-                # Load locations
-                cur.execute("""
-                    SELECT id, name, type, position[0] AS x, position[1] AS y, 
-                           data->>'description' AS description,
-                           data->>'dungeon_type' AS dungeon_type,
-                           (data->>'dungeon_level')::int AS dungeon_level,
-                           data->>'image_url' AS image_url,
-                           data->'features' AS features,
-                           data->'services' AS services,
-                           discovered
-                    FROM locations 
-                    WHERE world_id = %s
-                """, (world_id,))
-                
-                for row in cur.fetchall():
-                    location = Location(
-                        id=row[0],
-                        name=row[1],
-                        type=row[2],
-                        x=row[3],
-                        y=row[4],
-                        description=row[5],
-                        dungeon_type=row[6],
-                        dungeon_level=row[7],
-                        image_url=row[8],
-                        features=row[9],
-                        services=row[10],
-                        discovered=row[11]
-                    )
-                    self.world_map.add_location(location)
-                
-                # Load quests
-                cur.execute("SELECT * FROM quests WHERE world_id = %s", (world_id,))
-                for row in cur.fetchall():
-                    quest = Quest(
-                        id=row[0],
-                        title=row[2],
-                        description=row[3],
-                        objectives=row[4],
-                        location_id=row[5],
-                        completed=row[6],
-                        dungeon_required=row[7]
-                    )
-                    self.quest_manager.quests[quest.id] = quest
-                    
-                    # Add to location
-                    if quest.location_id in self.world_map.locations:
-                        location = self.world_map.locations[quest.location_id]
-                        if not hasattr(location, 'quests'):
-                            location.quests = []
-                        location.quests.append(quest.id)
-        finally:
-            Database.return_connection(conn)
+    def get_quests_for_location(self, location_id: str) -> List[Quest]:
+        """Return all quests (active or completed) that involve this location."""
+        result = []
+        for quest in self.campaign_state.quests.values():
+            # Check if any stage references this location
+            for stage in quest.stages:
+                if stage.get("location") == location_id:
+                    result.append(quest)
+                    break
+            # Also check if the target is this location
+            if quest.target == location_id:
+                if quest not in result:
+                    result.append(quest)
+        return result
 
     def _get_terrain_for_location(self, location, hexes):
         """Determine terrain type for a location based on nearby hexes"""
@@ -392,6 +404,7 @@ class WorldController:
         # Return the terrain of the closest hex
         return closest_hex.get("terrain", "plains")  # Added .get() for safety
 
+    # TODO: will need to fix/replace with og_system data/methods
     def _connect_regions(self, centroids, regions, hexes):
         """Connect regions using direct paths between closest points"""
         paths = []
@@ -500,7 +513,7 @@ class WorldController:
                 "height": 800
             },
             "fog_of_war": self.fog_of_war,
-            "starting_location": self.campaign_state.starting_location_id,
+            "starting_location": self.starting_location_id,
             "seed": seed
         }
 
@@ -519,7 +532,8 @@ class WorldController:
     def get_available_classes(self):
         """Get list of available classes"""
         return dnd_data.get_class_list()
-        
+    
+    # TODO: likely will need fixes to use og_system data    
     def get_starting_equipment_options(self, class_name):
         """Get starting equipment options for a class"""
         char_class = dnd_data.get_class_object(class_name)
@@ -530,28 +544,29 @@ class WorldController:
             }
         return {}
 
-    def get_player_inventory(self, player_id):
-        """Get narrative-focused inventory description"""
-        character = self.character_manager.characters.get(player_id)
-        if not character:
-            return {"error": "Character not found"}
+    # TODO: see if this is needed after inventory (og_system) is created
+    # def get_player_inventory(self, player_id):
+    #     """Get narrative-focused inventory description"""
+    #     character = self.character_manager.characters.get(player_id)
+    #     if not character:
+    #         return {"error": "Character not found"}
         
-        # Let AI generate contextual description
-        prompt = f"Describe {character.name}'s inventory considering:"
-        prompt += f"\n- Location: {self.current_location.name}"
-        prompt += f"\n- Campaign theme: {self.campaign_theme}"
-        prompt += f"\n- Recent events: {self.get_recent_events()}"
+    #     # Let AI generate contextual description
+    #     prompt = f"Describe {character.name}'s inventory considering:"
+    #     prompt += f"\n- Location: {self.current_location.name}"
+    #     prompt += f"\n- Campaign theme: {self.campaign_theme}"
+    #     prompt += f"\n- Recent events: {self.get_recent_events()}"
         
-        inventory_description = self.dm_chat_ai.generate_text(prompt)
+    #     inventory_description = self.dm_chat_ai.generate_text(prompt)
         
-        # Return narrative-focused inventory
-        return {
-            "description": inventory_description,
-            "significant_items": self.get_significant_items(player_id),
-            "currency": character.currency,
-            "weight": f"{character.current_carry_weight}/{character.max_carry_weight}",
-            "campaign_rules": self.get_inventory_rules()
-        }
+    #     # Return narrative-focused inventory
+    #     return {
+    #         "description": inventory_description,
+    #         "significant_items": self.get_significant_items(player_id),
+    #         "currency": character.currency,
+    #         "weight": f"{character.current_carry_weight}/{character.max_carry_weight}",
+    #         "campaign_rules": self.get_inventory_rules()
+    #     }
 
     def add_item(self, player_id, item_description):
         """Add an item through narrative discovery"""
@@ -597,29 +612,25 @@ class WorldController:
             return "Not started"
         
         elapsed = (datetime.now() - self.game_start_time).total_seconds()
-        game_minutes = int(self.campaign_state.time + elapsed * self.campaign_state.time_factor)
+        game_minutes = int(self.campaign_state.game_time + elapsed * self.campaign_state.time_factor)
         return f"{game_minutes // 60}h {game_minutes % 60}m"
 
     def complete_tavern_intro(self, party_id, player_id):
-        """Mark that a player has completed the initial tavern scene"""
         if party_id not in self.party_manager.parties:
             return {"status": "error", "error": "Party not found"}
-        
         if player_id not in self.party_manager.parties[party_id]["members"]:
             return {"status": "error", "error": "Player not in party"}
         
-        # Mark player as completed tavern intro
         if "tavern_completed" not in self.party_manager.parties[party_id]:
             self.party_manager.parties[party_id]["tavern_completed"] = set()
         
         self.party_manager.parties[party_id]["tavern_completed"].add(player_id)
         
-        # Assign quest if all party members have completed
         party_members = self.party_manager.parties[party_id]["members"]
         completed_members = self.party_manager.parties[party_id].get("tavern_completed", set())
         
         if set(party_members).issubset(completed_members):
-            self.assign_starting_quest(party_id)
+            self.assign_starting_quest(party_id)   # This method would create a quest
             return {"status": "success", "quest_assigned": True}
         
         return {"status": "success", "quest_assigned": False}
@@ -629,8 +640,7 @@ class WorldController:
         party_states = []
         for party_id in self.party_manager.active_parties:
             party = self.party_manager.parties[party_id]
-            party_quests = [self.quest_manager.quests[qid] for qid in party.get("quests", []) 
-                            if qid in self.quest_manager.quests]
+            party_quests = [self.campaign_state.quests[qid] for qid in party.get("quests", []) if qid in self.campaign_state.quests]
             
             party_states.append({
                 "id": party_id,
@@ -644,24 +654,21 @@ class WorldController:
         return {
             # Core world data
             "world_map": self.world_map.serialize(),
-            "time": self.campaign_state.time,
+            "time": self.campaign_state.game_time,
             "time_factor": self.campaign_state.time_factor,
             
             # Player progression
             "parties": party_states,
             "fog_of_war": self.fog_of_war,
-            "starting_location": self.campaign_state.starting_location_id,
-            
-            # NPC and event data
-            "npcs": self.npc_controller.get_npc_states(),
-            "events": self.event_scheduler.get_active_events(),
+            "starting_location": self.starting_location_id,
             
             # Game state flags
             "game_started": self.campaign_state.game_started,
+            "current_date": self.campaign_state.get_current_date(),
             "game_time": self.get_game_time(),
             
-            # Player-specific data (if applicable)
-            "player_data": self.player_data_manager.get_state()
+            "events": [],  # TODO: implement event scheduler
+            "player_data": {}  # TODO: implement player data manager
         }
 
     def get_all_locations(self):
@@ -705,8 +712,34 @@ class WorldController:
         
         return rumors
 
-
-
+    # This is a stub we created for complete_tavern_quest
+    def assign_starting_quest(self, party_id):
+        # TODO: implement proper quest generation
+        quest = Quest(
+            id=f"quest_tavern_{party_id}",
+            archetype="recover",
+            patron="tavern_keeper",
+            target=self.starting_location_id,
+            opposition=[],
+            stages=[{
+                "order": 1,
+                "type": "travel",
+                "location": self.starting_location_id,
+                "completion_condition": "arrive",
+                "rewards": [{"xp": 10}]
+            }],
+            consequences={},
+            time_pressure={"exists": False},
+            completed=False
+        )
+        self.campaign_state.quests[quest.id] = quest
+        # Add quest to party
+        if party_id in self.party_manager.parties:
+            if "quests" not in self.party_manager.parties[party_id]:
+                self.party_manager.parties[party_id]["quests"] = []
+            self.party_manager.parties[party_id]["quests"].append(quest.id)
+        return quest
+    # TODO: need to fix or replace with og_system locations implementation
     def place_locations(self, hexes, terrain_grid):
         locations = []
         
@@ -947,8 +980,12 @@ class WorldController:
         # LEGACY PROCESSING (fallback if GameEngine fails or not available)
         print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
         if self.dungeon_ai:
-            return self.dungeon_ai.process_command(command)
-        return self.world_ai.process_command(command)
+            result = self.dungeon_ai.process_command(command)
+        else:
+            result = self.world_ai.process_command(command)
+        # Assume action takes 10 minutes
+        self.campaign_state.advance_time(10) # advance time 10 minutes
+        return result
 
     def get_game_engine_state(self) -> dict:
         """Get GameEngine status and phase information"""
@@ -1105,6 +1142,10 @@ class WorldController:
 
     def travel_to_location(self, location_id: str) -> bool:
         if self.world_map.travel_to(location_id):
+
+            # Travel takes 1 day (1440 minutes)
+            self.campaign_state.advance_time(24 * 60)
+
             location = self.world_map.get_location(location_id)
             self.current_location = location
             
