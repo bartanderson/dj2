@@ -165,6 +165,23 @@ function drawLocations(ctx, locations) {
     });
 }
 
+function drawHexagon(ctx, cx, cy, size, color) {
+    size = size * 1.1;
+    hexScale = .83;  // note: this overwrites a global variable – we'll fix it
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        let angle = i * Math.PI / 3; // pointy-top
+        let x = cx + size * hexScale * Math.cos(angle);
+        let y = cy + size * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = .5;
+    ctx.stroke();
+}
+
 // The consolidated function to render all map elements
 function renderWorldMap(worldMap) {
     const mycontainer = document.getElementById('world-map');
@@ -265,6 +282,15 @@ function renderWorldMap(worldMap) {
         discoveredLocations.some(loc => loc.id === conn.from_id) &&
         discoveredLocations.some(loc => loc.id === conn.to_id)
     ) : [];
+
+    // Draw hex outlines
+    if (worldMap.hexes && worldMap.hexes.length > 0) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1;
+        worldMap.hexes.forEach(hex => {
+            drawHexagon(ctx, hex.x, hex.y, 30, ctx.strokeStyle);
+        });
+    }
 
     // Draw the paths for discovered connections
     drawPaths(ctx, discoveredConnections, worldMap.locations || []);

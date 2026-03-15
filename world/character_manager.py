@@ -27,20 +27,35 @@ class CharacterManager:
         return character
 
     def assign_character_to_player(self, player_id: str, character_id: str):
-        """Assign a character to a player and update any necessary caches."""
+        """Assign a character to a player and persist the relationship."""
         character = self.get_character(character_id)
         if not character:
             raise ValueError(f"Character {character_id} not found")
+        
         player = self.world_controller.players.get(player_id) if self.world_controller else None
-        if player:
+        if not player:
+            raise ValueError(f"Player {player_id} not found")
+        
+        # Ensure character has player_id set
+        character.player_id = player_id
+        
+        # Update player's character list (avoid duplicates)
+        if character_id not in player.character_ids:
             player.character_ids.append(character_id)
+        
+        # Set as active if none
+        if not player.active_character_id:
             player.active_character_id = character_id
-        # Also ensure world_controller's character cache is up to date
+        
+        # Save both to database
+        if self.world_controller:
+            self.world_controller._save_player_to_db(player)
+        
+        self._save_character_to_db(character)
+        
+        # Update cache
         if self.world_controller:
             self.world_controller.characters[character_id] = character
-        # Persist the relationship if needed (e.g., in a player_characters table)
-        # For now, just save the character again (it already has owner_id)
-        self._save_character_to_db(character)
 
     def load_characters_for_player(self, player_id: str) -> List[Character]:
         """Load all characters for a player from database"""

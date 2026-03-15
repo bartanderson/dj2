@@ -799,6 +799,50 @@ class WorldController:
             }
         return {}
 
+    def get_player_by_id(self, player_id):
+        """Load a player from database by ID, cache in self.players."""
+        if player_id in self.players:
+            return self.players[player_id]
+        # Load from DB
+        from world.db import Database
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, name, attributes FROM players WHERE id = %s", (player_id,))
+                row = cur.fetchone()
+                if row:
+                    # Convert UUID to string if necessary
+                    import uuid
+                    pid = str(row[0]) if isinstance(row[0], uuid.UUID) else row[0]
+                    from world.player import Player
+                    player = Player(id=pid, name=row[1], attributes=row[2])
+                    self.players[player.id] = player
+                    return player
+        finally:
+            Database.return_connection(conn)
+        return None
+
+    def get_player_by_session(self, session_id):
+        # First check in‑memory mapping
+        player_id = self.session_players.get(session_id)
+        if player_id:
+            return self.players.get(player_id)
+        
+        # If not in memory, try to load from database
+        from world.db import Database
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT player_id FROM player_sessions WHERE session_id = %s", (session_id,))
+                row = cur.fetchone()
+                if row:
+                    player_id = row[0]
+                    # Load the player (caches it)
+                    return self.get_player_by_id(player_id)
+        finally:
+            Database.return_connection(conn)
+        return None
+
     # TODO: see if this is needed after inventory (og_system) is created
     # def get_player_inventory(self, player_id):
     #     """Get narrative-focused inventory description"""
