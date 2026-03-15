@@ -6,12 +6,12 @@
     <title>Dungeon World Explorer</title>
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script>
         htmx.config.historyCacheSize = 0;  // optional
         // Suppress logging
         htmx.logger = function() {};  // empty function silences logs
     </script>
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <style>
         /* Mode-based visibility */
         body[data-mode="world"] .world-only {

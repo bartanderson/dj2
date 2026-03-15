@@ -186,9 +186,15 @@ function drawHexagon(ctx, cx, cy, size, color) {
 function renderWorldMap(worldMap) {
     const mycontainer = document.getElementById('world-map');
     const mycanvas = document.getElementById('terrain-canvas');
+    // Add guard: if canvas has zero dimensions, skip rendering
+    if (!mycanvas || mycanvas.width === 0 || mycanvas.height === 0) {
+        console.log('Canvas has zero dimensions, skipping render');
+        return;
+    }
     console.log('DEBUG - Container dimensions:', mycontainer?.clientWidth, 'x', mycontainer?.clientHeight);
     console.log('DEBUG - Canvas dimensions:', mycanvas?.width, 'x', mycanvas?.height);
     console.log('Rendering world map...', worldMap);
+
     
     // Store world data for later use
     window.worldState = window.worldState || {};
@@ -524,6 +530,12 @@ async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
 
 // ===== REFRESH FUNCTION =====
 async function refreshWorldState() {
+    // same as for dungeon, but maybe this is more comprehensive?
+    if (!document.getElementById('map-tab').classList.contains('active')) {
+        console.log('Map tab not active, skipping render');
+        return;
+    }
+
     // FIX: Don't refresh world state when in dungeon mode
     if (document.body && document.body.getAttribute('data-mode') !== 'world') {
         console.log("Skipping world state refresh - in dungeon mode");

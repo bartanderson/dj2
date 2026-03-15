@@ -28,13 +28,13 @@ class Character:
     OG System Character - standalone, no inheritance.
     Uses 4 attributes: Brawn, Finesse, Wits, Will
     """
-    
     def __init__(self, 
                  name: str,
                  race: str,
                  classs: Any,  # Can be string or OGClass object
                  level: int = 1,
                  background: str = "unknown",
+                 player_id: Optional[str] = None,
                  owner_id: Optional[str] = None,
                  # Attributes (0-4 scale in OG System)
                  brawn: Optional[int] = None,
@@ -46,70 +46,20 @@ class Character:
                  gender: Optional[str] = None,
                  description: Optional[str] = None,
                  alignment: Optional[str] = None,
+                 # Narrative fields (optional)
+                 backstory: Optional[Dict] = None,
+                 connections: Optional[List] = None,
+                 secrets: Optional[List] = None,
+                 vows: Optional[Dict] = None,
                  **kwargs):
-
-        backstory = {
-            "origin": {
-                "origin_region": region_id,
-                "family_standing": "poor/working/merchant/noble/outcast",
-                "left_behind": {"type": "person|place|obligation|secret", "description": "...", "emotional_weight": "positive|negative|mixed"},
-                "departure_reason": "..."
-            },
-            "formative_wound": {
-                "wound_type": "betrayal|loss|failure|revelation|violation|choice",
-                "wound_actor": {"type": "faction|individual|institution", "id": "...", "relationship": "family|friend|..."},
-                "vow": {"type": "revenge|protection|never_again|discovery|redemption", "target": "...", "progress": "unfulfilled|partial|complete|corrupted"},
-                "shadow_fear": "..."
-            },
-            "recent_history": {
-                "recent_situation": "...",
-                "outstanding_debt": {"to": "...", "nature": "favor|money|life|secret", "urgency": "dormant|pressing|critical"},
-                "acquired_asset": {"type": "item|skill|contact|information", "description": "...", "complication": "..."}
-            }
-        }
-
-        connection = {
-            "id": str(uuid.uuid4()),
-            "type": "direct|reflection|consequence|parallel|inversion|prophecy",
-            "pc_node": "origin|wound|recent|secret",  # which part of backstory
-            "world_element": {"type": "region|faction|npc|dungeon|item|event", "id": "..."},
-            "description": "string explaining link",
-            "tension": "harmony|irony|tragedy|hope|mystery",
-            "visibility": "hidden|hinted|known"
-        }
-
-        secret = {
-            "id": str(uuid.uuid4()),
-            "type": "lineage|connection|prophecy|infection|duplicity|obligation",
-            "description": "...",
-            "revelation_trigger": {"type": "encounter_monster|meet_npc|condition|quest_complete|spell|date|moon", "target": "..."},
-            "revealed": False
-        }
-
-        vow = {
-            "id": str(uuid.uuid4()),
-            "type": "revenge|protection|never_again|discovery|redemption",
-            "target": "...",
-            "progress": 0,          # e.g., 0-100 or steps completed
-            "status": "unfulfilled|partial|complete|corrupted"
-        }
         
         # Core identity
-        self.id = f"char_{uuid.uuid4().hex[:6]}"
+        self.id = str(uuid.uuid4())
         self.owner_id = owner_id or "unknown"
         self.name = name
         self.race = race
         self.background = background
-        self.char_class = ...
-        self.level = ...
-        self.abilities = {}
-        self.skills = {}
-        self.inventory = []
-        # NEW NARRATIVE FIELDS
-        self.backstory = {}          # dict with origin, wound, recent, secrets
-        self.connections = []        # list of connection objects
-        self.secrets = []             # list of secret objects (hidden)
-        self.vows = {}                # dict vow_id -> progress/status
+        self.player_id = player_id
         
         # Handle class (can be string name or OGClass object)
         if isinstance(classs, str):
@@ -190,9 +140,16 @@ class Character:
         # Conditions (from OG System combat)
         self.conditions: List[str] = []
         
+        # Narrative fields (Phase 2)
+        self.backstory = backstory or {}
+        self.connections = connections or []
+        self.secrets = secrets or []
+        self.vows = vows or {}
+        
         # Add starting gear if class defined
         if self.classs and hasattr(self.classs, 'starting_gear'):
-            self._add_starting_gear()
+            self._add_starting_gear()    
+
     
     def _apply_racial_bonuses(self):
         """Apply racial attribute bonuses from OG System"""

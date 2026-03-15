@@ -26,36 +26,37 @@ class CharacterManager:
         self._save_character_to_db(character)
         return character
 
+    def add_character(self, character):
+        """Add a character to the in‑memory cache and persist to database."""
+        self.characters[character.id] = character
+        self._save_character_to_db(character)
+
     def assign_character_to_player(self, player_id: str, character_id: str):
         """Assign a character to a player and persist the relationship."""
         character = self.get_character(character_id)
         if not character:
             raise ValueError(f"Character {character_id} not found")
-        
+
         player = self.world_controller.players.get(player_id) if self.world_controller else None
         if not player:
             raise ValueError(f"Player {player_id} not found")
-        
+
         # Ensure character has player_id set
         character.player_id = player_id
-        
+
         # Update player's character list (avoid duplicates)
         if character_id not in player.character_ids:
             player.character_ids.append(character_id)
-        
+
         # Set as active if none
         if not player.active_character_id:
-            player.active_character_id = character_id
-        
+            player.set_active_character(character_id)
+
         # Save both to database
         if self.world_controller:
             self.world_controller._save_player_to_db(player)
-        
+
         self._save_character_to_db(character)
-        
-        # Update cache
-        if self.world_controller:
-            self.world_controller.characters[character_id] = character
 
     def load_characters_for_player(self, player_id: str) -> List[Character]:
         """Load all characters for a player from database"""
@@ -108,30 +109,73 @@ class CharacterManager:
             return True
         return False
 
-    def _save_character_to_db(self, character: Character):
+    def _save_character_to_db(self, character):
+        """Save character to database."""
+        from world.db import Database
+        import json
         conn = Database.get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO characters (id, player_id, name, race, class, level, attributes, inventory, avatar_url) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (id) DO UPDATE SET "
-                    "name = EXCLUDED.name, race = EXCLUDED.race, class = EXCLUDED.class, "
-                    "level = EXCLUDED.level, attributes = EXCLUDED.attributes, "
-                    "inventory = EXCLUDED.inventory, avatar_url = EXCLUDED.avatar_url, "
-                    "updated_at = CURRENT_TIMESTAMP",
-                    (
-                        character.id, character.owner_id, character.name,
-                        character.race, character.classs.name if hasattr(character, 'classs') else None,
-                        character.level, json.dumps(character.attributes),
-                        json.dumps([item.to_dict() for item in character.get_full_inventory()]),
-                        character.avatar_url
-                    )
-                )
+                # Get class name safely
+                if hasattr(character, 'classs'):
+                    if hasattr(character.classs, 'name'):
+                        class_name = character.classs.name
+                    else:
+                        class_name = str(character.classs)
+                else:
+                    class_name = ''
+
+                # Prepare data with fallbacks
+                attributes = json.dumps(getattr(character, 'attributes', {}))
+                inventory_list = getattr(character, 'inventory', [])
+                inventory_dicts = []
+                for item in inventory_list:
+                    if hasattr(item, 'to_dict'):
+                        inventory_dicts.append(item.to_dict())
+                    elif isinstance(item, dict):
+                        inventory_dicts.append(item)
+                    else:
+                        # fallback: try to convert using vars or just str
+                        inventory_dicts.append(vars(item) if hasattr(item, '__dict__') else str(item))
+                inventory = json.dumps(inventory_dicts)
+                backstory = json.dumps(getattr(character, 'backstory', {}))
+                connections = json.dumps(getattr(character, 'connections', []))
+                secrets = json.dumps(getattr(character, 'secrets', []))
+                vows = json.dumps(getattr(character, 'vows', {}))
+                avatar_url = getattr(character, 'avatar_url', None)
+
+                cur.execute("""
+                    INSERT INTO characters (id, player_id, name, race, class, level, attributes, inventory, avatar_url, backstory, connections, secrets, vows)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        player_id = EXCLUDED.player_id,
+                        name = EXCLUDED.name,
+                        race = EXCLUDED.race,
+                        class = EXCLUDED.class,
+                        level = EXCLUDED.level,
+                        attributes = EXCLUDED.attributes,
+                        inventory = EXCLUDED.inventory,
+                        avatar_url = EXCLUDED.avatar_url,
+                        backstory = EXCLUDED.backstory,
+                        connections = EXCLUDED.connections,
+                        secrets = EXCLUDED.secrets,
+                        vows = EXCLUDED.vows
+                """, (
+                    character.id,
+                    character.player_id,
+                    character.name,
+                    character.race,
+                    class_name,
+                    character.level,
+                    attributes,
+                    inventory,
+                    avatar_url,
+                    backstory,
+                    connections,
+                    secrets,
+                    vows
+                ))
                 conn.commit()
-        except Exception as e:
-            print(f"Error saving character to DB: {e}")
-            conn.rollback()
         finally:
             Database.return_connection(conn)
 

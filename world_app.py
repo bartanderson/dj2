@@ -869,26 +869,18 @@ def retry_failed_images():
 # ===== Character Endpoints =====
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
-    try:
-        session_id = request.cookies.get('session_id')
-        if not session_id:
-            return jsonify({'error': 'No session ID'}), 400
-            
-        player = app.world_controller.get_or_create_player(session_id)
-        characters = []
-        
-        for char_id in player.character_ids:
-            if char_id in app.world_controller.characters:
-                characters.append(app.world_controller.characters[char_id].to_dict())
-        
-        return jsonify({
-            'success': True,
-            'characters': characters,
-            'player_id': player.id
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    session_id = request.cookies.get('session_id')
+    if not session_id:
+        return jsonify({'characters': []})
+    player = current_app.world_controller.get_player_by_session(session_id)
+    if not player:
+        return jsonify({'characters': []})
+    characters = []
+    for char_id in player.character_ids:
+        char = current_app.world_controller.character_manager.get_character(char_id)
+        if char:
+            characters.append(char.to_dict())
+    return jsonify({'characters': characters})
 
 @app.route('/api/player/active-character', methods=['POST'])
 def set_active_character():
@@ -1545,16 +1537,25 @@ def submit_character():
     )
 
     if result['success']:
-        app.world_controller.character_manager.assign_character_to_player(player.id, result['character'].id)
+        char = result['character']
+        char.player_id = player.id
+        # Ensure character is in the manager's cache
+        if not app.world_controller.character_manager.get_character(char.id):
+            app.world_controller.character_manager.add_character(char)
+        app.world_controller.character_manager.assign_character_to_player(player.id, char.id)
         
-        # Instead of rendering success_message.html, return a script to reload
+        # Rest of the response...
         response = make_response("""
             <script>
                 location.reload();
             </script>
         """)
         if is_new_session:
-            response.set_cookie(...)
+            response.set_cookie(
+                'session_id', session_id,
+                max_age=60*60*24*7, path='/',
+                secure=False, httponly=True, samesite='Lax'
+            )
         return response
     else:
         return render_template('partials/error_message.html', errors=result['errors']), 400
