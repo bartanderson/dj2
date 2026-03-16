@@ -39,17 +39,14 @@ class CharacterManager:
 
         player = self.world_controller.players.get(player_id) if self.world_controller else None
         if not player:
-            print(f"[DEBUG] assign_character_to_player: player_id={player_id}, character_id={character_id}")
             raise ValueError(f"Player {player_id} not found")
 
         # Ensure character has player_id set
         character.player_id = player_id
 
         # Update player's character list (avoid duplicates)
-        print(f"[DEBUG] assign: player {player.id} before append: {player.character_ids}")
         if character_id not in player.character_ids:
             player.character_ids.append(character_id)
-        print(f"[DEBUG] Player {player.id} character_ids after append: {player.character_ids}")
 
         # Set as active if none
         if not player.active_character_id:
@@ -60,7 +57,6 @@ class CharacterManager:
             self.world_controller._save_player_to_db(player)
 
         self._save_character_to_db(character)
-        print(f"[DEBUG] assign: player saved, attributes now: {player.attributes}")
 
     def _load_character_from_db(self, character_id):
         """Load a character from the database and cache it."""

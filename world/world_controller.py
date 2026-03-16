@@ -1345,69 +1345,29 @@ class WorldController:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    # complete_dungeon was a hypothetical way to complete exploring the dungeon but maybe we should  just use leave_dungeon and complete_quest
-    # def complete_dungeon(self, success: bool, rewards: dict = None):
-    #     """Handle dungeon completion"""
-    #     location_id = self.game_state.dungeon_location
-    #     location = self.world_map.get_location(location_id)
-        
-    #     if success:
-    #         # Apply rewards
-    #         self.party_system.apply_rewards(rewards)
-            
-    #         # Complete related quests
-    #         for quest in location.quests:
-    #             if quest.dungeon_required and not quest.completed:
-    #                 quest.completed = True
-    #                 self.narrative.on_quest_complete(quest)
-        
-    #     # Return to world
-    #     self.game_state.set_mode('world')
-    #     self.game_state.current_dungeon = None
-    #     self.pacing.on_dungeon_complete(success)
-        
-    #     # Call narrative system for pacing
-    #     if hasattr(self, 'narrative_system'):
-    #         self.narrative_system.on_dungeon_completed(success)
-        
-    #     # Handle rewards if provided
-    #     if rewards:
-    #         # Your reward distribution logic
-    #         pass
-            
-    #     return {"status": "success", "completed": success}
-
-
     def get_or_create_player(self, session_id, player_name=None):
         """Get existing player or create a new one for the session"""
-        print(f"DEBUG: get_or_create_player called with session_id: {session_id}")
         
         if session_id in self.session_players:
             player_id = self.session_players[session_id]
-            print(f"DEBUG: Found existing player in memory: {player_id}")
             return self.players[player_id]
         
         # Create new player
-        print("DEBUG: Creating new player")
         player = Player(name=player_name or f"Player_{session_id[:8]}")
         self.players[player.id] = player
         self.session_players[session_id] = player.id
         
         # First, save the player to the database
-        print(f"DEBUG: Attempting to save player {player.id} to database")
         player_saved = self._save_player_to_db(player)
         
         if not player_saved:
-            print(f"DEBUG: Failed to save player {player.id} to database")
             # Remove from memory if save failed
             del self.players[player.id]
             del self.session_players[session_id]
             raise Exception(f"Failed to save player {player.id} to database")
         
-        print(f"DEBUG: Player {player.id} saved successfully to database")
         
         # Then, save the session to the database
-        print("DEBUG: Attempting to save session to database")
         session_saved = self._save_session_to_db(session_id, player.id)
         
         if not session_saved:
@@ -1419,7 +1379,6 @@ class WorldController:
 
     def _save_player_to_db(self, player):
         """Save player to database with detailed error handling"""
-        print(f"DEBUG: Saving player to DB: {player.id}")
         conn = Database.get_connection()
         try:
             with conn.cursor() as cur:
@@ -1429,7 +1388,6 @@ class WorldController:
                     (player.id, player.name, json.dumps(player.attributes))
                 )
                 conn.commit()
-                print("DEBUG: Player saved successfully")
                 return True
         except Exception as e:
             print(f"DEBUG: Error saving player to DB: {e}")
@@ -1440,7 +1398,6 @@ class WorldController:
 
     def _save_session_to_db(self, session_id, player_id):
         """Save session-player mapping to database with detailed error handling"""
-        print(f"DEBUG: Saving session to DB: {session_id} -> {player_id}")
         conn = Database.get_connection()
         try:
             # First, verify the player exists in the database

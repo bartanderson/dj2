@@ -860,21 +860,16 @@ def retry_failed_images():
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
     session_id = request.cookies.get('session_id')
-    print(f"get_player_characters: session_id={session_id}")
     if not session_id:
         return jsonify({'characters': []})
     player = current_app.world_controller.get_player_by_session(session_id)
-    print(f"get_player_characters: player={player}")
     if not player:
         return jsonify({'characters': []})
-    print(f"get_player_characters: player.character_ids = {player.character_ids}")
     characters = []
     for char_id in player.character_ids:
         char = current_app.world_controller.character_manager.get_character(char_id)
-        print(f"get_player_characters: loading char {char_id} -> {char}")
         if char:
             characters.append(char.to_dict())
-    print(f"get_player_characters: returning {len(characters)} characters")
     return jsonify({'characters': characters})
 
 @app.route('/api/player/active-character', methods=['POST'])
@@ -1069,14 +1064,9 @@ def engine_mode():
         status = app.game_engine.get_mode_status()
         return jsonify(status)
     
-    else:  # POST
-        # DEBUG: Print raw request data
-        print(f"DEBUG: Raw request data: {request.data}")
-        print(f"DEBUG: Request headers: {dict(request.headers)}")
-        
+    else:  # POST        
         try:
             data = request.get_json()
-            print(f"DEBUG: Parsed JSON: {data}")
         except Exception as e:
             print(f"DEBUG: JSON parse error: {e}")
             return jsonify({"error": f"JSON parse error: {str(e)}"}), 400
@@ -1512,14 +1502,11 @@ def random_all():
 @app.route('/character-creation/submit', methods=['POST'])
 def submit_character():
     session_id = request.cookies.get('session_id')
-    print(f"submit_character: session_id={session_id}")
     if not session_id:
         return jsonify({"error": "No session"}), 401   # frontend will show player modal
 
     player = current_app.world_controller.get_player_by_session(session_id)
-    print(f"submit_character: session_id={session_id}, player={player}")
     if not player:
-        print("No player, returning 401")
         return jsonify({"error": "No player selected"}), 401
         
     data = request.form
@@ -1705,7 +1692,6 @@ def character_creation_help():
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
     try:
-        print("DEBUG: dm-response endpoint called")
         data = request.get_json()
         message = data.get('message')
         character_id = data.get('character_id')

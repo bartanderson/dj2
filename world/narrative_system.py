@@ -510,8 +510,6 @@ class NarrativeSystem:
         Guided backstory creation using OG System framework.
         Expects creation_state to track phase (origin, wound, recent, secret_generation).
         """
-        print(f"[guide_backstory_creation] self.narrative_framework keys: {self.narrative_framework.keys()}")
-        print(f"[guide_backstory_creation] backstory_framework: {self.narrative_framework.get('backstory_framework', 'missing')}")
         character = self.world.character_manager.get_character(character_id)
         if not character:
             return {"error": "Character not found"}
@@ -519,8 +517,6 @@ class NarrativeSystem:
         # Load backstory framework from self.narrative_framework (loaded from JSON)
         framework = self.narrative_framework.get("backstory_framework", {})
         phases = framework.get("phases", [])
-
-        print(f"[NARRATIVE SYSTEM] Received framework with phases: {len(self.narrative_framework.get('backstory_framework', {}).get('phases', []))}")
 
         if not creation_state:
             creation_state = {
