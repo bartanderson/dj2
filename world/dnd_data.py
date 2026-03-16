@@ -63,7 +63,14 @@ def _get_magic_data() -> dict:
 def _get_campaign_data() -> dict:
     """Load 14_magic.json - spell schools"""
     return _load_og_json("14_campaign.json")
-#---15-19
+#---15-16
+def _get_player_narrative_data():
+    """Load 17_player_narrative.json - spell schools"""
+    print("[dnd_data] Loading 17_player_narrative.json")
+    data = _load_og_json("17_player_narrative.json")
+    print("[dnd_data] Loaded keys:", data.keys())
+    return data
+#---18-19
 
 
 # ----------------------------------------------------------------------

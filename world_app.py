@@ -16,6 +16,7 @@ from world.t2i import TextToImage  # Import the image generator
 from world.persistence import WorldManager
 from world.ai_integration import BaseAI, WorldAI
 from world.db import Database
+from world.player import Player
 
 # Add GameEngine imports
 from engine.game_engine import GameEngine, GamePhase, GameContext
@@ -807,26 +808,15 @@ def get_context(player_id):
 def index():
     session_id = request.cookies.get('session_id')
     active_character_id = None
-
+    player_logged_in = False
     if session_id:
-        # Try to get player from this session
         player = current_app.world_controller.get_player_by_session(session_id)
         if player:
+            player_logged_in = True
             active_character_id = player.active_character_id
-
-    # Render the template with the active character (may be None)
-    response = make_response(render_template('world.html', active_character_id=active_character_id))
-
-    # If no session cookie exists, create one now
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        response.set_cookie(
-            'session_id', session_id,
-            max_age=60*60*24*7, path='/',
-            secure=False, httponly=True, samesite='Lax'
-        )
-
-    return response
+    return render_template('world.html',
+                          active_character_id=active_character_id,
+                          player_logged_in=player_logged_in)
 
 # Serve static images
 @app.route('/static/world_images/<path:filename>')
@@ -870,16 +860,21 @@ def retry_failed_images():
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
     session_id = request.cookies.get('session_id')
+    print(f"get_player_characters: session_id={session_id}")
     if not session_id:
         return jsonify({'characters': []})
     player = current_app.world_controller.get_player_by_session(session_id)
+    print(f"get_player_characters: player={player}")
     if not player:
         return jsonify({'characters': []})
+    print(f"get_player_characters: player.character_ids = {player.character_ids}")
     characters = []
     for char_id in player.character_ids:
         char = current_app.world_controller.character_manager.get_character(char_id)
+        print(f"get_player_characters: loading char {char_id} -> {char}")
         if char:
             characters.append(char.to_dict())
+    print(f"get_player_characters: returning {len(characters)} characters")
     return jsonify({'characters': characters})
 
 @app.route('/api/player/active-character', methods=['POST'])
@@ -1246,6 +1241,18 @@ def check_dungeon_endpoints():
     except Exception as e:
         return jsonify({"error": str(e)})
 
+# ===== Character basic =====
+
+@app.route('/character/<character_id>/basic')
+def character_basic(character_id):
+    """Return a partial HTML with basic character info."""
+    if not character_id:
+        return "", 204
+    character = current_app.world_controller.character_manager.get_character(character_id)
+    if not character:
+        return "", 204
+    return render_template('partials/character_basic.html', character=character)
+
 # ===== Narrative System Endpoints (Phase 2) =====
 
 @app.route('/character/<character_id>/narrative')
@@ -1505,11 +1512,14 @@ def random_all():
 @app.route('/character-creation/submit', methods=['POST'])
 def submit_character():
     session_id = request.cookies.get('session_id')
+    print(f"submit_character: session_id={session_id}")
     if not session_id:
         return jsonify({"error": "No session"}), 401   # frontend will show player modal
 
     player = current_app.world_controller.get_player_by_session(session_id)
+    print(f"submit_character: session_id={session_id}, player={player}")
     if not player:
+        print("No player, returning 401")
         return jsonify({"error": "No player selected"}), 401
         
     data = request.form
@@ -1535,14 +1545,17 @@ def submit_character():
         char_data,
         builder=app.world_controller.character_builder
     )
+    print(f"Character creation result: {result}")
 
     if result['success']:
+        print(f"Character created: {result['character'].id}, name={result['character'].name}")
         char = result['character']
         char.player_id = player.id
         # Ensure character is in the manager's cache
         if not app.world_controller.character_manager.get_character(char.id):
             app.world_controller.character_manager.add_character(char)
         app.world_controller.character_manager.assign_character_to_player(player.id, char.id)
+        print("Character assigned to player")
         
         # Rest of the response...
         response = make_response("""
@@ -1558,6 +1571,7 @@ def submit_character():
             )
         return response
     else:
+        print(f"Character creation failed: {result.get('errors')}")
         return render_template('partials/error_message.html', errors=result['errors']), 400
 
 @app.route('/character-creation/form')

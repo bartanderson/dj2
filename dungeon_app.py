@@ -1,5 +1,5 @@
 from flask import Flask, send_file, request, jsonify, session, g
-from core.dungeon_standalone import DungeonSystem
+from core.dungeon import DungeonSystem
 from dungeon_neo.test_campaign import TestCampaign
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -10,12 +10,12 @@ import logging
 DUNGEON_CACHE = {}
 
 app = Flask(__name__)
-app.secret_key = 'standalone_secret_key'
+app.secret_key = 'dungeon_secret_key'
 app.campaign = TestCampaign()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('standalone_app')
+logger = logging.getLogger('dungeon_app')
 logger.setLevel(logging.ERROR)
 
 # ===== CORS CODE =====
@@ -80,7 +80,7 @@ def init_session_and_dungeon():
 
 @app.route('/')
 def index():
-    return send_file('templates\\dungeon_standalone.html')
+    return send_file('templates\\dungeon.html')
 
 @app.route('/dungeon-image')
 def dungeon_image():

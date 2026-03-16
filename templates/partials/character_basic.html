@@ -1,0 +1,9 @@
+<div class="character-basic">
+    <h2>{{ character.name }}</h2>
+    <p><strong>Race:</strong> {{ character.race }}</p>
+    <p><strong>Class:</strong> {{ character.classs.name if character.classs else 'Unknown' }}</p>
+    <p><strong>Level:</strong> {{ character.level }}</p>
+    <p><strong>HP:</strong> {{ character.hp }}/{{ character.max_hp }}</p>
+    <p><strong>SP:</strong> {{ character.sp }}/{{ character.max_sp }}</p>
+    <!-- add other fields as desired -->
+</div>

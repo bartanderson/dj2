@@ -39,14 +39,17 @@ class CharacterManager:
 
         player = self.world_controller.players.get(player_id) if self.world_controller else None
         if not player:
+            print(f"[DEBUG] assign_character_to_player: player_id={player_id}, character_id={character_id}")
             raise ValueError(f"Player {player_id} not found")
 
         # Ensure character has player_id set
         character.player_id = player_id
 
         # Update player's character list (avoid duplicates)
+        print(f"[DEBUG] assign: player {player.id} before append: {player.character_ids}")
         if character_id not in player.character_ids:
             player.character_ids.append(character_id)
+        print(f"[DEBUG] Player {player.id} character_ids after append: {player.character_ids}")
 
         # Set as active if none
         if not player.active_character_id:
@@ -57,6 +60,63 @@ class CharacterManager:
             self.world_controller._save_player_to_db(player)
 
         self._save_character_to_db(character)
+        print(f"[DEBUG] assign: player saved, attributes now: {player.attributes}")
+
+    def _load_character_from_db(self, character_id):
+        """Load a character from the database and cache it."""
+        from world.db import Database
+        import json
+        conn = Database.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, player_id, name, race, class, level, attributes, inventory, avatar_url,
+                           backstory, connections, secrets, vows
+                    FROM characters WHERE id = %s
+                """, (character_id,))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                
+                # Convert JSON fields
+                attributes = row[6] if row[6] else {}
+                inventory = row[7] if row[7] else []
+                backstory = row[9] if row[9] else {}
+                connections = row[10] if row[10] else []
+                secrets = row[11] if row[11] else []
+                vows = row[12] if row[12] else {}
+                
+                # Create a basic character object – you'll need to adjust to match your __init__
+                # This assumes you have a way to create a character from minimal data
+                from world.character import Character
+                char = Character(
+                    name=row[2],
+                    race=row[3],
+                    classs=row[4],      # class name (string)
+                    level=row[5],
+                    player_id=row[1],
+                    # Pass the already-parsed dicts
+                    backstory=backstory,
+                    connections=connections,
+                    secrets=secrets,
+                    vows=vows
+                )
+                # Override auto‑generated ID
+                char.id = row[0]
+                # Set other fields from JSON
+                char.attributes = attributes
+                char.inventory = inventory
+                # Set avatar_url if present
+                if row[8]:
+                    char.avatar_url = row[8]
+                # If there are other fields like hp, sp, they should be in attributes or recomputed
+                # For now, assume they are in attributes or you'll recompute later
+                
+                # Cache it
+                self.characters[char.id] = char
+                return char
+        finally:
+            Database.return_connection(conn)
 
     def load_characters_for_player(self, player_id: str) -> List[Character]:
         """Load all characters for a player from database"""
@@ -97,8 +157,14 @@ class CharacterManager:
             return True
         return False
 
-    def get_character(self, char_id: str) -> Optional[Character]:
-        return self.characters.get(char_id)
+    def get_character(self, character_id):
+        """Return character from cache or load from database."""
+        # Check cache first
+        if character_id in self.characters:
+            return self.characters[character_id]
+        
+        # Not in cache, try to load from database
+        return self._load_character_from_db(character_id)
 
     def get_player_characters(self, player_id: str) -> List[Character]:
         return [char for char in self.characters.values() if char.owner_id == player_id]

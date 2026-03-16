@@ -166,8 +166,45 @@ class WorldController:
         # Store quest archetypes for later generation
         self.quest_archetypes = campaign_data.get("quest_system", {}).get("quest_archetypes", {})
 
+        # Load player narrative framework
+        narrative_json = dnd_data._get_player_narrative_data()
+        print("[WorldController] narrative_json keys:", narrative_json.keys() if narrative_json else "None")
+        if narrative_json and narrative_json.get("player_narrative"):
+            self.narrative_framework = narrative_json.get("player_narrative")
+            print("[WorldController] self.narrative_framework keys:", self.narrative_framework.keys())
+        else:
+            print("[WorldController] No player_narrative found, using fallback")
+            self.narrative_framework = {
+                "backstory_framework": {
+                    "phases": [
+                        {
+                            "phase": "origin",
+                            "prompts": ["Where were you born?", "What was your family like?", "Why did you leave?"]
+                        },
+                        {
+                            "phase": "formative_wound",
+                            "prompts": ["What event changed you?", "Who was involved?", "What did you vow?"]
+                        },
+                        {
+                            "phase": "recent_history",
+                            "prompts": ["What were you doing 6 months ago?", "Who did you wrong?", "What opportunity did you seize?"]
+                        }
+                    ],
+                    "secret_generation": {
+                        "types": {
+                            "lineage": "secret lineage",
+                            "connection": "secret connection",
+                            "prophecy": "prophecy"
+                        },
+                        "revelation_triggers": [
+                            {"type": "random", "target": ""}
+                        ]
+                    }
+                }
+            }
 
-
+        # Now create narrative system (it will access self.narrative_framework)
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
 
         # Minimal world generation (placeholder)
         if not self.campaign_state.surface_regions:
@@ -816,6 +853,7 @@ class WorldController:
                     pid = str(row[0]) if isinstance(row[0], uuid.UUID) else row[0]
                     from world.player import Player
                     player = Player(id=pid, name=row[1], attributes=row[2])
+                    print(f"[DEBUG] get_player_by_id: loaded player {player.id} with character_ids = {player.character_ids}")
                     self.players[player.id] = player
                     return player
         finally:
@@ -823,12 +861,13 @@ class WorldController:
         return None
 
     def get_player_by_session(self, session_id):
-        # First check in‑memory mapping
+        print(f"get_player_by_session called with session_id: {session_id}")
         player_id = self.session_players.get(session_id)
+        print(f"  in-memory player_id: {player_id}")
         if player_id:
-            return self.players.get(player_id)
-        
-        # If not in memory, try to load from database
+            player = self.players.get(player_id)
+            print(f"  in-memory player: {player}")
+            return player
         from world.db import Database
         conn = Database.get_connection()
         try:
@@ -837,10 +876,13 @@ class WorldController:
                 row = cur.fetchone()
                 if row:
                     player_id = row[0]
-                    # Load the player (caches it)
-                    return self.get_player_by_id(player_id)
+                    print(f"  DB player_id: {player_id}")
+                    player = self.get_player_by_id(player_id)
+                    print(f"  DB player: {player}")
+                    return player
         finally:
             Database.return_connection(conn)
+        print("  no player found")
         return None
 
     # TODO: see if this is needed after inventory (og_system) is created

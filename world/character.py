@@ -322,66 +322,52 @@ class Character:
         if spell_name not in self.spells_known:
             self.spells_known.append(spell_name)
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize character to dictionary"""
+    def to_dict(self):
+        def _item_to_dict(item):
+            if hasattr(item, 'to_dict'):
+                return item.to_dict()
+            elif isinstance(item, dict):
+                return item
+            else:
+                return vars(item) if hasattr(item, '__dict__') else {'name': str(item)}
+
         return {
-            # Identity
             "id": self.id,
             "name": self.name,
             "race": self.race,
-            "class": self.classs.name if self.classs else "Unknown",
+            "class": self.classs.name if hasattr(self.classs, 'name') else str(self.classs),
             "level": self.level,
             "background": self.background,
-            "owner_id": self.owner_id,
-            
-            # OG System Attributes (0-4 scale)
-            "brawn": self.brawn,
-            "finesse": self.finesse,
-            "wits": self.wits,
-            "will": self.will,
-            
-            # Combat stats
+            "player_id": getattr(self, 'player_id', None),
+            "owner_id": getattr(self, 'owner_id', None),
+            "attributes": {
+                "brawn": self.brawn,
+                "finesse": self.finesse,
+                "wits": self.wits,
+                "will": self.will,
+            },
             "hp": self.hp,
             "max_hp": self.max_hp,
             "sp": self.sp,
             "max_sp": self.max_sp,
             "defense": self.defense,
+            "armor": self.armor,
             "damage_reduction": self.damage_reduction,
-            "initiative": self.initiative,
-            
-            # Equipment
-            "inventory": [{"name": i.name, "description": i.description, 
-                          "quantity": i.quantity, "type": i.type,
-                          "equipped": i.equipped, "slot": i.slot} 
-                         for i in self.inventory],
-            "weapons": [{"name": w.name, "description": w.description} for w in self.weapons],
-            "shield": {"name": self.shield.name} if self.shield else None,
-            "armor": {"name": self.equipped_gear.get("armor", {}).name} if "armor" in self.equipped_gear else None,
-            
-            # Skills and spells
             "skills": self.skills,
+            "inventory": [_item_to_dict(i) for i in self.inventory],
             "spells_known": self.spells_known,
-            
-            # AI-generated content
-            "ai_personality": self.ai_personality,
-            "full_background_story": self.full_background_story,
-            "custom_items": [{"name": i.name, "description": i.description} 
-                             for i in self.custom_items],
-            
-            # Session/party
-            "party_id": self.party_id,
-            "position": self.position,
-            "avatar_url": self.avatar_url,
-            "token": self.token,
-            "active": self.active,
-            "locked_by": self.locked_by,
-            
-            # Details
             "age": self.age,
             "gender": self.gender,
             "description": self.description,
             "alignment": self.alignment,
+            "avatar_url": self.avatar_url,
+            "position": self.position,
+            "party_id": self.party_id,
             "conditions": self.conditions,
+            "backstory": self.backstory,
+            "connections": self.connections,
+            "secrets": self.secrets,
+            "vows": self.vows,
         }
     
     @classmethod

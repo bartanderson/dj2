@@ -66,6 +66,13 @@ class Dialog:
         else:
             return f"{self.speaker}: {self.content}"
 
+    def to_dict(self):
+        return {
+            "speaker": self.speaker,
+            "content": self.content,
+            "type": self.dialog_type
+        }
+
 class PlayerAction: # legacy and will be refactored.
     def __init__(self, player_id: str, character_name: str, action_description: str, 
                  intended_outcome: str = "", is_creative: bool = False):

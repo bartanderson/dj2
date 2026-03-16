@@ -12,6 +12,9 @@
         // Suppress logging
         htmx.logger = function() {};  // empty function silences logs
     </script>
+    <script>
+        window.playerLoggedIn = {{ 'true' if player_logged_in else 'false' }};
+    </script>
     <style>
         /* Mode-based visibility */
         body[data-mode="world"] .world-only {
@@ -357,21 +360,28 @@ document.addEventListener('DOMContentLoaded', checkMode);
         
         /* ===== MODAL SYSTEM ===== */
         .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85); z-index: 9998;
-            display: none; opacity: 0; transition: opacity 0.3s ease;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8);
+            z-index: 1000; display: none; justify-content: center; align-items: center;
         }
         .modal-overlay.active { display: block; opacity: 1; }
         
         .modal-content {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95); border: 2px solid #4ecca3; border-radius: 10px;
-            width: 90%; max-width: 600px; max-height: 85vh; z-index: 9999;
-            display: flex; flex-direction: column;
+            background: #1a1a2e; border: 2px solid #4ecca3; border-radius: 8px; padding: 20px;
+            max-width: 500px; width: 90%; color: white;
         }
-        .modal-header {
-            padding: 20px; background: #4ecca3; color: #232931;
-            border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;
+        .modal-header h2 {
+            margin: 0 0 15px 0;
+            color: #4ecca3;
+        }
+        .modal-body input { background: #0f0f1a; border: 1px solid #4ecca3; color: white;
+            padding: 8px; border-radius: 4px;
+        }
+        .modal-body button {
+            background: #4ecca3; color: #232931; border: none; padding: 10px; border-radius: 4px; cursor: pointer;
+        }
+        .modal-body button.secondary {
+            background: #2c3e50;
+            color: white;
         }
         .modal-header h2 { margin: 0; font-size: 1.5rem; }
         .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #232931; }
@@ -616,33 +626,44 @@ document.addEventListener('DOMContentLoaded', checkMode);
             
             <!-- Character Tab -->
             <div id="character-tab" class="tab-content">
-                <!-- Main creation form container -->
-                <div id="creation-form-container"
-                     hx-get="/character-creation/form"
-                     hx-trigger="load"
-                     hx-target="this"
-                     hx-indicator="#loading">
-                    Loading character creation...
-                </div>
-
-                <!-- Help chat panel (initially hidden) -->
-                <div id="help-chat-panel" style="display:none; margin-top:20px;">
-                    <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
-                    <form hx-post="/character-creation/help" 
-                          hx-target="#chat-messages" 
-                          hx-swap="beforeend"
-                          hx-indicator="#chat-indicator">
-                        <input type="text" name="question" placeholder="Ask a question..." required>
-                        <button type="submit">Send</button>
-                        <span id="chat-indicator" class="htmx-indicator">Thinking...</span>
-                    </form>
-                </div>
-
-                <!-- Button to toggle help chat -->
-                <button onclick="document.getElementById('help-chat-panel').style.display = 'block';">Need Help?</button>
-
-                <!-- Loading indicator -->
-                <div id="loading" class="htmx-indicator" style="display:none;">Loading...</div>
+                {% if active_character_id %}
+                    <div id="character-basic"
+                         hx-get="/character/{{ active_character_id }}/basic"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-swap="innerHTML">
+                        Loading character info...
+                    </div>
+                    <div id="character-narrative"
+                         hx-get="/character/{{ active_character_id }}/narrative"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-swap="innerHTML">
+                        Loading narrative...
+                    </div>
+                {% else %}
+                    <!-- Character creation form (existing) -->
+                    <div id="creation-form-container"
+                         hx-get="/character-creation/form"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-indicator="#loading">
+                        Loading character creation...
+                    </div>
+                    <!-- Help chat panel (optional) -->
+                    <div id="help-chat-panel" style="display:none; margin-top:20px;">
+                        <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
+                        <form hx-post="/character-creation/help" 
+                              hx-target="#chat-messages" 
+                              hx-swap="beforeend"
+                              hx-indicator="#chat-indicator">
+                            <input type="text" name="question" placeholder="Ask a question..." required>
+                            <button type="submit">Send</button>
+                            <span id="chat-indicator" class="htmx-indicator">Thinking...</span>
+                        </form>
+                    </div>
+                    <button onclick="document.getElementById('help-chat-panel').style.display = 'block';">Need Help?</button>
+                {% endif %}
             </div>
             
             <!-- Party Tab -->
@@ -1397,6 +1418,117 @@ document.addEventListener('DOMContentLoaded', checkMode);
             }
         };
     });
+    </script>
+    <!-- Player Selection Modal -->
+    <div id="player-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h2>Who are you?</h2>
+            </div>
+            <div class="modal-body">
+                <div id="player-list"></div>
+                <hr>
+                <h3>New Player</h3>
+                <input type="text" id="new-player-name" placeholder="Enter your name" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                <button id="create-player-btn" class="btn" style="width: 100%;">Create New Player</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function() {
+        console.log('Modal script loaded');
+        const modal = document.getElementById('player-modal');
+        if (!modal) {
+            console.error('Modal not found');
+            return;
+        }
+
+        // // Show modal if no session cookie
+        // if (!document.cookie.includes('session_id=')) {
+        //     modal.style.display = 'block';
+        //     loadPlayers();
+        // }
+        // Show modal if no player is logged in (as indicated by server)
+        if (!window.playerLoggedIn) {
+            modal.style.display = 'block';
+            loadPlayers();
+        }
+
+        function loadPlayers() {
+            fetch('/api/players')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('player-list');
+                    if (!list) return;
+                    let html = '<h3>Existing Players</h3><ul style="list-style: none; padding: 0;">';
+                    if (data.players.length === 0) {
+                        html += '<li>No existing players</li>';
+                    } else {
+                        data.players.forEach(p => {
+                            html += `<li style="margin: 5px 0;">
+                                <button class="player-select-btn" data-id="${p.id}" style="width: 100%; padding: 8px; background: #2c3e50; color: white; border: 1px solid #4ecca3; border-radius: 4px; cursor: pointer;">${p.name}</button>
+                            </li>`;
+                        });
+                    }
+                    html += '</ul>';
+                    list.innerHTML = html;
+
+                    // Attach direct listeners to each button
+                    document.querySelectorAll('.player-select-btn').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const playerId = this.dataset.id;
+                            console.log('Player button clicked:', playerId);
+                            fetch('/api/select-player', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({player_id: playerId})
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                console.log('Select response:', data);
+                                if (data.success) {
+                                    modal.style.display = 'none';
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + JSON.stringify(data));
+                                }
+                            })
+                            .catch(err => console.error('Fetch error:', err));
+                        });
+                    });
+                })
+                .catch(err => console.error('Failed to load players:', err));
+        }
+
+        // Create player button
+        const createBtn = document.getElementById('create-player-btn');
+        if (createBtn) {
+            createBtn.addEventListener('click', function() {
+                const name = document.getElementById('new-player-name').value.trim();
+                if (!name) {
+                    alert('Please enter a name');
+                    return;
+                }
+                fetch('/api/create-player', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    console.log('Create response:', data);
+                    if (data.success) {
+                        modal.style.display = 'none';
+                        location.reload();
+                    } else {
+                        alert('Error: ' + JSON.stringify(data));
+                    }
+                })
+                .catch(err => console.error('Create error:', err));
+            });
+        }
+    })();
     </script>
 </body>
 </html>
