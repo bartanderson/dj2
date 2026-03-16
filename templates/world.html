@@ -627,6 +627,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
             <!-- Character Tab -->
             <div id="character-tab" class="tab-content">
                 {% if active_character_id %}
+                    <!-- Character info and narrative (hidden during backstory) -->
                     <div id="character-basic"
                          hx-get="/character/{{ active_character_id }}/basic"
                          hx-trigger="load"
@@ -641,8 +642,17 @@ document.addEventListener('DOMContentLoaded', checkMode);
                          hx-swap="innerHTML">
                         Loading narrative...
                     </div>
+
+                    <!-- Backstory chat container (hidden by default) -->
+                    <div id="backstory-chat" style="display: none;">
+                        <div id="chat-messages" style="height: 300px; overflow-y: auto; border: 1px solid #4ecca3; padding: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.5);"></div>
+                        <form id="backstory-form" style="display: flex; gap: 10px;">
+                            <input type="text" id="backstory-input" placeholder="Your response..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
+                            <button type="submit" class="btn">Send</button>
+                        </form>
+                    </div>
                 {% else %}
-                    <!-- Character creation form (existing) -->
+                    <!-- Character creation form (unchanged) -->
                     <div id="creation-form-container"
                          hx-get="/character-creation/form"
                          hx-trigger="load"
@@ -650,7 +660,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
                          hx-indicator="#loading">
                         Loading character creation...
                     </div>
-                    <!-- Help chat panel (optional) -->
+                    <!-- help chat panel (optional) -->
                     <div id="help-chat-panel" style="display:none; margin-top:20px;">
                         <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
                         <form hx-post="/character-creation/help" 
@@ -1527,6 +1537,110 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 })
                 .catch(err => console.error('Create error:', err));
             });
+        }
+    })();
+    </script>
+    <script>
+    (function() {
+        // When "Develop Backstory" is clicked
+        document.body.addEventListener('click', function(e) {
+            const btn = e.target.closest('[hx-post*="/start-backstory"]');
+            if (btn) {
+                e.preventDefault();
+                const url = btn.getAttribute('hx-post');
+                const characterId = url.split('/')[2]; // extract ID
+                startBackstory(characterId);
+            }
+        });
+
+        function startBackstory(characterId) {
+            // Hide the narrative div, show chat
+            document.getElementById('character-narrative').style.display = 'none';
+            const chatDiv = document.getElementById('backstory-chat');
+            chatDiv.style.display = 'block';
+            const messagesDiv = document.getElementById('chat-messages');
+            messagesDiv.innerHTML = ''; // clear previous
+
+            // Fetch the first prompt
+            fetch(`/character/${characterId}/start-backstory`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    addMessage(data.speaker, data.content);
+                    // Store characterId for later sends
+                    chatDiv.dataset.characterId = characterId;
+                });
+        }
+
+        // Handle chat form submission
+        document.getElementById('backstory-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('backstory-input');
+            const message = input.value.trim();
+            if (!message) return;
+            input.value = '';
+
+            const chatDiv = document.getElementById('backstory-chat');
+            const characterId = chatDiv.dataset.characterId;
+            addMessage('You', message);
+
+            fetch(`/character/${characterId}/backstory-continue`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Display each response
+                data.responses.forEach(r => addMessage(r.speaker, r.content));
+
+                // Check if we need to auto‑continue to secret generation
+                const lastResponse = data.responses[data.responses.length - 1];
+                if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
+                    // Automatically send empty message to trigger secrets
+                    fetch(`/character/${characterId}/backstory-continue`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: ''})
+                    })
+                    .then(r => r.json())
+                    .then(finalData => {
+                        finalData.responses.forEach(r => addMessage(r.speaker, r.content));
+                        if (finalData.new_state === null) {
+                            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                                .then(() => {
+                                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                                    document.getElementById('backstory-chat').style.display = 'none';
+                                    document.getElementById('character-narrative').style.display = 'block';
+                                });
+                        }
+                    });
+                    return; // stop further processing in this handler
+                }
+
+                // If session ended, reload narrative
+                if (data.new_state === null) {
+                    // Build connections automatically
+                    fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                        .then(() => {
+                            // Reload narrative partial
+                            htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                            // Hide chat, show narrative
+                            document.getElementById('backstory-chat').style.display = 'none';
+                            document.getElementById('character-narrative').style.display = 'block';
+                        });
+                }
+            });
+        });
+
+        function addMessage(speaker, text) {
+            const msgDiv = document.createElement('div');
+            msgDiv.style.marginBottom = '8px';
+            msgDiv.style.padding = '5px';
+            msgDiv.style.borderRadius = '4px';
+            msgDiv.style.backgroundColor = speaker === 'DM' ? 'rgba(78, 204, 163, 0.2)' : 'rgba(255,255,255,0.1)';
+            msgDiv.innerHTML = `<strong>${speaker}:</strong> ${text}`;
+            document.getElementById('chat-messages').appendChild(msgDiv);
+            msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     })();
     </script>
