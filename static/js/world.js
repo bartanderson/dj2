@@ -140,6 +140,7 @@ function drawPaths(ctx, connections, locations) {
 
 // Function to draw location markers
 function drawLocations(ctx, locations, scale) {
+    console.error('drawLocations called with', locations.length, 'locations');
     // Clear previous locations for hit detection
     window.worldState.locations = [];
     
@@ -249,7 +250,7 @@ function renderWorldMap(worldMap) {
         window.initialPanY = panY;
         window.mapInitialized = true;
         updateMapTransform();
-        clampPan();
+        //clampPan();
         updateDebugOverlay();
     }
     // Get canvas context
@@ -372,6 +373,11 @@ function renderWorldMap(worldMap) {
 
     // Draw the paths for discovered connections
     drawPaths(ctx, discoveredConnections, worldMap.locations || []);
+
+    console.error('discoveredLocations count:', discoveredLocations.length);
+    if (discoveredLocations.length > 0) {
+        console.error('first discovered location id:', discoveredLocations[0].id);
+    }
 
     // Place the locations on top of the paths and terrain
     drawLocations(ctx, discoveredLocations, worldMap);
