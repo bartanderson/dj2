@@ -139,26 +139,28 @@ function drawPaths(ctx, connections, locations) {
 }
 
 // Function to draw location markers
-function drawLocations(ctx, locations) {
-    // Clear previous locations
+function drawLocations(ctx, locations, scale) {
+    // Clear previous locations for hit detection
     window.worldState.locations = [];
     
+    const screenRadius = 125; // desired size in screen pixels (adjust to taste)
+    const worldRadius = screenRadius / scale; // convert to world units
+    
     locations.forEach(loc => {
-        // Draw outer circle
         ctx.fillStyle = 'red';
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
         
         ctx.beginPath();
-        ctx.arc(loc.x, loc.y, 10, 0, Math.PI * 2);
+        ctx.arc(loc.x, loc.y, worldRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         
-        // Store location data for hit detection
+        // Store for hit detection (use same worldRadius)
         window.worldState.locations.push({
             x: loc.x,
             y: loc.y,
-            radius: 10,
+            radius: worldRadius,
             id: loc.id,
             data: loc
         });
@@ -166,8 +168,8 @@ function drawLocations(ctx, locations) {
 }
 
 function drawHexagon(ctx, cx, cy, size, color) {
-    size = size * 1.1;
-    hexScale = .83;  // note: this overwrites a global variable – we'll fix it
+    size = size * 1.18; // in case we want to adjust width vs height
+    hexScale = .83; // set to 1 for no scaling was .83; In case we want to scale later
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
         let angle = i * Math.PI / 3; // pointy-top
@@ -178,7 +180,7 @@ function drawHexagon(ctx, cx, cy, size, color) {
     }
     ctx.closePath();
     ctx.strokeStyle = color;
-    ctx.lineWidth = .5;
+    ctx.lineWidth = 1;
     ctx.stroke();
 }
 
@@ -220,9 +222,36 @@ function renderWorldMap(worldMap) {
     }
     
     // Set canvas size to match container (fixes blurriness)
-    terrainCanvas.width = container.clientWidth;
-    terrainCanvas.height = container.clientHeight;
-    
+    terrainCanvas.width = worldMap.width; //container.clientWidth;
+    terrainCanvas.height = worldMap.height; //container.clientHeight;
+
+    console.log('mapInitialized:', window.mapInitialized);
+    console.log('worldMap.width:', worldMap.width);
+
+    // --- INITIAL VIEW SETUP (run only once) ---
+    if (!window.mapInitialized) {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const fitScale = Math.min(viewportWidth / worldMap.width, viewportHeight / worldMap.height);
+        scale = fitScale * 3; // adjust multiplier as desired
+        const startLoc = window.worldState?.currentLocation;
+        if (startLoc && startLoc.x !== undefined && startLoc.y !== undefined) {
+            panX = viewportWidth / 2 - startLoc.x * scale;
+            panY = viewportHeight / 2 - startLoc.y * scale;
+        } else {
+            panX = (viewportWidth - worldMap.width * scale) / 2;
+            panY = (viewportHeight - worldMap.height * scale) / 2;
+        }
+        console.error('startLoc:', startLoc);
+        console.error('Computed panX:', panX, 'panY:', panY);
+        window.initialScale = scale;
+        window.initialPanX = panX;
+        window.initialPanY = panY;
+        window.mapInitialized = true;
+        updateMapTransform();
+        clampPan();
+        updateDebugOverlay();
+    }
     // Get canvas context
     const ctx = terrainCanvas.getContext('2d');
     
@@ -239,7 +268,7 @@ function renderWorldMap(worldMap) {
     try {
         // Generate and render terrain if TerrainGenerator is available
         if (typeof TerrainGenerator !== 'undefined') {
-            const terrainGen = new TerrainGenerator(seed, container.clientWidth, container.clientHeight);
+            const terrainGen = new TerrainGenerator(seed, mycanvas.width, mycanvas.height); //container.clientWidth, container.clientHeight);
             const heightmap = terrainGen.generateHeightmap();
             const terrain = terrainGen.generateTerrain(heightmap);
             
@@ -251,8 +280,8 @@ function renderWorldMap(worldMap) {
             
             // Render hex grid if available
             if (typeof HexGridRenderer !== 'undefined') {
-                const gridRenderer = new HexGridRenderer(container.clientWidth, container.clientHeight);
-                gridRenderer.renderGrid('terrain-canvas');
+                // const gridRenderer = new HexGridRenderer(container.clientWidth, container.clientHeight);
+                // gridRenderer.renderGrid('terrain-canvas');
             }
         } else {
             console.warn('TerrainGenerator not found - drawing basic grid');
@@ -291,18 +320,61 @@ function renderWorldMap(worldMap) {
 
     // Draw hex outlines
     if (worldMap.hexes && worldMap.hexes.length > 0) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
         ctx.lineWidth = 1;
         worldMap.hexes.forEach(hex => {
             drawHexagon(ctx, hex.x, hex.y, 30, ctx.strokeStyle);
         });
     }
 
+    // ---- DEBUG: Draw world boundaries ----/////////////////////
+    ctx.save();
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(worldMap.width, 0);
+    ctx.lineTo(worldMap.width, worldMap.height);
+    ctx.lineTo(0, worldMap.height);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw hex extent lines
+    if (worldMap.hexes && worldMap.hexes.length > 0) {
+        const xs = worldMap.hexes.map(h => h.x);
+        const ys = worldMap.hexes.map(h => h.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+
+        ctx.strokeStyle = 'cyan';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(minX, minY);
+        ctx.lineTo(maxX, minY);
+        ctx.lineTo(maxX, maxY);
+        ctx.lineTo(minX, maxY);
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    // // Mark start location
+    // const startLoc = window.worldState?.currentLocation;
+    // if (startLoc) {
+    //     ctx.fillStyle = 'lime';
+    //     ctx.beginPath();
+    //     ctx.arc(startLoc.x, startLoc.y, 15, 0, 2*Math.PI);
+    //     ctx.fill();
+    // }
+    // ctx.restore();
+    ////////////////////////////////////////////////////////////
+
     // Draw the paths for discovered connections
     drawPaths(ctx, discoveredConnections, worldMap.locations || []);
 
     // Place the locations on top of the paths and terrain
-    drawLocations(ctx, discoveredLocations);
+    drawLocations(ctx, discoveredLocations, worldMap);
     
     // Apply initial transform
     updateMapTransform();
@@ -315,6 +387,10 @@ function renderWorldMap(worldMap) {
 
 // ===== MAP CONTROLS =====
 function updateMapTransform() {
+    console.error('updateMapTransform: scale=', scale, 'pan=', panX, panY);
+    if (panX === 0 && panY === 0 && scale === 0.6509316770186335) {
+        console.trace('Pan reset to zero');
+    }
     const terrainCanvas = document.getElementById('terrain-canvas');
     if (terrainCanvas) {
         const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
@@ -326,6 +402,7 @@ function zoomIn() {
     if (scale < maxScale) {
         scale += 0.25;
         updateMapTransform();
+        clampPan();
     }
 }
 
@@ -333,10 +410,12 @@ function zoomOut() {
     if (scale > minScale) {
         scale -= 0.25;
         updateMapTransform();
+        clampPan();
     }
 }
 
 function centerMap() {
+    console.trace('centerMap called');
     scale = 1;
     panX = 0;
     panY = 0;
@@ -344,7 +423,17 @@ function centerMap() {
 }
 
 function resetMapView() {
-    centerMap();
+    console.trace('resetMapView called');
+    if (window.initialScale !== undefined) {
+        scale = window.initialScale;
+        panX = window.initialPanX;
+        panY = window.initialPanY;
+        updateMapTransform();
+        clampPan();
+        updateDebugOverlay();
+    } else {
+        centerMap();
+    }
 }
 
 // ===== TRAVEL FUNCTIONS =====
@@ -594,6 +683,26 @@ function initPanFunctionality() {
     terrainCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+function clampPan() {
+    const canvas = document.getElementById('terrain-canvas');
+    if (!canvas || !window.worldState?.worldMap) return;
+    const worldMap = window.worldState.worldMap;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const displayedWidth = worldMap.width * scale;
+    const displayedHeight = worldMap.height * scale;
+    
+    // Restrict pan so the canvas always stays within the viewport
+    const minPanX = Math.min(0, viewportWidth - displayedWidth);
+    const maxPanX = 0;
+    const minPanY = Math.min(0, viewportHeight - displayedHeight);
+    const maxPanY = 0;
+    
+    panX = Math.max(minPanX, Math.min(maxPanX, panX));
+    panY = Math.max(minPanY, Math.min(maxPanY, panY));
+    updateMapTransform();
+}
+
 function startDragging(e) {
     if (e.button !== 0) return;
     
@@ -621,6 +730,7 @@ function whileDragging(e) {
     panY = initialPanY + dy;
     
     updateMapTransform();
+    clampPan();
     e.preventDefault();
 }
 
@@ -657,6 +767,7 @@ function handleTouchMove(e) {
     panY = initialPanY + dy;
     
     updateMapTransform();
+    clampPan();
     e.preventDefault();
 }
 
@@ -835,6 +946,37 @@ window.updateStatusPanel = function() {
     }
 };
 
+function updateDebugOverlay() {
+    const overlay = document.getElementById('debug-overlay');
+    if (!overlay) return;
+    if (overlay.style.display === 'none') return; // only update if visible
+
+    const canvas = document.getElementById('terrain-canvas');
+    if (!canvas || !window.worldState?.worldMap) return;
+
+    const worldMap = window.worldState.worldMap;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const worldWidth = worldMap.width;
+    const worldHeight = worldMap.height;
+
+    document.getElementById('debug-world').textContent = `${Math.round(worldWidth)} x ${Math.round(worldHeight)}`;
+    document.getElementById('debug-viewport').textContent = `${viewportWidth} x ${viewportHeight}`;
+    document.getElementById('debug-scale').textContent = scale.toFixed(3);
+    document.getElementById('debug-pan').textContent = `${panX.toFixed(1)}, ${panY.toFixed(1)}`;
+
+    // Compute visible world coordinates
+    const leftWorld = -panX / scale;
+    const topWorld = -panY / scale;
+    const rightWorld = leftWorld + viewportWidth / scale;
+    const bottomWorld = topWorld + viewportHeight / scale;
+    document.getElementById('debug-visible').textContent = `${leftWorld.toFixed(0)}-${rightWorld.toFixed(0)}, ${topWorld.toFixed(0)}-${bottomWorld.toFixed(0)}`;
+
+    // Fit scale
+    const fitScale = Math.min(viewportWidth / worldWidth, viewportHeight / worldHeight);
+    document.getElementById('debug-fitscale').textContent = fitScale.toFixed(3);
+}
+
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log('world.js initialized');
@@ -857,6 +999,16 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
     
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'd' || e.key === 'D') {
+            const overlay = document.getElementById('debug-overlay');
+            if (overlay) {
+                overlay.style.display = overlay.style.display === 'none' ? 'block' : 'none';
+                if (overlay.style.display === 'block') updateDebugOverlay();
+            }
+        }
+    });
+
     // Set up map interactions
     initPanFunctionality();
     

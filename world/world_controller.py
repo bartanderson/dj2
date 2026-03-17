@@ -305,11 +305,13 @@ class WorldController:
         world_gen = self.campaign_data.get("world_generation", {})
         surface = world_gen.get("world_layers", {}).get("surface", {})
         hex_grid_params = surface.get("hex_grid", {})
+        print(f"Hex grid size from JSON: {hex_grid_params.get('size')}")
         size_str = hex_grid_params.get("size", "50x50")
         try:
             w, h = map(int, size_str.split('x'))
         except:
             w, h = 50, 50
+        print(f"Width: { w }, Height: { h }")
         self.campaign_state.grid_width = w
         self.campaign_state.grid_height = h
         self.campaign_state.hex_size = 60  # could also come from JSON
@@ -475,6 +477,7 @@ class WorldController:
                 }
 
         print(f"[WORLD] Generated {len(regions)} regions, {len(self.campaign_state.potential_locations)} potential locations")
+        print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
 
     def _terrain_danger(self, terrain: str) -> int:
         """Return danger level (1-5) for a given terrain type."""
@@ -773,20 +776,28 @@ class WorldController:
 
         seed = getattr(self, 'seed', 42)
         connections = self.map_utils.get_connections(self.world_map)
+        hexes = getattr(self.campaign_state, 'hex_grid', [])
+        if hexes:
+            world_width = max(h['x'] for h in hexes) + self.campaign_state.hex_size
+            world_height = max(h['y'] for h in hexes) + self.campaign_state.hex_size
+        else:
+            world_width, world_height = 1000, 800
+            print(f"DEBUG Don't want to see this: hexes length in get_map_data = {len(hexes)}")
 
         # Build the base map data as before
         map_data = {
-            "width": 1000,
-            "height": 800,
+            "width": world_width,
+            "height": world_height,
             "connections": connections,
             "locations": locations,
             "currentLocation": self.world_map.current_location_id,
+            "hexes": hexes,
             "paths": self.paths,
             "terrainColors": self.terrain_generator.get_terrain_colors(),
             "generation": {
                 "seed": seed,
-                "width": 1000,
-                "height": 800
+                "width": world_width,
+                "height": world_height
             },
             "fog_of_war": self.fog_of_war,
             "starting_location": self.starting_location_id,
@@ -806,7 +817,6 @@ class WorldController:
             for pid, p in self.campaign_state.potential_locations.items()
             if pid not in self.world_map.locations
         ]
-
         return map_data
 
     def get_current_location_data(self) -> dict:
