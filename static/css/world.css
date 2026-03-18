@@ -72,14 +72,6 @@
     z-index: 1001;
 }
 
-/* Adjust terrain canvas and overlay */
-#terrain-canvas {
-    width: 100% !important;
-    height: 100% !important;
-    position: absolute;
-    z-index: 0;
-}
-
 .header-controls {
     display: flex;
     align-items: center;
