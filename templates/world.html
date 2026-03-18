@@ -450,20 +450,23 @@ document.addEventListener('DOMContentLoaded', checkMode);
         .tab-content.active { display: block; }
         
         /* ===== MAP TAB ===== */
-        .map-container { width: 100%; height: 100%; background: #0a1729; position: relative; overflow: hidden; min-height: 600px;}
         #world-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #terrain-canvas { position: fixed; top: 0; left: 0; z-index: 0; cursor: grab; background: #0a1729; /* fallback */}
-        #terrain-canvas:active { cursor: grabbing; }
-        
-        .map-controls {
-            position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10;
+        #terrain-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            cursor: grab;
+            background: #0a1729;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
+            -webkit-touch-callout: none;
         }
-        .map-btn {
-            width: 45px; height: 45px; border-radius: 50%; background: rgba(0, 0, 0, 0.7);
-            color: white; display: flex; align-items: center; justify-content: center;
-            cursor: pointer; border: 1px solid #4ecca3; transition: all 0.3s ease; font-size: 1.2rem;
+        #terrain-canvas:active {
+            cursor: grabbing;
         }
-        .map-btn:hover { background: rgba(78, 204, 163, 0.3); transform: scale(1.1); }
         
         /* ===== OTHER TABS ===== */
         .tab-panel { background: rgba(0, 0, 0, 0.4); border-radius: 8px; padding: 20px; height: 100%; border: 1px solid #3a5f85; }
@@ -613,13 +616,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
             <div id="map-tab" class="tab-content active">
                 <div class="map-container">
                     <div id="world-map">
-                        <canvas id="terrain-canvas"></canvas>
-                        <div class="map-controls">
-                            <button class="map-btn" id="zoom-in" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
-                            <button class="map-btn" id="zoom-out" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
-                            <button class="map-btn" id="center-map" title="Center"><i class="fa-solid fa-crosshairs"></i></button>
-                            <button class="map-btn" id="reset-view" title="Reset"><i class="fa-solid fa-home"></i></button>
-                        </div>
+                        <canvas id="terrain-canvas" draggable="false"></canvas>
                     </div>
                 </div>
             </div>
@@ -1306,15 +1303,15 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 tabContents.forEach(content => content.classList.remove('active'));
                 document.getElementById(tabId).classList.add('active');
                 
-                // Refresh map if switching to map tab
+                // redraw map if switching to map tab
                 if (tabId === 'map-tab' && window.worldState && window.worldState.worldMap) {
                     setTimeout(() => {
-                        if (typeof renderWorldMap === 'function') {
-                            renderWorldMap(window.worldState.worldMap);
+                        if (typeof redraw === 'function') {
+                            redraw();
                         }
                     }, 100);
                 }
-                
+                                
                 // Populate tab content
                 if (tabId === 'inventory-tab' && typeof populateInventoryPanel === 'function') {
                     populateInventoryPanel();
@@ -1644,14 +1641,5 @@ document.addEventListener('DOMContentLoaded', checkMode);
         }
     })();
     </script>
-    <!-- Debug Overlay (hidden by default) -->
-    <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">
-        <div>World: <span id="debug-world">0 x 0</span></div>
-        <div>Viewport: <span id="debug-viewport">0 x 0</span></div>
-        <div>Scale: <span id="debug-scale">1.00</span></div>
-        <div>Pan: <span id="debug-pan">0, 0</span></div>
-        <div>Visible: <span id="debug-visible">0-0, 0-0</span></div>
-        <div>Fit scale: <span id="debug-fitscale">0.00</span></div>
-    </div>
 </body>
 </html>

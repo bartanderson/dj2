@@ -8,6 +8,7 @@ let worldState = {
     characters: {},
     parties: []
 };
+let terrainImage = null; // will hold the terrain as an Image or offscreen canvas
 
 // ===== LOCATION PREVIEW =====
 class LocationPreview {
@@ -143,6 +144,59 @@ function drawHexagon(ctx, cx, cy, size, color) {
     ctx.stroke();
 }
 
+function generateTerrainImage() {
+    if (!worldMap) return;
+
+    // Create a temporary canvas that will be placed off‑screen but still visible to layout
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = worldMap.width;
+    tempCanvas.height = worldMap.height;
+    // Set CSS size to match so that getBoundingClientRect() returns world dimensions
+    tempCanvas.style.width = worldMap.width + 'px';
+    tempCanvas.style.height = worldMap.height + 'px';
+    tempCanvas.style.position = 'absolute';
+    tempCanvas.style.left = '-9999px';
+    tempCanvas.style.top = '-9999px';
+    // Give it a unique ID for renderTerrain
+    const tempId = 'temp-terrain-' + Date.now();
+    tempCanvas.id = tempId;
+    document.body.appendChild(tempCanvas);
+
+    // Default background (in case terrain generation fails)
+    const ctx = tempCanvas.getContext('2d');
+    ctx.fillStyle = '#0a1729';
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    let generationSucceeded = false;
+    if (typeof TerrainGenerator !== 'undefined') {
+        try {
+            const terrainGen = new TerrainGenerator(worldMap.seed || 42, worldMap.width, worldMap.height);
+            const heightmap = terrainGen.generateHeightmap();
+            const terrain = terrainGen.generateTerrain(heightmap);
+            // Render to the temporary canvas using its ID
+            terrainGen.renderTerrain(terrain, tempId);
+            generationSucceeded = true;
+        } catch (e) {
+            console.error('Terrain generation failed:', e);
+        }
+    } else {
+        console.warn('TerrainGenerator not available');
+    }
+
+    // Create an offscreen canvas and copy the result
+    const offscreen = document.createElement('canvas');
+    offscreen.width = worldMap.width;
+    offscreen.height = worldMap.height;
+    const offCtx = offscreen.getContext('2d');
+    offCtx.drawImage(tempCanvas, 0, 0);
+
+    // Remove the temporary canvas
+    document.body.removeChild(tempCanvas);
+
+    terrainImage = offscreen;
+    //console.log('Terrain image cached, size:', offscreen.width, 'x', offscreen.height);
+}
+
 // ===== MINIMAL MAP =====
 let worldMap = null;
 let offsetX = 0, offsetY = 0;   // pan offset (world units)
@@ -155,9 +209,8 @@ function redraw() {
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
 
-    // Validate world dimensions
-    if (!worldMap.width || !worldMap.height || worldMap.width <= 0 || worldMap.height <= 0) {
-        console.warn('Invalid world dimensions, skipping redraw');
+    if (worldMap.width <= 0 || worldMap.height <= 0) {
+        console.error('Invalid world dimensions, cannot generate terrain');
         return;
     }
 
@@ -173,23 +226,16 @@ function redraw() {
     ctx.translate(-offsetX, -offsetY);
     ctx.scale(scale, scale);
 
-    // Terrain (if TerrainGenerator exists)
-    if (typeof TerrainGenerator !== 'undefined') {
-        try {
-            const terrainGen = new TerrainGenerator(worldMap.seed || 42, worldMap.width, worldMap.height);
-            const heightmap = terrainGen.generateHeightmap();
-            const terrain = terrainGen.generateTerrain(heightmap);
-            window.worldState.terrain = terrain;
-            terrainGen.renderTerrain(terrain, 'terrain-canvas');
-        } catch (e) {
-            console.error('Terrain rendering failed, drawing fallback grid', e);
-            drawFallbackGrid(ctx);
-        }
+    // Draw cached terrain image (if available)
+    if (terrainImage) {
+        ctx.drawImage(terrainImage, 0, 0);
     } else {
-        drawFallbackGrid(ctx);
+        // fallback if not yet generated (shouldn't happen)
+        ctx.fillStyle = '#0a1729';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Hex outlines (if available)
+    // Hex outlines
     if (worldMap.hexes && worldMap.hexes.length > 0) {
         ctx.strokeStyle = 'rgba(0,0,0,0.3)';
         ctx.lineWidth = 1;
@@ -204,24 +250,6 @@ function redraw() {
     drawLocations(ctx, discoveredLocations, scale);
 
     ctx.restore();
-}
-
-function drawFallbackGrid(ctx) {
-    ctx.strokeStyle = '#1a2530';
-    ctx.lineWidth = 1;
-    const gridSize = 50;
-    for (let x = 0; x < worldMap.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, worldMap.height);
-        ctx.stroke();
-    }
-    for (let y = 0; y < worldMap.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(worldMap.width, y);
-        ctx.stroke();
-    }
 }
 
 // Pan limits (world units)
@@ -239,8 +267,8 @@ function clampOffsets() {
 // Initial view centered on start location
 function setInitialView() {
     if (!worldMap) return;
-    const startLoc = worldMap.currentLocation;
-    if (startLoc) {
+    const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
+    if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
         offsetX = startLoc.x - window.innerWidth / (2 * scale);
         offsetY = startLoc.y - window.innerHeight / (2 * scale);
     } else {
@@ -252,33 +280,6 @@ function setInitialView() {
 }
 
 // ===== EVENT HANDLERS =====
-function startDrag(e) {
-    if (e.button !== 0) return;
-    isDragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    startOffsetX = offsetX;
-    startOffsetY = offsetY;
-    document.getElementById('terrain-canvas').style.cursor = 'grabbing';
-    e.preventDefault();
-}
-
-function whileDrag(e) {
-    if (!isDragging) return;
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
-    offsetX = startOffsetX - dx / scale;
-    offsetY = startOffsetY - dy / scale;
-    clampOffsets();
-    redraw();
-    e.preventDefault();
-}
-
-function stopDrag() {
-    isDragging = false;
-    document.getElementById('terrain-canvas').style.cursor = 'grab';
-}
-
 function onWheel(e) {
     e.preventDefault();
     const zoomFactor = 1.1;
@@ -294,8 +295,8 @@ function onWheel(e) {
 }
 
 function onDoubleClick(e) {
-    if (!worldMap || !worldMap.currentLocation) return;
-    const loc = worldMap.currentLocation;
+    if (!worldMap || !window.worldState?.currentLocation) return;
+    const loc = window.worldState.currentLocation;
     offsetX = loc.x - window.innerWidth / (2 * scale);
     offsetY = loc.y - window.innerHeight / (2 * scale);
     clampOffsets();
@@ -324,6 +325,45 @@ function onMouseMove(e) {
             locationPreview.hide();
         }
     }
+}
+
+function onPointerDown(e) {
+    if (e.button !== 0) return; // primary button only
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    startOffsetX = offsetX;
+    startOffsetY = offsetY;
+    const canvas = document.getElementById('terrain-canvas');
+    canvas.style.cursor = 'grabbing';
+    canvas.setPointerCapture(e.pointerId);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    e.preventDefault();
+}
+
+function onPointerMove(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    offsetX = startOffsetX - dx / scale;
+    offsetY = startOffsetY - dy / scale;
+    clampOffsets();
+    redraw();
+    e.preventDefault();
+}
+
+function onPointerUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    const canvas = document.getElementById('terrain-canvas');
+    canvas.style.cursor = 'grab';
+    canvas.releasePointerCapture(e.pointerId);
+    canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerUp);
+    e.preventDefault();
 }
 
 // ===== TRAVEL FUNCTIONS =====
@@ -364,9 +404,26 @@ async function loadWorldData() {
             return;
         }
         let currentLocation = null;
-        if (data.currentLocation && data.currentLocation.id && data.worldMap.locations) {
-            currentLocation = data.worldMap.locations.find(loc => loc.id === data.currentLocation.id);
+        if (data.currentLocation && data.worldMap.locations) {
+            // If it's an ID string, find the location in the array
+            if (typeof data.currentLocation === 'string') {
+                currentLocation = data.worldMap.locations.find(loc => loc.id === data.currentLocation);
+            } 
+            // If it's an object with an id, find matching location (or use it directly if it has x,y)
+            else if (data.currentLocation.id) {
+                currentLocation = data.worldMap.locations.find(loc => loc.id === data.currentLocation.id);
+                // If not found, fallback to the object itself (maybe it already has x,y)
+                if (!currentLocation && data.currentLocation.x) {
+                    currentLocation = data.currentLocation;
+                }
+            }
+            // If it's already a full location object with x,y, use it directly
+            else if (data.currentLocation.x) {
+                currentLocation = data.currentLocation;
+            }
         }
+        // If we still don't have a valid location, set to null
+        worldState.currentLocation = currentLocation;
         worldState = {
             worldMap: data.worldMap,
             currentLocation: currentLocation,
@@ -377,7 +434,7 @@ async function loadWorldData() {
         window.worldState = worldState;
         worldMap = worldState.worldMap;
         setInitialView();
-        console.log('World data loaded:', worldState);
+        generateTerrainImage()
     } catch (error) {
         console.error('Error loading world data:', error);
         if (typeof showNotification === 'function') {
@@ -447,7 +504,6 @@ async function refreshWorldState() {
         }
         window.worldState = worldState;
         if (worldMap) redraw();
-        console.log('World state refreshed');
     } catch (error) {
         console.error('Error refreshing world state:', error);
         if (typeof showNotification === 'function') {
@@ -490,8 +546,6 @@ window.updateStatusPanel = function() {
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('world.js initialized');
-
     try {
         window.dmChat = typeof DMChat !== 'undefined' ? new DMChat() : { sendMessage(){}, receiveMessage(){} };
     } catch (e) {
@@ -502,27 +556,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvas = document.getElementById('terrain-canvas');
     if (canvas) {
         canvas.style.cursor = 'grab';
-        canvas.addEventListener('mousedown', startDrag);
-        canvas.addEventListener('mousemove', onMouseMove);
-        canvas.addEventListener('mousemove', whileDrag);
-        canvas.addEventListener('mouseup', stopDrag);
-        canvas.addEventListener('mouseleave', stopDrag);
+        canvas.addEventListener('pointerdown', onPointerDown);
         canvas.addEventListener('wheel', onWheel);
         canvas.addEventListener('dblclick', onDoubleClick);
+        canvas.addEventListener('dragstart', (e) => e.preventDefault()); // prevent native drag
     }
-
-    // Remove any old button listeners if present (optional)
-    // ...
 
     window.travelToLocation = travelToLocation;
     window.redraw = redraw;
     window.loadWorldDataWithRetry = loadWorldDataWithRetry;
 
     loadWorldDataWithRetry();
-
-    setInterval(() => {
-        if (worldMap) redraw();
-    }, 30000);
 });
 
 // ===== GLOBAL EXPORTS =====
