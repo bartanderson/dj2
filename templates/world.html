@@ -1585,7 +1585,14 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({message: message})
             })
-            .then(r => r.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text}`);
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 // Display each response
                 data.responses.forEach(r => addMessage(r.speaker, r.content));
@@ -1610,22 +1617,31 @@ document.addEventListener('DOMContentLoaded', checkMode);
                                     document.getElementById('character-narrative').style.display = 'block';
                                 });
                         }
+                    })
+                    .catch(err => {
+                        console.error('Auto-continue error:', err);
+                        addMessage('System', 'Error during backstory completion. Check console.', 'error');
                     });
-                    return; // stop further processing in this handler
+                    return;
                 }
 
                 // If session ended, reload narrative
                 if (data.new_state === null) {
-                    // Build connections automatically
                     fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
                         .then(() => {
-                            // Reload narrative partial
                             htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                            // Hide chat, show narrative
                             document.getElementById('backstory-chat').style.display = 'none';
                             document.getElementById('character-narrative').style.display = 'block';
+                        })
+                        .catch(err => {
+                            console.error('Build connections error:', err);
+                            addMessage('System', 'Error building connections. Check console.', 'error');
                         });
                 }
+            })
+            .catch(err => {
+                console.error('Backstory error:', err);
+                addMessage('System', 'Error: ' + err.message, 'error');
             });
         });
 
@@ -1641,5 +1657,14 @@ document.addEventListener('DOMContentLoaded', checkMode);
         }
     })();
     </script>
+    <!-- Debug Overlay (hidden by default) -->
+    <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">
+        <div>World: <span id="debug-world">0 x 0</span></div>
+        <div>Viewport: <span id="debug-viewport">0 x 0</span></div>
+        <div>Scale: <span id="debug-scale">1.00</span></div>
+        <div>Pan: <span id="debug-pan">0, 0</span></div>
+        <div>Visible: <span id="debug-visible">0-0, 0-0</span></div>
+        <div>Fit scale: <span id="debug-fitscale">0.00</span></div>
+    </div>
 </body>
 </html>

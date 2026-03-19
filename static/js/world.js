@@ -106,8 +106,10 @@ function drawPaths(ctx, connections, locations) {
 
 function drawLocations(ctx, locations, scale) {
     window.worldState.locations = [];
-    const screenRadius = 15; // screen pixels – adjust to taste
-    const worldRadius = screenRadius / scale;
+    const targetScreenRadius = 10; // desired size in screen pixels
+    let worldRadius = targetScreenRadius / scale;
+    // Clamp to reasonable world units (min 2, max 15)
+    worldRadius = Math.max(2, Math.min(15, worldRadius));
     locations.forEach(loc => {
         ctx.fillStyle = 'red';
         ctx.strokeStyle = '#ffffff';
@@ -252,18 +254,6 @@ function redraw() {
     ctx.restore();
 }
 
-// Pan limits (world units)
-function clampOffsets() {
-    const visibleWorldWidth = window.innerWidth / scale;
-    const visibleWorldHeight = window.innerHeight / scale;
-    const minX = 0;
-    const maxX = Math.max(0, worldMap.width - visibleWorldWidth);
-    const minY = 0;
-    const maxY = Math.max(0, worldMap.height - visibleWorldHeight);
-    offsetX = Math.max(minX, Math.min(maxX, offsetX));
-    offsetY = Math.max(minY, Math.min(maxY, offsetY));
-}
-
 // Initial view centered on start location
 function setInitialView() {
     if (!worldMap) return;
@@ -275,7 +265,6 @@ function setInitialView() {
         offsetX = (worldMap.width - window.innerWidth / scale) / 2;
         offsetY = (worldMap.height - window.innerHeight / scale) / 2;
     }
-    clampOffsets();
     redraw();
 }
 
@@ -290,7 +279,6 @@ function onWheel(e) {
     scale = Math.max(0.5, Math.min(3, scale));
     offsetX = mouseWorldX - e.clientX / scale;
     offsetY = mouseWorldY - e.clientY / scale;
-    clampOffsets();
     redraw();
 }
 
@@ -299,7 +287,6 @@ function onDoubleClick(e) {
     const loc = window.worldState.currentLocation;
     offsetX = loc.x - window.innerWidth / (2 * scale);
     offsetY = loc.y - window.innerHeight / (2 * scale);
-    clampOffsets();
     redraw();
 }
 
@@ -330,6 +317,7 @@ function onMouseMove(e) {
 function onPointerDown(e) {
     if (e.button !== 0) return; // primary button only
     isDragging = true;
+    // Store screen start and current offsets
     dragStartX = e.clientX;
     dragStartY = e.clientY;
     startOffsetX = offsetX;
@@ -347,9 +335,8 @@ function onPointerMove(e) {
     if (!isDragging) return;
     const dx = e.clientX - dragStartX;
     const dy = e.clientY - dragStartY;
-    offsetX = startOffsetX - dx / scale;
-    offsetY = startOffsetY - dy / scale;
-    clampOffsets();
+    offsetX = startOffsetX - dx;
+    offsetY = startOffsetY - dy; 
     redraw();
     e.preventDefault();
 }
