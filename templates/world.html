@@ -7,6 +7,14 @@
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+        htmx.config.historyCacheSize = 0;  // optional
+        // Suppress logging
+        htmx.logger = function() {};  // empty function silences logs
+    </script>
+    <script>
+        window.playerLoggedIn = {{ 'true' if player_logged_in else 'false' }};
+    </script>
     <style>
         /* Mode-based visibility */
         body[data-mode="world"] .world-only {
@@ -52,13 +60,7 @@
         }
     </style>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-        <!-- Mode indicator -->
-        <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
-            <span>Mode: </span>
-            <span id="current-mode">world</span>
-            <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
-            <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
-        </div>
+
     <script>
 function checkMode() {
     console.log("Checking current mode...");
@@ -358,21 +360,28 @@ document.addEventListener('DOMContentLoaded', checkMode);
         
         /* ===== MODAL SYSTEM ===== */
         .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85); z-index: 9998;
-            display: none; opacity: 0; transition: opacity 0.3s ease;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8);
+            z-index: 1000; display: none; justify-content: center; align-items: center;
         }
         .modal-overlay.active { display: block; opacity: 1; }
         
         .modal-content {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.95); border: 2px solid #4ecca3; border-radius: 10px;
-            width: 90%; max-width: 600px; max-height: 85vh; z-index: 9999;
-            display: flex; flex-direction: column;
+            background: #1a1a2e; border: 2px solid #4ecca3; border-radius: 8px; padding: 20px;
+            max-width: 500px; width: 90%; color: white;
         }
-        .modal-header {
-            padding: 20px; background: #4ecca3; color: #232931;
-            border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;
+        .modal-header h2 {
+            margin: 0 0 15px 0;
+            color: #4ecca3;
+        }
+        .modal-body input { background: #0f0f1a; border: 1px solid #4ecca3; color: white;
+            padding: 8px; border-radius: 4px;
+        }
+        .modal-body button {
+            background: #4ecca3; color: #232931; border: none; padding: 10px; border-radius: 4px; cursor: pointer;
+        }
+        .modal-body button.secondary {
+            background: #2c3e50;
+            color: white;
         }
         .modal-header h2 { margin: 0; font-size: 1.5rem; }
         .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #232931; }
@@ -410,7 +419,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
 
         /* ===== HEADER ===== */
         .app-header {
-            grid-column: 1 / -1; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: space-between;
+            grid-column: 1 / -1; position: relative; background: #0a0a1a; display: flex; justify-content: space-between;
             align-items: center; padding: 0 20px; border-bottom: 2px solid #4ecca3; z-index: 100;
         }
         .logo { font-size: 1.8rem; font-weight: bold; color: #4ecca3; }
@@ -419,7 +428,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
         
         /* ===== SIDEBAR (Tabs) ===== */
         .app-sidebar {
-            background: rgba(0, 0, 0, 0.85); border-right: 2px solid #4ecca3;
+            position: relative; background: #0a0a1a; border-right: 2px solid #4ecca3; z-index: 100;
             display: flex; flex-direction: column; padding: 20px 0; overflow-y: auto;
         }
         .menu-section { margin-bottom: 20px; }
@@ -441,20 +450,23 @@ document.addEventListener('DOMContentLoaded', checkMode);
         .tab-content.active { display: block; }
         
         /* ===== MAP TAB ===== */
-        .map-container { width: 100%; height: 100%; background: #0a1729; position: relative; overflow: hidden; min-height: 600px;}
         #world-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #terrain-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform-origin: 0 0; cursor: grab; }
-        #terrain-canvas:active { cursor: grabbing; }
-        
-        .map-controls {
-            position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10;
+        #terrain-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            cursor: grab;
+            background: #0a1729;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
+            -webkit-touch-callout: none;
         }
-        .map-btn {
-            width: 45px; height: 45px; border-radius: 50%; background: rgba(0, 0, 0, 0.7);
-            color: white; display: flex; align-items: center; justify-content: center;
-            cursor: pointer; border: 1px solid #4ecca3; transition: all 0.3s ease; font-size: 1.2rem;
+        #terrain-canvas:active {
+            cursor: grabbing;
         }
-        .map-btn:hover { background: rgba(78, 204, 163, 0.3); transform: scale(1.1); }
         
         /* ===== OTHER TABS ===== */
         .tab-panel { background: rgba(0, 0, 0, 0.4); border-radius: 8px; padding: 20px; height: 100%; border: 1px solid #3a5f85; }
@@ -470,9 +482,9 @@ document.addEventListener('DOMContentLoaded', checkMode);
         .btn.secondary:hover { background: #5a6268; }
         
         .action-btn {
-            display: flex; flex-direction: column; align-items: center; padding: 10px;
+            display: flex; flex-direction: column; align-items: center; padding: 3px;
             background: rgba(78, 204, 163, 0.2); border: 1px solid #4ecca3; border-radius: 6px;
-            color: white; cursor: pointer; transition: all 0.3s ease; min-width: 80px;
+            color: white; cursor: pointer; transition: all 0.3s ease; min-width: 20px;
         }
         .action-btn:hover { background: rgba(78, 204, 163, 0.4); transform: translateY(-2px); }
         .action-btn.active { background: rgba(78, 204, 163, 0.6); border-color: #fff; }
@@ -504,7 +516,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
         
         /* ===== CONNECTION STATUS ===== */
         #connection-status {
-            padding: 8px 15px; border-radius: 20px; font-size: 0.9rem; font-weight: bold;
+            padding: 8px 15px; max-width: 105px; border-radius: 20px; font-size: 0.9rem; font-weight: bold;
             background: #4CAF50; color: white;
         }
         
@@ -524,59 +536,75 @@ document.addEventListener('DOMContentLoaded', checkMode);
         <header class="app-header">
             <div class="logo">Dungeon World</div>
             <div class="header-controls">
-                <div id="connection-status">Connected</div>
+                <!-- Mode indicator -->
+                <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
+                    <span>Mode: </span>
+                    <span id="current-mode">world</span>
+                    <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
+                    <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
+                </div>
+                <div id="game-date" class="game-date" 
+                     hx-get="/api/game/date" 
+                     hx-trigger="every 5s" 
+                     hx-swap="innerHTML">
+                    <!-- Date will be loaded here -->
+                </div>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
-                        <i class="fas fa-walking"></i>
+                        <i class="fa-solid fa-walking"></i>
                         <span>Travel</span>
                     </button>
                     <button class="action-btn" id="inventory-btn">
-                        <i class="fas fa-backpack"></i>
+                        <i class="fa-solid fa-sack-xmark"></i>
                         <span>Inventory</span>
                     </button>
                     <button class="action-btn" id="quests-btn">
-                        <i class="fas fa-scroll"></i>
+                        <i class="fa-solid fa-scroll"></i>
                         <span>Quests</span>
                     </button>
                     <button class="action-btn" id="party-btn">
-                        <i class="fas fa-users"></i>
+                        <i class="fa-solid fa-users"></i>
                         <span>Party</span>
                     </button>
                     <button class="action-btn" id="status-btn">
-                        <i class="fas fa-info-circle"></i>
+                        <i class="fa-solid fa-info-circle"></i>
                         <span>Status</span>
                     </button>
                     <button class="action-btn" id="chat-btn">
-                        <i class="fas fa-comments"></i>
+                        <i class="fa-solid fa-comments"></i>
                         <span>Chat</span>
                     </button>
                 </div>
-                <button class="btn" id="settings-btn"><i class="fas fa-cog"></i> Settings</button>
+
             </div>
         </header>
         
         <!-- SIDEBAR TABS -->
         <nav class="app-sidebar">
             <div class="menu-section">
+                <div>
+                <div id="connection-status">Connected</div>
+                <button class="btn" id="settings-btn"><i class="fa-solid fa-cog"></i> Settings</button>
                 <div class="menu-header">Navigation</div>
+            </div>
                 <button class="tab-btn active" data-tab="map-tab">
-                    <div class="tab-icon"><i class="fas fa-map-marked-alt"></i></div>
+                    <div class="tab-icon"><i class="fa-solid fa-map-marked-alt"></i></div>
                     <span>World Map</span>
                 </button>
                 <button class="tab-btn" data-tab="character-tab">
-                    <div class="tab-icon"><i class="fas fa-user"></i></div>
+                    <div class="tab-icon"><i class="fa-solid fa-user"></i></div>
                     <span>Character</span>
                 </button>
                 <button class="tab-btn" data-tab="party-tab">
-                    <div class="tab-icon"><i class="fas fa-users"></i></div>
+                    <div class="tab-icon"><i class="fa-solid fa-users"></i></div>
                     <span>Party</span>
                 </button>
                 <button class="tab-btn" data-tab="inventory-tab">
-                    <div class="tab-icon"><i class="fas fa-backpack"></i></div>
+                    <div class="tab-icon"><i class="fa-solid fa-sack-xmark"></i></div>
                     <span>Inventory</span>
                 </button>
                 <button class="tab-btn" data-tab="quests-tab">
-                    <div class="tab-icon"><i class="fas fa-scroll"></i></div>
+                    <div class="tab-icon"><i class="fa-solid fa-scroll"></i></div>
                     <span>Quests</span>
                 </button>
             </div>
@@ -588,46 +616,61 @@ document.addEventListener('DOMContentLoaded', checkMode);
             <div id="map-tab" class="tab-content active">
                 <div class="map-container">
                     <div id="world-map">
-                        <canvas id="terrain-canvas"></canvas>
-                        <div class="map-controls">
-                            <button class="map-btn" id="zoom-in" title="Zoom In"><i class="fas fa-plus"></i></button>
-                            <button class="map-btn" id="zoom-out" title="Zoom Out"><i class="fas fa-minus"></i></button>
-                            <button class="map-btn" id="center-map" title="Center"><i class="fas fa-crosshairs"></i></button>
-                            <button class="map-btn" id="reset-view" title="Reset"><i class="fas fa-home"></i></button>
-                        </div>
+                        <canvas id="terrain-canvas" draggable="false"></canvas>
                     </div>
                 </div>
             </div>
             
             <!-- Character Tab -->
             <div id="character-tab" class="tab-content">
-                <!-- Main creation form container -->
-                <div id="creation-form-container"
-                     hx-get="/character-creation/form"
-                     hx-trigger="load"
-                     hx-target="this"
-                     hx-indicator="#loading">
-                    Loading character creation...
-                </div>
+                {% if active_character_id %}
+                    <!-- Character info and narrative (hidden during backstory) -->
+                    <div id="character-basic"
+                         hx-get="/character/{{ active_character_id }}/basic"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-swap="innerHTML">
+                        Loading character info...
+                    </div>
+                    <div id="character-narrative"
+                         hx-get="/character/{{ active_character_id }}/narrative"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-swap="innerHTML">
+                        Loading narrative...
+                    </div>
 
-                <!-- Help chat panel (initially hidden) -->
-                <div id="help-chat-panel" style="display:none; margin-top:20px;">
-                    <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
-                    <form hx-post="/character-creation/help" 
-                          hx-target="#chat-messages" 
-                          hx-swap="beforeend"
-                          hx-indicator="#chat-indicator">
-                        <input type="text" name="question" placeholder="Ask a question..." required>
-                        <button type="submit">Send</button>
-                        <span id="chat-indicator" class="htmx-indicator">Thinking...</span>
-                    </form>
-                </div>
-
-                <!-- Button to toggle help chat -->
-                <button onclick="document.getElementById('help-chat-panel').style.display = 'block';">Need Help?</button>
-
-                <!-- Loading indicator -->
-                <div id="loading" class="htmx-indicator" style="display:none;">Loading...</div>
+                    <!-- Backstory chat container (hidden by default) -->
+                    <div id="backstory-chat" style="display: none;">
+                        <div id="chat-messages" style="height: 300px; overflow-y: auto; border: 1px solid #4ecca3; padding: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.5);"></div>
+                        <form id="backstory-form" style="display: flex; gap: 10px;">
+                            <input type="text" id="backstory-input" placeholder="Your response..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
+                            <button type="submit" class="btn">Send</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <!-- Character creation form (unchanged) -->
+                    <div id="creation-form-container"
+                         hx-get="/character-creation/form"
+                         hx-trigger="load"
+                         hx-target="this"
+                         hx-indicator="#loading">
+                        Loading character creation...
+                    </div>
+                    <!-- help chat panel (optional) -->
+                    <div id="help-chat-panel" style="display:none; margin-top:20px;">
+                        <div id="chat-messages" style="height:200px; overflow-y:auto; border:1px solid #ccc; padding:5px;"></div>
+                        <form hx-post="/character-creation/help" 
+                              hx-target="#chat-messages" 
+                              hx-swap="beforeend"
+                              hx-indicator="#chat-indicator">
+                            <input type="text" name="question" placeholder="Ask a question..." required>
+                            <button type="submit">Send</button>
+                            <span id="chat-indicator" class="htmx-indicator">Thinking...</span>
+                        </form>
+                    </div>
+                    <button onclick="document.getElementById('help-chat-panel').style.display = 'block';">Need Help?</button>
+                {% endif %}
             </div>
             
             <!-- Party Tab -->
@@ -803,7 +846,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <input type="text" id="chat-input" placeholder="Type your message..." style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; border-radius: 4px; color: white;">
-                    <button id="send-chat" class="btn"><i class="fas fa-paper-plane"></i></button>
+                    <button id="send-chat" class="btn"><i class="fa-solid fa-paper-plane"></i></button>
                 </div>
             </div>
         </div>
@@ -1260,15 +1303,15 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 tabContents.forEach(content => content.classList.remove('active'));
                 document.getElementById(tabId).classList.add('active');
                 
-                // Refresh map if switching to map tab
+                // redraw map if switching to map tab
                 if (tabId === 'map-tab' && window.worldState && window.worldState.worldMap) {
                     setTimeout(() => {
-                        if (typeof renderWorldMap === 'function') {
-                            renderWorldMap(window.worldState.worldMap);
+                        if (typeof redraw === 'function') {
+                            redraw();
                         }
                     }, 100);
                 }
-                
+                                
                 // Populate tab content
                 if (tabId === 'inventory-tab' && typeof populateInventoryPanel === 'function') {
                     populateInventoryPanel();
@@ -1383,5 +1426,245 @@ document.addEventListener('DOMContentLoaded', checkMode);
         };
     });
     </script>
+    <!-- Player Selection Modal -->
+    <div id="player-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h2>Who are you?</h2>
+            </div>
+            <div class="modal-body">
+                <div id="player-list"></div>
+                <hr>
+                <h3>New Player</h3>
+                <input type="text" id="new-player-name" placeholder="Enter your name" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+                <button id="create-player-btn" class="btn" style="width: 100%;">Create New Player</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function() {
+        console.log('Modal script loaded');
+        const modal = document.getElementById('player-modal');
+        if (!modal) {
+            console.error('Modal not found');
+            return;
+        }
+
+        // // Show modal if no session cookie
+        // if (!document.cookie.includes('session_id=')) {
+        //     modal.style.display = 'block';
+        //     loadPlayers();
+        // }
+        // Show modal if no player is logged in (as indicated by server)
+        if (!window.playerLoggedIn) {
+            modal.style.display = 'block';
+            loadPlayers();
+        }
+
+        function loadPlayers() {
+            fetch('/api/players')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('player-list');
+                    if (!list) return;
+                    let html = '<h3>Existing Players</h3><ul style="list-style: none; padding: 0;">';
+                    if (data.players.length === 0) {
+                        html += '<li>No existing players</li>';
+                    } else {
+                        data.players.forEach(p => {
+                            html += `<li style="margin: 5px 0;">
+                                <button class="player-select-btn" data-id="${p.id}" style="width: 100%; padding: 8px; background: #2c3e50; color: white; border: 1px solid #4ecca3; border-radius: 4px; cursor: pointer;">${p.name}</button>
+                            </li>`;
+                        });
+                    }
+                    html += '</ul>';
+                    list.innerHTML = html;
+
+                    // Attach direct listeners to each button
+                    document.querySelectorAll('.player-select-btn').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            const playerId = this.dataset.id;
+                            console.log('Player button clicked:', playerId);
+                            fetch('/api/select-player', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({player_id: playerId})
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                console.log('Select response:', data);
+                                if (data.success) {
+                                    modal.style.display = 'none';
+                                    location.reload();
+                                } else {
+                                    alert('Error: ' + JSON.stringify(data));
+                                }
+                            })
+                            .catch(err => console.error('Fetch error:', err));
+                        });
+                    });
+                })
+                .catch(err => console.error('Failed to load players:', err));
+        }
+
+        // Create player button
+        const createBtn = document.getElementById('create-player-btn');
+        if (createBtn) {
+            createBtn.addEventListener('click', function() {
+                const name = document.getElementById('new-player-name').value.trim();
+                if (!name) {
+                    alert('Please enter a name');
+                    return;
+                }
+                fetch('/api/create-player', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: name})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    console.log('Create response:', data);
+                    if (data.success) {
+                        modal.style.display = 'none';
+                        location.reload();
+                    } else {
+                        alert('Error: ' + JSON.stringify(data));
+                    }
+                })
+                .catch(err => console.error('Create error:', err));
+            });
+        }
+    })();
+    </script>
+    <script>
+    (function() {
+        // When "Develop Backstory" is clicked
+        document.body.addEventListener('click', function(e) {
+            const btn = e.target.closest('[hx-post*="/start-backstory"]');
+            if (btn) {
+                e.preventDefault();
+                const url = btn.getAttribute('hx-post');
+                const characterId = url.split('/')[2]; // extract ID
+                startBackstory(characterId);
+            }
+        });
+
+        function startBackstory(characterId) {
+            // Hide the narrative div, show chat
+            document.getElementById('character-narrative').style.display = 'none';
+            const chatDiv = document.getElementById('backstory-chat');
+            chatDiv.style.display = 'block';
+            const messagesDiv = document.getElementById('chat-messages');
+            messagesDiv.innerHTML = ''; // clear previous
+
+            // Fetch the first prompt
+            fetch(`/character/${characterId}/start-backstory`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    addMessage(data.speaker, data.content);
+                    // Store characterId for later sends
+                    chatDiv.dataset.characterId = characterId;
+                });
+        }
+
+        // Handle chat form submission
+        document.getElementById('backstory-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('backstory-input');
+            const message = input.value.trim();
+            if (!message) return;
+            input.value = '';
+
+            const chatDiv = document.getElementById('backstory-chat');
+            const characterId = chatDiv.dataset.characterId;
+            addMessage('You', message);
+
+            fetch(`/character/${characterId}/backstory-continue`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Display each response
+                data.responses.forEach(r => addMessage(r.speaker, r.content));
+
+                // Check if we need to auto‑continue to secret generation
+                const lastResponse = data.responses[data.responses.length - 1];
+                if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
+                    // Automatically send empty message to trigger secrets
+                    fetch(`/character/${characterId}/backstory-continue`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: ''})
+                    })
+                    .then(r => r.json())
+                    .then(finalData => {
+                        finalData.responses.forEach(r => addMessage(r.speaker, r.content));
+                        if (finalData.new_state === null) {
+                            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                                .then(() => {
+                                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                                    document.getElementById('backstory-chat').style.display = 'none';
+                                    document.getElementById('character-narrative').style.display = 'block';
+                                });
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Auto-continue error:', err);
+                        addMessage('System', 'Error during backstory completion. Check console.', 'error');
+                    });
+                    return;
+                }
+
+                // If session ended, reload narrative
+                if (data.new_state === null) {
+                    fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                        .then(() => {
+                            htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                            document.getElementById('backstory-chat').style.display = 'none';
+                            document.getElementById('character-narrative').style.display = 'block';
+                        })
+                        .catch(err => {
+                            console.error('Build connections error:', err);
+                            addMessage('System', 'Error building connections. Check console.', 'error');
+                        });
+                }
+            })
+            .catch(err => {
+                console.error('Backstory error:', err);
+                addMessage('System', 'Error: ' + err.message, 'error');
+            });
+        });
+
+        function addMessage(speaker, text) {
+            const msgDiv = document.createElement('div');
+            msgDiv.style.marginBottom = '8px';
+            msgDiv.style.padding = '5px';
+            msgDiv.style.borderRadius = '4px';
+            msgDiv.style.backgroundColor = speaker === 'DM' ? 'rgba(78, 204, 163, 0.2)' : 'rgba(255,255,255,0.1)';
+            msgDiv.innerHTML = `<strong>${speaker}:</strong> ${text}`;
+            document.getElementById('chat-messages').appendChild(msgDiv);
+            msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    })();
+    </script>
+    <!-- Debug Overlay (hidden by default) -->
+    <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">
+        <div>World: <span id="debug-world">0 x 0</span></div>
+        <div>Viewport: <span id="debug-viewport">0 x 0</span></div>
+        <div>Scale: <span id="debug-scale">1.00</span></div>
+        <div>Pan: <span id="debug-pan">0, 0</span></div>
+        <div>Visible: <span id="debug-visible">0-0, 0-0</span></div>
+        <div>Fit scale: <span id="debug-fitscale">0.00</span></div>
+    </div>
 </body>
 </html>

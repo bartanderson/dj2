@@ -6,8 +6,6 @@ from dungeon_neo.movement_service import MovementService
 
 api_bp = Blueprint('api', __name__)
 
-
-
 # Unified movement endpoint -- buttons use this
 @api_bp.route('/move', methods=['POST'])
 def handle_movement():

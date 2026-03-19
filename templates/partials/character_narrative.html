@@ -1,0 +1,51 @@
+<div class="narrative-section">
+    <h3>Backstory</h3>
+    {% if character.backstory %}
+        <div class="origin">
+            <strong>Origin:</strong> {{ character.backstory.origin.raw }}
+        </div>
+        <div class="wound">
+            <strong>Formative Wound:</strong> {{ character.backstory.formative_wound.raw }}
+        </div>
+        <div class="recent">
+            <strong>Recent History:</strong> {{ character.backstory.recent_history.raw }}
+        </div>
+    {% else %}
+        <p>No backstory yet. <button hx-post="/character/{{ character.id }}/start-backstory" hx-target=".narrative-section">Develop Backstory</button></p>
+    {% endif %}
+
+    <h3>Vows</h3>
+    <ul>
+    {% for vow_id, vow in character.vows.items() %}
+        <li>{{ vow.type }}: {{ vow.target }} ({{ vow.status }}, progress {{ vow.progress }})</li>
+    {% else %}
+        <li>No active vows.</li>
+    {% endfor %}
+    </ul>
+
+    <h3>Connections</h3>
+    <ul>
+    {% for conn in character.connections %}
+        <li class="connection-{{ conn.visibility }}">
+            <strong>{{ conn.type }}</strong> to {{ conn.world_element.type }}:
+            {{ conn.description }}
+            {% if conn.visibility == 'hidden' %} (hidden){% endif %}
+        </li>
+    {% else %}
+        <li>No connections yet.</li>
+    {% endfor %}
+    </ul>
+
+    <h3>Secrets</h3>
+    <ul>
+    {% for secret in character.secrets %}
+        {% if secret.revealed %}
+            <li><strong>{{ secret.type }}</strong>: {{ secret.description }}</li>
+        {% else %}
+            <li class="hidden-secret">???</li>
+        {% endif %}
+    {% else %}
+        <li>No secrets.</li>
+    {% endfor %}
+    </ul>
+</div>

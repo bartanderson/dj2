@@ -1,112 +1,199 @@
-# core\dungeon.py
+# core/dungeon.py - Merged Unified Version
 import random
 from dungeon_neo.generator_neo import DungeonGeneratorNeo
 from dungeon_neo.state_neo import DungeonStateNeo
 from dungeon_neo.renderer_neo import DungeonRendererNeo
 from dungeon_neo.visibility_neo import VisibilitySystemNeo
 from dungeon_neo.movement_service import MovementService
+from dungeon_neo.ai_integration import DungeonAI
+
 
 class DungeonSystem:
+    """
+    Unified dungeon system supporting both integrated and standalone usage.
+    """
     
     DEFAULT_OPTIONS = {
-            #'seed': str(random.randint(1, 10000)),
-            'seed': '1',#'None',
-            'n_rows': 39,
-            'n_cols': 39,
-            'dungeon_layout': 'None',
-            'room_min': 3,
-            'room_max': 9,
-            'room_layout': 'Scattered',
-            'corridor_layout': 'Bent',
-            'remove_deadends': 100,
-            'add_stairs': 2,
-            'map_style': 'Standard',
-            #'cell_size': 18, handled in renderer options
-            'grid': 'Square'
-        }
+        'seed': '42',
+        'n_rows': 39,
+        'n_cols': 39,
+        'dungeon_layout': 'Standard',
+        'room_min': 3,
+        'room_max': 9,
+        'room_layout': 'Scattered',
+        'corridor_layout': 'Bent',
+        'remove_deadends': 100,
+        'add_stairs': 2,
+        'map_style': 'Standard',
+        'grid': 'Square',
+        'dungeon_type': 'cave'
+    }
     
-    def __init__(self, options=None):
-        self.options = options or self.DEFAULT_OPTIONS
+    def __init__(self, options=None, enable_ai=False):
+        """
+        Initialize the dungeon system.
+        
+        Args:
+            options: Dict of generation options (uses DEFAULT_OPTIONS if None)
+            enable_ai: Whether to enable AI integration (lazy-loaded)
+        """
+        self.options = {**self.DEFAULT_OPTIONS, **(options or {})}
         self.generator = DungeonGeneratorNeo(self.options)
-        self.renderer = DungeonRendererNeo()
-        self.state = None  # Will be initialized after generation
-        self.visibility_system = None  # Will be initialized after generation
+        self.renderer = None  # Lazy-loaded
+        self.state = None
+        self.visibility_system = None
+        self.ai = None if not enable_ai else DungeonAI(self.state)
     
-    def generate(self):
-        # Generate dungeon and get the result
-        generator_result = self.generator.create_dungeon()
+    def generate(self, dungeon_type=None):
+        """
+        Generate a new dungeon.
         
-        for diag in generator_result['diagnostics']:
-            if diag['failure_reason']:
-                print(f"Room {diag['room_id']} disconnected: {diag['failure_reason']}")
-                print(f"Rejected positions: {diag['rejected_sills']}")
-        
-        # Create state from generator result
-        self.state = DungeonStateNeo(generator_result)
-        
-        # Set final party position FIRST
-        self._set_initial_party_position()
-        
-        # THEN create visibility system with actual position
-        self.state.visibility_system = VisibilitySystemNeo(
-            self.state.grid_system, 
-            self.state.party_position
-        )
-        
-        # Update visibility immediately
-        self.state.visibility_system.update_visibility()
-        
-        # Finally create movement service
-        self.state.movement = MovementService(self.state)
-        
-        #print(f"Generated dungeon: {self.state.width}x{self.state.height}")
-        #print(f"Initial party position: {self.state.party_position}")
-
-    def _set_initial_party_position(self):
-        """Set initial party position near first up stair"""
-        # Find first up stair
-        up_stairs = [stair for stair in self.state.stairs if stair.get('key') == 'up'] # find all the up stairs. You would come down them to be here.
-        
-        if not up_stairs:
-            # Fallback to first room center
-            if self.state.rooms:
-                room = self.state.rooms[0]
-                center_x = (room['north'] + room['south']) // 2
-                center_y = (room['west'] + room['east']) // 2
-                self.state.party_position = (center_x, center_y)
-                return
+        Args:
+            dungeon_type: Optional dungeon type override (e.g., 'cave', 'dungeon')
             
-            # Final fallback to dungeon center
-            center_x = self.state.height // 2
-            center_y = self.state.width // 2
-            self.state.party_position = (center_x, center_y)
+        Returns:
+            bool: True if generation succeeded, False otherwise
+        """
+        try:
+            if dungeon_type:
+                self.options['dungeon_type'] = dungeon_type
+            self.generator.options = self.options
+            
+            generator_result = self.generator.create_dungeon()
+            if not generator_result:
+                return False
+            
+            # Print diagnostics for disconnected rooms
+            for diag in generator_result.get('diagnostics', []):
+                if diag.get('failure_reason'):
+                    print(f"Room {diag['room_id']} disconnected: {diag['failure_reason']}")
+                    print(f"Rejected positions: {diag.get('rejected_sills', [])}")
+            
+            # Create state from generator result
+            self.state = DungeonStateNeo(generator_result)
+            
+            # Set initial party position
+            self._set_initial_party_position()
+            
+            # Initialize visibility system with actual position
+            self.state.visibility_system = VisibilitySystemNeo(
+                self.state.grid_system, 
+                self.state.party_position
+            )
+            self.state.visibility_system.update_visibility()
+            
+            # Initialize movement service
+            self.state.movement = MovementService(self.state)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Dungeon generation failed: {str(e)}")
+            return False
+    
+    def _set_initial_party_position(self):
+        """Set initial party position near first up stair, with fallbacks."""
+        # 1. Try stairs first (most common case)
+        if hasattr(self.state, 'stairs') and self.state.stairs:
+            up_stairs = [s for s in self.state.stairs if s.get('key') == 'up']
+            if up_stairs:
+                stair = up_stairs[0]
+                # Offset moves party AWAY from stair (where they would enter)
+                self.state.party_position = (
+                    stair['y'] + stair.get('dy', 0),
+                    stair['x'] + stair.get('dx', 0)
+                )
+                return
+        
+        # 2. Fallback to first room center
+        if hasattr(self.state, 'rooms') and self.state.rooms:
+            room = self.state.rooms[0]
+            self.state.party_position = (
+                (room['west'] + room['east']) // 2,
+                (room['north'] + room['south']) // 2
+            )
             return
-        else:
-            stair = up_stairs[0]
-            party_y = stair['y'] + stair['dy']
-            party_x = stair['x'] + stair['dx']
-            self.state.party_position = (party_y, party_x)
-                    
+        
+        # 3. Final fallback: find nearest open space to center (spiral search)
+        center_x = self.state.grid_system.width // 2
+        center_y = self.state.grid_system.height // 2
+        max_dim = max(self.state.width, self.state.height)
+        
+        for radius in range(max_dim):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    x, y = center_x + dx, center_y + dy
+                    if not (0 <= x < self.state.width and 0 <= y < self.state.height):
+                        continue
+                    cell = self.state.get_cell(x, y)
+                    if cell and not cell.is_blocked:
+                        self.state.party_position = (x, y)
+                        return
+    
     def is_blocked_for_movement(self, cell):
-        """Simplified blocking logic"""
-        # Block all BLOCKED cells
+        """
+        Check if a cell blocks movement.
+        
+        Args:
+            cell: The cell to check
+            
+        Returns:
+            bool: True if movement is blocked
+        """
         if cell.is_blocked:
             return True
-            
-        # Block all perimeter cells that aren't doors
         if cell.is_perimeter and not cell.is_door:
             return True
-            
-        # Block non-arch doors
         if cell.is_door and not cell.is_arch:
             return True
-            
         return False
-        
+    
     def get_image(self, debug=False):
-        # Simply pass the state directly to the renderer
-        return self.renderer.render(
-            self.state, 
-            debug_show_all=debug,
-            visibility_system=self.state.visibility_system
-        )
+        """
+        Render the dungeon as an image.
+        
+        Args:
+            debug: If True, show entire dungeon regardless of visibility
+            
+        Returns:
+            Rendered image or None if rendering failed
+        """
+        try:
+            # Lazy-load renderer
+            if self.renderer is None:
+                self.renderer = DungeonRendererNeo()
+            
+            return self.renderer.render(
+                self.state, 
+                debug_show_all=debug,
+                visibility_system=self.state.visibility_system if self.state else None
+            )
+        except Exception as e:
+            print(f"Rendering error: {str(e)}")
+            return None
+    
+    def process_ai_command(self, command):
+        """
+        Process an AI command (lazy-loads AI if needed).
+        
+        Args:
+            command: The command string to process
+            
+        Returns:
+            Result of AI processing
+        """
+        if not self.ai:
+            self.ai = DungeonAI(self.state)
+        return self.ai.process_command(command)
+    
+    def reset_dungeon(self, dungeon_type=None):
+        """
+        Reset and regenerate the dungeon.
+        
+        Args:
+            dungeon_type: Optional dungeon type for regeneration
+            
+        Returns:
+            bool: True if regeneration succeeded
+        """
+        return self.generate(dungeon_type)

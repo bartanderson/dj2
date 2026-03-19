@@ -1,7 +1,69 @@
 # world_map.py
-from world.campaign import Location
 from world.utils import convex_hull
 from typing import Dict, List, Optional
+
+# TODO: future rework imminent
+# WorldMap will likely be replaced or significantly refactored when we implement the seed‑based, on‑demand world generation. The new design (based on 14_campaign.json) will:
+
+# Store a hex grid and regions in CampaignState.
+
+# Generate locations on demand when a player first visits a hex that contains a potential settlement/dungeon.
+
+# Keep WorldMap as a container for already‑generated locations (those that have been visited). It may also hold the hex grid for rendering, but that could move to a separate MapRenderer or be part of CampaignState.
+
+# For now, WorldMap is fine as a temporary placeholder – it loads static locations from the database and allows basic travel. Once we build the new generation system, we will update WorldMap to work alongside CampaignState (or replace it entirely). The current changes are just to keep things running while we incrementally migrate.
+
+class Location:
+    def __init__(self, id: str, name: str, type: str, description: str,
+                 col: int = 0, row: int = 0,   # new grid coordinates
+                 x: int = None, y: int = None, # optional legacy pixel coordinates
+                 dungeon_type: Optional[str] = None, dungeon_level: int = 1,
+                 image_url: Optional[str] = None,
+                 features: Optional[List[str]] = None,
+                 services: Optional[List[str]] = None,
+                 discovered: bool = False):
+        self.id = id
+        self.name = name
+        self.type = type
+        self.description = description
+        self.col = col
+        self.row = row
+        # If x,y not provided, compute from col,row using simple conversion
+        # (will be replaced by proper hex-to-pixel later)
+        if x is None:
+            self.x = col * 60  # placeholder
+        else:
+            self.x = x
+        if y is None:
+            self.y = row * 60  # placeholder
+        else:
+            self.y = y
+        self.dungeon_type = dungeon_type
+        self.dungeon_level = dungeon_level
+        self.features = features or []
+        self.services = services or []
+        self.image_url = image_url
+        self.quests: List[str] = []
+        self.discovered = discovered
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "type": self.type,
+            "description": self.description,
+            "col": self.col,
+            "row": self.row,
+            "x": self.x,
+            "y": self.y,
+            "dungeon_type": self.dungeon_type,
+            "dungeon_level": self.dungeon_level,
+            "features": self.features,
+            "services": self.services,
+            "image_url": self.image_url,
+            "discovered": self.discovered,
+            "quests": self.quests
+        }
 
 class WorldMap:
     TERRAIN_COLORS = {

@@ -11,7 +11,8 @@ from pgvector.psycopg2 import register_vector
 from .tool_system import ToolRegistry, tool
 from .dm_tools import DMTools
 from .overlay import Overlay
-from .campaign import Location, Quest, Faction, CampaignState  # Imported from campaign.py
+from .world_map import Location
+from .campaign import Quest, Faction, CampaignState
 
 class BaseAI:
     def __init__(self, ollama_host="http://localhost:11434", seed=42):

@@ -367,9 +367,9 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Extract DJ2 architectural context")
-    parser.add_argument("dj2_path", help="Path to dj2 folder")
-    parser.add_argument("--og", help="Path to og_system folder (optional)")
-    parser.add_argument("-o", "--output", default="context_layers", help="Output directory")
+    parser.add_argument("dj2_path", nargs="?", default=".", help="Path to dj2 folder (default: current directory)")
+    parser.add_argument("--og", default="og_system", help="Path to og_system folder (default: og_system)")
+    parser.add_argument("-o", "--output", default="out", help="Output directory (default: out)")
     
     args = parser.parse_args()
     

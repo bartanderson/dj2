@@ -8,18 +8,7 @@ let worldState = {
     characters: {},
     parties: []
 };
-
-// ===== MAP STATE =====
-let scale = 1;
-let panX = 0;
-let panY = 0;
-let isDragging = false;
-let dragStartX = 0;
-let dragStartY = 0;
-let initialPanX = 0;
-let initialPanY = 0;
-const maxScale = 3;
-const minScale = 0.5;
+let terrainImage = null; // will hold the terrain as an Image or offscreen canvas
 
 // ===== LOCATION PREVIEW =====
 class LocationPreview {
@@ -30,10 +19,7 @@ class LocationPreview {
     }
     
     create() {
-        // Remove existing preview if it exists
         this.remove();
-        
-        // Create new preview element
         this.element = document.createElement('div');
         this.element.id = 'location-preview';
         this.element.className = 'hidden';
@@ -44,8 +30,6 @@ class LocationPreview {
                 <p id="preview-description"></p>
             </div>
         `;
-        
-        // Add styles
         Object.assign(this.element.style, {
             position: 'fixed',
             background: 'rgba(0, 0, 0, 0.9)',
@@ -58,40 +42,29 @@ class LocationPreview {
             pointerEvents: 'none',
             display: 'none'
         });
-        
         document.body.appendChild(this.element);
         return this;
     }
     
     show(location, x, y) {
         if (!this.element) this.create();
-        
         const name = this.element.querySelector('#preview-name');
         const type = this.element.querySelector('#preview-type');
         const desc = this.element.querySelector('#preview-description');
-
         name.textContent = location.name;
         type.textContent = `Type: ${location.type}`;
         desc.textContent = location.description || 'No description available';
-
-        // Position the preview, ensuring it stays within viewport
         const previewRect = this.element.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        
         let left = x + 20;
         let top = y - 20;
-        
-        // Adjust if preview would go off the right edge
         if (left + previewRect.width > viewportWidth) {
             left = x - previewRect.width - 20;
         }
-        
-        // Adjust if preview would go off the bottom edge
         if (top + previewRect.height > viewportHeight) {
             top = y - previewRect.height - 20;
         }
-        
         this.element.style.left = `${left}px`;
         this.element.style.top = `${top}px`;
         this.element.style.display = 'block';
@@ -107,28 +80,21 @@ class LocationPreview {
     
     remove() {
         const existing = document.getElementById('location-preview');
-        if (existing) {
-            existing.remove();
-        }
+        if (existing) existing.remove();
         this.element = null;
         this.isVisible = false;
     }
 }
 
-// Create a singleton instance
 const locationPreview = new LocationPreview();
 
-// ===== MAP RENDERING FUNCTIONS =====
-
-// Function to draw paths between locations
+// ===== MAP RENDERING HELPERS =====
 function drawPaths(ctx, connections, locations) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
-    
     connections.forEach(conn => {
         const fromLoc = locations.find(loc => loc.id === conn.from_id);
         const toLoc = locations.find(loc => loc.id === conn.to_id);
-
         if (fromLoc && toLoc) {
             ctx.beginPath();
             ctx.moveTo(fromLoc.x, fromLoc.y);
@@ -138,181 +104,253 @@ function drawPaths(ctx, connections, locations) {
     });
 }
 
-// Function to draw location markers
-function drawLocations(ctx, locations) {
-    // Clear previous locations
+function drawLocations(ctx, locations, scale) {
     window.worldState.locations = [];
-    
+    const targetScreenRadius = 10; // desired size in screen pixels
+    let worldRadius = targetScreenRadius / scale;
+    // Clamp to reasonable world units (min 2, max 15)
+    worldRadius = Math.max(2, Math.min(15, worldRadius));
     locations.forEach(loc => {
-        // Draw outer circle
         ctx.fillStyle = 'red';
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2;
-        
         ctx.beginPath();
-        ctx.arc(loc.x, loc.y, 10, 0, Math.PI * 2);
+        ctx.arc(loc.x, loc.y, worldRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        
-        // Store location data for hit detection
         window.worldState.locations.push({
             x: loc.x,
             y: loc.y,
-            radius: 10,
+            radius: worldRadius,
             id: loc.id,
             data: loc
         });
     });
 }
 
-// The consolidated function to render all map elements
-function renderWorldMap(worldMap) {
-    const mycontainer = document.getElementById('world-map');
-    const mycanvas = document.getElementById('terrain-canvas');
-    console.log('DEBUG - Container dimensions:', mycontainer?.clientWidth, 'x', mycontainer?.clientHeight);
-    console.log('DEBUG - Canvas dimensions:', mycanvas?.width, 'x', mycanvas?.height);
-    console.log('Rendering world map...', worldMap);
-    
-    // Store world data for later use
-    window.worldState = window.worldState || {};
-    
-    // Ensure we have a valid worldMap object
-    if (!worldMap) {
-        console.error('renderWorldMap: worldMap is undefined');
-        if (typeof showNotification === 'function') {
-            showNotification('Error rendering map: No map data available', 'error');
-        }
-        return;
+function drawHexagon(ctx, cx, cy, size, color) {
+    // Flat‑top hexagons; adjust size if needed
+    size = size * 1.17
+    let hexScale = 0.83; // local scaling – does not affect global zoom
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        let angle = i * Math.PI / 3; // pointy‑top (0°,60°,...)
+        let x = cx + size * hexScale * Math.cos(angle);
+        let y = cy + size * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
     }
-    
-    window.worldState.worldMap = worldMap;
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+}
 
-    // Get map container and canvas
-    const container = document.getElementById('world-map');
-    const terrainCanvas = document.getElementById('terrain-canvas');
+function generateTerrainImage() {
+    if (!worldMap) return;
 
-    if (!container || !terrainCanvas) {
-        console.error('Map container or canvas not found');
-        return;
-    }
-    
-    // Set canvas size to match container (fixes blurriness)
-    terrainCanvas.width = container.clientWidth;
-    terrainCanvas.height = container.clientHeight;
-    
-    // Get canvas context
-    const ctx = terrainCanvas.getContext('2d');
-    
-    // Clear the canvas
-    ctx.clearRect(0, 0, terrainCanvas.width, terrainCanvas.height);
-    
-    // Draw a dark background
+    // Create a temporary canvas that will be placed off‑screen but still visible to layout
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = worldMap.width;
+    tempCanvas.height = worldMap.height;
+    // Set CSS size to match so that getBoundingClientRect() returns world dimensions
+    tempCanvas.style.width = worldMap.width + 'px';
+    tempCanvas.style.height = worldMap.height + 'px';
+    tempCanvas.style.position = 'absolute';
+    tempCanvas.style.left = '-9999px';
+    tempCanvas.style.top = '-9999px';
+    // Give it a unique ID for renderTerrain
+    const tempId = 'temp-terrain-' + Date.now();
+    tempCanvas.id = tempId;
+    document.body.appendChild(tempCanvas);
+
+    // Default background (in case terrain generation fails)
+    const ctx = tempCanvas.getContext('2d');
     ctx.fillStyle = '#0a1729';
-    ctx.fillRect(0, 0, terrainCanvas.width, terrainCanvas.height);
-    
-    // Ensure seed is defined with a fallback value
-    const seed = worldMap.seed || 42;
-    
-    try {
-        // Generate and render terrain if TerrainGenerator is available
-        if (typeof TerrainGenerator !== 'undefined') {
-            const terrainGen = new TerrainGenerator(seed, container.clientWidth, container.clientHeight);
+    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    let generationSucceeded = false;
+    if (typeof TerrainGenerator !== 'undefined') {
+        try {
+            const terrainGen = new TerrainGenerator(worldMap.seed || 42, worldMap.width, worldMap.height);
             const heightmap = terrainGen.generateHeightmap();
             const terrain = terrainGen.generateTerrain(heightmap);
-            
-            // Store terrain for future use
-            window.worldState.terrain = terrain;
-            
-            // Render terrain
-            terrainGen.renderTerrain(terrain, 'terrain-canvas');
-            
-            // Render hex grid if available
-            if (typeof HexGridRenderer !== 'undefined') {
-                const gridRenderer = new HexGridRenderer(container.clientWidth, container.clientHeight);
-                gridRenderer.renderGrid('terrain-canvas');
-            }
-        } else {
-            console.warn('TerrainGenerator not found - drawing basic grid');
-            // Draw a simple grid as fallback
-            ctx.strokeStyle = '#1a2530';
-            ctx.lineWidth = 1;
-            const gridSize = 50;
-            
-            // Vertical lines
-            for (let x = 0; x < terrainCanvas.width; x += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, terrainCanvas.height);
-                ctx.stroke();
-            }
-            
-            // Horizontal lines
-            for (let y = 0; y < terrainCanvas.height; y += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(terrainCanvas.width, y);
-                ctx.stroke();
-            }
+            // Render to the temporary canvas using its ID
+            terrainGen.renderTerrain(terrain, tempId);
+            generationSucceeded = true;
+        } catch (e) {
+            console.error('Terrain generation failed:', e);
         }
-    } catch (error) {
-        console.error('Error rendering terrain:', error);
-        // Continue with basic rendering
+    } else {
+        console.warn('TerrainGenerator not available');
     }
 
-    // Filter locations and connections based on 'discovered'
-    const discoveredLocations = worldMap.locations ? worldMap.locations.filter(loc => loc.discovered) : [];
-    const discoveredConnections = worldMap.connections ? worldMap.connections.filter(conn =>
-        discoveredLocations.some(loc => loc.id === conn.from_id) &&
-        discoveredLocations.some(loc => loc.id === conn.to_id)
-    ) : [];
+    // Create an offscreen canvas and copy the result
+    const offscreen = document.createElement('canvas');
+    offscreen.width = worldMap.width;
+    offscreen.height = worldMap.height;
+    const offCtx = offscreen.getContext('2d');
+    offCtx.drawImage(tempCanvas, 0, 0);
 
-    // Draw the paths for discovered connections
-    drawPaths(ctx, discoveredConnections, worldMap.locations || []);
+    // Remove the temporary canvas
+    document.body.removeChild(tempCanvas);
 
-    // Place the locations on top of the paths and terrain
-    drawLocations(ctx, discoveredLocations);
-    
-    // Apply initial transform
-    updateMapTransform();
-    
-    // Set up canvas interactions
-    setupCanvasInteractions();
-    
-    console.log('World map rendered successfully');
+    terrainImage = offscreen;
+    //console.log('Terrain image cached, size:', offscreen.width, 'x', offscreen.height);
 }
 
-// ===== MAP CONTROLS =====
-function updateMapTransform() {
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (terrainCanvas) {
-        const transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-        terrainCanvas.style.transform = transform;
+// ===== MINIMAL MAP =====
+let worldMap = null;
+let offsetX = 0, offsetY = 0;   // pan offset (world units)
+let scale = 1;                   // zoom factor
+let isDragging = false;
+let dragStartX, dragStartY, startOffsetX, startOffsetY;
+
+// Redraw everything
+function redraw() {
+    const canvas = document.getElementById('terrain-canvas');
+    if (!canvas || !worldMap) return;
+
+    if (worldMap.width <= 0 || worldMap.height <= 0) {
+        console.error('Invalid world dimensions, cannot generate terrain');
+        return;
+    }
+
+    // Set canvas buffer to world dimensions (only once)
+    if (canvas.width !== worldMap.width || canvas.height !== worldMap.height) {
+        canvas.width = worldMap.width;
+        canvas.height = worldMap.height;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-offsetX, -offsetY);
+    ctx.scale(scale, scale);
+
+    // Draw cached terrain image (if available)
+    if (terrainImage) {
+        ctx.drawImage(terrainImage, 0, 0);
+    } else {
+        // fallback if not yet generated (shouldn't happen)
+        ctx.fillStyle = '#0a1729';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Hex outlines
+    if (worldMap.hexes && worldMap.hexes.length > 0) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1;
+        worldMap.hexes.forEach(hex => {
+            drawHexagon(ctx, hex.x, hex.y, 30, ctx.strokeStyle);
+        });
+    }
+
+    // Only draw discovered locations
+    const discoveredLocations = (worldMap.locations || []).filter(loc => loc.discovered);
+    drawPaths(ctx, worldMap.connections || [], discoveredLocations);
+    drawLocations(ctx, discoveredLocations, scale);
+
+    ctx.restore();
+}
+
+// Initial view centered on start location
+function setInitialView() {
+    if (!worldMap) return;
+    const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
+    if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
+        offsetX = startLoc.x - window.innerWidth / (2 * scale);
+        offsetY = startLoc.y - window.innerHeight / (2 * scale);
+    } else {
+        offsetX = (worldMap.width - window.innerWidth / scale) / 2;
+        offsetY = (worldMap.height - window.innerHeight / scale) / 2;
+    }
+    redraw();
+}
+
+// ===== EVENT HANDLERS =====
+function onWheel(e) {
+    e.preventDefault();
+    const zoomFactor = 1.1;
+    const mouseWorldX = offsetX + e.clientX / scale;
+    const mouseWorldY = offsetY + e.clientY / scale;
+    if (e.deltaY < 0) scale *= zoomFactor;
+    else scale /= zoomFactor;
+    scale = Math.max(0.5, Math.min(3, scale));
+    offsetX = mouseWorldX - e.clientX / scale;
+    offsetY = mouseWorldY - e.clientY / scale;
+    redraw();
+}
+
+function onDoubleClick(e) {
+    if (!worldMap || !window.worldState?.currentLocation) return;
+    const loc = window.worldState.currentLocation;
+    offsetX = loc.x - window.innerWidth / (2 * scale);
+    offsetY = loc.y - window.innerHeight / (2 * scale);
+    redraw();
+}
+
+function onMouseMove(e) {
+    if (isDragging) return; // don't interfere while dragging
+    const canvas = document.getElementById('terrain-canvas');
+    if (!canvas || !worldMap) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const worldX = offsetX + mouseX / scale;
+    const worldY = offsetY + mouseY / scale;
+    if (window.worldState.locations) {
+        const hovered = window.worldState.locations.find(loc => {
+            const dist = Math.sqrt((worldX - loc.x) ** 2 + (worldY - loc.y) ** 2);
+            return dist <= loc.radius;
+        });
+        if (hovered) {
+            canvas.style.cursor = 'pointer';
+            locationPreview.show(hovered.data, e.clientX, e.clientY);
+        } else {
+            canvas.style.cursor = 'grab';
+            locationPreview.hide();
+        }
     }
 }
 
-function zoomIn() {
-    if (scale < maxScale) {
-        scale += 0.25;
-        updateMapTransform();
-    }
+function onPointerDown(e) {
+    if (e.button !== 0) return; // primary button only
+    isDragging = true;
+    // Store screen start and current offsets
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    startOffsetX = offsetX;
+    startOffsetY = offsetY;
+    const canvas = document.getElementById('terrain-canvas');
+    canvas.style.cursor = 'grabbing';
+    canvas.setPointerCapture(e.pointerId);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+    e.preventDefault();
 }
 
-function zoomOut() {
-    if (scale > minScale) {
-        scale -= 0.25;
-        updateMapTransform();
-    }
+function onPointerMove(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    offsetX = startOffsetX - dx;
+    offsetY = startOffsetY - dy; 
+    redraw();
+    e.preventDefault();
 }
 
-function centerMap() {
-    scale = 1;
-    panX = 0;
-    panY = 0;
-    updateMapTransform();
-}
-
-function resetMapView() {
-    centerMap();
+function onPointerUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    const canvas = document.getElementById('terrain-canvas');
+    canvas.style.cursor = 'grab';
+    canvas.releasePointerCapture(e.pointerId);
+    canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerUp);
+    e.preventDefault();
 }
 
 // ===== TRAVEL FUNCTIONS =====
@@ -320,24 +358,11 @@ async function travelToLocation(locationId) {
     try {
         const response = await fetch(`/api/travel/${locationId}`, { method: 'POST' });
         const data = await response.json();
-        
         if (data.success) {
             worldState.currentLocation = data.location;
-            
-            // Update world map if provided
-            if (data.worldMap) {
-                worldState.worldMap = data.worldMap;
-                if (typeof renderWorldMap === 'function') {
-                    renderWorldMap(data.worldMap);
-                }
-            }
-            
-            // Show notification
             if (typeof showNotification === 'function') {
                 showNotification(`Traveled to ${data.location.name}`, 'success');
             }
-            
-            // Update UI
             refreshWorldState();
         } else {
             if (typeof showNotification === 'function') {
@@ -345,24 +370,19 @@ async function travelToLocation(locationId) {
             }
         }
     } catch (error) {
-        console.error('Error traveling to location:', error);
+        console.error('Error traveling:', error);
         if (typeof showNotification === 'function') {
             showNotification('Error traveling to location', 'error');
         }
     }
 }
 
-// ===== WORLD DATA FUNCTIONS =====
+// ===== WORLD DATA LOADING =====
 async function loadWorldData() {
     try {
         const response = await fetch('/api/world-state');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
-        
-        // Handle case where worldMap might be undefined
         if (!data.worldMap || data.worldMap.error) {
             console.error('World map data not available:', data.worldMap?.error);
             if (typeof showNotification === 'function') {
@@ -370,16 +390,27 @@ async function loadWorldData() {
             }
             return;
         }
-        
-        // Find current location by ID
         let currentLocation = null;
-        if (data.currentLocation && data.currentLocation.id && data.worldMap.locations) {
-            currentLocation = data.worldMap.locations.find(
-                loc => loc.id === data.currentLocation.id
-            );
+        if (data.currentLocation && data.worldMap.locations) {
+            // If it's an ID string, find the location in the array
+            if (typeof data.currentLocation === 'string') {
+                currentLocation = data.worldMap.locations.find(loc => loc.id === data.currentLocation);
+            } 
+            // If it's an object with an id, find matching location (or use it directly if it has x,y)
+            else if (data.currentLocation.id) {
+                currentLocation = data.worldMap.locations.find(loc => loc.id === data.currentLocation.id);
+                // If not found, fallback to the object itself (maybe it already has x,y)
+                if (!currentLocation && data.currentLocation.x) {
+                    currentLocation = data.currentLocation;
+                }
+            }
+            // If it's already a full location object with x,y, use it directly
+            else if (data.currentLocation.x) {
+                currentLocation = data.currentLocation;
+            }
         }
-        
-        // Store world data
+        // If we still don't have a valid location, set to null
+        worldState.currentLocation = currentLocation;
         worldState = {
             worldMap: data.worldMap,
             currentLocation: currentLocation,
@@ -387,16 +418,10 @@ async function loadWorldData() {
             parties: data.parties || [],
             characters: data.characters || {}
         };
-        
-        // Update window state for UI
         window.worldState = worldState;
-    
-        // Render the map
-        if (typeof renderWorldMap === 'function') {
-            renderWorldMap(worldState.worldMap);
-        }
-        
-        console.log('World data loaded:', worldState);
+        worldMap = worldState.worldMap;
+        setInitialView();
+        generateTerrainImage()
     } catch (error) {
         console.error('Error loading world data:', error);
         if (typeof showNotification === 'function') {
@@ -406,130 +431,66 @@ async function loadWorldData() {
 }
 
 async function waitForServerReady(maxRetries = 30, delay = 1000) {
-    let retries = 0;
-    
-    while (retries < maxRetries) {
+    for (let i = 0; i < maxRetries; i++) {
         try {
             const response = await fetch('/api/health');
             const data = await response.json();
-            
             if (data.status === 'ready') {
-                console.log('Server is ready');
+                console.log('Server ready');
                 return true;
             }
-            
-            retries++;
-            if (retries < maxRetries) {
-                console.log(`Server not ready yet (${retries}/${maxRetries}). Retrying...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
-        } catch (error) {
-            retries++;
-            console.error(`Health check failed (attempt ${retries}/${maxRetries}):`, error);
-            if (retries < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                console.error('Server health check failed after multiple attempts');
-                return false;
-            }
-        }
+        } catch (e) { /* ignore */ }
+        console.log(`Waiting for server... (${i+1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, delay));
     }
     return false;
 }
 
 async function loadWorldDataWithRetry(maxRetries = 3, delay = 1000) {
-    if (typeof showLoading === 'function') {
-        showLoading(true);
-    }
-
-    // First, wait for the server to be ready
-    const serverReady = await waitForServerReady();
-    if (!serverReady) {
+    if (typeof showLoading === 'function') showLoading(true);
+    const ready = await waitForServerReady();
+    if (!ready) {
         if (typeof showNotification === 'function') {
-            showNotification('Server is taking too long to initialize. Please refresh the page.', 'error');
+            showNotification('Server not ready. Please refresh.', 'error');
         }
-        if (typeof showLoading === 'function') {
-            showLoading(false);
-        }
+        if (typeof showLoading === 'function') showLoading(false);
         return;
     }
-
-    // Now try to load world data
-    let retries = 0;
-
-    while (retries < maxRetries) {
+    for (let i = 0; i < maxRetries; i++) {
         try {
             await loadWorldData();
-
-            // Check if we have valid data
             if (worldState && worldState.worldMap && worldState.worldMap.locations) {
-                console.log('World data loaded successfully');
-                if (typeof showLoading === 'function') {
-                    showLoading(false);
-                }
+                if (typeof showLoading === 'function') showLoading(false);
                 return;
             }
-
-            // If we don't have valid data, wait and retry
-            retries++;
-            if (retries < maxRetries) {
-                console.log(`Retrying world data load (${retries}/${maxRetries})...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
-            }
-        } catch (error) {
-            retries++;
-            console.error(`Error loading world data (attempt ${retries}/${maxRetries}):`, error);
-            if (retries < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
-            } else {
-                if (typeof showNotification === 'function') {
-                    showNotification('Failed to load world data after multiple attempts.', 'error');
-                }
-                if (typeof showLoading === 'function') {
-                    showLoading(false);
-                }
-                return;
-            }
-        }
+        } catch (e) { console.error(e); }
+        await new Promise(r => setTimeout(r, delay));
+        delay *= 2;
     }
+    if (typeof showNotification === 'function') {
+        showNotification('Failed to load world data.', 'error');
+    }
+    if (typeof showLoading === 'function') showLoading(false);
 }
 
-// ===== REFRESH FUNCTION =====
+// ===== REFRESH =====
 async function refreshWorldState() {
-    // FIX: Don't refresh world state when in dungeon mode
     if (document.body && document.body.getAttribute('data-mode') !== 'world') {
-        console.log("Skipping world state refresh - in dungeon mode");
+        console.log('Skipping refresh – not in world mode');
         return;
     }
     try {
         const response = await fetch('/api/world-state');
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        
-        // Update world state
         worldState.worldMap = data.worldMap;
         worldState.parties = data.parties || [];
         worldState.characters = data.characters || {};
-        
         if (data.currentLocation) {
             worldState.currentLocation = data.currentLocation;
         }
-        
-        // Update window state for UI
         window.worldState = worldState;
-        
-        // Update map if we have one
-        if (data.worldMap && typeof renderWorldMap === 'function') {
-            renderWorldMap(data.worldMap);
-        }
-        
-        console.log('World state refreshed');
-        
+        if (worldMap) redraw();
     } catch (error) {
         console.error('Error refreshing world state:', error);
         if (typeof showNotification === 'function') {
@@ -538,345 +499,68 @@ async function refreshWorldState() {
     }
 }
 
-// ===== MAP INTERACTION FUNCTIONS =====
-function initPanFunctionality() {
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (!terrainCanvas) return;
-    
-    terrainCanvas.addEventListener('mousedown', startDragging);
-    terrainCanvas.addEventListener('mousemove', whileDragging);
-    terrainCanvas.addEventListener('mouseup', stopDragging);
-    terrainCanvas.addEventListener('mouseleave', stopDragging);
-    
-    // Touch events
-    terrainCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    terrainCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    terrainCanvas.addEventListener('touchend', handleTouchEnd);
-    
-    terrainCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
-}
-
-function startDragging(e) {
-    if (e.button !== 0) return;
-    
-    isDragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    initialPanX = panX;
-    initialPanY = panY;
-    
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grabbing';
-    }
-    
-    e.preventDefault();
-}
-
-function whileDragging(e) {
-    if (!isDragging) return;
-    
-    const dx = e.clientX - dragStartX;
-    const dy = e.clientY - dragStartY;
-    
-    panX = initialPanX + dx;
-    panY = initialPanY + dy;
-    
-    updateMapTransform();
-    e.preventDefault();
-}
-
-function stopDragging() {
-    isDragging = false;
-    
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grab';
-    }
-}
-
-function handleTouchStart(e) {
-    if (e.touches.length !== 1) return;
-    
-    const touch = e.touches[0];
-    isDragging = true;
-    dragStartX = touch.clientX;
-    dragStartY = touch.clientY;
-    initialPanX = panX;
-    initialPanY = panY;
-    
-    e.preventDefault();
-}
-
-function handleTouchMove(e) {
-    if (!isDragging || e.touches.length !== 1) return;
-    
-    const touch = e.touches[0];
-    const dx = touch.clientX - dragStartX;
-    const dy = touch.clientY - dragStartY;
-    
-    panX = initialPanX + dx;
-    panY = initialPanY + dy;
-    
-    updateMapTransform();
-    e.preventDefault();
-}
-
-function handleTouchEnd() {
-    isDragging = false;
-}
-
-function setupCanvasInteractions() {
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (!terrainCanvas) return;
-    
-    // Use a debounce function to prevent excessive preview updates
-    let lastHoverTime = 0;
-    const hoverDebounce = 100; // ms
-    
-    terrainCanvas.addEventListener('mousemove', function(e) {
-        const now = Date.now();
-        if (now - lastHoverTime < hoverDebounce) return;
-        lastHoverTime = now;
-        
-        const rect = terrainCanvas.getBoundingClientRect();
-        const scaleX = terrainCanvas.width / rect.width;
-        const scaleY = terrainCanvas.height / rect.height;
-        
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-        
-        // Check if we're hovering over a location
-        if (window.worldState && window.worldState.locations) {
-            const hoveredLocation = window.worldState.locations.find(loc => {
-                const distance = Math.sqrt(Math.pow(x - loc.x, 2) + Math.pow(y - loc.y, 2));
-                return distance <= loc.radius;
-            });
-            
-            if (hoveredLocation) {
-                terrainCanvas.style.cursor = 'pointer';
-                locationPreview.show(hoveredLocation.data, e.clientX, e.clientY);
-            } else {
-                terrainCanvas.style.cursor = 'grab';
-                locationPreview.hide();
-            }
-        }
-    });
-    
-    terrainCanvas.addEventListener('mouseleave', function() {
-        locationPreview.hide();
-    });
-    
-    terrainCanvas.addEventListener('click', function(e) {
-        const rect = terrainCanvas.getBoundingClientRect();
-        const scaleX = terrainCanvas.width / rect.width;
-        const scaleY = terrainCanvas.height / rect.height;
-        
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-        
-        // Check if we're clicking on a location
-        if (window.worldState && window.worldState.locations) {
-            const clickedLocation = window.worldState.locations.find(loc => {
-                const distance = Math.sqrt(Math.pow(x - loc.x, 2) + Math.pow(y - loc.y, 2));
-                return distance <= loc.radius;
-            });
-            
-            if (clickedLocation) {
-                // Check if we're already at this location
-                if (worldState.currentLocation && worldState.currentLocation.id === clickedLocation.data.id) {
-                    if (typeof showNotification === 'function') {
-                        showNotification(`You're already at ${clickedLocation.data.name}`, 'info');
-                    }
-                } else {
-                    // Open travel modal with this location pre-selected
-                    if (typeof window.openModal === 'function') {
-                        window.openModal('travel-modal', 'travel-btn');
-                        
-                        // Highlight the clicked location in the travel modal
-                        setTimeout(() => {
-                            const travelLocations = document.getElementById('travel-locations');
-                            if (travelLocations) {
-                                const locationBtns = travelLocations.querySelectorAll('button');
-                                locationBtns.forEach(btn => {
-                                    if (btn.textContent.includes(clickedLocation.data.name)) {
-                                        btn.style.background = '#40916c';
-                                        btn.style.borderColor = '#fff';
-                                    }
-                                });
-                            }
-                        }, 100);
-                        
-                        if (typeof showNotification === 'function') {
-                            showNotification(`Selected ${clickedLocation.data.name} for travel`, 'info');
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    // Call this function to add the panning styles
-    addPanningStyles();
-}
-
-function addPanningStyles() {
-    // Already included in world.html CSS
-}
-
-// ===== COMPATIBILITY LAYER =====
-
-// DMChat placeholder for compatibility
+// ===== COMPATIBILITY =====
 if (typeof DMChat === 'undefined') {
     window.DMChat = class {
-        constructor() {
-            console.log('DMChat placeholder loaded');
-        }
-        sendMessage() {
-            console.log('DMChat.sendMessage called (placeholder)');
-        }
-        receiveMessage() {
-            console.log('DMChat.receiveMessage called (placeholder)');
-        }
+        constructor() { console.log('DMChat placeholder'); }
+        sendMessage() {}
+        receiveMessage() {}
     };
 }
-
-// Placeholder notification functions (overridden by world.html)
-window.showNotification = window.showNotification || function(message, type = 'info') {
-    console.log(`Notification [${type}]: ${message}`);
-};
-
-window.showLoading = window.showLoading || function(show) {
-    console.log(`Loading: ${show}`);
-};
-
-// showPanel compatibility (redirects to new UI system)
+window.showNotification = window.showNotification || function(m,t) { console.log(`[${t}] ${m}`); };
+window.showLoading = window.showLoading || function(s) { console.log('Loading:', s); };
 window.showPanel = window.showPanel || function(panelId) {
-    console.log(`showPanel called: ${panelId}`);
-    
-    if (panelId === 'travel-panel') {
-        if (typeof window.openModal === 'function') {
-            window.openModal('travel-modal', 'travel-btn');
-            if (typeof populateTravelPanel === 'function') {
-                populateTravelPanel();
-            }
-        }
-    } else if (panelId === 'status-panel') {
-        if (typeof window.openModal === 'function') {
-            window.openModal('status-modal', 'status-btn');
-            if (typeof updateStatusPanel === 'function') {
-                updateStatusPanel();
-            }
-        }
-    } else if (panelId === 'chat-panel') {
-        if (typeof window.openModal === 'function') {
-            window.openModal('chat-modal', 'chat-btn');
-        }
-    } else if (panelId === 'inventory-panel') {
-        const inventoryTab = document.querySelector('[data-tab="inventory-tab"]');
-        if (inventoryTab) inventoryTab.click();
-    } else if (panelId === 'quests-panel') {
-        const questsTab = document.querySelector('[data-tab="quests-tab"]');
-        if (questsTab) questsTab.click();
-    } else if (panelId === 'party-panel') {
-        const partyTab = document.querySelector('[data-tab="party-tab"]');
-        if (partyTab) partyTab.click();
+    console.log('showPanel', panelId);
+    if (panelId === 'travel-panel' && window.openModal) {
+        window.openModal('travel-modal', 'travel-btn');
+        if (window.populateTravelModal) window.populateTravelModal();
+    } else if (panelId === 'status-panel' && window.openModal) {
+        window.openModal('status-modal', 'status-btn');
+        if (window.updateStatusContent) window.updateStatusContent();
+    } else if (panelId === 'chat-panel' && window.openModal) {
+        window.openModal('chat-modal', 'chat-btn');
+    } else {
+        const tab = document.querySelector(`[data-tab="${panelId.replace('-panel','-tab')}"]`);
+        if (tab) tab.click();
     }
 };
-
-// UI compatibility functions
 window.populateTravelPanel = function() {
-    if (typeof window.populateTravelModal === 'function') {
-        window.populateTravelModal();
-    }
+    if (window.populateTravelModal) window.populateTravelModal();
 };
-
 window.updateStatusPanel = function() {
-    if (typeof window.updateStatusContent === 'function') {
-        window.updateStatusContent();
-    }
+    if (window.updateStatusContent) window.updateStatusContent();
 };
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('world.js initialized');
-    
-    // Initialize DMChat safely
     try {
-        if (typeof DMChat !== 'undefined') {
-            window.dmChat = new DMChat();
-        } else {
-            window.dmChat = {
-                sendMessage: function() {},
-                receiveMessage: function() {}
-            };
-        }
+        window.dmChat = typeof DMChat !== 'undefined' ? new DMChat() : { sendMessage(){}, receiveMessage(){} };
     } catch (e) {
-        console.warn('Failed to initialize DMChat:', e);
-        window.dmChat = {
-            sendMessage: function() {},
-            receiveMessage: function() {}
-        };
+        console.warn('DMChat init failed', e);
+        window.dmChat = { sendMessage(){}, receiveMessage(){} };
     }
-    
-    // Set up map interactions
-    initPanFunctionality();
-    
-    // Set up canvas interactions
-    setupCanvasInteractions();
-    
-    // Add panning styles
-    addPanningStyles();
-    
-    // Set initial cursor
-    const terrainCanvas = document.getElementById('terrain-canvas');
-    if (terrainCanvas) {
-        terrainCanvas.style.cursor = 'grab';
+
+    const canvas = document.getElementById('terrain-canvas');
+    if (canvas) {
+        canvas.style.cursor = 'grab';
+        canvas.addEventListener('pointerdown', onPointerDown);
+        canvas.addEventListener('wheel', onWheel);
+        canvas.addEventListener('dblclick', onDoubleClick);
+        canvas.addEventListener('dragstart', (e) => e.preventDefault()); // prevent native drag
     }
-    
-    // Initialize map controls
-    const zoomInBtn = document.getElementById('zoom-in');
-    const zoomOutBtn = document.getElementById('zoom-out');
-    const centerBtn = document.getElementById('center-map');
-    const resetBtn = document.getElementById('reset-view');
-    
-    if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
-    if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
-    if (centerBtn) centerBtn.addEventListener('click', centerMap);
-    if (resetBtn) resetBtn.addEventListener('click', resetMapView);
-    
-    // Make functions globally available for new UI
-    window.zoomIn = zoomIn;
-    window.zoomOut = zoomOut;
-    window.centerMap = centerMap;
-    window.resetMapView = resetMapView;
+
     window.travelToLocation = travelToLocation;
-    window.refreshWorldState = refreshWorldState;
-    window.renderWorldMap = renderWorldMap;
+    window.redraw = redraw;
     window.loadWorldDataWithRetry = loadWorldDataWithRetry;
-    
-    // Initialize world data
+
     loadWorldDataWithRetry();
-    
-    // Set up periodic refresh
-    setInterval(() => {
-        refreshWorldState();
-    }, 30000); // Refresh every 30 seconds
 });
 
 // ===== GLOBAL EXPORTS =====
-// Make worldState globally available
 window.worldState = worldState;
-
-// Export functions for use in console debugging
 window.debug = {
     getWorldState: () => worldState,
-    refreshWorld: refreshWorldState,
-    travelTo: travelToLocation,
-    zoomIn: zoomIn,
-    zoomOut: zoomOut,
-    centerMap: centerMap,
-    renderWorldMap: renderWorldMap
+    redraw
 };
 
 console.log('world.js loaded successfully');

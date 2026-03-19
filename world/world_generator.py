@@ -7,7 +7,9 @@ from psycopg2.extras import Json
 from pathlib import Path
 from world.db import Database
 from world.world_builder import WorldBuilder
-from world.campaign import CampaignState, Location, Faction, Quest, NPC  # Changed
+from world.campaign import CampaignState, Faction, Quest
+# TODO NPC from og_system
+from world.world_map import Location
 from world.ai_integration import DungeonAI
 from world.t2i import TextToImage  # New image generator
 
@@ -56,9 +58,10 @@ class WorldGenerator:
         # Generate regions with thematic consistency
         regions = self._generate_regions(theme, params, foundation)
         
-        # Populate each region
-        for region_idx, region_data in enumerate(regions):
-            self._populate_region(campaign_state, region_data, region_idx, theme, params)  # Changed
+        # TODO: see def
+        # # Populate each region
+        # for region_idx, region_data in enumerate(regions):
+        #     self._populate_region(campaign_state, region_data, region_idx, theme, params)  # Changed
         
         # Generate factions with relationships
         self._generate_factions(campaign_state, theme, params, foundation)  # Changed
@@ -265,34 +268,35 @@ class WorldGenerator:
         
         return regions
 
-    def _populate_region(self, campaign_state, region_data, region_idx, theme, params):  # Changed
-        """Populate a region with locations, quests, and NPCs"""
-        # Calculate region boundaries for proper spacing
-        region_width = 800 // params["region_count"]
-        region_x = region_idx * region_width + region_width // 2
+    # TODO: revisit and fix/rewrite after NPC created with og_system
+    # def _populate_region(self, campaign_state, region_data, region_idx, theme, params):  # Changed
+    #     """Populate a region with locations, quests, and NPCs"""
+    #     # Calculate region boundaries for proper spacing
+    #     region_width = 800 // params["region_count"]
+    #     region_x = region_idx * region_width + region_width // 2
         
-        # Track existing names to ensure uniqueness
-        existing_names = {loc.name for loc in campaign_state.locations.values()}  # Changed
+    #     # Track existing names to ensure uniqueness
+    #     existing_names = {loc.name for loc in campaign_state.locations.values()}  # Changed
         
-        for loc_idx in range(params["locations_per_region"]):
-            # Determine location type based on region type
-            location_type = self._determine_location_type(region_data, loc_idx)
+    #     for loc_idx in range(params["locations_per_region"]):
+    #         # Determine location type based on region type
+    #         location_type = self._determine_location_type(region_data, loc_idx)
             
-            # Generate location using WorldBuilder with existing names
-            location = self._generate_location(
-                theme, location_type, region_data, region_x, loc_idx, params, existing_names
-            )
+    #         # Generate location using WorldBuilder with existing names
+    #         location = self._generate_location(
+    #             theme, location_type, region_data, region_x, loc_idx, params, existing_names
+    #         )
             
-            campaign_state.add_location(location)  # Changed
-            existing_names.add(location.name)  # Add to existing names
+    #         campaign_state.add_location(location)  # Changed
+    #         existing_names.add(location.name)  # Add to existing names
             
-            # Add quests based on density parameter
-            if random.random() < params["quest_density"]:
-                self._add_quest_to_location(campaign_state, location, theme)  # Changed
+    #         # Add quests based on density parameter
+    #         if random.random() < params["quest_density"]:
+    #             self._add_quest_to_location(campaign_state, location, theme)  # Changed
             
-            # Add NPCs based on density parameter
-            if random.random() < params["npc_density"]:
-                self._add_npcs_to_location(campaign_state, location, theme)  # Changed
+    #         # Add NPCs based on density parameter
+    #         if random.random() < params["npc_density"]:
+    #             self._add_npcs_to_location(campaign_state, location, theme)  # Changed
 
     def _determine_location_type(self, region_data, loc_idx):
         """Determine appropriate location type based on region"""
@@ -361,39 +365,40 @@ class WorldGenerator:
         campaign_state.add_quest(quest)  # Changed
         location.quests.append(quest.id)
 
-    def _add_npcs_to_location(self, campaign_state, location, theme):  # Changed
-        """Add NPCs to a location"""
-        npc_count = random.randint(1, 3)  # 1-3 NPCs per location
+    # TODO: after NPC implemented with og_system, revisit and rewrite if necessary
+    # def _add_npcs_to_location(self, campaign_state, location, theme):  # Changed
+    #     """Add NPCs to a location"""
+    #     npc_count = random.randint(1, 3)  # 1-3 NPCs per location
         
-        for _ in range(npc_count):
-            try:
+    #     for _ in range(npc_count):
+    #         try:
 
-                npc_data = self.builder.generate("npc", 
-                                               theme=theme, 
-                                               location=location.name)
+    #             npc_data = self.builder.generate("npc", 
+    #                                            theme=theme, 
+    #                                            location=location.name)
 
-                # Ensure all required fields are present
-                if not all(key in npc_data for key in ["name", "role", "motivation"]):
-                    print(f"Warning: Incomplete NPC data: {npc_data}")
-                    continue
+    #             # Ensure all required fields are present
+    #             if not all(key in npc_data for key in ["name", "role", "motivation"]):
+    #                 print(f"Warning: Incomplete NPC data: {npc_data}")
+    #                 continue
                 
-                # Create NPC and add to world
-                npc = NPC(
-                    id=f"npc_{uuid.uuid4().hex[:8]}",
-                    name=npc_data["name"],
-                    role=npc_data["role"],
-                    motivation=npc_data["motivation"]
-                )
+    #             # Create NPC and add to world
+    #             npc = NPC(
+    #                 id=f"npc_{uuid.uuid4().hex[:8]}",
+    #                 name=npc_data["name"],
+    #                 role=npc_data["role"],
+    #                 motivation=npc_data["motivation"]
+    #             )
                 
-                # Add dialogue if available
-                if "dialogue" in npc_data:
-                    npc.dialogue = npc_data["dialogue"]
+    #             # Add dialogue if available
+    #             if "dialogue" in npc_data:
+    #                 npc.dialogue = npc_data["dialogue"]
                 
-                campaign_state.add_npc(npc)  # Changed
+    #             campaign_state.add_npc(npc)  # Changed
 
-            except Exception as e:
-                print(f"Error creating NPC: {e}")
-                continue
+    #         except Exception as e:
+    #             print(f"Error creating NPC: {e}")
+    #             continue
 
     def _generate_factions(self, campaign_state, theme, params, foundation):  # Changed
         """Generate factions with relationships based on campaign"""

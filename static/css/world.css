@@ -52,6 +52,12 @@
     z-index: 1000;
 }
 
+.container {
+  display: flex;
+  /* Optional: adds space between the divs */
+  gap: 20px; 
+}
+
 #connection-status {
     position: fixed;
     top: 10px;
@@ -66,12 +72,32 @@
     z-index: 1001;
 }
 
-/* Adjust terrain canvas and overlay */
-#terrain-canvas {
-    width: 100% !important;
-    height: 100% !important;
-    position: absolute;
-    z-index: 0;
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: nowrap;   /* Prevent wrapping */
+    overflow-x: auto;     /* Allow horizontal scroll if needed */
+}
+
+#mode-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;      /* Prevent shrinking */
+    background: #2a2a4a;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+#game-date {
+    flex-shrink: 0;      /* Prevent shrinking */
+    white-space: nowrap;  /* Keep date text on one line */
+}
+
+.action-btn {
+    padding:5px;
+    min-width:20px;
 }
 
 /* Responsive adjustments */

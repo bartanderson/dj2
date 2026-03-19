@@ -81,7 +81,7 @@
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 535,
+    "complexity_score": 512,
     "implementation_status": "unknown",
     "notes": "Standard component"
   },
@@ -105,7 +105,7 @@
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [
-      "pieces\\14_campaign.json"
+      "14_campaign.json"
     ],
     "complexity_score": 149,
     "implementation_status": "unknown",
@@ -117,15 +117,17 @@
     "path": "world\\character.py",
     "type": "service",
     "responsibilities": [
+      "manages inventoryitem state",
       "manages character state"
     ],
     "key_exports": [
-      "class:Character(11 methods)"
+      "class:InventoryItem(0 methods)",
+      "class:Character(21 methods)"
     ],
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 132,
+    "complexity_score": 434,
     "implementation_status": "unknown",
     "notes": "CRITICAL PATH: Character generation integration point"
   },
@@ -156,7 +158,8 @@
       "generates create_character_from_form"
     ],
     "key_exports": [
-      "func:normalize_form_data",
+      "func:random_attributes",
+      "func:random_skills",
       "func:random_fill_field",
       "func:random_fill_all",
       "func:create_character_from_form"
@@ -164,7 +167,7 @@
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 186,
+    "complexity_score": 208,
     "implementation_status": "unknown",
     "notes": "CRITICAL PATH: Character generation integration point"
   },
@@ -228,15 +231,20 @@
     "path": "world\\dm_chat_ai.py",
     "type": "service",
     "responsibilities": [
+      "generates response",
       "manages dmchatai state"
     ],
     "key_exports": [
-      "class:DMChatAI(15 methods)"
+      "func:_call_llm",
+      "func:_llm_json_response",
+      "func:extract_topic",
+      "func:generate_response",
+      "func:get_ai_response"
     ],
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 541,
+    "complexity_score": 164,
     "implementation_status": "unknown",
     "notes": "Standard component"
   },
@@ -246,15 +254,19 @@
     "path": "world\\dm_chat_handler.py",
     "type": "service",
     "responsibilities": [
+      "manages dialogresponse state",
+      "manages sessionstate state",
       "manages dmchathandler state"
     ],
     "key_exports": [
-      "class:DMChatHandler(33 methods)"
+      "class:DialogResponse(0 methods)",
+      "class:SessionState(0 methods)",
+      "class:DMChatHandler(9 methods)"
     ],
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 1021,
+    "complexity_score": 313,
     "implementation_status": "unknown",
     "notes": "Standard component"
   },
@@ -282,21 +294,21 @@
     "path": "world\\dnd_data.py",
     "type": "data_source",
     "responsibilities": [
-      "manages dndobject state",
-      "manages abilityscore state",
-      "manages skill state"
+      "manages attribute state",
+      "manages skill state",
+      "manages race state"
     ],
     "key_exports": [
-      "func:_get_embedder",
-      "class:DnDObject(6 methods)",
-      "class:AbilityScore(2 methods)",
-      "class:Skill(1 methods)",
-      "class:Proficiency(1 methods)"
+      "func:_load_og_json",
+      "func:_get_core_data",
+      "func:_get_classes_data",
+      "func:_get_races_data",
+      "func:_get_magic_data"
     ],
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [],
-    "complexity_score": 505,
+    "complexity_score": 460,
     "implementation_status": "working",
     "notes": "Standard component"
   },
@@ -520,7 +532,7 @@
     "dependencies": [],
     "dnd_character_touches": [],
     "og_system_counterparts": [
-      "pieces\\17_player_narrative.json"
+      "17_player_narrative.json"
     ],
     "complexity_score": 34,
     "implementation_status": "unknown",

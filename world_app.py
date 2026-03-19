@@ -15,6 +15,8 @@ from world.world_map import WorldMap
 from world.t2i import TextToImage  # Import the image generator
 from world.persistence import WorldManager
 from world.ai_integration import BaseAI, WorldAI
+from world.db import Database
+from world.player import Player
 
 # Add GameEngine imports
 from engine.game_engine import GameEngine, GamePhase, GameContext
@@ -28,6 +30,8 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 app = Flask(__name__)
+from routes.api import api_bp
+app.register_blueprint(api_bp, url_prefix='/api')
 
 # begin filtering timestamp
 import logging
@@ -591,6 +595,19 @@ def health_check():
             'message': 'World controller is not ready yet'
         }), 503  # Service Unavailable status code
 
+@app.route('/api/game/date', methods=['GET'])
+def get_game_date():
+    """Return formatted current date for display."""
+    if not hasattr(app, 'world_controller') or app.world_controller is None:
+        return "Date unavailable", 503
+    try:
+        date_dict = app.world_controller.campaign_state.get_current_date()
+        # Format as "D3 W2 M5 Y1 - Morning" (compact)
+        formatted = f"D{date_dict['day']} W{date_dict['week']} M{date_dict['month']} Y{date_dict['year']} - {date_dict['time_of_day'].capitalize()}"
+        return formatted
+    except Exception as e:
+        return f"Date error", 500
+
 def get_world_controller():
     """Safely get the world controller instance"""
     if hasattr(app, 'world_controller') and app.world_controller is not None:
@@ -737,7 +754,7 @@ def setup_world_system():
         
         # 7. Verify everything is working
         print(f"[OK] World loaded with {len(world_controller.world_map.locations)} locations")
-        print(f"[OK] Starting at: {world_controller.campaign_state.starting_location_id}")
+        print(f"[OK] Starting at: {world_controller.starting_location_id}")
         
         return world_controller, world_id
         
@@ -789,7 +806,17 @@ def get_context(player_id):
 # serve world.html
 @app.route('/', endpoint='index')
 def index():
-    return render_template('world.html')
+    session_id = request.cookies.get('session_id')
+    active_character_id = None
+    player_logged_in = False
+    if session_id:
+        player = current_app.world_controller.get_player_by_session(session_id)
+        if player:
+            player_logged_in = True
+            active_character_id = player.active_character_id
+    return render_template('world.html',
+                          active_character_id=active_character_id,
+                          player_logged_in=player_logged_in)
 
 # Serve static images
 @app.route('/static/world_images/<path:filename>')
@@ -832,26 +859,18 @@ def retry_failed_images():
 # ===== Character Endpoints =====
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
-    try:
-        session_id = request.cookies.get('session_id')
-        if not session_id:
-            return jsonify({'error': 'No session ID'}), 400
-            
-        player = app.world_controller.get_or_create_player(session_id)
-        characters = []
-        
-        for char_id in player.character_ids:
-            if char_id in app.world_controller.characters:
-                characters.append(app.world_controller.characters[char_id].to_dict())
-        
-        return jsonify({
-            'success': True,
-            'characters': characters,
-            'player_id': player.id
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    session_id = request.cookies.get('session_id')
+    if not session_id:
+        return jsonify({'characters': []})
+    player = current_app.world_controller.get_player_by_session(session_id)
+    if not player:
+        return jsonify({'characters': []})
+    characters = []
+    for char_id in player.character_ids:
+        char = current_app.world_controller.character_manager.get_character(char_id)
+        if char:
+            characters.append(char.to_dict())
+    return jsonify({'characters': characters})
 
 @app.route('/api/player/active-character', methods=['POST'])
 def set_active_character():
@@ -1045,14 +1064,9 @@ def engine_mode():
         status = app.game_engine.get_mode_status()
         return jsonify(status)
     
-    else:  # POST
-        # DEBUG: Print raw request data
-        print(f"DEBUG: Raw request data: {request.data}")
-        print(f"DEBUG: Request headers: {dict(request.headers)}")
-        
+    else:  # POST        
         try:
             data = request.get_json()
-            print(f"DEBUG: Parsed JSON: {data}")
         except Exception as e:
             print(f"DEBUG: JSON parse error: {e}")
             return jsonify({"error": f"JSON parse error: {str(e)}"}), 400
@@ -1216,6 +1230,103 @@ def check_dungeon_endpoints():
         
     except Exception as e:
         return jsonify({"error": str(e)})
+
+# ===== Character basic =====
+
+@app.route('/character/<character_id>/basic')
+def character_basic(character_id):
+    """Return a partial HTML with basic character info."""
+    if not character_id:
+        return "", 204
+    character = current_app.world_controller.character_manager.get_character(character_id)
+    if not character:
+        return "", 204
+    return render_template('partials/character_basic.html', character=character)
+
+# ===== Narrative System Endpoints (Phase 2) =====
+
+@app.route('/character/<character_id>/narrative')
+def character_narrative(character_id):
+    """Return the narrative partial (backstory, connections, vows, secrets) for a character."""
+    if not character_id:
+        return "", 204  # No content
+    character = current_app.world_controller.character_manager.get_character(character_id)
+    if not character:
+        return "", 204
+    return render_template('partials/character_narrative.html', character=character)
+
+
+@app.route('/character/<character_id>/start-backstory', methods=['POST'])
+def start_backstory(character_id):
+    """Start guided backstory creation for a character."""
+    character = current_app.world_controller.character_manager.get_character(character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 404
+
+    narrative = current_app.world_controller.narrative_system
+    if not hasattr(narrative, 'backstory_sessions'):
+        narrative.backstory_sessions = {}
+
+    # Initialise a new backstory session (phase = 'origin')
+    session_state = {
+        'phase': 'origin',
+        'backstory': {},
+        'conversation': []
+    }
+    narrative.backstory_sessions[character_id] = session_state
+
+    # Get the first DM prompt
+    result = narrative.guide_backstory_creation(character_id, None, session_state)
+    if result.get('responses'):
+        first = result['responses'][0]
+        if hasattr(first, 'to_dict'):
+            first = first.to_dict()
+        return jsonify({
+            'speaker': first.get('speaker', 'DM'),
+            'content': first.get('content', ''),
+            'type': first.get('type', 'narration')
+        })
+    else:
+        return jsonify({"error": "No response from narrative system"}), 500
+
+
+@app.route('/character/<character_id>/backstory-continue', methods=['POST'])
+def backstory_continue(character_id):
+    """Send a message during backstory creation."""
+    data = request.get_json()
+    message = data.get('message', '')
+
+    narrative = current_app.world_controller.narrative_system
+    if not hasattr(narrative, 'backstory_sessions') or character_id not in narrative.backstory_sessions:
+        return jsonify({"error": "No active backstory session"}), 400
+
+    session_state = narrative.backstory_sessions[character_id]
+    result = narrative.guide_backstory_creation(character_id, message, session_state)
+
+    # Update stored state
+    narrative.backstory_sessions[character_id] = result['new_state']
+
+    # Convert responses to JSON-serializable dicts
+    responses = []
+    for r in result.get('responses', []):
+        if hasattr(r, 'to_dict'):
+            responses.append(r.to_dict())
+        else:
+            responses.append(r)
+
+    # If session finished, remove it
+    if result['new_state'] is None:
+        del narrative.backstory_sessions[character_id]
+
+    return jsonify({"responses": responses})
+
+
+@app.route('/character/<character_id>/build-connections', methods=['POST'])
+def build_connections(character_id):
+    """Manually trigger connection web generation for a character."""
+    narrative = current_app.world_controller.narrative_system
+    narrative.build_connection_web_for_character(character_id)
+    return jsonify({"success": True})
         
 # ===== World Navigation Endpoints =====
 @app.route('/api/travel/<location_id>', methods=['POST'])
@@ -1390,21 +1501,30 @@ def random_all():
     
 @app.route('/character-creation/submit', methods=['POST'])
 def submit_character():
+    session_id = request.cookies.get('session_id')
+    if not session_id:
+        return jsonify({"error": "No session"}), 401   # frontend will show player modal
+
+    player = current_app.world_controller.get_player_by_session(session_id)
+    if not player:
+        return jsonify({"error": "No player selected"}), 401
+        
     data = request.form
     session_id = request.cookies.get('session_id')
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        is_new_session = True
+    else:
+        is_new_session = False
+
     player = app.world_controller.get_or_create_player(session_id)
     if not player:
         return render_template('partials/error_message.html', errors=["Could not identify player"]), 400
 
-    # Convert to a mutable dict
     char_data = data.to_dict()
-
-    # Handle skills (multi‑value)
     skills = request.form.getlist('skills')
     if skills:
         char_data['skills'] = skills
-
-    # Add player_id
     char_data['player_id'] = player.id
 
     from world import character_generator
@@ -1412,16 +1532,33 @@ def submit_character():
         char_data,
         builder=app.world_controller.character_builder
     )
-
-    # Debug: print result
-    print("Submit result:", result)
+    print(f"Character creation result: {result}")
 
     if result['success']:
-        # Set the active character in the session
-        app.world_controller.session_system.set_active_character(session_id, result['character'].id)
-        return render_template('partials/success_message.html', character=result['character'])
+        print(f"Character created: {result['character'].id}, name={result['character'].name}")
+        char = result['character']
+        char.player_id = player.id
+        # Ensure character is in the manager's cache
+        if not app.world_controller.character_manager.get_character(char.id):
+            app.world_controller.character_manager.add_character(char)
+        app.world_controller.character_manager.assign_character_to_player(player.id, char.id)
+        print("Character assigned to player")
+        
+        # Rest of the response...
+        response = make_response("""
+            <script>
+                location.reload();
+            </script>
+        """)
+        if is_new_session:
+            response.set_cookie(
+                'session_id', session_id,
+                max_age=60*60*24*7, path='/',
+                secure=False, httponly=True, samesite='Lax'
+            )
+        return response
     else:
-        print("Errors:", result['errors'])
+        print(f"Character creation failed: {result.get('errors')}")
         return render_template('partials/error_message.html', errors=result['errors']), 400
 
 @app.route('/character-creation/form')
@@ -1555,7 +1692,6 @@ def character_creation_help():
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
     try:
-        print("DEBUG: dm-response endpoint called")
         data = request.get_json()
         message = data.get('message')
         character_id = data.get('character_id')
@@ -2021,6 +2157,71 @@ def initialize_app():
         import traceback
         traceback.print_exc()
         return None, None
+
+# ===== Player Selection Endpoints =====
+
+@app.route('/api/players', methods=['GET'])
+def list_players():
+    """Return list of all existing players (id, name)."""
+    conn = Database.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name FROM players ORDER BY name")
+            players = [{"id": str(row[0]), "name": row[1]} for row in cur.fetchall()]
+        return jsonify({"players": players})
+    finally:
+        Database.return_connection(conn)
+
+
+@app.route('/api/select-player', methods=['POST'])
+def select_player():
+    """Set session cookie for an existing player."""
+    data = request.get_json()
+    player_id = data.get('player_id')
+    if not player_id:
+        return jsonify({"error": "No player_id provided"}), 400
+
+    # Load player from database (or from cache)
+    player = current_app.world_controller.get_player_by_id(player_id)
+    if not player:
+        return jsonify({"error": "Player not found"}), 404
+
+    # Create a new session ID
+    session_id = str(uuid.uuid4())
+    current_app.world_controller.session_players[session_id] = player.id
+
+    response = jsonify({"success": True, "player": player.to_dict()})
+    response.set_cookie(
+        'session_id', session_id,
+        max_age=60*60*24*7, path='/',
+        secure=False, httponly=True, samesite='Lax'
+    )
+    return response
+
+
+@app.route('/api/create-player', methods=['POST'])
+def create_player():
+    """Create a new player with a friendly name."""
+    data = request.get_json()
+    player_name = data.get('name', 'Adventurer').strip()
+    if not player_name:
+        player_name = "Adventurer"
+
+    player = Player(name=player_name)
+    current_app.world_controller.players[player.id] = player
+    current_app.world_controller._save_player_to_db(player)
+
+    # Create a new session ID
+    session_id = str(uuid.uuid4())
+    current_app.world_controller.session_players[session_id] = player.id
+
+    response = jsonify({"success": True, "player": player.to_dict()})
+    response.set_cookie(
+        'session_id', session_id,
+        max_age=60*60*24*7, path='/',
+        secure=False, httponly=True, samesite='Lax'
+    )
+    return response
 
 if __name__ == '__main__':
     # Only initialize when not in reloader
