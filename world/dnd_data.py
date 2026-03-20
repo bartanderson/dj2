@@ -59,19 +59,32 @@ def _get_races_data() -> dict:
 def _get_magic_data() -> dict:
     """Load 04_magic.json - spell schools"""
     return _load_og_json("04_magic.json")
-#---5-13
+
+def _get_equipment_data() -> dict:
+    """Load 05_equipment.json - weapons, gear, wealth tiers"""
+    return _load_og_json("05_equipment.json")
+
+def _get_monsters_data() -> dict:
+    """Load 06_monsters.json - bestiary"""
+    return _load_og_json("06_monsters.json")
+
+def _get_encounter_data() -> dict:
+    """Load 07_encounter.json - encounter balance and AI protocol"""
+    return _load_og_json("07_encounter.json")
+
+def _get_exploration_data() -> dict:
+    """Load 08_exploration.json - state machines, procedures, tables"""
+    return _load_og_json("08_exploration.json")
+
+#---9-13
 def _get_campaign_data() -> dict:
-    """Load 14_magic.json - spell schools"""
+    """Load 14_campaign.json - world layers, factions, quests, time"""
     return _load_og_json("14_campaign.json")
 #---15-16
-def _get_player_narrative_data():
-    """Load 17_player_narrative.json - spell schools"""
-    print("[dnd_data] Loading 17_player_narrative.json")
-    data = _load_og_json("17_player_narrative.json")
-    print("[dnd_data] Loaded keys:", data.keys())
-    return data
+def _get_player_narrative_data() -> dict:
+    """Load 17_player_narrative.json - backstory framework, connections, revelations"""
+    return _load_og_json("17_player_narrative.json")
 #---18-19
-
 
 # ----------------------------------------------------------------------
 # Attribute (replaces AbilityScore)

@@ -40,6 +40,8 @@ from world.player import Player
 from world.consequence_engine import ConsequenceEngine
 from world.tool_system import ToolRegistry
 from world.authority_system import AuthoritySystem
+from world.encounter_models import EncounterPoint
+from world.bestiary import Monster
 
 
 import warnings
@@ -294,6 +296,43 @@ class WorldController:
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
 
+    def _generate_encounter_points_for_region(self, region_id: str, region_hexes: list, rng: random.Random) -> dict:
+        """
+        Generate encounter points for a single region.
+        Returns a dict {point_id: EncounterPoint dict}.
+        """
+        density = 0.05   # 5% of hexes become points – adjust as desired
+        point_dict = {}
+        # Use a deterministic RNG derived from region seed (but we'll just use the passed rng)
+        region_rng = random.Random(rng.getrandbits(64))
+
+        for hex in region_hexes:
+            if region_rng.random() < density:
+                point_id = f"{region_id}_enc_{len(point_dict)}"
+                terrain = hex["terrain"]
+                type_hint = self._choose_point_type(terrain, region_rng)
+                point = EncounterPoint(
+                    point_id=point_id,
+                    region_id=region_id,
+                    x=hex["x"],
+                    y=hex["y"],
+                    type_hint=type_hint
+                )
+                point_dict[point_id] = point.to_dict()
+        return point_dict
+
+    def _choose_point_type(self, terrain: str, rng: random.Random) -> str:
+        """Simple terrain‑to‑type mapping – expand as desired."""
+        mapping = {
+            "plains": ["camp", "hunting_ground"],
+            "forest": ["camp", "lair", "hunting_ground"],
+            "mountain": ["cave", "lair", "ruin"],
+            "swamp": ["lair", "ruin", "camp"],
+            "desert": ["ruin", "camp"],
+            "coast": ["camp", "lair"],
+        }
+        options = mapping.get(terrain, ["camp"])
+        return rng.choice(options)
 
     def generate_world_structure(self):
         """Generate hex grid and regions from seed and campaign parameters."""
@@ -476,8 +515,64 @@ class WorldController:
                     "type": "dungeon"
                 }
 
+        # Note this is outside of the for loop above
+        # Generate encounter points for each region
+        # We need a deterministic RNG for the whole world; use self.rng (already seeded)
+        for region_id, region in self.campaign_state.surface_regions.items():
+            # Collect hexes belonging to this region
+            region_hexes = [h for h in self.campaign_state.hex_grid if h.get("region_id") == region_id]
+            if region_hexes:
+                points = self._generate_encounter_points_for_region(region_id, region_hexes, self.rng)
+                region.encounter_points.update(points)
+
         print(f"[WORLD] Generated {len(regions)} regions, {len(self.campaign_state.potential_locations)} potential locations")
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
+        print(f"[ENCOUNTER] Generated {sum(len(r.encounter_points) for r in self.campaign_state.surface_regions.values())} encounter points.")
+
+    def test_generate_random_encounter(self):
+        """Test: pick a random untouched encounter point and generate an encounter."""
+        import random
+        # Collect all untouched points
+        untouched = []
+        for region in self.campaign_state.surface_regions.values():
+            for point_id, point_dict in region.encounter_points.items():
+                if point_dict.get("state") == "untouched":
+                    untouched.append((region, point_id, point_dict))
+        if not untouched:
+            print("No untouched encounter points found.")
+            return None
+        # Pick one at random
+        region, point_id, point_dict = random.choice(untouched)
+        from world.encounter_models import EncounterPoint
+        point = EncounterPoint.from_dict(point_dict)
+        print(f"Testing encounter at point {point_id} ({point.type_hint}) in region {region.name}")
+        # Build context
+        context = {
+            "point_id": point.id,
+            "party_level": 3,   # placeholder
+            "party_size": 4,
+            "region": {
+                "danger_level": region.danger_level,
+                "terrain": region.terrain_tags[0] if region.terrain_tags else "plains",
+                "faction": region.faction_control
+            },
+            "point_type": point.type_hint
+        }
+        from world.encounter_generator import generate_encounter
+        encounter = generate_encounter(context)
+        # Activate the point
+        point.activate(encounter.id)
+        region.encounter_points[point_id] = point.to_dict()
+        # Store encounter
+        if not hasattr(self, 'active_encounters'):
+            self.active_encounters = {}
+        self.active_encounters[encounter.id] = encounter
+        # Print result
+        print(f"Generated encounter: {encounter.description}")
+        for m in encounter.monsters:
+            monster_data = Monster.get(m.monster_id)
+            print(f"  - {monster_data.name} (HP {m.current_hp})")
+        return encounter
 
     def _terrain_danger(self, terrain: str) -> int:
         """Return danger level (1-5) for a given terrain type."""

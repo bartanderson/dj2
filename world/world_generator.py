@@ -3,6 +3,7 @@ import json
 import uuid
 import time
 import random
+from typing import Dict, List, Optional, Set, Any
 from psycopg2.extras import Json
 from pathlib import Path
 from world.db import Database
@@ -12,6 +13,7 @@ from world.campaign import CampaignState, Faction, Quest
 from world.world_map import Location
 from world.ai_integration import DungeonAI
 from world.t2i import TextToImage  # New image generator
+from world.encounter_models import EncounterPoint
 
 class WorldGenerator:
     def __init__(self, ai_system=None, seed=42, model_path=None, image_output_dir=None):
@@ -267,6 +269,58 @@ class WorldGenerator:
             regions.append(region)
         
         return regions
+
+def generate_encounter_points_for_region(region_id: str, region_data: dict,
+                                         hexes: list, seed: int) -> dict:
+    """
+    Generate encounter points for a region using the world seed.
+    Returns a dict of point_id → EncounterPoint dict (for storage).
+    """
+    # Create a deterministic RNG for this region using seed + region_id
+    rng = random.Random(seed + hash(region_id) % 2**32)
+
+    # Density: e.g., 5% of hexes in region become points
+    density = 0.05
+    point_dict = {}
+
+    # You need a way to know which hexes belong to this region.
+    # For now, assume hexes have a 'region_id' field. If not, you'll need
+    # to precompute region membership during terrain generation.
+    region_hexes = [h for h in hexes if h.get("region_id") == region_id]
+
+    for hex in region_hexes:
+        if rng.random() < density:
+            # Generate a point ID
+            point_id = f"{region_id}_enc_{len(point_dict)}"
+
+            # Choose type hint based on terrain and region tags
+            terrain = hex.get("terrain", "plains")
+            type_hint = _choose_point_type(terrain, region_data.get("terrain_tags", []), rng)
+
+            # Create point (state = UNTOUCHED)
+            point = EncounterPoint(
+                point_id=point_id,
+                region_id=region_id,
+                x=hex["x"],
+                y=hex["y"],
+                type_hint=type_hint
+            )
+            point_dict[point_id] = point.to_dict()
+
+    return point_dict
+
+def _choose_point_type(terrain: str, region_tags: List[str], rng) -> str:
+    """Simple mapping – expand as you like."""
+    terrain_map = {
+        "plains": ["camp", "hunting_ground"],
+        "forest": ["camp", "lair", "hunting_ground"],
+        "mountain": ["cave", "lair", "ruin"],
+        "swamp": ["lair", "ruin", "camp"],
+        "desert": ["ruin", "camp"],
+        "coast": ["camp", "lair"],
+    }
+    options = terrain_map.get(terrain, ["camp"])
+    return rng.choice(options)
 
     # TODO: revisit and fix/rewrite after NPC created with og_system
     # def _populate_region(self, campaign_state, region_data, region_idx, theme, params):  # Changed

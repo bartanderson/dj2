@@ -100,6 +100,43 @@ class DungeonConnectionHelper:
         
         return results
 
+# for testing/updating backstory
+@app.route('/api/character/<character_id>/backstory', methods=['POST'])
+def update_character_backstory(character_id):
+    data = request.json
+    backstory_text = data.get('backstory', '')
+    # Get character from manager
+    character = world_controller.character_manager.get_character(character_id)
+    if not character:
+        return jsonify({"success": False, "error": "Character not found"}), 404
+
+    # Update backstory (store as dict with 'story' key)
+    character.backstory = {"story": backstory_text}
+    # Save to database
+    world_controller.character_manager._save_character_to_db(character)
+
+    return jsonify({"success": True, "message": "Backstory saved"})
+
+# temp route for testing encounter
+@app.route('/api/debug/test-encounter', methods=['GET'])
+def debug_test_encounter():
+    import traceback
+    try:
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({"error": "World controller not available"}), 500
+        encounter = wc.test_generate_random_encounter()
+        if encounter:
+            return jsonify({
+                "message": "Encounter generated",
+                "description": encounter.description,
+                "monsters": [{"id": m.monster_id, "hp": m.current_hp} for m in encounter.monsters]
+            })
+        return jsonify({"message": "No untouched encounter points found"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
 # Add a debug endpoint to use this helper
 @app.route('/api/debug/connectivity', methods=['GET'])
 def debug_connectivity():
@@ -115,6 +152,16 @@ def debug_connectivity():
         "results": results,
         "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
     })
+
+@app.route('/api/character/<character_id>')
+def get_character(character_id):
+    wc = current_app.config.get('WORLD_CONTROLLER')
+    if not wc:
+        return jsonify({"error": "World controller not available"}), 500
+    character = wc.character_manager.get_character(character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 404
+    return jsonify(character.to_dict())
     
 class DungeonHTTPClient:
     def __init__(self, base_url="http://localhost:5005"):
@@ -736,6 +783,7 @@ def setup_world_system():
             ai_system=base_ai,
             seed=42
         )
+        app.config['WORLD_CONTROLLER'] = world_controller
         print("[OK] World controller initialized")
         
         # 6. Initialize AI systems with proper state
@@ -1350,11 +1398,14 @@ def enter_dungeon():
 # ===== Party Management Endpoints =====
 @app.route('/api/create-party', methods=['POST'])
 def create_party():
+    print(">>> /api/create-party called")
     data = request.json
+    print(">>> data:", data)
     party_id = world_controller.create_party(
         name=data.get('name', 'New Party'),
         initial_members=data.get('members', [])
     )
+    print(">>> party_id:", party_id)
     return jsonify({"success": True, "party_id": party_id})
 
 @app.route('/api/move-character', methods=['POST'])

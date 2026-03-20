@@ -1,5 +1,138 @@
 {
   "monsters": {
+    "goblin_scout": {
+      "id": "goblin_scout",
+      "name": "Goblin Scout",
+      "attributes": {
+        "brawn": 0,
+        "finesse": 2,
+        "wits": 1,
+        "will": 0
+      },
+      "hp": 5,
+      "defense": 13,
+      "armor": 0,
+      "damage": "d4+1",
+      "special": [
+        "Nimble Escape: Disengage or Hide as bonus action"
+      ],
+      "tags": ["humanoid", "goblinoid"],
+      "cr": 0.25
+    },
+    "wolf": {
+      "id": "wolf",
+      "name": "Wolf",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 1,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 8,
+      "defense": 12,
+      "armor": 0,
+      "damage": "d6+1",
+      "special": [
+        "Pack tactics: +1 per ally, max +3"
+      ],
+      "tags": ["beast"],
+      "cr": 0.25
+    },
+    "skeleton": {
+      "id": "skeleton",
+      "name": "Skeleton",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 1,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 8,
+      "defense": 12,
+      "armor": 1,
+      "damage": "d6+1",
+      "special": [
+        "Vulnerable to bludgeoning"
+      ],
+      "tags": ["undead"],
+      "cr": 0.5
+    },
+    "zombie": {
+      "id": "zombie",
+      "name": "Zombie",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 15,
+      "defense": 8,
+      "armor": 0,
+      "damage": "d6+1",
+      "special": [
+        "Undead fortitude: save vs 5+ damage or drop to 1 instead of 0"
+      ],
+      "tags": ["undead"],
+      "cr": 0.5
+    },
+    "orc_warrior": {
+      "id": "orc_warrior",
+      "name": "Orc Warrior",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 0,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 10,
+      "defense": 11,
+      "armor": 1,
+      "damage": "d8+2",
+      "special": [
+        "Aggressive: Move toward enemy as bonus"
+      ],
+      "tags": ["humanoid", "orc"],
+      "cr": 0.5
+    },
+    "goblin_boss": {
+      "id": "goblin_boss",
+      "name": "Goblin Boss",
+      "attributes": {
+        "brawn": 1,
+        "finesse": 2,
+        "wits": 1,
+        "will": 1
+      },
+      "hp": 12,
+      "defense": 14,
+      "armor": 1,
+      "damage": "d6+1",
+      "special": [
+        "Redirect Attack: When hit, can swap with adjacent goblin"
+      ],
+      "tags": ["humanoid", "goblinoid"],
+      "cr": 1
+    },
+    "dire_wolf": {
+      "id": "dire_wolf",
+      "name": "Dire Wolf",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 1,
+        "wits": 0,
+        "will": 0
+      },
+      "hp": 15,
+      "defense": 13,
+      "armor": 0,
+      "damage": "d8+2",
+      "special": [
+        "Pack tactics, Knock prone on hit (Brawn save)"
+      ],
+      "tags": ["beast"],
+      "cr": 1
+    },
     "carrion_beetle_swarm": {
       "id": "carrion_beetle_swarm",
       "name": "Carrion Beetle Swarm",
@@ -16,10 +149,7 @@
       "special": [
         "Swarm: Half weapon damage, full fire/area"
       ],
-      "tags": [
-        "swarm",
-        "vermin"
-      ],
+      "tags": ["swarm", "vermin"],
       "cr": 1
     },
     "rot_grub_colony": {
@@ -38,11 +168,27 @@
       "special": [
         "Infest: Hit = burrow, 1d6 next round unless fire"
       ],
-      "tags": [
-        "vermin",
-        "parasite"
-      ],
+      "tags": ["vermin", "parasite"],
       "cr": 1
+    },
+    "gnoll_war_party": {
+      "id": "gnoll_war_party",
+      "name": "Gnoll War Party",
+      "attributes": {
+        "brawn": 2,
+        "finesse": 1,
+        "wits": 0,
+        "will": 1
+      },
+      "hp": 10,
+      "defense": 12,
+      "armor": 1,
+      "damage": "d8",
+      "special": [
+        "Pack tactics: +1 per adjacent ally, max +3"
+      ],
+      "tags": ["humanoid", "demon-touched"],
+      "cr": 2
     },
     "gibbering_mouther": {
       "id": "gibbering_mouther",
@@ -61,32 +207,26 @@
         "Gibber: Wits save or confused 1 round",
         "Ground is difficult terrain"
       ],
-      "tags": [
-        "aberration",
-        "ooze-like"
-      ],
+      "tags": ["aberration", "ooze-like"],
       "cr": 2
     },
-    "gnoll_war_party": {
-      "id": "gnoll_war_party",
-      "name": "Gnoll War Party",
+    "orc_chieftain": {
+      "id": "orc_chieftain",
+      "name": "Orc Chieftain",
       "attributes": {
-        "brawn": 2,
+        "brawn": 3,
         "finesse": 1,
-        "wits": 0,
+        "wits": 1,
         "will": 1
       },
-      "hp": 10,
-      "defense": 12,
-      "armor": 1,
-      "damage": "d8",
+      "hp": 20,
+      "defense": 13,
+      "armor": 2,
+      "damage": "d10+2",
       "special": [
-        "Pack tactics: +1 per adjacent ally, max +3"
+        "Command: Allies within 30ft add +1 to attack"
       ],
-      "tags": [
-        "humanoid",
-        "demon-touched"
-      ],
+      "tags": ["humanoid", "orc"],
       "cr": 2
     },
     "ogre_ravager": {
@@ -106,10 +246,7 @@
         "Sweep: Attack 2 adjacent",
         "Throw rock: d8 range 60"
       ],
-      "tags": [
-        "giant",
-        "brute"
-      ],
+      "tags": ["giant", "brute"],
       "cr": 3
     },
     "redcap": {
@@ -130,10 +267,7 @@
         "Iron boots: Kick d10",
         "Hate holy symbols"
       ],
-      "tags": [
-        "fey",
-        "evil"
-      ],
+      "tags": ["fey", "evil"],
       "cr": 3
     },
     "rust_monster": {
@@ -153,10 +287,7 @@
         "Rust: Hit metal = save or destroyed",
         "Attracted to magic metal"
       ],
-      "tags": [
-        "aberration",
-        "metal-eater"
-      ],
+      "tags": ["aberration", "metal-eater"],
       "cr": 3
     },
     "ochre_jelly": {
@@ -178,10 +309,7 @@
         "Immune lightning/slashing",
         "Vuln cold"
       ],
-      "tags": [
-        "ooze",
-        "split"
-      ],
+      "tags": ["ooze", "split"],
       "cr": 3
     },
     "manticore": {
@@ -202,10 +330,7 @@
         "Flight",
         "Track by scent"
       ],
-      "tags": [
-        "beast",
-        "monstrosity"
-      ],
+      "tags": ["beast", "monstrosity"],
       "cr": 4
     },
     "bone_colossus": {
@@ -224,10 +349,7 @@
       "special": [
         "Reform: Unless holy water/smite, reforms 1d6 rounds after death"
       ],
-      "tags": [
-        "undead",
-        "skeleton"
-      ],
+      "tags": ["undead", "skeleton"],
       "cr": 4
     },
     "cloaker": {
@@ -247,10 +369,7 @@
         "Engulf: Grappled = blinded, suffocating",
         "Moan: Fear 30ft"
       ],
-      "tags": [
-        "aberration",
-        "shadow"
-      ],
+      "tags": ["aberration", "shadow"],
       "cr": 4
     },
     "kelpie": {
@@ -270,10 +389,7 @@
         "Lure: Social save or approach water",
         "Grapple = drown 3 rounds"
       ],
-      "tags": [
-        "fey",
-        "aquatic"
-      ],
+      "tags": ["fey", "aquatic"],
       "cr": 4
     },
     "black_pudding": {
@@ -295,10 +411,7 @@
         "Immune acid",
         "Vuln cold"
       ],
-      "tags": [
-        "ooze",
-        "acid"
-      ],
+      "tags": ["ooze", "acid"],
       "cr": 5
     },
     "medusa": {
@@ -317,10 +430,7 @@
       "special": [
         "Petrify: Wits save or slow, fail by 5+ = stone"
       ],
-      "tags": [
-        "monstrosity",
-        "gorgon"
-      ],
+      "tags": ["monstrosity", "gorgon"],
       "cr": 5
     },
     "wraith_knight": {
@@ -341,10 +451,7 @@
         "Drain: Max HP -2 until rest",
         "Command shadows"
       ],
-      "tags": [
-        "undead",
-        "incorporeal"
-      ],
+      "tags": ["undead", "incorporeal"],
       "cr": 5
     },
     "living_spell_fireball": {
@@ -366,10 +473,7 @@
         "Vuln cold",
         "Fly"
       ],
-      "tags": [
-        "elemental",
-        "spell"
-      ],
+      "tags": ["elemental", "spell"],
       "cr": 5
     },
     "hollow_man": {
@@ -389,11 +493,7 @@
         "Wear you: Hit = save or it wears your skin, you become hollow",
         "It has your stats +2"
       ],
-      "tags": [
-        "fey",
-        "horror",
-        "possession"
-      ],
+      "tags": ["fey", "horror", "possession"],
       "cr": 5
     },
     "hydra": {
@@ -413,10 +513,7 @@
         "Multiattack: Heads = attacks",
         "Regrow head (1 HP) unless fire"
       ],
-      "tags": [
-        "monstrosity",
-        "regeneration"
-      ],
+      "tags": ["monstrosity", "regeneration"],
       "cr": 6
     },
     "flesh_golem": {
@@ -436,10 +533,7 @@
         "Berserk: Below half HP, attacks nearest",
         "Immune magic except fire/electric"
       ],
-      "tags": [
-        "construct",
-        "golem"
-      ],
+      "tags": ["construct", "golem"],
       "cr": 6
     },
     "mind_flayer": {
@@ -459,10 +553,7 @@
         "Extract brain: Grappled = Wits save or stunned, then dead",
         "Psionic blast: d8 stun 30ft"
       ],
-      "tags": [
-        "aberration",
-        "psionic"
-      ],
+      "tags": ["aberration", "psionic"],
       "cr": 6
     },
     "succubus": {
@@ -483,10 +574,7 @@
         "Ethereal jaunt",
         "Immune non-magic"
       ],
-      "tags": [
-        "fiend",
-        "shapechanger"
-      ],
+      "tags": ["fiend", "shapechanger"],
       "cr": 6
     },
     "wild_hunt": {
@@ -506,10 +594,7 @@
         "Squadron: 1d6+2 riders, share HP pool",
         "Never stop chasing oath-breakers"
       ],
-      "tags": [
-        "fey",
-        "spectral"
-      ],
+      "tags": ["fey", "spectral"],
       "cr": 7
     },
     "kraken_spawn": {
@@ -528,10 +613,7 @@
       "special": [
         "Tentacles: 4 attacks, grab (restrained), drag underwater"
       ],
-      "tags": [
-        "elemental",
-        "aquatic"
-      ],
+      "tags": ["elemental", "aquatic"],
       "cr": 7
     },
     "hezrou": {
@@ -552,10 +634,7 @@
         "Leap 30ft",
         "Summon 2d6 dretches 1/day"
       ],
-      "tags": [
-        "fiend",
-        "demon"
-      ],
+      "tags": ["fiend", "demon"],
       "cr": 8
     },
     "vampire_lord": {
@@ -576,10 +655,7 @@
         "Mist form",
         "Spawn vampire (killed foe rises night)"
       ],
-      "tags": [
-        "undead",
-        "vampire"
-      ],
+      "tags": ["undead", "vampire"],
       "cr": 8
     },
     "baba_yagas_hut": {
@@ -600,11 +676,7 @@
         "Inside bigger outside",
         "Baba casts through windows"
       ],
-      "tags": [
-        "construct",
-        "fey",
-        "legendary"
-      ],
+      "tags": ["construct", "fey", "legendary"],
       "cr": 8
     },
     "moon_beast": {
@@ -625,10 +697,7 @@
         "Silver vulnerability",
         "Lope 60ft"
       ],
-      "tags": [
-        "aberration",
-        "cosmic"
-      ],
+      "tags": ["aberration", "cosmic"],
       "cr": 8
     },
     "phoenix": {
@@ -648,10 +717,7 @@
         "Rebirth: 0 HP = egg, hatch 3 rounds full HP unless egg destroyed",
         "Immune fire"
       ],
-      "tags": [
-        "elemental",
-        "fire"
-      ],
+      "tags": ["elemental", "fire"],
       "cr": 8
     },
     "lich": {
@@ -671,10 +737,7 @@
         "Phylactery: True death only if phylactery destroyed",
         "6 spells/encounter"
       ],
-      "tags": [
-        "undead",
-        "arcane"
-      ],
+      "tags": ["undead", "arcane"],
       "cr": 9
     },
     "beholder": {
@@ -694,10 +757,7 @@
         "Eye rays: 3/round random (charm, sleep, disintegrate d20, fear, flesh to stone, death)",
         "Anti-magic cone"
       ],
-      "tags": [
-        "aberration",
-        "iconic"
-      ],
+      "tags": ["aberration", "iconic"],
       "cr": 9
     },
     "earth_tyrant": {
@@ -718,10 +778,7 @@
         "Quake: Knock prone 30ft",
         "Slow"
       ],
-      "tags": [
-        "elemental",
-        "earth"
-      ],
+      "tags": ["elemental", "earth"],
       "cr": 9
     },
     "adult_black_dragon": {
@@ -743,10 +800,7 @@
         "Corrupt water",
         "Fear aura 60ft"
       ],
-      "tags": [
-        "dragon",
-        "acid"
-      ],
+      "tags": ["dragon", "acid"],
       "cr": 10
     },
     "gibbering_orb": {
@@ -766,10 +820,7 @@
         "Reality tear: 1/round random spell effect",
         "Mouths eat magic (absorb SP)"
       ],
-      "tags": [
-        "aberration",
-        "cosmic"
-      ],
+      "tags": ["aberration", "cosmic"],
       "cr": 11
     },
     "pit_fiend": {
@@ -792,10 +843,7 @@
         "Regenerate 5",
         "Only holy/silver hurt"
       ],
-      "tags": [
-        "fiend",
-        "devil"
-      ],
+      "tags": ["fiend", "devil"],
       "cr": 12
     },
     "solar": {
@@ -817,10 +865,7 @@
         "Heal 6d6 3/day",
         "Immune non-magic"
       ],
-      "tags": [
-        "celestial",
-        "angel"
-      ],
+      "tags": ["celestial", "angel"],
       "cr": 15
     },
     "demon_prince_orcus": {
@@ -843,11 +888,7 @@
         "Flight",
         "Telepathy 120ft"
       ],
-      "tags": [
-        "fiend",
-        "demon",
-        "prince"
-      ],
+      "tags": ["fiend", "demon", "prince"],
       "cr": 18
     },
     "tarrasque": {
@@ -870,10 +911,7 @@
         "Swallow: Grappled = 6d6 acid/round",
         "Only divine can truly kill"
       ],
-      "tags": [
-        "aberration",
-        "apex"
-      ],
+      "tags": ["aberration", "apex"],
       "cr": 20
     }
   }

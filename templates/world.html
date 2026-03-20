@@ -1655,6 +1655,68 @@ document.addEventListener('DOMContentLoaded', checkMode);
             document.getElementById('chat-messages').appendChild(msgDiv);
             msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+
+        // temporary?
+        async function saveBackstory() {
+            const container = document.querySelector('.backstory-section');
+            const characterId = container.getAttribute('data-character-id');
+            if (!characterId) {
+                showNotification('No character selected', 'error');
+                return;
+            }
+            const textarea = document.getElementById('backstory-text');
+            const backstory = textarea.value;
+            try {
+                const response = await fetch(`/api/character/${characterId}/backstory`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({backstory: backstory})
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showNotification('Backstory saved!', 'success');
+                } else {
+                    showNotification('Error saving backstory: ' + (data.error || 'Unknown'), 'error');
+                }
+            } catch (err) {
+                showNotification('Network error saving backstory', 'error');
+                console.error(err);
+            }
+        }
+
+        async function loadActiveCharacter() {
+            // This assumes you have a way to get the active character ID from worldState
+            // For now, we'll use the first character from worldState.characters
+            if (!window.worldState || !window.worldState.characters) {
+                setTimeout(loadActiveCharacter, 500);
+                return;
+            }
+            const characters = window.worldState.characters;
+            const characterIds = Object.keys(characters);
+            if (characterIds.length === 0) return;
+
+            const characterId = characterIds[0]; // use first character
+            document.querySelector('.backstory-section').setAttribute('data-character-id', characterId);
+
+            // Load character details from server (or use worldState if it already has backstory)
+            try {
+                const response = await fetch(`/api/character/${characterId}`);
+                if (!response.ok) throw new Error('Failed to load character');
+                const character = await response.json();
+                const backstory = character.backstory?.story || 'No backstory yet.';
+                document.getElementById('backstory-text').value = backstory;
+                document.getElementById('save-backstory-btn').disabled = false;
+            } catch (err) {
+                console.error(err);
+                document.getElementById('backstory-text').value = 'Error loading backstory.';
+            }
+        }
+
+        // Call after worldState is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            // Wait a bit for worldState to be populated
+            setTimeout(loadActiveCharacter, 1000);
+        });
     })();
     </script>
     <!-- Debug Overlay (hidden by default) -->
@@ -1666,5 +1728,13 @@ document.addEventListener('DOMContentLoaded', checkMode);
         <div>Visible: <span id="debug-visible">0-0, 0-0</span></div>
         <div>Fit scale: <span id="debug-fitscale">0.00</span></div>
     </div>
+
+    <!-- temporary -->
+    <div class="backstory-section" data-character-id="">
+        <h3>Backstory</h3>
+        <textarea id="backstory-text" rows="6" style="width:100%;">Loading...</textarea>
+        <button id="save-backstory-btn" onclick="saveBackstory()" class="btn" disabled>Save Backstory</button>
+    </div>
+
 </body>
 </html>
