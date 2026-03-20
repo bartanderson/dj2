@@ -100,23 +100,6 @@ class DungeonConnectionHelper:
         
         return results
 
-# for testing/updating backstory
-@app.route('/api/character/<character_id>/backstory', methods=['POST'])
-def update_character_backstory(character_id):
-    data = request.json
-    backstory_text = data.get('backstory', '')
-    # Get character from manager
-    character = world_controller.character_manager.get_character(character_id)
-    if not character:
-        return jsonify({"success": False, "error": "Character not found"}), 404
-
-    # Update backstory (store as dict with 'story' key)
-    character.backstory = {"story": backstory_text}
-    # Save to database
-    world_controller.character_manager._save_character_to_db(character)
-
-    return jsonify({"success": True, "message": "Backstory saved"})
-
 # temp route for testing encounter
 @app.route('/api/debug/test-encounter', methods=['GET'])
 def debug_test_encounter():
@@ -892,7 +875,7 @@ def retry_failed_images():
         updated_characters = []
         for char_id in successes:
             if char_id in world_controller.characters:
-                world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
+                current_app.world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
                 updated_characters.append(char_id)
         
         return jsonify({
@@ -948,17 +931,17 @@ def set_active_character():
 
 @app.route('/api/character-classes', methods=['GET'])
 def get_character_classes():
-    classes = world_controller.get_available_classes()
+    classes = current_app.world_controller.get_available_classes()
     return jsonify({"classes": classes})
 
 @app.route('/api/character-backgrounds', methods=['GET'])
 def get_character_backgrounds():
-    backgrounds = world_controller.get_available_backgrounds()
+    backgrounds = current_app.world_controller.get_available_backgrounds()
     return jsonify({"backgrounds": backgrounds})
 
 @app.route('/api/starting-equipment/<class_name>', methods=['GET'])
 def get_starting_equipment(class_name):
-    equipment = world_controller.get_starting_equipment_options(class_name)
+    equipment = current_app.world_controller.get_starting_equipment_options(class_name)
     return jsonify(equipment)
 
 @app.route('/api/create-character', methods=['POST'])
@@ -1021,7 +1004,7 @@ def create_character():
 def generate_personal_item():
     data = request.get_json()
     char_concept = data.get('concept', '')
-    item = world_controller.character_builder.generate_personal_item(char_concept)
+    item = current_app.world_controller.character_builder.generate_personal_item(char_concept)
     return jsonify(item)
 # ===== Engine Endpoints =====
 
@@ -1364,6 +1347,11 @@ def backstory_continue(character_id):
 
     # If session finished, remove it
     if result['new_state'] is None:
+        # Transfer backstory data to character object
+        character = current_app.world_controller.character_manager.get_character(character_id)
+        if character:
+            character.backstory = session_state.get('backstory', {})
+            current_app.world_controller.character_manager._save_character_to_db(character)
         del narrative.backstory_sessions[character_id]
 
     return jsonify({"responses": responses})
@@ -1379,20 +1367,23 @@ def build_connections(character_id):
 # ===== World Navigation Endpoints =====
 @app.route('/api/travel/<location_id>', methods=['POST'])
 def travel_to(location_id):
-    success = world_controller.travel_to_location(location_id)
+    wc = current_app.world_controller
+    if wc is None:
+        return jsonify({"error": "World controller not initialized"}), 500
+    success = wc.travel_to_location(location_id)
     return jsonify({
         "success": success,
-        "location": world_controller.get_current_location_data()
+        "location": wc.get_current_location_data()
     })
 
 @app.route('/api/location/<location_id>/rumors')
 def get_location_rumors(location_id):
-    rumors = world_controller.get_rumors(location_id)
+    rumors = current_app.world_controller.get_rumors(location_id)
     return jsonify({"rumors": rumors})
 
 @app.route('/api/enter-dungeon', methods=['POST'])
 def enter_dungeon():
-    success = world_controller.enter_dungeon()
+    success = current_app.world_controller.enter_dungeon()
     return jsonify({"success": success})
 
 # ===== Party Management Endpoints =====
@@ -1401,7 +1392,10 @@ def create_party():
     print(">>> /api/create-party called")
     data = request.json
     print(">>> data:", data)
-    party_id = world_controller.create_party(
+    wc = current_app.world_controller
+    if wc is None:
+        return jsonify({"error": "World controller not initialized"}), 500
+    party_id = wc.create_party(
         name=data.get('name', 'New Party'),
         initial_members=data.get('members', [])
     )
@@ -2277,6 +2271,6 @@ def create_player():
 if __name__ == '__main__':
     # Only initialize when not in reloader
     if not os.environ.get('WERKZEUG_RUN_MAIN'):
-        world_controller = initialize_app()
+        initialize_app()  # It already sets app.world_controller and app.game_engine
     
     socketio.run(app, debug=True, host="0.0.0.0", port=5000, use_reloader=False) 
