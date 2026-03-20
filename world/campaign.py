@@ -10,7 +10,8 @@ class Region:
                  faction_control: str, danger_level: int,
                  discovered: bool = False, explored: float = 0.0,
                  settlements: List[str] = None, dungeons: List[str] = None,
-                 active_quests: List[str] = None):
+                 active_quests: List[str] = None,
+                 encounter_points: Dict[str, dict] = None):
         self.id = id
         self.name = name
         self.terrain_tags = terrain_tags
@@ -21,6 +22,7 @@ class Region:
         self.settlements = settlements or []      # list of potential location IDs
         self.dungeons = dungeons or []            # list of potential dungeon IDs
         self.active_quests = active_quests or []  # list of quest IDs
+        self.encounter_points = encounter_points or {}   # dict of point_id → serialized EncounterPoint
 
     def to_dict(self) -> dict:
         return {
@@ -33,7 +35,8 @@ class Region:
             "explored": self.explored,
             "settlements": self.settlements,
             "dungeons": self.dungeons,
-            "active_quests": self.active_quests
+            "active_quests": self.active_quests,
+            "encounter_points": self.encounter_points
         }
 
     @classmethod
@@ -48,7 +51,8 @@ class Region:
             explored=data.get("explored", 0.0),
             settlements=data.get("settlements", []),
             dungeons=data.get("dungeons", []),
-            active_quests=data.get("active_quests", [])
+            active_quests=data.get("active_quests", []),
+            encounter_points=data.get("encounter_points", {})
         )
 
 

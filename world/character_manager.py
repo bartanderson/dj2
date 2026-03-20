@@ -1,3 +1,4 @@
+# world/character_manager.py
 """
 Character Management System - handles character creation, loading, and updates
 Phase: State Mutation (character state changes)
@@ -121,7 +122,7 @@ class CharacterManager:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id, name, race, class, level, attributes, inventory, avatar_url "
+                    "SELECT id, name, race, class, level, attributes, inventory, avatar_url, backstory, connections, secrets, vows "
                     "FROM characters WHERE player_id = %s",
                     (player_id,)
                 )
@@ -139,6 +140,11 @@ class CharacterManager:
                         for item_data in row[6]:
                             character.add_custom_item(item_data['name'], item_data.get('description', ''))
                     character.avatar_url = row[7]
+                    # Load narrative fields
+                    character.backstory = row[8] or {}
+                    character.connections = row[9] or []
+                    character.secrets = row[10] or []
+                    character.vows = row[11] or {}
                     self.characters[character.id] = character
                     loaded_characters.append(character)
         except Exception as e:

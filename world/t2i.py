@@ -2,7 +2,7 @@ import os
 import torch
 import warnings
 from pathlib import Path
-from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers import StableDiffusionXLPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import logging as diffusers_logging
 import uuid
 from typing import Dict, List, Tuple
@@ -48,34 +48,36 @@ class TextToImage:
         self.pipeline = self._load_pipeline()
 
     def _load_pipeline(self):
-        """Load the Stable Diffusion pipeline with optimizations"""
-        print(f"Loading model: {self.model_path.name}")
+        """Load the SDXL pipeline with optimizations"""
+        print(f"Loading SDXL model: {self.model_path.name}")
         print(f"Device: {self.device} | Precision: {self.torch_dtype}")
         
-        pipe = StableDiffusionPipeline.from_single_file(
+        # SDXL supports single-file loading same as SD 1.5
+        pipe = StableDiffusionXLPipeline.from_single_file(
             pretrained_model_link_or_path=str(self.model_path),
             torch_dtype=self.torch_dtype,
-            safety_checker=None,
-            requires_safety_checker=False,
-            load_safety_checker=False,
-            cache_dir=str(self.cache_dir))
+            cache_dir=str(self.cache_dir)
+        )
         
-        # Configure scheduler for better quality
+        # Keep your scheduler - DPM++ 2M Karras works great with SDXL
         pipe.scheduler = DPMSolverMultistepScheduler.from_config(
             pipe.scheduler.config, 
             use_karras_sigmas=True
         )
         pipe = pipe.to(self.device)
         
-        # Apply optimizations
+        # SDXL memory optimizations (more aggressive than SD 1.5)
         if self.device == "cuda":
+            # VAE slicing helps with SDXL's larger latent space
+            if hasattr(pipe, "enable_vae_slicing"):
+                pipe.enable_vae_slicing()
             if hasattr(pipe, "enable_xformers_memory_efficient_attention"):
                 pipe.enable_xformers_memory_efficient_attention()
-            if hasattr(pipe, "enable_model_cpu_offload"):
-                pipe.enable_model_cpu_offload()
+            # Sequential offload is more aggressive than model offload for SDXL
+            if hasattr(pipe, "enable_sequential_cpu_offload"):
+                pipe.enable_sequential_cpu_offload()
         else:
-            if hasattr(pipe, "enable_attention_slicing"):
-                pipe.enable_attention_slicing()
+            pipe.enable_attention_slicing()
         
         return pipe
 
@@ -94,9 +96,10 @@ class TextToImage:
         width = math.ceil(width / 8) * 8
         height = math.ceil(height / 8) * 8
         
-        # Enforce minimum size for quality
-        width = max(width, 384)  # 384px minimum for reasonable quality
-        height = max(height, 384)
+        # SDXL native resolution is 1024, minimum practical is 512
+        # Enforce minimum size for quality, Below 512 quality degrades significantly
+        width = max(width, 512)
+        height = max(height, 512)
         
         return width, height
 
@@ -135,8 +138,8 @@ class TextToImage:
         self,
         generation_requests: List[Dict],
         output_dir: Path,
-        default_width: int = 768,
-        default_height: int = 768
+        default_width: int = 1024,
+        default_height: int = 1024
     ) -> Tuple[Dict, List[Dict]]:
         """
         Batch generate images with detailed error tracking.
@@ -207,7 +210,7 @@ class TextToImage:
                     negative_prompt=negative,
                     width=width,
                     height=height,
-                    num_inference_steps=30,
+                    num_inference_steps=30, # this can be 4 for faster but less quality
                     guidance_scale=7.5,
                     generator=generator
                 )
@@ -270,8 +273,8 @@ class TextToImage:
                 "request_id": failure["request_id"],
                 "prompt": failure["prompt"],
                 "seed": failure.get("seed", 42),
-                "width": failure.get("width", 768),
-                "height": failure.get("height", 768)
+                "width": failure.get("width", 1024),
+                "height": failure.get("height", 1024)
             }
             retry_requests.append(request)
         
@@ -280,7 +283,9 @@ class TextToImage:
 
 if __name__ == "__main__":
     # ===== CONFIGURATION =====
-    MODEL_NAME = "realisticVisionV60B1_v51VAE.safetensors"
+    #MODEL_NAME = "realisticVisionV60B1_v51VAE.safetensors"
+    MODEL_NAME = "juggernautXL_ragnarokBy.safetensors"
+    #MODEL_NAME =  "creapromptLightning_creapromptUltimate6.safetensors"
     MODEL_DIR = Path.home() / ".sdkit" / "models" / "stable-diffusion"
     OUTPUT_DIR = Path.cwd() / "generated_images"
     TEST_PROMPTS = [
@@ -309,8 +314,8 @@ if __name__ == "__main__":
             "request_id": f"test-{i+1}",
             "prompt": prompt,
             "seed": 42 + i,
-            "width": 768,
-            "height": 768
+            "width": 1024,
+            "height": 1024
         })
     
     # Add special test cases
@@ -319,8 +324,8 @@ if __name__ == "__main__":
         {
             "request_id": "small-valid",
             "prompt": "Mountain fortress at dawn, detailed fantasy landscape",
-            "width": 384,
-            "height": 384
+            "width": 512,
+            "height": 512
         },
         # Invalid dimensions (will be corrected)
         {

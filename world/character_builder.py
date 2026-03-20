@@ -1,6 +1,6 @@
 # world/character_builder.py
-from dnd_character import Character # We'll leave the Character import as is. It's the base class for our custom Character subclass, and it's only used in character.py for inheritance.
-from world import dnd_data # This is standardized because of shared usage for consistency
+from world.character import Character  # Now using our OG System Character
+from world import dnd_data
 from .tool_system import tool
 from typing import Dict, Any, Optional
 
@@ -22,8 +22,9 @@ class CharacterBuilder:
             owner_id: ID of the player who owns the character.
             char_data: Dictionary with at least 'name', 'race', 'class'.
                        May include 'background' (the background type, e.g., "knight"),
-                       'personality', 'ideals', 'bonds', 'flaws', and 'personal_item'.
-            context: Optional session context (unused here, but required by tool system).
+                       'personality', 'ideals', 'bonds', 'flaws', and 'personal_item',
+                       and attribute scores ('brawn', 'finesse', 'wits', 'will').
+            context: Optional session context.
 
         Returns:
             Dict with keys:
@@ -62,31 +63,30 @@ class CharacterBuilder:
             }
             personality_message = personality_result.get("message", "")
 
-            # Create base character using the library's constructor.
-            # Note: The library expects 'background' to be a short descriptor (e.g., "knight").
-            # We store the full AI‑generated story separately as a custom attribute.
+            # Create OG System Character
             character = Character(
                 name=char_data["name"],
                 race=char_data["race"],
                 classs=char_class,
                 level=1,
                 background=char_data.get("background", "unknown"),
-                # Other optional fields can be added if present in char_data:
+                owner_id=owner_id,
+                # Attribute scores – use provided values or default to 1
+                brawn=char_data.get("brawn", 1),
+                finesse=char_data.get("finesse", 1),
+                wits=char_data.get("wits", 1),
+                will=char_data.get("will", 1),
+                # Optional personal details
                 age=char_data.get("age"),
                 gender=char_data.get("gender"),
                 description=char_data.get("description"),
                 alignment=char_data.get("alignment"),
-                # Ability scores can also be provided; otherwise the library rolls them.
-                strength=char_data.get("strength"),
-                dexterity=char_data.get("dexterity"),
-                constitution=char_data.get("constitution"),
-                intelligence=char_data.get("intelligence"),
-                wisdom=char_data.get("wisdom"),
-                charisma=char_data.get("charisma"),
+                # Narrative fields – store as dicts for now
+                backstory={"story": background_story},
+                # connections, secrets, vows will be added later by narrative system
             )
 
-            # Attach AI-generated content as custom attributes (safe because Character is flexible)
-            character.full_background_story = background_story
+            # Attach AI-generated personality (the Character class already has ai_personality)
             character.ai_personality = personality_data
 
             # Add personalized item if provided
