@@ -1290,9 +1290,9 @@ def start_backstory(character_id):
         return jsonify({"error": "No response from narrative system"}), 500
 
 
+
 @app.route('/character/<character_id>/backstory-continue', methods=['POST'])
 def backstory_continue(character_id):
-    """Send a message during backstory creation."""
     data = request.get_json()
     message = data.get('message', '')
 
@@ -1301,7 +1301,16 @@ def backstory_continue(character_id):
         return jsonify({"error": "No active backstory session"}), 400
 
     session_state = narrative.backstory_sessions[character_id]
-    result = narrative.guide_backstory_creation(character_id, message, session_state)
+
+    # Determine which method exists
+    if hasattr(narrative, 'guide_backstory_creation'):
+        result = narrative.guide_backstory_creation(character_id, message, session_state)
+    else:
+        # Fallback to the original guide_character_creation
+        result = narrative.guide_character_creation(character_id, message, session_state)
+
+    print(f"DEBUG: new_state = {result['new_state']}")
+    print(f"DEBUG: backstory data = {session_state.get('backstory', {})}")
 
     # Update stored state
     narrative.backstory_sessions[character_id] = result['new_state']
@@ -1316,9 +1325,16 @@ def backstory_continue(character_id):
 
     # If session finished, remove it
     if result['new_state'] is None:
+        print("DEBUG: Session finished, attempting to save character...")
+        # Transfer backstory data to character object
+        character = current_app.world_controller.character_manager.get_character(character_id)
+        if character:
+            character.backstory = session_state.get('backstory', {})
+            current_app.world_controller.character_manager._save_character_to_db(character)
+            print("DEBUG: Character backstory saved")
         del narrative.backstory_sessions[character_id]
 
-    return jsonify({"responses": responses})
+    return jsonify({"responses": responses, "reload": True})
 
 
 @app.route('/character/<character_id>/build-connections', methods=['POST'])
