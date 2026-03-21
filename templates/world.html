@@ -643,7 +643,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     <!-- Backstory chat container (hidden by default) -->
                     <div id="backstory-chat" style="display: none;">
                         <div id="chat-messages" style="height: 300px; overflow-y: auto; border: 1px solid #4ecca3; padding: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.5);"></div>
-                        <form id="backstory-form" style="display: flex; gap: 10px;" onsubmit="return false;">
+                        <form id="backstory-form" style="display: flex; gap: 10px;">
                             <input type="text" id="backstory-input" placeholder="Your response..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
                             <button type="submit" class="btn">Send</button>
                         </form>
@@ -1550,7 +1550,6 @@ document.addEventListener('DOMContentLoaded', checkMode);
             }
         });
 
-        // Backstory chat handling
         function startBackstory(characterId) {
             // Hide the narrative div, show chat
             document.getElementById('character-narrative').style.display = 'none';
@@ -1564,97 +1563,85 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 .then(r => r.json())
                 .then(data => {
                     addMessage(data.speaker, data.content);
+                    // Store characterId for later sends
                     chatDiv.dataset.characterId = characterId;
-                })
-                .catch(err => console.error('Start backstory error:', err));
-        }
-
-        function finishBackstory(characterId) {
-            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
-                .then(() => {
-                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                    document.getElementById('backstory-chat').style.display = 'none';
-                    document.getElementById('character-narrative').style.display = 'block';
-                })
-                .catch(err => console.error('Build connections error:', err));
-        }
-
-        // Set up the form submission handler after the DOM is ready
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('backstory-form');
-            if (!form) {
-                console.error('Backstory form not found');
-                return;
-            }
-            console.log('Backstory form found');  // debug
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();            // prevent any default submission
-                console.log('Backstory form submitted');  // debug
-
-                const input = document.getElementById('backstory-input');
-                const message = input.value.trim();
-                if (!message) return;
-
-                input.value = '';
-
-                const chatDiv = document.getElementById('backstory-chat');
-                const characterId = chatDiv.dataset.characterId;
-                if (!characterId) return;
-
-                addMessage('You', message);
-
-                fetch(`/character/${characterId}/backstory-continue`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({message: message})
-                })
-                .then(r => {
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                    return r.json();
-                })
-                .then(data => {
-                    console.log('Backstory response:', data);
-                    if (data.reload) {
-                        location.reload();
-                        return;
-                    }
-                    if (data.error) {
-                        addMessage('System', data.error, 'error');
-                        return;
-                    }
-                    if (data.responses) {
-                        data.responses.forEach(r => addMessage(r.speaker, r.content));
-                    }
-                    const lastResponse = data.responses && data.responses[data.responses.length - 1];
-                    if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
-                        // Auto‑continue with empty message
-                        fetch(`/character/${characterId}/backstory-continue`, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({message: ''})
-                        })
-                        .then(r => r.json())
-                        .then(data2 => {
-                            console.log('Secrets response:', data2);
-                            if (data2.reload) location.reload();
-                            else if (data2.responses) data2.responses.forEach(r2 => addMessage(r2.speaker, r2.content));
-                            if (data2.new_state === null || data2.reload) location.reload();
-                            else if (data2.new_state === null) finishBackstory(characterId);
-                        })
-                        .catch(err => console.error('Auto‑continue error:', err));
-                        return;
-                    }
-                    if (data.new_state === null) {
-                        console.log('Session ended, finishing backstory');
-                        finishBackstory(characterId);
-                    } else {
-                        console.log('Session continuing, phase:', data.new_state.phase);
-                    }
-                })
-                .catch(err => {
-                    console.error('Backstory error:', err);
-                    addMessage('System', 'Error: ' + err.message, 'error');
                 });
+        }
+
+        // Handle chat form submission
+        document.getElementById('backstory-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.getElementById('backstory-input');
+            const message = input.value.trim();
+            if (!message) return;
+            input.value = '';
+
+            const chatDiv = document.getElementById('backstory-chat');
+            const characterId = chatDiv.dataset.characterId;
+            addMessage('You', message);
+
+            fetch(`/character/${characterId}/backstory-continue`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP ${response.status}: ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Display each response
+                data.responses.forEach(r => addMessage(r.speaker, r.content));
+
+                // Check if we need to auto‑continue to secret generation
+                const lastResponse = data.responses[data.responses.length - 1];
+                if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
+                    // Automatically send empty message to trigger secrets
+                    fetch(`/character/${characterId}/backstory-continue`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: ''})
+                    })
+                    .then(r => r.json())
+                    .then(finalData => {
+                        finalData.responses.forEach(r => addMessage(r.speaker, r.content));
+                        if (finalData.new_state === null) {
+                            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                                .then(() => {
+                                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                                    document.getElementById('backstory-chat').style.display = 'none';
+                                    document.getElementById('character-narrative').style.display = 'block';
+                                });
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Auto-continue error:', err);
+                        addMessage('System', 'Error during backstory completion. Check console.', 'error');
+                    });
+                    return;
+                }
+
+                // If session ended, reload narrative
+                if (data.new_state === null) {
+                    fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                        .then(() => {
+                            htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                            document.getElementById('backstory-chat').style.display = 'none';
+                            document.getElementById('character-narrative').style.display = 'block';
+                        })
+                        .catch(err => {
+                            console.error('Build connections error:', err);
+                            addMessage('System', 'Error building connections. Check console.', 'error');
+                        });
+                }
+            })
+            .catch(err => {
+                console.error('Backstory error:', err);
+                addMessage('System', 'Error: ' + err.message, 'error');
             });
         });
 
