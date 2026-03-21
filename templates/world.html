@@ -1594,6 +1594,10 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 return response.json();
             })
             .then(data => {
+                if (data.reload) {
+                    location.reload();
+                    return;
+                }
                 // Display each response
                 data.responses.forEach(r => addMessage(r.speaker, r.content));
 
@@ -1608,19 +1612,17 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     })
                     .then(r => r.json())
                     .then(finalData => {
-                        finalData.responses.forEach(r => addMessage(r.speaker, r.content));
-                        if (finalData.new_state === null) {
-                            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
-                                .then(() => {
-                                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                                    document.getElementById('backstory-chat').style.display = 'none';
-                                    document.getElementById('character-narrative').style.display = 'block';
-                                });
+                        // Display any remaining responses (e.g., secrets)
+                        if (finalData.responses) {
+                            finalData.responses.forEach(r => addMessage(r.speaker, r.content));
                         }
+                        // The session is over – reload the page to show the backstory
+                        location.reload();
                     })
                     .catch(err => {
                         console.error('Auto-continue error:', err);
-                        addMessage('System', 'Error during backstory completion. Check console.', 'error');
+                        // Even if the fetch fails, the session is likely over, so reload
+                        location.reload();
                     });
                     return;
                 }
