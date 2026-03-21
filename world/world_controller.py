@@ -780,6 +780,12 @@ class WorldController:
         # Return the terrain of the closest hex
         return closest_hex.get("terrain", "plains")  # Added .get() for safety
 
+    def create_party(self, name: str, initial_members: List[str]) -> Optional[str]:
+        print(f"DEBUG: WorldController.create_party called with name={name}, members={initial_members}")
+        party_id = self.party_manager.create_party(name, initial_members)
+        print(f"DEBUG: party_manager.create_party returned {party_id}")
+        return party_id
+
     # TODO: will need to fix/replace with og_system data/methods
     def _connect_regions(self, centroids, regions, hexes):
         """Connect regions using direct paths between closest points"""

@@ -549,6 +549,12 @@ document.addEventListener('DOMContentLoaded', checkMode);
                      hx-swap="innerHTML">
                     <!-- Date will be loaded here -->
                 </div>
+                <div id="player-name" class="player-name" 
+                     hx-get="/api/player/name" 
+                     hx-trigger="load, every 10s" 
+                     hx-swap="innerHTML">
+                    Loading...
+                </div>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
                         <i class="fa-solid fa-walking"></i>
@@ -677,8 +683,11 @@ document.addEventListener('DOMContentLoaded', checkMode);
             <div id="party-tab" class="tab-content">
                 <div class="tab-panel">
                     <h2>Party Management</h2>
-                    <div id="party-list">
-                        <p>No active party. Create or join a party to begin your adventure.</p>
+                    <div id="party-list-container"
+                         hx-get="/api/party/list-html"
+                         hx-trigger="load, every 10s"
+                         hx-swap="innerHTML">
+                        Loading parties...
                     </div>
                     <div style="margin-top: 20px;">
                         <button id="create-party-btn" class="btn">Create Party</button>
@@ -1658,6 +1667,37 @@ document.addEventListener('DOMContentLoaded', checkMode);
             msgDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     })();
+    document.getElementById('create-party-btn').addEventListener('click', async function() {
+        const partyName = prompt("Enter party name:", "My Party");
+        if (!partyName) return;
+
+        try {
+            // Get active character ID
+            const resp = await fetch('/api/player/active-character');
+            const data = await resp.json();
+            const characterId = data.character_id;
+            if (!characterId) {
+                alert("No active character found. Please create a character first.");
+                return;
+            }
+
+            // Create party
+            const createRes = await fetch('/api/create-party', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: partyName, members: [characterId] })
+            });
+            const createData = await createRes.json();
+            if (createData.success) {
+                location.reload();
+            } else {
+                alert("Failed to create party: " + (createData.error || "Unknown error"));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error creating party: " + err.message);
+        }
+    });
     </script>
     <!-- Debug Overlay (hidden by default) -->
     <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">

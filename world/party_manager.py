@@ -40,7 +40,7 @@ class PartyManager:
         # Link members to party
         for char_id in member_ids:
             self.character_parties[char_id] = party_id
-            
+        print(f"DEBUG: Party created, now parties = {self.parties}")    
         return party_id
 
     def add_to_party(self, char_id: str, party_id: str) -> bool:

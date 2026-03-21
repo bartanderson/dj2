@@ -1,0 +1,12 @@
+{% if parties %}
+    <ul>
+    {% for party in parties %}
+        <li>
+            <strong>{{ party.name }}</strong> (ID: {{ party.id }})<br>
+            Members: {{ party.member_names|join(', ') }}
+        </li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p>No parties yet. Create one with the button above.</p>
+{% endif %}
