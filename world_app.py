@@ -1316,7 +1316,16 @@ def backstory_continue(character_id):
 
     # If session finished, remove it
     if result['new_state'] is None:
+        # Save backstory to character
+        character = current_app.world_controller.character_manager.get_character(character_id)
+        if character:
+            backstory_data = session_state.get('backstory', {})
+            print(f"DEBUG: Saving backstory for {character_id}: {backstory_data}")
+            character.backstory = backstory_data
+            current_app.world_controller.character_manager._save_character_to_db(character)
         del narrative.backstory_sessions[character_id]
+        # Tell client to reload page to show updated backstory
+        return jsonify({"responses": responses, "reload": True})
 
     return jsonify({"responses": responses})
 
