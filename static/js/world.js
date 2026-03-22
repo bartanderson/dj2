@@ -134,7 +134,7 @@ function drawHexagon(ctx, cx, cy, size, color) {
     let hexScale = 0.83; // local scaling – does not affect global zoom
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
-        let angle = i * Math.PI / 3; // pointy‑top (0°,60°,...)
+        let angle = i * Math.PI / 3; // 0°,60°,120°,...
         let x = cx + size * hexScale * Math.cos(angle);
         let y = cy + size * Math.sin(angle);
         if (i === 0) ctx.moveTo(x, y);
@@ -144,6 +144,21 @@ function drawHexagon(ctx, cx, cy, size, color) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 0.5;
     ctx.stroke();
+}
+
+function hexagonPath(ctx, cx, cy, size) {
+    // flat‑top hexagon keep in sync with drawHexagon as far as values goes
+    size = size * 1.17;
+    let hexScale = 0.83;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        let angle = i * Math.PI / 3; // 0°,60°,120°,...
+        let x = cx + size * hexScale * Math.cos(angle);
+        let y = cy + size * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
 }
 
 function generateTerrainImage() {
@@ -228,25 +243,45 @@ function redraw() {
     ctx.translate(-offsetX, -offsetY);
     ctx.scale(scale, scale);
 
-    // Draw cached terrain image (if available)
+    // 1. Draw terrain image (full world)
     if (terrainImage) {
         ctx.drawImage(terrainImage, 0, 0);
     } else {
-        // fallback if not yet generated (shouldn't happen)
         ctx.fillStyle = '#0a1729';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Hex outlines
-    if (worldMap.hexes && worldMap.hexes.length > 0) {
+    // 2. Dark overlay (fog) over everything
+    ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // made fully opaque now
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 3. For discovered hexes, redraw terrain image inside the hex (reveals it)
+    if (terrainImage && worldMap.discovered_hexes && worldMap.hexes) {
+        const discoveredSet = new Set(worldMap.discovered_hexes.map(h => `${h.col},${h.row}`));
+        console.log('discovered set size:', discoveredSet.size);
+        console.log('hex count:', worldMap.hexes.length);
+        worldMap.hexes.forEach(hex => {
+            if (!discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
+            ctx.save();
+            hexagonPath(ctx, hex.x, hex.y, 30);
+            ctx.clip();
+            ctx.drawImage(terrainImage, 0, 0);
+            ctx.restore();
+        });
+    }
+
+    // 4. Draw hex outlines for discovered hexes (optional)
+    if (worldMap.hexes) {
         ctx.strokeStyle = 'rgba(0,0,0,0.3)';
         ctx.lineWidth = 1;
+        const discoveredSet = new Set(worldMap.discovered_hexes?.map(h => `${h.col},${h.row}`) || []);
         worldMap.hexes.forEach(hex => {
+            if (!discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
             drawHexagon(ctx, hex.x, hex.y, 30, ctx.strokeStyle);
         });
     }
 
-    // Only draw discovered locations
+    // 5. Draw paths and locations (only discovered ones)
     const discoveredLocations = (worldMap.locations || []).filter(loc => loc.discovered);
     drawPaths(ctx, worldMap.connections || [], discoveredLocations);
     drawLocations(ctx, discoveredLocations, scale);
@@ -390,6 +425,8 @@ async function loadWorldData() {
             }
             return;
         }
+        console.log('discovered_hexes:', data.worldMap.discovered_hexes);
+        console.log('first hex:', data.worldMap.hexes[0]);
         let currentLocation = null;
         if (data.currentLocation && data.worldMap.locations) {
             // If it's an ID string, find the location in the array

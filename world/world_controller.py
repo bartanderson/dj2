@@ -219,20 +219,32 @@ class WorldController:
         # Set up the world
         self.setup_world(self.world_data)
         
-        # Set starting location
+        # Find the starting location (tavern)
         starting_location = None
-        self.starting_location_id = None
-        # After loading all locations, find the tavern and set its grid position
-        grid_w = self.campaign_state.grid_width
-        grid_h = self.campaign_state.grid_height
-        if grid_w and grid_h:
-            center_col = grid_w // 2
         for location in self.world_map.locations.values():
-            if location.type == "tavern" and "adventurer" in location.name.lower(): #and "respite" in location.name.lower():
+            if location.type == "tavern" and "adventurer" in location.name.lower():
                 starting_location = location
                 break
 
         if starting_location:
+            # Assign hex to the starting location using pixel coordinates
+            hex = self._find_hex_at_pixel(starting_location.x, starting_location.y)
+            if hex:
+                starting_location.col = hex['grid_x']
+                starting_location.row = hex['grid_y']
+                self.campaign_state.party_position = (hex['grid_x'], hex['grid_y'])
+                hex['discovered'] = True
+                print(f"Starting hex discovered: {hex['grid_x']},{hex['grid_y']}")
+            else:
+                # Fallback: use hex (0,0)
+                default_hex = self.campaign_state.get_hex(0,0)
+                if default_hex:
+                    starting_location.col = 0
+                    starting_location.row = 0
+                    self.campaign_state.party_position = (0,0)
+                    default_hex['discovered'] = True
+                    print("Using fallback hex (0,0) as starting hex")
+
             print("Found starting location")
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
@@ -420,6 +432,7 @@ class WorldController:
                 if (h['x'] <= start_loc.x <= h['x'] + self.campaign_state.hex_size * 0.75 and
                     h['y'] <= start_loc.y <= h['y'] + self.campaign_state.hex_size):
                     self.campaign_state.party_position = (h['grid_x'], h['grid_y'])
+                    print(f"Starting hex discovered: {self.campaign_state.party_position} discovered = {h['discovered']}")
                     h['discovered'] = True
                     break
 
@@ -1466,24 +1479,24 @@ class WorldController:
                 if not direction:
                     return {"response": "Invalid direction.", "success": False}
 
-                result = self.move_hex(direction)
-                # Build context for AI (use a dummy session for now; we'll get real session later)
-                # For simplicity, we'll create a minimal context with the current hex info.
-                # We'll use the existing `_build_game_context` but we need a session and character.
-                # Since this is movement, we can call it with None session and character.
-                # We'll modify DMChatHandler._build_game_context to accept None gracefully.
-                try:
-                    # We'll call a new helper in DMChatHandler to generate movement narrative
-                    narrative = self.dm_chat_handler.generate_movement_narrative(direction, result)
-                except Exception as e:
-                    # Fallback
-                    narrative = result.get('message', 'Movement attempt.')
-                return {
-                    "response": narrative,
-                    "map_data": self.get_map_data(),
-                    "location_data": self.get_current_location_data(),
-                    "success": result.get('success', False)
-                }
+                if direction:
+                    result = self.move_hex(direction)
+                    if result['success']:
+                        narratives = self.dm_chat_handler.generate_movement_narrative(
+                            direction, True, new_hex=result['new_hex']
+                        )
+                        narrative = narratives[0]['content'] if narratives else f"You move {direction}."
+                    else:
+                        narratives = self.dm_chat_handler.generate_movement_narrative(
+                            direction, False, block_reason=result.get('reason', 'an obstacle')
+                        )
+                        narrative = narratives[0]['content'] if narratives else f"Cannot move {direction}."
+                    return {
+                        "response": narrative,
+                        "map_data": self.get_map_data(),
+                        "location_data": self.get_current_location_data(),
+                        "success": result['success']
+                    }
         
         # LEGACY PROCESSING (fallback if GameEngine fails or not available)
         print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
@@ -1714,6 +1727,19 @@ class WorldController:
         if terrain in ('ocean', 'lake', 'river'):
             return False
         return True
+
+    def _find_hex_at_pixel(self, x, y):
+        """
+        Return the hex dict containing pixel (x, y), or None.
+        Uses approximate bounding box: hex width ~ hex_size * 0.75, height = hex_size.
+        """
+        for h in self.campaign_state.hex_grid:
+            # Check if (x,y) lies within the hex's bounding box
+            # Hex center is at (h['x'], h['y'])
+            if (abs(h['x'] - x) < self.campaign_state.hex_size * 0.75 and
+                abs(h['y'] - y) < self.campaign_state.hex_size):
+                return h
+        return None
 
     def _reveal_hexes_around(self, col, row, radius=1):
         """Mark hexes within radius as discovered."""
