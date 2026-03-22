@@ -287,6 +287,7 @@ class WorldController:
 
         # Finally, create DMChatHandler (needs consequence_engine, which is now available)
         self.dm_chat_handler = DMChatHandler(self)
+        self.dungeon_mode = False
 
         print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
@@ -410,6 +411,17 @@ class WorldController:
         region_id_counter = 0
         visited = set()
         regions = {}  # This will hold the region objects keyed by ID
+
+        # Find hex containing starting location
+        start_loc = self.world_map.get_location(self.starting_location_id)   # or use the location object
+        if start_loc:
+            for h in hexes:
+                # Simple bounding box check (replace with proper point‑in‑polygon later)
+                if (h['x'] <= start_loc.x <= h['x'] + self.campaign_state.hex_size * 0.75 and
+                    h['y'] <= start_loc.y <= h['y'] + self.campaign_state.hex_size):
+                    self.campaign_state.party_position = (h['grid_x'], h['grid_y'])
+                    h['discovered'] = True
+                    break
 
         def flood_fill(start_x, start_y, terrain):
             stack = [(start_x, start_y)]
@@ -917,6 +929,12 @@ class WorldController:
             }
             for pid, p in self.campaign_state.potential_locations.items()
             if pid not in self.world_map.locations
+        ]
+
+        map_data["discovered_hexes"] = [
+            {"col": h['grid_x'], "row": h['grid_y']}
+            for h in self.campaign_state.hex_grid
+            if h.get('discovered', False)
         ]
         return map_data
 
@@ -1428,6 +1446,44 @@ class WorldController:
                 print(f"✗ GameEngine processing failed: {e}")
                 print("  Falling back to legacy AI processing")
                 # Fall through to legacy processing
+
+        # If in world mode (not dungeon)
+        if not self.dungeon_mode:
+            cmd = command.lower()
+            # Check for movement commands
+            if cmd in ('n', 'north', 'ne', 'northeast', 'se', 'southeast',
+                       's', 'south', 'sw', 'southwest', 'nw', 'northwest'):
+                # Map to canonical direction
+                dir_map = {
+                    'n': 'n', 'north': 'n',
+                    'ne': 'ne', 'northeast': 'ne',
+                    'se': 'se', 'southeast': 'se',
+                    's': 's', 'south': 's',
+                    'sw': 'sw', 'southwest': 'sw',
+                    'nw': 'nw', 'northwest': 'nw'
+                }
+                direction = dir_map.get(cmd)
+                if not direction:
+                    return {"response": "Invalid direction.", "success": False}
+
+                result = self.move_hex(direction)
+                # Build context for AI (use a dummy session for now; we'll get real session later)
+                # For simplicity, we'll create a minimal context with the current hex info.
+                # We'll use the existing `_build_game_context` but we need a session and character.
+                # Since this is movement, we can call it with None session and character.
+                # We'll modify DMChatHandler._build_game_context to accept None gracefully.
+                try:
+                    # We'll call a new helper in DMChatHandler to generate movement narrative
+                    narrative = self.dm_chat_handler.generate_movement_narrative(direction, result)
+                except Exception as e:
+                    # Fallback
+                    narrative = result.get('message', 'Movement attempt.')
+                return {
+                    "response": narrative,
+                    "map_data": self.get_map_data(),
+                    "location_data": self.get_current_location_data(),
+                    "success": result.get('success', False)
+                }
         
         # LEGACY PROCESSING (fallback if GameEngine fails or not available)
         print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
@@ -1598,3 +1654,85 @@ class WorldController:
         location = self.world_map.get_location(location_id)
         scene_desc = f"{location.name}: {location.description}"
         self.narrative_system.set_current_scene(scene_desc)
+
+
+    def get_available_hex_moves(self, col, row):
+        """Return list of (direction, target_hex) for passable adjacent hexes."""
+        # Flat‑top hex directions (no east/west)
+        dir_map = {
+            'n': (0, -1),
+            'ne': (1, -1),
+            'se': (1, 0),
+            's': (0, 1),
+            'sw': (-1, 1),
+            'nw': (-1, 0)
+        }
+        available = []
+        for dir_name, (dc, dr) in dir_map.items():
+            nc, nr = col + dc, row + dr
+            target = self.campaign_state.get_hex(nc, nr)
+            if target:
+                # We'll consider all hexes as potentially traversable; obstacles handled later
+                available.append((dir_name, target))
+        return available
+
+    def move_hex(self, direction):
+        """Move party one hex in the given direction."""
+        col, row = self.campaign_state.party_position
+        dir_map = {
+            'n': (0, -1), 'ne': (1, -1), 'se': (1, 0),
+            's': (0, 1), 'sw': (-1, 1), 'nw': (-1, 0)
+        }
+        if direction not in dir_map:
+            return {"success": False, "message": f"Unknown direction: {direction}"}
+        dc, dr = dir_map[direction]
+        nc, nr = col + dc, row + dr
+        target = self.campaign_state.get_hex(nc, nr)
+        if not target:
+            return {"success": False, "message": "You cannot go that way (edge of the world)."}
+
+        # Basic passability check (later enhanced with party capabilities)
+        if not self._is_hex_passable(target):
+            return {
+                "success": False,
+                "blocked": True,
+                "reason": f"The {target['terrain']} blocks your path.",
+                "terrain": target['terrain']
+            }
+
+        # Move
+        self.campaign_state.party_position = (nc, nr)
+        target['discovered'] = True
+        self._reveal_hexes_around(nc, nr)
+        self.explore_hex()
+        return {"success": True, "new_hex": target}
+
+    def _is_hex_passable(self, hex):
+        """Basic passability based on terrain. Later we'll check party assets."""
+        terrain = hex['terrain']
+        # For now, water is impassable unless party has boat/swim (to be added)
+        if terrain in ('ocean', 'lake', 'river'):
+            return False
+        return True
+
+    def _reveal_hexes_around(self, col, row, radius=1):
+        """Mark hexes within radius as discovered."""
+        for dc in range(-radius, radius+1):
+            for dr in range(-radius, radius+1):
+                h = self.campaign_state.get_hex(col+dc, row+dr)
+                if h:
+                    h['discovered'] = True
+
+    def explore_hex(self):
+        """Mark current hex as explored and generate its POIs."""
+        hex = self.campaign_state.get_hex(*self.campaign_state.party_position)
+        if not hex:
+            return {"success": False, "message": "Not in a hex."}
+        if hex.get('explored'):
+            return {"success": True, "new_pois": []}
+        hex['explored'] = True
+        pois = self.campaign_state.get_or_generate_pois(hex)
+        new_pois = [p for p in pois if not p['discovered']]
+        for p in new_pois:
+            p['discovered'] = True
+        return {"success": True, "new_pois": new_pois}
