@@ -18,6 +18,7 @@ from collections import Counter
 from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
+from world.perlin import PerlinNoise
 from world.world_map import WorldMap, Location
 from world.campaign import Region, Faction, Quest, CampaignState
 from world.narrative_system import NarrativeSystem
@@ -351,7 +352,8 @@ class WorldController:
         """Generate hex grid and regions from seed and campaign parameters."""
         import random
         import math
-        from collections import defaultdict
+        from collections import Counter
+        from world.perlin import PerlinNoise
 
         # Get generation parameters from stored campaign_data
         world_gen = self.campaign_data.get("world_generation", {})
@@ -366,7 +368,7 @@ class WorldController:
         print(f"Width: { w }, Height: { h }")
         self.campaign_state.grid_width = w
         self.campaign_state.grid_height = h
-        self.campaign_state.hex_size = 60  # could also come from JSON
+        self.campaign_state.hex_size = 60
 
         terrain_types = hex_grid_params.get("terrain_types", 
             ["plains", "forest", "mountain", "swamp", "desert", "coast", "urban"])
@@ -375,39 +377,228 @@ class WorldController:
         seed = int(self.campaign_state.world_seed) if self.campaign_state.world_seed else 42
         rng = random.Random(seed)
 
-        # Generate a simple terrain grid (random with smoothing)
-        terrain_grid = [[rng.choice(terrain_types) for _ in range(w)] for _ in range(h)]
+        # --- Terrain generation using Perlin noise ---
+        perlin = PerlinNoise(seed)
+        scale = 0.005
+        octaves = 4
+        persistence = 0.5
+        lacunarity = 2
+        max_amplitude = 0
+        amp = 1
+        for _ in range(octaves):
+            max_amplitude += amp
+            amp *= persistence
 
-        # ----- Smoothing pass to create larger contiguous areas -----
-        smooth_iterations = 3  # adjust as needed; more iterations = larger regions
-        # Define neighbor offsets for hex grid (flat-top, axial coordinates)
-        # For a given (x,y) in a rectangular grid approximating hexes, we use:
-        neighbors = [
-            (1, 0), (-1, 0), (0, 1), (0, -1),
-            (1, 1), (-1, -1)  # these approximate diagonals for hex connectivity
-        ]
-        for _ in range(smooth_iterations):
-            new_grid = [row[:] for row in terrain_grid]  # copy
+        heightmap = [[0.0 for _ in range(w)] for _ in range(h)]
+        for y in range(h):
+            for x in range(w):
+                noise_val = 0
+                amp = 1
+                freq = 1
+                for _ in range(octaves):
+                    noise_val += perlin.noise(x * scale * freq, y * scale * freq) * amp
+                    amp *= persistence
+                    freq *= lacunarity
+                height = (noise_val + max_amplitude) / (2 * max_amplitude)
+                heightmap[y][x] = height
+
+        # Print original height range
+        min_h_orig = min(min(row) for row in heightmap)
+        max_h_orig = max(max(row) for row in heightmap)
+        print(f"Original height range: {min_h_orig:.3f} - {max_h_orig:.3f}")
+
+        # Stretch heightmap to full [0,1] range
+        if max_h_orig - min_h_orig > 0:
             for y in range(h):
                 for x in range(w):
-                    # Collect terrain of current cell and its valid neighbors
-                    terrain_counts = Counter()
-                    terrain_counts[terrain_grid[y][x]] += 1
-                    for dx, dy in neighbors:
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < w and 0 <= ny < h:
-                            terrain_counts[terrain_grid[ny][nx]] += 1
-                    # Set to most common terrain (mode)
-                    most_common = terrain_counts.most_common(1)[0][0]
-                    new_grid[y][x] = most_common
-            terrain_grid = new_grid
-        # -------------------------------------------------------------
+                    heightmap[y][x] = (heightmap[y][x] - min_h_orig) / (max_h_orig - min_h_orig)
+        print(f"Stretched height range: {min(min(row) for row in heightmap):.3f} - {max(max(row) for row in heightmap):.3f}")
+
+        # Moisture map
+        moisture_perlin = PerlinNoise(seed + 1000)
+        moisture_max_amp = 0
+        amp = 1
+        for _ in range(octaves):
+            moisture_max_amp += amp
+            amp *= persistence
+        moisture_map = [[0.0 for _ in range(w)] for _ in range(h)]
+        for y in range(h):
+            for x in range(w):
+                noise_val = 0
+                amp = 1
+                freq = 1
+                for _ in range(octaves):
+                    noise_val += moisture_perlin.noise(x * scale * freq, y * scale * freq) * amp
+                    amp *= persistence
+                    freq *= lacunarity
+                moisture = (noise_val + moisture_max_amp) / (2 * moisture_max_amp)
+                moisture_map[y][x] = moisture
+
+        # Print original moisture range
+        min_m_orig = min(min(row) for row in moisture_map)
+        max_m_orig = max(max(row) for row in moisture_map)
+        print(f"Original moisture range: {min_m_orig:.3f} - {max_m_orig:.3f}")
+
+        # Stretch moisture map to full [0,1] range
+        if max_m_orig - min_m_orig > 0:
+            for y in range(h):
+                for x in range(w):
+                    moisture_map[y][x] = (moisture_map[y][x] - min_m_orig) / (max_m_orig - min_m_orig)
+        print(f"Stretched moisture range: {min(min(row) for row in moisture_map):.3f} - {max(max(row) for row in moisture_map):.3f}")
+
+        # Terrain classification
+        terrain_type_map = {
+            'ocean': '#4d6fb8',
+            'coast': '#a2c4c9',
+            'swamp': '#6b8e23',
+            'desert': '#c2b280',
+            'plains': '#689f38',
+            'forest': '#2c5e2e',
+            'hills': '#8d9946',
+            'mountains': '#8d99ae',
+            'snowcaps': '#ffffff',
+            'river': '#4a90e2',
+            'lake': '#4a90e2'
+        }
+
+        terrain_names_grid = [['' for _ in range(w)] for _ in range(h)]
+        terrain_colors_grid = [['' for _ in range(w)] for _ in range(h)]
+
+        for y in range(h):
+            for x in range(w):
+                height = heightmap[y][x]
+                moisture = moisture_map[y][x]
+
+                # New thresholds
+                if height < 0.3:
+                    terrain = 'ocean'
+                elif height < 0.4:
+                    # Coastal zone (narrow)
+                    if moisture < 0.3:
+                        terrain = 'coast'
+                    else:
+                        terrain = 'swamp'
+                elif height < 0.55:
+                    # Lowlands
+                    if moisture < 0.2:
+                        terrain = 'desert'
+                    elif moisture < 0.6:
+                        terrain = 'plains'
+                    else:
+                        terrain = 'forest'
+                elif height < 0.7:
+                    # Highlands
+                    if moisture < 0.4:
+                        terrain = 'hills'
+                    else:
+                        terrain = 'forest'
+                else:
+                    # Mountains
+                    if height > 0.85:
+                        terrain = 'snowcaps'
+                    else:
+                        terrain = 'mountains'
+
+                terrain_names_grid[y][x] = terrain
+                terrain_colors_grid[y][x] = terrain_type_map[terrain]
+
+        # --- Print terrain counts (before rivers/lakes) ---
+        counts_before = {}
+        for y in range(h):
+            for x in range(w):
+                t = terrain_names_grid[y][x]
+                counts_before[t] = counts_before.get(t, 0) + 1
+        print("Terrain counts BEFORE rivers/lakes:")
+        for t, c in sorted(counts_before.items()):
+            print(f"  {t}: {c}")
+
+        # --- River generation ---
+        river_mask = [[False for _ in range(w)] for _ in range(h)]
+        river_rng = random.Random(seed + 2000)
+        num_rivers = 30  # increased
+        print(f"Attempting to generate {num_rivers} rivers...")
+        rivers_created = 0
+        for _ in range(num_rivers):
+            # Find starting cells in mountains/hills with moisture > 0.4 (lowered threshold)
+            start_candidates = []
+            for y in range(h):
+                for x in range(w):
+                    if terrain_names_grid[y][x] in ('mountains', 'hills') and moisture_map[y][x] > 0.4:
+                        start_candidates.append((x, y))
+            if not start_candidates:
+                print("No suitable start candidates found for river")
+                continue
+            start_x, start_y = river_rng.choice(start_candidates)
+            x, y = start_x, start_y
+            visited = set()
+            visited.add((x, y))
+            steps = 0
+            while True:
+                if terrain_names_grid[y][x] in ('ocean', 'coast'):
+                    break
+                neighbors = [(x+dx, y+dy) for dx,dy in [(1,0),(-1,0),(0,1),(0,-1),(1,1),(-1,-1)]
+                            if 0 <= x+dx < w and 0 <= y+dy < h]
+                if not neighbors:
+                    break
+                best = None
+                best_height = float('inf')
+                for nx, ny in neighbors:
+                    if (nx, ny) in visited:
+                        continue
+                    hgt = heightmap[ny][nx]
+                    if hgt < best_height:
+                        best_height = hgt
+                        best = (nx, ny)
+                if best is None:
+                    break
+                x, y = best
+                visited.add((x, y))
+                steps += 1
+                if steps > 150:  # longer rivers allowed
+                    break
+            # Mark the path (only if it's at least 5 steps long)
+            if len(visited) > 5:
+                rivers_created += 1
+                for (rx, ry) in visited:
+                    river_mask[ry][rx] = True
+        print(f"Rivers created: {rivers_created}")
+
+        # Apply rivers (overwrite terrain)
+        for y in range(h):
+            for x in range(w):
+                if river_mask[y][x] and terrain_names_grid[y][x] not in ('ocean', 'coast'):
+                    terrain_names_grid[y][x] = 'river'
+                    terrain_colors_grid[y][x] = terrain_type_map['river']
+
+        # --- Lake generation ---
+        lake_prob = 0.05  # increased
+        lake_rng = random.Random(seed + 3000)
+        lakes_created = 0
+        for y in range(h):
+            for x in range(w):
+                if terrain_names_grid[y][x] not in ('ocean', 'river', 'coast') and heightmap[y][x] < 0.5 and moisture_map[y][x] > 0.5:
+                    if lake_rng.random() < lake_prob:
+                        terrain_names_grid[y][x] = 'lake'
+                        terrain_colors_grid[y][x] = terrain_type_map['lake']
+                        lakes_created += 1
+        print(f"Lakes created: {lakes_created}")
+
+        # --- Print terrain counts (after rivers/lakes) ---
+        counts_after = {}
+        for y in range(h):
+            for x in range(w):
+                t = terrain_names_grid[y][x]
+                counts_after[t] = counts_after.get(t, 0) + 1
+        print("Terrain counts AFTER rivers/lakes:")
+        for t, c in sorted(counts_after.items()):
+            print(f"  {t}: {c}")
+
+        # --- End terrain generation ---
 
         # Convert to hex list (axial coordinates or pixel coordinates)
         hexes = []
         for y in range(h):
             for x in range(w):
-                # Convert to pixel coordinates (flat-top hex grid)
                 x_pos = x * self.campaign_state.hex_size * 0.75
                 y_pos = y * self.campaign_state.hex_size + (self.campaign_state.hex_size/2 if x % 2 else 0)
                 hexes.append({
@@ -415,26 +606,29 @@ class WorldController:
                     "y": y_pos,
                     "grid_x": x,
                     "grid_y": y,
-                    "terrain": terrain_grid[y][x],
+                    "terrain": terrain_names_grid[y][x],
                     "region_id": None
                 })
+
+        # Store terrain colors for frontend
+        self.campaign_state.terrain_colors_grid = terrain_colors_grid
+
+        # Find starting location hex and set party position
+        start_loc = self.world_map.get_location(self.starting_location_id)
+        if start_loc:
+            for h in hexes:
+                # Simple bounding box check (hex size 60, width ~45)
+                if (h['x'] <= start_loc.x <= h['x'] + self.campaign_state.hex_size * 0.75 and
+                    h['y'] <= start_loc.y <= h['y'] + self.campaign_state.hex_size):
+                    self.campaign_state.party_position = (h['grid_x'], h['grid_y'])
+                    h['discovered'] = True
+                    print(f"Starting hex discovered: {self.campaign_state.party_position}")
+                    break
 
         # Cluster hexes into regions using flood fill
         region_id_counter = 0
         visited = set()
         regions = {}  # This will hold the region objects keyed by ID
-
-        # Find hex containing starting location
-        start_loc = self.world_map.get_location(self.starting_location_id)   # or use the location object
-        if start_loc:
-            for h in hexes:
-                # Simple bounding box check (replace with proper point‑in‑polygon later)
-                if (h['x'] <= start_loc.x <= h['x'] + self.campaign_state.hex_size * 0.75 and
-                    h['y'] <= start_loc.y <= h['y'] + self.campaign_state.hex_size):
-                    self.campaign_state.party_position = (h['grid_x'], h['grid_y'])
-                    print(f"Starting hex discovered: {self.campaign_state.party_position} discovered = {h['discovered']}")
-                    h['discovered'] = True
-                    break
 
         def flood_fill(start_x, start_y, terrain):
             stack = [(start_x, start_y)]
@@ -443,13 +637,11 @@ class WorldController:
                 cx, cy = stack.pop()
                 if (cx, cy) in visited or cx < 0 or cx >= w or cy < 0 or cy >= h:
                     continue
-                if terrain_grid[cy][cx] != terrain:
+                if terrain_names_grid[cy][cx] != terrain:
                     continue
                 visited.add((cx, cy))
                 region_hexes.append((cx, cy))
                 # Add neighbors (axial neighbors for hex grid)
-                # For simplicity, we'll use 4-directional neighbors plus two diagonals
-                # Adjust based on actual hex connectivity
                 for dx, dy in [(1,0), (-1,0), (0,1), (0,-1), (1,1), (-1,-1)]:
                     nx, ny = cx + dx, cy + dy
                     if 0 <= nx < w and 0 <= ny < h:
@@ -459,7 +651,7 @@ class WorldController:
         for y in range(h):
             for x in range(w):
                 if (x, y) not in visited:
-                    terrain = terrain_grid[y][x]
+                    terrain = terrain_names_grid[y][x]
                     hex_list = flood_fill(x, y, terrain)
                     if hex_list:
                         region_id = f"region_{region_id_counter}"
@@ -469,7 +661,7 @@ class WorldController:
                         avg_row = sum(hy for hx, hy in hex_list) / len(hex_list)
                         # Determine danger level based on terrain
                         danger = self._terrain_danger(terrain)
-                        # Create Region object (import Region from campaign)
+                        # Create Region object
                         from world.campaign import Region
                         region = Region(
                             id=region_id,
@@ -494,7 +686,7 @@ class WorldController:
         # Store in campaign_state
         self.campaign_state.surface_regions = regions
         self.campaign_state.hex_grid = hexes
-        self.campaign_state.terrain_grid = terrain_grid
+        # self.campaign_state.terrain_grid = terrain_names_grid  # if needed elsewhere
 
         # Initialize potential_locations dict if not present
         if not hasattr(self.campaign_state, 'potential_locations'):
@@ -540,15 +732,22 @@ class WorldController:
                     "type": "dungeon"
                 }
 
-        # Note this is outside of the for loop above
         # Generate encounter points for each region
-        # We need a deterministic RNG for the whole world; use self.rng (already seeded)
         for region_id, region in self.campaign_state.surface_regions.items():
-            # Collect hexes belonging to this region
             region_hexes = [h for h in self.campaign_state.hex_grid if h.get("region_id") == region_id]
             if region_hexes:
                 points = self._generate_encounter_points_for_region(region_id, region_hexes, self.rng)
                 region.encounter_points.update(points)
+
+        # Final terrain counts
+        final_counts = {}
+        for y in range(h):
+            for x in range(w):
+                t = terrain_names_grid[y][x]
+                final_counts[t] = final_counts.get(t, 0) + 1
+        print("Final terrain counts:")
+        for t, c in sorted(final_counts.items()):
+            print(f"  {t}: {c}")
 
         print(f"[WORLD] Generated {len(regions)} regions, {len(self.campaign_state.potential_locations)} potential locations")
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
@@ -949,6 +1148,10 @@ class WorldController:
             for h in self.campaign_state.hex_grid
             if h.get('discovered', False)
         ]
+        map_data["party_position"] = {
+            "col": self.campaign_state.party_position[0],
+            "row": self.campaign_state.party_position[1]
+        }
         return map_data
 
     def get_current_location_data(self) -> dict:
@@ -1461,7 +1664,7 @@ class WorldController:
                         "map_data": self.get_map_data(),
                         "success": False
                     }
-                    
+
         # Try to use GameEngine if available
         if hasattr(self, 'game_engine') and self.game_engine:
             try:
@@ -1702,6 +1905,7 @@ class WorldController:
             return {"success": False, "message": "You cannot go that way (edge of the world)."}
 
         # Basic passability check (later enhanced with party capabilities)
+        print(f"Checking passability for {target['terrain']}: {self._is_hex_passable(target)}")
         if not self._is_hex_passable(target):
             return {
                 "success": False,
@@ -1722,6 +1926,7 @@ class WorldController:
         terrain = hex['terrain']
         # For now, water is impassable unless party has boat/swim (to be added)
         if terrain in ('ocean', 'lake', 'river'):
+            # TODO: check party inventory for boat or other method of travel through/over/under water
             return False
         return True
 

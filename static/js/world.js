@@ -363,6 +363,21 @@ function redraw() {
     drawPaths(ctx, worldMap.connections || [], discoveredLocations);
     drawLocations(ctx, discoveredLocations, scale);
 
+    // 6. Draw party location
+    if (worldMap.party_position) {
+        const partyHex = worldMap.hexes.find(h => h.grid_x === worldMap.party_position.col && h.grid_y === worldMap.party_position.row);
+        if (partyHex) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(partyHex.x, partyHex.y, 8, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillStyle = 'gold';
+            ctx.beginPath();
+            ctx.arc(partyHex.x, partyHex.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+
     ctx.restore();
 }
 
