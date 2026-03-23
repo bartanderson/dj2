@@ -545,13 +545,11 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 </div>
                 <div id="game-date" class="game-date" 
                      hx-get="/api/game/date" 
-                     hx-trigger="every 5s" 
                      hx-swap="innerHTML">
                     <!-- Date will be loaded here -->
                 </div>
                 <div id="player-name" class="player-name" 
                      hx-get="/api/player/name" 
-                     hx-trigger="load, every 10s" 
                      hx-swap="innerHTML">
                     Loading...
                 </div>
@@ -613,6 +611,16 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     <div class="tab-icon"><i class="fa-solid fa-scroll"></i></div>
                     <span>Quests</span>
                 </button>
+            </div>
+            <div class="menu-section" style="margin-top: auto; border-top: 1px solid #4ecca3;">
+                <div class="menu-header">World Chat</div>
+                <div id="world-chat-messages" style="height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 10px; margin: 10px; border-radius: 4px; font-size: 12px;">
+                    <div class="chat-message system">Type a command to interact with the world. Try "go north".</div>
+                </div>
+                <div style="display: flex; gap: 8px; padding: 0 10px 10px 10px;">
+                    <input type="text" id="world-chat-input" placeholder="Command..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
+                    <button id="world-chat-send" class="btn" style="padding: 8px 12px;">Send</button>
+                </div>
             </div>
         </nav>
         

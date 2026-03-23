@@ -1425,7 +1425,43 @@ class WorldController:
         return True
 
     def process_command(self, command: str) -> dict:
-        """Process command through GameEngine for phase compliance"""
+        # World movement: if command is a direction, handle it directly
+        if not self.dungeon_mode:
+            cmd = command.lower().strip()
+            # Map common movement commands to direction strings
+            direction_map = {
+                'n': 'n', 'north': 'n',
+                'ne': 'ne', 'northeast': 'ne',
+                'se': 'se', 'southeast': 'se',
+                's': 's', 'south': 's',
+                'sw': 'sw', 'southwest': 'sw',
+                'nw': 'nw', 'northwest': 'nw'
+            }
+            # Handle "go north"
+            if cmd.startswith('go '):
+                cmd = cmd[3:].strip()
+            if cmd in direction_map:
+                dir = direction_map[cmd]
+                result = self.move_hex(dir)
+                if result['success']:
+                    # Generate AI narrative for the new hex
+                    # For now, we'll use a simple narrative, but later we can call the AI
+                    narrative = f"You move {dir}."
+                    # Get updated map data
+                    return {
+                        "response": narrative,
+                        "map_data": self.get_map_data(),
+                        "location_data": self.get_current_location_data(),
+                        "success": True
+                    }
+                else:
+                    # Movement failed (blocked)
+                    return {
+                        "response": result.get('message', f"Cannot move {dir}."),
+                        "map_data": self.get_map_data(),
+                        "success": False
+                    }
+                    
         # Try to use GameEngine if available
         if hasattr(self, 'game_engine') and self.game_engine:
             try:
@@ -1450,7 +1486,6 @@ class WorldController:
                     "response": ui_data.get("narration", "Command processed via GameEngine"),
                     "map_data": ui_data.get("map", self.get_map_data()),
                     "location_data": ui_data.get("location", self.get_current_location_data()),
-                    "engine_result": result,  # Include full result for debugging
                     "phase_compliant": True,
                     "violations": violations
                 }
@@ -1459,44 +1494,6 @@ class WorldController:
                 print(f"✗ GameEngine processing failed: {e}")
                 print("  Falling back to legacy AI processing")
                 # Fall through to legacy processing
-
-        # If in world mode (not dungeon)
-        if not self.dungeon_mode:
-            cmd = command.lower()
-            # Check for movement commands
-            if cmd in ('n', 'north', 'ne', 'northeast', 'se', 'southeast',
-                       's', 'south', 'sw', 'southwest', 'nw', 'northwest'):
-                # Map to canonical direction
-                dir_map = {
-                    'n': 'n', 'north': 'n',
-                    'ne': 'ne', 'northeast': 'ne',
-                    'se': 'se', 'southeast': 'se',
-                    's': 's', 'south': 's',
-                    'sw': 'sw', 'southwest': 'sw',
-                    'nw': 'nw', 'northwest': 'nw'
-                }
-                direction = dir_map.get(cmd)
-                if not direction:
-                    return {"response": "Invalid direction.", "success": False}
-
-                if direction:
-                    result = self.move_hex(direction)
-                    if result['success']:
-                        narratives = self.dm_chat_handler.generate_movement_narrative(
-                            direction, True, new_hex=result['new_hex']
-                        )
-                        narrative = narratives[0]['content'] if narratives else f"You move {direction}."
-                    else:
-                        narratives = self.dm_chat_handler.generate_movement_narrative(
-                            direction, False, block_reason=result.get('reason', 'an obstacle')
-                        )
-                        narrative = narratives[0]['content'] if narratives else f"Cannot move {direction}."
-                    return {
-                        "response": narrative,
-                        "map_data": self.get_map_data(),
-                        "location_data": self.get_current_location_data(),
-                        "success": result['success']
-                    }
         
         # LEGACY PROCESSING (fallback if GameEngine fails or not available)
         print(f"↻ Processing command via legacy AI: '{command[:50]}...'")

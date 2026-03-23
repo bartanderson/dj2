@@ -487,7 +487,16 @@ class DungeonPersistenceSystem:
             return {"saved": False, "error": str(e)}
 
 #====+ outside of classes =====
-
+@app.route('/api/command', methods=['POST'])
+def handle_command():
+    data = request.get_json()
+    command = data.get('command', '')
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({"error": "World controller not available"}), 500
+    result = wc.process_command(command)
+    return jsonify(result)
+    
 def initialize_dungeon_systems():
     """Initialize complete HTTP-based dungeon system with all phase systems"""
     print("\n" + "="*50)

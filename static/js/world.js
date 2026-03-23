@@ -88,6 +88,83 @@ class LocationPreview {
 
 const locationPreview = new LocationPreview();
 
+function addWorldChatMessage(text, sender = 'system') {
+    const chatDiv = document.getElementById('world-chat-messages');
+    if (!chatDiv) return;
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `chat-message ${sender}`;
+    msgDiv.style.marginBottom = '5px';
+    msgDiv.style.padding = '5px';
+    msgDiv.style.borderRadius = '3px';
+    msgDiv.style.backgroundColor = 
+        sender === 'user' ? 'rgba(78, 204, 163, 0.2)' :
+        sender === 'dm' ? 'rgba(15, 52, 96, 0.3)' :
+        'rgba(0,0,0,0.3)';
+    msgDiv.innerHTML = `<strong>${sender === 'user' ? 'You' : (sender === 'dm' ? 'DM' : 'System')}:</strong> ${text}`;
+    chatDiv.appendChild(msgDiv);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+}
+
+async function sendWorldCommand(command) {
+    try {
+        const response = await fetch('/api/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: command})
+        });
+        const data = await response.json();
+        if (data.map_data) {
+            worldState.worldMap = data.map_data;
+            worldMap = worldState.worldMap;
+            if (data.location_data) {
+                worldState.currentLocation = data.location_data;
+            }
+            redraw();
+        }
+        if (data.response) {
+            // Append to your existing world chat panel
+            const chatDiv = document.getElementById('world-chat-messages');
+            if (chatDiv) {
+                const msgDiv = document.createElement('div');
+                msgDiv.textContent = data.response;
+                chatDiv.appendChild(msgDiv);
+                chatDiv.scrollTop = chatDiv.scrollHeight;
+            }
+        }
+    } catch (error) {
+        console.error('Command error:', error);
+    }
+}
+
+document.getElementById('world-chat-messages').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const input = document.getElementById('world-chat-input');
+    const command = input.value.trim();
+    if (command) {
+        sendWorldCommand(command);
+        input.value = '';
+    }
+})
+
+// Wire up the chat input
+document.addEventListener('DOMContentLoaded', function() {
+    const input = document.getElementById('world-chat-input');
+    const sendBtn = document.getElementById('world-chat-send');
+    if (input && sendBtn) {
+        const send = () => {
+            const cmd = input.value.trim();
+            if (cmd) {
+                sendWorldCommand(cmd);
+                input.value = '';
+            }
+        };
+        sendBtn.addEventListener('click', send);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') send();
+        });
+    }
+});
+
 // ===== MAP RENDERING HELPERS =====
 function drawPaths(ctx, connections, locations) {
     ctx.strokeStyle = '#ffffff';
@@ -409,6 +486,33 @@ async function travelToLocation(locationId) {
         if (typeof showNotification === 'function') {
             showNotification('Error traveling to location', 'error');
         }
+    }
+}
+
+async function sendWorldCommand(command) {
+    try {
+        const response = await fetch('/api/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({command: command})
+        });
+        const data = await response.json();
+        if (data.map_data) {
+            // Update world state
+            worldState.worldMap = data.map_data;
+            worldMap = worldState.worldMap;
+            if (data.location_data) {
+                worldState.currentLocation = data.location_data;
+            }
+            // Redraw the map
+            redraw();
+        }
+        // Optionally show narrative response in chat
+        if (data.response) {
+            addWorldChatMessage(data.response);
+        }
+    } catch (error) {
+        console.error('Command error:', error);
     }
 }
 
