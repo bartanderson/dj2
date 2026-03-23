@@ -125,6 +125,7 @@ class WorldController:
         self.current_location: Optional[Location] = None
         
         self.default_party_id = "main_party"
+        self.party_id = self.default_party_id
 
         # Initialize players
         self.players: Dict[str, Player] = {}
@@ -609,6 +610,17 @@ class WorldController:
                     "terrain": terrain_names_grid[y][x],
                     "region_id": None
                 })
+
+        # Diagnostic: Print sample colors for starting hex and top-left 3x3
+        if hasattr(self.campaign_state, 'party_position'):
+            col, row = self.campaign_state.party_position
+            print(f"Backend: Starting hex ({col},{row}) terrain='{terrain_names_grid[row][col]}' color='{terrain_colors_grid[row][col]}'")
+        else:
+            print("Backend: No party_position set yet")
+        print("Backend: Sample terrain colors (top-left 3x3):")
+        for y in range(min(3, h)):
+            row_colors = [terrain_colors_grid[y][x] for x in range(min(3, w))]
+            print(f"  row {y}: {row_colors}")
 
         # Store terrain colors for frontend
         self.campaign_state.terrain_colors_grid = terrain_colors_grid
@@ -1152,6 +1164,21 @@ class WorldController:
             "col": self.campaign_state.party_position[0],
             "row": self.campaign_state.party_position[1]
         }
+        # Include party color for the marker
+        party = None
+        if hasattr(self, 'party_manager') and self.party_manager:
+            try:
+                party = self.party_manager.parties.get(self.party_id)
+                map_data["party_color"] = party.get("color", "#FFD700") if party else "#FFD700"
+            except Exception:
+                map_data["party_color"] = "#FFD700"
+
+        map_data["terrain_colors"] = getattr(self.campaign_state, 'terrain_colors_grid', None)
+        if map_data["terrain_colors"] is None:
+            print("Warning: terrain_colors_grid not set. Terrain image will be generated client-side.")
+        else:
+            print(f"terrain_colors_grid present, shape: {len(map_data['terrain_colors'])} x {len(map_data['terrain_colors'][0])}")
+
         return map_data
 
     def get_current_location_data(self) -> dict:
@@ -1660,7 +1687,7 @@ class WorldController:
                 else:
                     # Movement failed (blocked)
                     return {
-                        "response": result.get('message', f"Cannot move {dir}."),
+                        "response": result.get('reason', f"Cannot move {dir}."),
                         "map_data": self.get_map_data(),
                         "success": False
                     }
