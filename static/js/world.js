@@ -117,43 +117,43 @@ function addWorldMessage(text) {
     }
 }
 
-async function sendWorldCommand(command) {
-    try {
-        const response = await fetch('/api/command', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: command})
-        });
-        const data = await response.json();
-        if (data.error) {
-            console.error('Command error:', data.error);
-            return;
-        }
-        if (data.map_data) {
-            worldState.worldMap = data.map_data;
-            worldMap = worldState.worldMap;
-            if (data.location_data) {
-                worldState.currentLocation = data.location_data;
-            }
-            redraw();
-        }
-        if (data.response) {
-            console.error(data.response);
-            addWorldMessage(data.response); // send response to chat
-            // Append to your existing world chat panel
-            const chatDiv = document.getElementById('world-chat-messages');
-            if (chatDiv) {
-                const msgDiv = document.createElement('div');
-                msgDiv.textContent = data.response;
-                chatDiv.appendChild(msgDiv);
-                chatDiv.scrollTop = chatDiv.scrollHeight;
-            }
+// async function sendWorldCommand(command) {
+//     try {
+//         const response = await fetch('/api/command', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({command: command})
+//         });
+//         const data = await response.json();
+//         if (data.error) {
+//             console.error('Command error:', data.error);
+//             return;
+//         }
+//         if (data.map_data) {
+//             worldState.worldMap = data.map_data;
+//             worldMap = worldState.worldMap;
+//             if (data.location_data) {
+//                 worldState.currentLocation = data.location_data;
+//             }
+//             redraw();
+//         }
+//         if (data.response) {
+//             console.error(data.response);
+//             addWorldMessage(data.response); // send response to chat
+//             // Append to your existing world chat panel
+//             const chatDiv = document.getElementById('world-chat-messages');
+//             if (chatDiv) {
+//                 const msgDiv = document.createElement('div');
+//                 msgDiv.textContent = data.response;
+//                 chatDiv.appendChild(msgDiv);
+//                 chatDiv.scrollTop = chatDiv.scrollHeight;
+//             }
 
-        }
-    } catch (error) {
-        console.error('Command error:', error);
-    }
-}
+//         }
+//     } catch (error) {
+//         console.error('Command error:', error);
+//     }
+// }
 
 document.getElementById('world-chat-messages').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -289,6 +289,94 @@ async function setHexTerrain(col, row, terrain) {
     }
 }
 
+// ----- River generation (same as test page) -----
+function generateRivers(heightmap, thresholds, numRivers, seed) {
+    const rows = heightmap.length;
+    const cols = heightmap[0].length;
+    const riverMask = Array(rows).fill().map(() => Array(cols).fill(false));
+    const rng = new Math.seedrandom(seed);
+
+    let startCandidates = [];
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const h = heightmap[y][x];
+            if (h >= thresholds.hills) { // start in hills/mountains
+                startCandidates.push([x, y]);
+            }
+        }
+    }
+    if (startCandidates.length === 0) return riverMask;
+
+    for (let i = startCandidates.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [startCandidates[i], startCandidates[j]] = [startCandidates[j], startCandidates[i]];
+    }
+
+    for (let r = 0; r < numRivers && r < startCandidates.length; r++) {
+        let [x, y] = startCandidates[r];
+        const visited = new Set();
+        let path = [];
+        while (true) {
+            if (y < 0 || y >= rows || x < 0 || x >= cols) break;
+            const key = `${x},${y}`;
+            if (visited.has(key)) break;
+            visited.add(key);
+            path.push([x, y]);
+
+            const h = heightmap[y][x];
+            if (h < thresholds.ocean) break; // reached ocean
+
+            let best = null;
+            let bestH = h;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                        const nh = heightmap[ny][nx];
+                        if (nh < bestH) {
+                            bestH = nh;
+                            best = [nx, ny];
+                        }
+                    }
+                }
+            }
+            if (!best) break;
+            [x, y] = best;
+            if (path.length > 200) break;
+        }
+        for (let [px, py] of path) {
+            if (py >= 0 && py < rows && px >= 0 && px < cols) {
+                riverMask[py][px] = true;
+            }
+        }
+    }
+    return riverMask;
+}
+
+function dilateMask(mask, radius = 1) {
+    const rows = mask.length;
+    const cols = mask[0].length;
+    const dilated = Array(rows).fill().map(() => Array(cols).fill(false));
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            if (mask[y][x]) {
+                for (let dy = -radius; dy <= radius; dy++) {
+                    for (let dx = -radius; dx <= radius; dx++) {
+                        const ny = y + dy;
+                        const nx = x + dx;
+                        if (ny >= 0 && ny < rows && nx >= 0 && nx < cols) {
+                            dilated[ny][nx] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return dilated;
+}
+
 function generateTerrainImage() {
     if (!worldMap) return;
 
@@ -300,37 +388,178 @@ function generateTerrainImage() {
         return;
     }
 
-    const terrainGen = new TerrainGenerator(worldMap.seed || 42, width, height);
+    const seed = worldMap.seed || 42;
+    const terrainGen = new TerrainGenerator(seed, width, height);
     const heightmap = terrainGen.generateHeightmap();
 
-    // Generate color grid and terrain grid
-    const terrainColorsGrid = [];
-    const terrainNamesGrid = [];
+    // Generate moisture map (separate noise)
+    const moistureMap = generateMoistureMap(seed, width, height);
+
+    // Terrain classification thresholds
+    const thresholds = {
+        ocean: 0.45,
+        coast: 0.5,
+        plains: 0.58,
+        hills: 0.65,
+        mountains: 0.73
+    };
+
+    // Color mapping
     const colorMap = {
         'ocean': '#4d6fb8',
         'coast': '#a2c4c9',
         'plains': '#689f38',
         'hills': '#8d9946',
         'mountains': '#8d99ae',
-        'snowcaps': '#ffffff'
+        'snowcaps': '#ffffff',
+        'river': '#4a90e2',
+        'lake': '#4a90e2'
     };
 
+    // Initial terrain classification
+    const terrainNamesGrid = [];
+    const terrainColorsGrid = [];
     for (let y = 0; y < height; y++) {
-        terrainColorsGrid[y] = [];
         terrainNamesGrid[y] = [];
+        terrainColorsGrid[y] = [];
         for (let x = 0; x < width; x++) {
             const h = heightmap[y][x];
             let terrain;
-            if (h >= 0.73) terrain = 'snowcaps';
-            else if (h >= 0.65) terrain = 'mountains';
-            else if (h >= 0.58) terrain = 'hills';
-            else if (h >= 0.5) terrain = 'plains';
-            else if (h >= 0.45) terrain = 'coast';
+            if (h >= thresholds.mountains) terrain = 'snowcaps';
+            else if (h >= thresholds.hills) terrain = 'mountains';
+            else if (h >= thresholds.plains) terrain = 'hills';
+            else if (h >= thresholds.coast) terrain = 'plains';
+            else if (h >= thresholds.ocean) terrain = 'coast';
             else terrain = 'ocean';
             terrainNamesGrid[y][x] = terrain;
             terrainColorsGrid[y][x] = colorMap[terrain];
         }
     }
+
+    // ----- Lake generation (proportional to world area) -----
+    const area = width * height;
+    const targetLakeCount = Math.floor(area / 2000); // e.g., 1 lake per 2000 cells (80x80 → 3-4 lakes)
+    const targetLakeSize = Math.floor(Math.sqrt(area) / 10); // size in cells (approx)
+    let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
+    // Find candidate seeds: cells with height between coast and lower plains, moisture > 0.6
+    let lakeSeeds = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            const m = moistureMap[y][x];
+            if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+                lakeSeeds.push([x, y]);
+            }
+        }
+    }
+    // Shuffle seeds
+    for (let i = lakeSeeds.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [lakeSeeds[i], lakeSeeds[j]] = [lakeSeeds[j], lakeSeeds[i]];
+    }
+    // Create lakes
+    const rngLake = new Math.seedrandom(seed + 5000);
+    for (let i = 0; i < Math.min(targetLakeCount, lakeSeeds.length); i++) {
+        const [sx, sy] = lakeSeeds[i];
+        // Skip if this seed is already inside an existing lake (due to overlapping)
+        if (lakeMask[sy][sx]) continue;
+        // Grow lake to a random size (targetSize ±50%)
+        const sizeVariation = 0.5 + rngLake() * 0.5; // 0.5–1.0
+        const thisSize = Math.floor(targetLakeSize * sizeVariation);
+        lakeMask = growLake(lakeMask, heightmap, moistureMap, thresholds, seed + 5000 + i, sx, sy, thisSize);
+    }
+
+    // Apply lakes to terrain
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (lakeMask[y][x]) {
+                terrainNamesGrid[y][x] = 'lake';
+                terrainColorsGrid[y][x] = colorMap['lake'];
+            }
+        }
+    }
+
+    // ----- River generation (proportional to world area) -----
+    const targetRiverCount = Math.floor(area / 2000); // similar to lakes
+    let riverMask = Array(height).fill().map(() => Array(width).fill(false));
+    const rngRiver = new Math.seedrandom(seed + 10000);
+    const riverStartCandidates = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            const m = moistureMap[y][x];
+            if (h >= thresholds.hills && m > 0.6) {
+                riverStartCandidates.push([x, y]);
+            }
+        }
+    }
+    // Shuffle
+    for (let i = riverStartCandidates.length - 1; i > 0; i--) {
+        const j = Math.floor(rngRiver() * (i + 1));
+        [riverStartCandidates[i], riverStartCandidates[j]] = [riverStartCandidates[j], riverStartCandidates[i]];
+    }
+    // Generate rivers (downhill path)
+    for (let r = 0; r < targetRiverCount && r < riverStartCandidates.length; r++) {
+        let [x, y] = riverStartCandidates[r];
+        const visited = new Set();
+        const path = [];
+        while (true) {
+            if (y < 0 || y >= height || x < 0 || x >= width) break;
+            const key = `${x},${y}`;
+            if (visited.has(key)) break;
+            visited.add(key);
+            path.push([x, y]);
+
+            const h = heightmap[y][x];
+            // Stop if we reach ocean or lake
+            if (h < thresholds.ocean || lakeMask[y][x]) break;
+
+            // Find lowest neighbor
+            let best = null;
+            let bestH = h;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const nh = heightmap[ny][nx];
+                        if (nh < bestH) {
+                            bestH = nh;
+                            best = [nx, ny];
+                        }
+                    }
+                }
+            }
+            if (!best) break;
+            [x, y] = best;
+            if (path.length > 200) break;
+        }
+        // Mark path as river
+        for (let [px, py] of path) {
+            if (py >= 0 && py < height && px >= 0 && px < width) {
+                riverMask[py][px] = true;
+            }
+        }
+    }
+    // Dilate rivers for thickness
+    const riverThickness = 1; // 0 = no dilation, 1 = 3 cells wide
+    if (riverThickness > 0) {
+        riverMask = dilateMask(riverMask, riverThickness);
+    }
+    // Apply rivers to terrain
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (riverMask[y][x]) {
+                terrainNamesGrid[y][x] = 'river';
+                terrainColorsGrid[y][x] = colorMap['river'];
+            }
+        }
+    }
+
+    // Store for later use
+    worldMap.terrain_grid = terrainNamesGrid;
+    worldMap.riverMask = riverMask; // optional
 
     // Render the image
     const tempCanvas = document.createElement('canvas');
@@ -359,9 +588,51 @@ function generateTerrainImage() {
     const offCtx = offscreen.getContext('2d');
     offCtx.drawImage(tempCanvas, 0, 0);
     terrainImage = offscreen;
+}
 
-    // Store terrain grid in worldMap
-    worldMap.terrain_grid = terrainNamesGrid;
+// ----- Moisture map (using a separate Perlin noise) -----
+function generateMoistureMap(seed, width, height) {
+    const moistureGen = new TerrainGenerator(seed + 1000, width, height);
+    const moistureHeightmap = moistureGen.generateHeightmap();
+    // Normalize to [0,1] already done in generateHeightmap
+    return moistureHeightmap;
+}
+
+// ----- Flood‑fill lake generation (natural shapes) -----
+function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY, targetSize) {
+    const rows = heightmap.length;
+    const cols = heightmap[0].length;
+    const queue = [[startX, startY]];
+    const visited = new Set();
+    visited.add(`${startX},${startY}`);
+    let grown = 0;
+    const rng = new Math.seedrandom(seed);
+    while (queue.length > 0 && grown < targetSize) {
+        const [x, y] = queue.shift();
+        mask[y][x] = true;
+        grown++;
+        // Check neighbors (8‑directional)
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                if (dx === 0 && dy === 0) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !mask[ny][nx] && !visited.has(`${nx},${ny}`)) {
+                    const h = heightmap[ny][nx];
+                    const m = moistureMap[ny][nx];
+                    // Grow into cells with similar height and high moisture
+                    if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+                        // Random chance to include slightly different cells
+                        if (rng.random() < 0.7) {
+                            visited.add(`${nx},${ny}`);
+                            queue.push([nx, ny]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return mask;
 }
 
 
@@ -634,8 +905,7 @@ async function sendWorldCommand(command) {
     }
     // Get terrain from the stored grid
     const terrain = worldMap.terrain_grid[trow][tcol];
-    console.log(`Target hex (${tcol},${trow}) terrain: ${terrain}`);
-    const blockedTerrains = ['ocean'];   // add 'river' if needed
+    const blockedTerrains = ['ocean', 'lake', 'river'];
     if (blockedTerrains.includes(terrain)) {
         addWorldMessage(`The ${terrain} blocks your path.`);
         return;
