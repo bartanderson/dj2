@@ -611,7 +611,6 @@ function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY
         const [x, y] = queue.shift();
         mask[y][x] = true;
         grown++;
-        // Check neighbors (8‑directional)
         for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
                 if (dx === 0 && dy === 0) continue;
@@ -620,10 +619,8 @@ function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY
                 if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !mask[ny][nx] && !visited.has(`${nx},${ny}`)) {
                     const h = heightmap[ny][nx];
                     const m = moistureMap[ny][nx];
-                    // Grow into cells with similar height and high moisture
                     if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
-                        // Random chance to include slightly different cells
-                        if (rng.random() < 0.7) {
+                        if (rng() < 0.7) {  // fixed: use rng() not rng.random()
                             visited.add(`${nx},${ny}`);
                             queue.push([nx, ny]);
                         }
@@ -634,7 +631,6 @@ function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY
     }
     return mask;
 }
-
 
 // ===== MINIMAL MAP =====
 let worldMap = null;
