@@ -5,10 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dungeon World Explorer</title>
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
-<!--     <link rel="icon" href="data:,"> <!-- to get rid of 404 -->
+    <link rel="icon" href="data:,"> <!-- to get rid of 404 -->
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" /> -->
+    <link rel="shortcut icon" href="/favicon.ico" />
 
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -627,6 +626,11 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 <div style="display: flex; gap: 8px; padding: 0 10px 10px 10px;">
                     <input type="text" id="world-chat-input" placeholder="Command..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
                     <button id="world-chat-send" class="btn" style="padding: 8px 12px;">Send</button>
+                    
+                    <label style="position: fixed; bottom: 5px; left: 5px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 5px 8px; border-radius: 5px; color: white; font-family: monospace;">
+                        <input type="checkbox" id="show-terrain-labels"> Show terrain labels </input>
+                        <input type="checkbox" id="toggle-fog">Clear</input>
+                    </label>
                 </div>
             </div>
         </nav>
