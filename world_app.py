@@ -115,6 +115,7 @@ def debug_connectivity():
         "results": results,
         "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
     })
+
     
 class DungeonHTTPClient:
     def __init__(self, base_url="http://localhost:5005"):
@@ -487,6 +488,32 @@ class DungeonPersistenceSystem:
             return {"saved": False, "error": str(e)}
 
 #====+ outside of classes =====
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204  # Returns "No Content" and stops the 404
+    
+@app.route('/terrain-test')
+def terrain_test():
+    return render_template('terrain_test.html')
+
+
+
+@app.route('/api/set-hex-terrain', methods=['POST'])
+def set_hex_terrain():
+    data = request.get_json()
+    col = data.get('col')
+    row = data.get('row')
+    terrain = data.get('terrain')
+    wc = current_app.world_controller
+    if wc is None:
+        return jsonify({'success': False, 'error': 'World controller not available'}), 500
+    hex = wc.campaign_state.get_hex(col, row)
+    if hex:
+        hex['terrain'] = terrain
+        hex['discovered'] = True
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Hex not found'}), 404
+
 @app.route('/api/command', methods=['POST'])
 def handle_command():
     data = request.get_json()

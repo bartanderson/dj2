@@ -105,30 +105,6 @@ function addWorldChatMessage(text, sender = 'system') {
     chatDiv.scrollTop = chatDiv.scrollHeight;
 }
 
-// function addWorldMessage(text) {
-//     let chatDiv = document.getElementById('world-chat-messages');
-//     if (!chatDiv) {
-//         // Create a floating notification
-//         const notif = document.createElement('div');
-//         notif.textContent = text;
-//         notif.style.position = 'fixed';
-//         notif.style.bottom = '20px';
-//         notif.style.right = '20px';
-//         notif.style.backgroundColor = 'rgba(0,0,0,0.8)';
-//         notif.style.color = 'white';
-//         notif.style.padding = '10px';
-//         notif.style.borderRadius = '5px';
-//         notif.style.zIndex = '10000';
-//         document.body.appendChild(notif);
-//         setTimeout(() => notif.remove(), 5000);
-//         return;
-//     }
-//     const msgDiv = document.createElement('div');
-//     msgDiv.textContent = text;
-//     chatDiv.appendChild(msgDiv);
-//     chatDiv.scrollTop = chatDiv.scrollHeight;
-// }
-
 function addWorldMessage(text) {
     const chatDiv = document.getElementById('world-chat-messages');
     if (chatDiv) {
@@ -281,160 +257,113 @@ function hexagonPath(ctx, cx, cy, size) {
     ctx.closePath();
 }
 
+function getTargetHex(col, row, direction) {
+    // Map movement direction to hex coordinates (flat‑top)
+    const dirMap = {
+        'n': [0, -1],
+        'ne': [1, -1],
+        'se': [1, 0],
+        's': [0, 1],
+        'sw': [-1, 1],
+        'nw': [-1, 0]
+    };
+    // Handle east/west based on row parity
+    if (direction === 'east') {
+        direction = (row % 2 === 0) ? 'ne' : 'se';
+    } else if (direction === 'west') {
+        direction = (row % 2 === 0) ? 'nw' : 'sw';
+    }
+    const [dc, dr] = dirMap[direction] || [0, 0];
+    return [col + dc, row + dr];
+}
+
+async function setHexTerrain(col, row, terrain) {
+    try {
+        await fetch('/api/set-hex-terrain', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({col, row, terrain})
+        });
+    } catch (e) {
+        console.warn('Failed to set hex terrain:', e);
+    }
+}
+
 function generateTerrainImage() {
     if (!worldMap) return;
 
-    // ----- Try to use backend terrain colors if available and valid -----
-    const colors = worldMap.terrain_colors;
     const width = worldMap.width;
     const height = worldMap.height;
 
-    if (colors && Array.isArray(colors) && colors.length === height) {
-        // Diagnostic: print sample colors for starting hex
-        if (worldMap.party_position) {
-            const {col, row} = worldMap.party_position;
-            const color = worldMap.terrain_colors[row] && worldMap.terrain_colors[row][col];
-            console.log(`Frontend: starting hex (${col},${row}) color = ${color}`);
-        }
-        // Also print top-left 3x3
-        console.log('Frontend: terrain_colors (top-left 3x3):');
-        for (let y = 0; y < 3; y++) {
-            const row = worldMap.terrain_colors[y] ? worldMap.terrain_colors[y].slice(0,3) : [];
-            console.log(`  row ${y}: ${JSON.stringify(row)}`);
-        }
-        
-        // Validate the first row has the correct width
-        const firstRow = colors[0];
-        if (firstRow && Array.isArray(firstRow) && firstRow.length === width) {
-            // All checks passed – use backend colors
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width;
-            tempCanvas.height = height;
-            const ctx = tempCanvas.getContext('2d');
-            const imgData = ctx.createImageData(width, height);
-            const data = imgData.data;
+    if (typeof TerrainGenerator === 'undefined') {
+        console.warn('TerrainGenerator not available');
+        return;
+    }
 
-            for (let y = 0; y < height; y++) {
-                const row = colors[y];
-                for (let x = 0; x < width; x++) {
-                    let color = row[x];
-                    // Fallback for missing or invalid color
-                    if (typeof color !== 'string' || !color.startsWith('#')) {
-                        color = '#888888'; // gray placeholder
-                    }
-                    const r = parseInt(color.substring(1,3), 16);
-                    const g = parseInt(color.substring(3,5), 16);
-                    const b = parseInt(color.substring(5,7), 16);
-                    const idx = (y * width + x) * 4;
-                    data[idx] = r;
-                    data[idx+1] = g;
-                    data[idx+2] = b;
-                    data[idx+3] = 255;
-                }
-            }
-            ctx.putImageData(imgData, 0, 0);
-            const offscreen = document.createElement('canvas');
-            offscreen.width = width;
-            offscreen.height = height;
-            const offCtx = offscreen.getContext('2d');
-            offCtx.drawImage(tempCanvas, 0, 0);
-            terrainImage = offscreen;
-            console.log('Generated terrain image from backend colors');
-            return;
+    const terrainGen = new TerrainGenerator(worldMap.seed || 42, width, height);
+    const heightmap = terrainGen.generateHeightmap();
+
+    // Generate color grid and terrain grid
+    const terrainColorsGrid = [];
+    const terrainNamesGrid = [];
+    const colorMap = {
+        'ocean': '#4d6fb8',
+        'coast': '#a2c4c9',
+        'plains': '#689f38',
+        'hills': '#8d9946',
+        'mountains': '#8d99ae',
+        'snowcaps': '#ffffff'
+    };
+
+    for (let y = 0; y < height; y++) {
+        terrainColorsGrid[y] = [];
+        terrainNamesGrid[y] = [];
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            let terrain;
+            if (h >= 0.73) terrain = 'snowcaps';
+            else if (h >= 0.65) terrain = 'mountains';
+            else if (h >= 0.58) terrain = 'hills';
+            else if (h >= 0.5) terrain = 'plains';
+            else if (h >= 0.45) terrain = 'coast';
+            else terrain = 'ocean';
+            terrainNamesGrid[y][x] = terrain;
+            terrainColorsGrid[y][x] = colorMap[terrain];
         }
     }
 
-    // ----- Fallback to old Perlin generation -----
+    // Render the image
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = width;
     tempCanvas.height = height;
-    tempCanvas.style.width = width + 'px';
-    tempCanvas.style.height = height + 'px';
-    tempCanvas.style.position = 'absolute';
-    tempCanvas.style.left = '-9999px';
-    tempCanvas.style.top = '-9999px';
-    const tempId = 'temp-terrain-' + Date.now();
-    tempCanvas.id = tempId;
-    document.body.appendChild(tempCanvas);
-
     const ctx = tempCanvas.getContext('2d');
-    ctx.fillStyle = '#0a1729';
-    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    if (typeof TerrainGenerator !== 'undefined') {
-        try {
-            const terrainGen = new TerrainGenerator(worldMap.seed || 42, width, height);
-            const heightmap = terrainGen.generateHeightmap();
-            const terrain = terrainGen.generateTerrain(heightmap);
-            terrainGen.renderTerrain(terrain, tempId);
-        } catch (e) {
-            console.error('Terrain generation failed:', e);
+    const imgData = ctx.createImageData(width, height);
+    const data = imgData.data;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const color = terrainColorsGrid[y][x];
+            const r = parseInt(color.substring(1,3), 16);
+            const g = parseInt(color.substring(3,5), 16);
+            const b = parseInt(color.substring(5,7), 16);
+            const idx = (y * width + x) * 4;
+            data[idx] = r;
+            data[idx+1] = g;
+            data[idx+2] = b;
+            data[idx+3] = 255;
         }
-    } else {
-        console.warn('TerrainGenerator not available');
     }
-
+    ctx.putImageData(imgData, 0, 0);
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const offCtx = offscreen.getContext('2d');
     offCtx.drawImage(tempCanvas, 0, 0);
-    document.body.removeChild(tempCanvas);
     terrainImage = offscreen;
+
+    // Store terrain grid in worldMap
+    worldMap.terrain_grid = terrainNamesGrid;
 }
 
-// function generateTerrainImage() {
-//     if (!worldMap) return;
-
-//     // Create a temporary canvas that will be placed off‑screen but still visible to layout
-//     const tempCanvas = document.createElement('canvas');
-//     tempCanvas.width = worldMap.width;
-//     tempCanvas.height = worldMap.height;
-//     // Set CSS size to match so that getBoundingClientRect() returns world dimensions
-//     tempCanvas.style.width = worldMap.width + 'px';
-//     tempCanvas.style.height = worldMap.height + 'px';
-//     tempCanvas.style.position = 'absolute';
-//     tempCanvas.style.left = '-9999px';
-//     tempCanvas.style.top = '-9999px';
-//     // Give it a unique ID for renderTerrain
-//     const tempId = 'temp-terrain-' + Date.now();
-//     tempCanvas.id = tempId;
-//     document.body.appendChild(tempCanvas);
-
-//     // Default background (in case terrain generation fails)
-//     const ctx = tempCanvas.getContext('2d');
-//     ctx.fillStyle = '#0a1729';
-//     ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-//     let generationSucceeded = false;
-//     if (typeof TerrainGenerator !== 'undefined') {
-//         try {
-//             const terrainGen = new TerrainGenerator(worldMap.seed || 42, worldMap.width, worldMap.height);
-//             const heightmap = terrainGen.generateHeightmap();
-//             const terrain = terrainGen.generateTerrain(heightmap);
-//             // Render to the temporary canvas using its ID
-//             terrainGen.renderTerrain(terrain, tempId);
-//             generationSucceeded = true;
-//         } catch (e) {
-//             console.error('Terrain generation failed:', e);
-//         }
-//     } else {
-//         console.warn('TerrainGenerator not available');
-//     }
-
-//     // Create an offscreen canvas and copy the result
-//     const offscreen = document.createElement('canvas');
-//     offscreen.width = worldMap.width;
-//     offscreen.height = worldMap.height;
-//     const offCtx = offscreen.getContext('2d');
-//     offCtx.drawImage(tempCanvas, 0, 0);
-
-//     // Remove the temporary canvas
-//     document.body.removeChild(tempCanvas);
-
-//     terrainImage = offscreen;
-//     //console.log('Terrain image cached, size:', offscreen.width, 'x', offscreen.height);
-// }
 
 // ===== MINIMAL MAP =====
 let worldMap = null;
@@ -650,27 +579,84 @@ async function travelToLocation(locationId) {
 }
 
 async function sendWorldCommand(command) {
+    // First, parse the command to see if it's a movement direction
+    let dir = command.toLowerCase().trim();
+    if (dir.startsWith('go ')) dir = dir.slice(3);
+    const directionMap = {
+        'n': 'n', 'north': 'n',
+        'ne': 'ne', 'northeast': 'ne',
+        'se': 'se', 'southeast': 'se',
+        's': 's', 'south': 's',
+        'sw': 'sw', 'southwest': 'sw',
+        'nw': 'nw', 'northwest': 'nw',
+        'e': 'east', 'east': 'east',
+        'w': 'west', 'west': 'west'
+    };
+    const direction = directionMap[dir];
+    if (!direction) {
+        // Not a movement command – send as regular command (chat, etc.)
+        try {
+            const response = await fetch('/api/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: command})
+            });
+            const data = await response.json();
+            if (data.map_data) {
+                worldState.worldMap = data.map_data;
+                worldMap = worldState.worldMap;
+                generateTerrainImage();  // refresh terrain grid (though it won't change)
+                if (data.location_data) {
+                    worldState.currentLocation = data.location_data;
+                }
+                redraw();
+            }
+            if (data.response) {
+                addWorldMessage(data.response);
+            }
+        } catch (error) {
+            console.error('Command error:', error);
+        }
+        return;
+    }
+
+    // Movement command – check passability first
+    if (!worldMap.party_position) {
+        console.warn('No party position');
+        return;
+    }
+    const {col, row} = worldMap.party_position;
+    const [tcol, trow] = getTargetHex(col, row, direction);
+    // Check bounds
+    if (tcol < 0 || tcol >= worldMap.width || trow < 0 || trow >= worldMap.height) {
+        addWorldMessage("You can't go that way (edge of the world).");
+        return;
+    }
+    // Get terrain from the stored grid
+    const terrain = worldMap.terrain_grid[trow][tcol];
+    console.log(`Target hex (${tcol},${trow}) terrain: ${terrain}`);
+    const blockedTerrains = ['ocean'];   // add 'river' if needed
+    if (blockedTerrains.includes(terrain)) {
+        addWorldMessage(`The ${terrain} blocks your path.`);
+        return;
+    }
+
+    // Send movement command with terrain
     try {
         const response = await fetch('/api/command', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: command})
+            body: JSON.stringify({command: command, target_terrain: terrain})
         });
         const data = await response.json();
-        console.log('Response from /api/command:', data);
-
-        if (data.error) {
-            console.error('Command error:', data.error);
-            return;
-        }
         if (data.map_data) {
             worldState.worldMap = data.map_data;
             worldMap = worldState.worldMap;
-            generateTerrainImage();   // <-- refresh terrain image
+            generateTerrainImage();  // refresh terrain grid (though it won't change)
             if (data.location_data) {
                 worldState.currentLocation = data.location_data;
             }
-            redraw();                 // <-- redraw canvas
+            redraw();
         }
         if (data.response) {
             addWorldMessage(data.response);
@@ -727,6 +713,12 @@ async function loadWorldData() {
         worldMap = worldState.worldMap;
         setInitialView();
         generateTerrainImage()
+        // After terrain grid is generated, set starting hex terrain in backend
+        if (worldMap.party_position && worldMap.terrain_grid) {
+            const {col, row} = worldMap.party_position;
+            const terrain = worldMap.terrain_grid[row][col];
+            setHexTerrain(col, row, terrain);
+        }
     } catch (error) {
         console.error('Error loading world data:', error);
         if (typeof showNotification === 'function') {
