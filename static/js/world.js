@@ -557,6 +557,15 @@ function generateTerrainImage() {
         }
     }
 
+    let riverCount = 0, lakeCount = 0; // DEBUG
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (terrainNamesGrid[y][x] === 'river') riverCount++;
+            if (terrainNamesGrid[y][x] === 'lake') lakeCount++;
+        }
+    }
+    console.log(`[DEBUG]: Generated terrain: ${riverCount} river cells, ${lakeCount} lake cells`);
+
     // Store for later use
     worldMap.terrain_grid = terrainNamesGrid;
     worldMap.riverMask = riverMask; // optional
@@ -901,6 +910,7 @@ async function sendWorldCommand(command) {
     }
     // Get terrain from the stored grid
     const terrain = worldMap.terrain_grid[trow][tcol];
+    console.log(`[DEBUG]: Target hex (${tcol},${trow}) terrain: ${terrain}`);
     const blockedTerrains = ['ocean', 'lake', 'river'];
     if (blockedTerrains.includes(terrain)) {
         addWorldMessage(`The ${terrain} blocks your path.`);
