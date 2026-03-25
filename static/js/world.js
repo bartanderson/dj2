@@ -289,6 +289,37 @@ async function setHexTerrain(col, row, terrain) {
     }
 }
 
+let showTerrainLabels = false;
+
+function drawTerrainLabels() {
+    if (!showTerrainLabels || !worldMap || !worldMap.terrain_grid) return;
+    const canvas = document.getElementById('terrain-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const hexes = worldMap.hexes;
+    if (!hexes) return;
+
+    ctx.save();
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = 'white';
+    ctx.shadowColor = 'black';
+    ctx.shadowBlur = 2;
+
+    hexes.forEach(hex => {
+        const col = hex.grid_x;
+        const row = hex.grid_y;
+        if (row >= 0 && row < worldMap.terrain_grid.length &&
+            col >= 0 && col < worldMap.terrain_grid[row].length) {
+            const terrain = worldMap.terrain_grid[row][col];
+            if (terrain) {
+                const letter = terrain.charAt(0).toUpperCase();
+                ctx.fillText(letter, hex.x - 6, hex.y + 5);
+            }
+        }
+    });
+    ctx.restore();
+}
+
 // ----- River generation (same as test page) -----
 function generateRivers(heightmap, thresholds, numRivers, seed) {
     const rows = heightmap.length;
@@ -392,10 +423,9 @@ function generateTerrainImage() {
     const terrainGen = new TerrainGenerator(seed, width, height);
     const heightmap = terrainGen.generateHeightmap();
 
-    // Generate moisture map (separate noise)
+    // Moisture map (for lakes/rivers)
     const moistureMap = generateMoistureMap(seed, width, height);
 
-    // Terrain classification thresholds
     const thresholds = {
         ocean: 0.45,
         coast: 0.5,
@@ -404,44 +434,21 @@ function generateTerrainImage() {
         mountains: 0.73
     };
 
-    // Color mapping
-    const colorMap = {
-        'ocean': '#4d6fb8',
-        'coast': '#a2c4c9',
-        'plains': '#689f38',
-        'hills': '#8d9946',
-        'mountains': '#8d99ae',
-        'snowcaps': '#ffffff',
-        'river': '#4a90e2',
-        'lake': '#4a90e2'
-    };
+    // ---- Step 1: Render base terrain to temporary canvas ----
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    const tempId = 'temp-terrain-' + Date.now();
+    tempCanvas.id = tempId;
+    document.body.appendChild(tempCanvas);
+    terrainGen.renderTerrain(terrainGen.generateTerrain(heightmap), tempId);
 
-    // Initial terrain classification
-    const terrainNamesGrid = [];
-    const terrainColorsGrid = [];
-    for (let y = 0; y < height; y++) {
-        terrainNamesGrid[y] = [];
-        terrainColorsGrid[y] = [];
-        for (let x = 0; x < width; x++) {
-            const h = heightmap[y][x];
-            let terrain;
-            if (h >= thresholds.mountains) terrain = 'snowcaps';
-            else if (h >= thresholds.hills) terrain = 'mountains';
-            else if (h >= thresholds.plains) terrain = 'hills';
-            else if (h >= thresholds.coast) terrain = 'plains';
-            else if (h >= thresholds.ocean) terrain = 'coast';
-            else terrain = 'ocean';
-            terrainNamesGrid[y][x] = terrain;
-            terrainColorsGrid[y][x] = colorMap[terrain];
-        }
-    }
-
-    // ----- Lake generation (proportional to world area) -----
+    // ---- Step 2: Draw lakes (pixel-wise) ----
     const area = width * height;
-    const targetLakeCount = Math.floor(area / 2000); // e.g., 1 lake per 2000 cells (80x80 → 3-4 lakes)
-    const targetLakeSize = Math.floor(Math.sqrt(area) / 10); // size in cells (approx)
+    const targetLakeCount = Math.floor(area / 2000);
+    const targetLakeSize = Math.floor(Math.sqrt(area) / 10);
     let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
-    // Find candidate seeds: cells with height between coast and lower plains, moisture > 0.6
     let lakeSeeds = [];
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -452,35 +459,30 @@ function generateTerrainImage() {
             }
         }
     }
-    // Shuffle seeds
     for (let i = lakeSeeds.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [lakeSeeds[i], lakeSeeds[j]] = [lakeSeeds[j], lakeSeeds[i]];
     }
-    // Create lakes
     const rngLake = new Math.seedrandom(seed + 5000);
     for (let i = 0; i < Math.min(targetLakeCount, lakeSeeds.length); i++) {
         const [sx, sy] = lakeSeeds[i];
-        // Skip if this seed is already inside an existing lake (due to overlapping)
         if (lakeMask[sy][sx]) continue;
-        // Grow lake to a random size (targetSize ±50%)
-        const sizeVariation = 0.5 + rngLake() * 0.5; // 0.5–1.0
+        const sizeVariation = 0.5 + rngLake() * 0.5;
         const thisSize = Math.floor(targetLakeSize * sizeVariation);
         lakeMask = growLake(lakeMask, heightmap, moistureMap, thresholds, seed + 5000 + i, sx, sy, thisSize);
     }
-
-    // Apply lakes to terrain
+    // Draw lakes
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (lakeMask[y][x]) {
-                terrainNamesGrid[y][x] = 'lake';
-                terrainColorsGrid[y][x] = colorMap['lake'];
+                tempCtx.fillStyle = '#4a90e2';
+                tempCtx.fillRect(x, y, 1, 1);
             }
         }
     }
 
-    // ----- River generation (proportional to world area) -----
-    const targetRiverCount = Math.floor(area / 2000); // similar to lakes
+    // ---- Step 3: Draw rivers (pixel-wise) ----
+    const targetRiverCount = Math.floor(area / 2000);
     let riverMask = Array(height).fill().map(() => Array(width).fill(false));
     const rngRiver = new Math.seedrandom(seed + 10000);
     const riverStartCandidates = [];
@@ -493,12 +495,10 @@ function generateTerrainImage() {
             }
         }
     }
-    // Shuffle
     for (let i = riverStartCandidates.length - 1; i > 0; i--) {
         const j = Math.floor(rngRiver() * (i + 1));
         [riverStartCandidates[i], riverStartCandidates[j]] = [riverStartCandidates[j], riverStartCandidates[i]];
     }
-    // Generate rivers (downhill path)
     for (let r = 0; r < targetRiverCount && r < riverStartCandidates.length; r++) {
         let [x, y] = riverStartCandidates[r];
         const visited = new Set();
@@ -511,10 +511,8 @@ function generateTerrainImage() {
             path.push([x, y]);
 
             const h = heightmap[y][x];
-            // Stop if we reach ocean or lake
             if (h < thresholds.ocean || lakeMask[y][x]) break;
 
-            // Find lowest neighbor
             let best = null;
             let bestH = h;
             for (let dy = -1; dy <= 1; dy++) {
@@ -535,7 +533,6 @@ function generateTerrainImage() {
             [x, y] = best;
             if (path.length > 200) break;
         }
-        // Mark path as river
         for (let [px, py] of path) {
             if (py >= 0 && py < height && px >= 0 && px < width) {
                 riverMask[py][px] = true;
@@ -543,51 +540,127 @@ function generateTerrainImage() {
         }
     }
     // Dilate rivers for thickness
-    const riverThickness = 1; // 0 = no dilation, 1 = 3 cells wide
+    const riverThickness = 1;
     if (riverThickness > 0) {
         riverMask = dilateMask(riverMask, riverThickness);
     }
-    // Apply rivers to terrain
+    // Draw rivers on canvas
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (riverMask[y][x]) {
-                terrainNamesGrid[y][x] = 'river';
-                terrainColorsGrid[y][x] = colorMap['river'];
+                tempCtx.fillStyle = '#4a90e2';
+                tempCtx.fillRect(x, y, 1, 1);
             }
         }
     }
 
-    // Store for later use
-    worldMap.terrain_grid = terrainNamesGrid;
-    worldMap.riverMask = riverMask; // optional
-
-    // Render the image
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const ctx = tempCanvas.getContext('2d');
-    const imgData = ctx.createImageData(width, height);
-    const data = imgData.data;
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const color = terrainColorsGrid[y][x];
-            const r = parseInt(color.substring(1,3), 16);
-            const g = parseInt(color.substring(3,5), 16);
-            const b = parseInt(color.substring(5,7), 16);
-            const idx = (y * width + x) * 4;
-            data[idx] = r;
-            data[idx+1] = g;
-            data[idx+2] = b;
-            data[idx+3] = 255;
-        }
-    }
-    ctx.putImageData(imgData, 0, 0);
+    // ---- Step 4: Create final image ----
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const offCtx = offscreen.getContext('2d');
     offCtx.drawImage(tempCanvas, 0, 0);
+    document.body.removeChild(tempCanvas);
     terrainImage = offscreen;
+
+    // ---- Step 5: Sample hex centers to get base terrain ----
+    const hexes = worldMap.hexes;
+    if (!hexes) return;
+
+    const colorToTerrain = {
+        '#4d6fb8': 'ocean',
+        '#a2c4c9': 'coast',
+        '#689f38': 'plains',
+        '#8d9946': 'hills',
+        '#8d99ae': 'mountains',
+        '#ffffff': 'snowcaps',
+        '#4a90e2': 'river'   // we'll override with river detection later
+    };
+
+    function rgbToHex(r, g, b) {
+        return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    function getTerrainFromColor(r, g, b) {
+        const hex = rgbToHex(r, g, b).toLowerCase();
+        if (colorToTerrain[hex]) return colorToTerrain[hex];
+        // fallback: closest color
+        let best = null;
+        let bestDist = Infinity;
+        for (const [color, terrain] of Object.entries(colorToTerrain)) {
+            const cr = parseInt(color.slice(1,3), 16);
+            const cg = parseInt(color.slice(3,5), 16);
+            const cb = parseInt(color.slice(5,7), 16);
+            const dist = (cr - r) ** 2 + (cg - g) ** 2 + (cb - b) ** 2;
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = terrain;
+            }
+        }
+        return best || 'plains';
+    }
+
+    const terrainNamesGrid = [];
+    const terrainColorsGrid = [];
+    const imageData = offCtx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    // First, sample centers to fill grids
+    hexes.forEach(hex => {
+        const x = Math.round(hex.x);
+        const y = Math.round(hex.y);
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+            const idx = (y * width + x) * 4;
+            const r = data[idx];
+            const g = data[idx+1];
+            const b = data[idx+2];
+            const terrain = getTerrainFromColor(r, g, b);
+            const col = hex.grid_x;
+            const row = hex.grid_y;
+            if (!terrainNamesGrid[row]) terrainNamesGrid[row] = [];
+            terrainNamesGrid[row][col] = terrain;
+            if (!terrainColorsGrid[row]) terrainColorsGrid[row] = [];
+            terrainColorsGrid[row][col] = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+        }
+    });
+
+    // ---- Step 6: Override hexes that contain a river (using multi-point sampling) ----
+    // Determine hex radius in pixels (approx)
+    // Use the first hex's x coordinate to infer half-width? Simpler: use a fixed radius = 15 pixels.
+    const hexRadius = 30; // same as used in drawHexagon
+    const sampleRadius = 15; // half the hex radius
+
+    for (let row = 0; row < terrainNamesGrid.length; row++) {
+        for (let col = 0; col < terrainNamesGrid[row].length; col++) {
+            const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
+            if (!hex) continue;
+            // Points to sample: center and four cardinal points at sampleRadius distance
+            const points = [
+                [hex.x, hex.y],
+                [hex.x + sampleRadius, hex.y],
+                [hex.x - sampleRadius, hex.y],
+                [hex.x, hex.y + sampleRadius],
+                [hex.x, hex.y - sampleRadius]
+            ];
+            let isRiver = false;
+            for (const [px, py] of points) {
+                const ix = Math.round(px);
+                const iy = Math.round(py);
+                if (ix >= 0 && ix < width && iy >= 0 && iy < height && riverMask[iy][ix]) {
+                    isRiver = true;
+                    break;
+                }
+            }
+            if (isRiver) {
+                terrainNamesGrid[row][col] = 'river';
+                terrainColorsGrid[row][col] = '#4a90e2';
+            }
+        }
+    }
+
+    // ---- Step 7: Store grids ----
+    worldMap.terrain_grid = terrainNamesGrid;
+    worldMap.terrain_colors_grid = terrainColorsGrid;
 }
 
 // ----- Moisture map (using a separate Perlin noise) -----
@@ -720,6 +793,7 @@ function redraw() {
     }
 
     ctx.restore();
+    drawTerrainLabels();
 }
 
 // Initial view centered on start location
@@ -1101,6 +1175,14 @@ document.addEventListener('DOMContentLoaded', function() {
     } catch (e) {
         console.warn('DMChat init failed', e);
         window.dmChat = { sendMessage(){}, receiveMessage(){} };
+    }
+
+    const labelCheckbox = document.getElementById('show-terrain-labels');
+    if (labelCheckbox) {
+        labelCheckbox.addEventListener('change', function(e) {
+            showTerrainLabels = e.target.checked;
+            redraw();
+        });
     }
 
     const canvas = document.getElementById('terrain-canvas');
