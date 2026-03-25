@@ -331,15 +331,11 @@ function generateTerrainImage() {
     const borderWidth = 30; // pixels from edge that will be lowered (adjust)
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            // Distance to nearest border (in pixels)
             const distX = Math.min(x, width - 1 - x);
             const distY = Math.min(y, height - 1 - y);
             const dist = Math.min(distX, distY);
-            // factor = 1 in interior (dist >= borderWidth), 0 at edge (dist=0)
             let factor = Math.min(1, dist / borderWidth);
-            // Quadratic ease‑in to make edge drop more abruptly
             factor = factor * factor;
-            // Multiply height by factor (edges become low)
             heightmap[y][x] *= factor;
         }
     }
@@ -373,12 +369,14 @@ function generateTerrainImage() {
     // Moisture map (for lakes/rivers)
     const moistureMap = generateMoistureMap(seed, width, height);
 
+    // ===== NEW THRESHOLDS (adjust to taste) =====
     const thresholds = {
-        ocean: 0.000001,
-        coast: 0.0000015,
-        plains: 0.0001,
-        hills: 0.99999,
-        mountains: 0.99999999
+        ocean: 0.05,      // heights below this are ocean
+        coast: 0.10,      // up to this are coast
+        plains: 0.35,     // up to this are plains
+        hills: 0.65,      // up to this are hills
+        mountains: 0.85,  // up to this are mountains
+        // above 0.85 is snowcaps (not used in classification, but we can leave it)
     };
 
     // ---- Step 1: Render base terrain to temporary canvas ----
@@ -393,15 +391,17 @@ function generateTerrainImage() {
 
     // ---- Step 2: Draw lakes (pixel-wise) ----
     const area = width * height;
-    const targetLakeCount = Math.floor(area / 10000);
-    const targetLakeSize = Math.floor(Math.sqrt(area) / 30);
+    // Make lakes more numerous and larger
+    const targetLakeCount = Math.floor(area / 2000); // e.g., ~3 lakes for 80x80
+    const targetLakeSize = Math.floor(Math.sqrt(area) / 10); // larger lakes
     let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
     let lakeSeeds = [];
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            let h = heightmap[y][x];
+            const h = heightmap[y][x];
             const m = moistureMap[y][x];
-            if (h = thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+            // FIX: use >=, not =
+            if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
                 lakeSeeds.push([x, y]);
             }
         }
@@ -422,14 +422,15 @@ function generateTerrainImage() {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (lakeMask[y][x]) {
-                tempCtx.fillStyle = '#3a80c2';
+                tempCtx.fillStyle = '#3a80c2'; // distinct lake color
                 tempCtx.fillRect(x, y, 1, 1);
             }
         }
     }
 
     // ---- Step 3: River generation (meandering, thin) ----
-    const targetRiverCount = Math.floor(area / 1000); // fewer rivers, adjust as needed
+    // Fewer rivers to avoid clutter; you can adjust the divisor
+    const targetRiverCount = Math.floor(area / 3000); // e.g., 2 rivers for 80x80
     let riverMask = Array(height).fill().map(() => Array(width).fill(false));
     const rngRiver = new Math.seedrandom(seed + 10000);
 
@@ -438,7 +439,7 @@ function generateTerrainImage() {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const h = heightmap[y][x];
-            if (h >= thresholds.hills) {
+            if (h >= thresholds.hills) { // hills threshold (0.65)
                 // Check if it's a local maximum
                 let isLocalMax = true;
                 for (let dy = -1; dy <= 1 && isLocalMax; dy++) {
@@ -541,7 +542,7 @@ function generateTerrainImage() {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (riverMask[y][x]) {
-                tempCtx.fillStyle = '#4a90e2';
+                tempCtx.fillStyle = '#4a90e2'; // river blue
                 tempCtx.fillRect(x, y, 1, 1);
             }
         }
@@ -567,7 +568,8 @@ function generateTerrainImage() {
         '#8d9946': 'hills',
         '#8d99ae': 'mountains',
         '#ffffff': 'snowcaps',
-        '#4a90e2': 'river'   // we'll override with river detection later
+        '#4a90e2': 'river',   // rivers
+        '#3a80c2': 'lake'      // lakes
     };
 
     function rgbToHex(r, g, b) {
@@ -618,16 +620,11 @@ function generateTerrainImage() {
     });
 
     // ---- Step 6: Override hexes that contain a river (using multi-point sampling) ----
-    // Determine hex radius in pixels (approx)
-    // Use the first hex's x coordinate to infer half-width? Simpler: use a fixed radius = 15 pixels.
-    const hexRadius = 30; // same as used in drawHexagon
-    const sampleRadius = 15; // half the hex radius
-
+    const sampleRadius = 20; // increase to better catch thin rivers
     for (let row = 0; row < terrainNamesGrid.length; row++) {
         for (let col = 0; col < terrainNamesGrid[row].length; col++) {
             const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
             if (!hex) continue;
-            // Points to sample: center and four cardinal points at sampleRadius distance
             const points = [
                 [hex.x, hex.y],
                 [hex.x + sampleRadius, hex.y],
@@ -651,8 +648,6 @@ function generateTerrainImage() {
         }
     }
 
-    // ... after the river override loop (which modifies terrainNamesGrid) ...
-
     // Store final grids
     worldMap.terrain_grid = terrainNamesGrid;
     worldMap.terrain_colors_grid = terrainColorsGrid;
@@ -669,10 +664,6 @@ function generateTerrainImage() {
         }
         console.log("Terrain counts after classification:", counts);
     }
-
-    // ---- Step 7: Store grids ----
-    worldMap.terrain_grid = terrainNamesGrid;
-    worldMap.terrain_colors_grid = terrainColorsGrid;
 }
 
 // ----- Moisture map (using a separate Perlin noise) -----
