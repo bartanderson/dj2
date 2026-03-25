@@ -290,72 +290,6 @@ async function setHexTerrain(col, row, terrain) {
     }
 }
 
-// ----- River generation (same as test page) -----
-function generateRivers(heightmap, thresholds, numRivers, seed) {
-    const rows = heightmap.length;
-    const cols = heightmap[0].length;
-    const riverMask = Array(rows).fill().map(() => Array(cols).fill(false));
-    const rng = new Math.seedrandom(seed);
-
-    let startCandidates = [];
-    for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-            const h = heightmap[y][x];
-            if (h >= thresholds.hills) { // start in hills/mountains
-                startCandidates.push([x, y]);
-            }
-        }
-    }
-    if (startCandidates.length === 0) return riverMask;
-
-    for (let i = startCandidates.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [startCandidates[i], startCandidates[j]] = [startCandidates[j], startCandidates[i]];
-    }
-
-    for (let r = 0; r < numRivers && r < startCandidates.length; r++) {
-        let [x, y] = startCandidates[r];
-        const visited = new Set();
-        let path = [];
-        while (true) {
-            if (y < 0 || y >= rows || x < 0 || x >= cols) break;
-            const key = `${x},${y}`;
-            if (visited.has(key)) break;
-            visited.add(key);
-            path.push([x, y]);
-
-            const h = heightmap[y][x];
-            if (h < thresholds.ocean) break; // reached ocean
-
-            let best = null;
-            let bestH = h;
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                        const nh = heightmap[ny][nx];
-                        if (nh < bestH) {
-                            bestH = nh;
-                            best = [nx, ny];
-                        }
-                    }
-                }
-            }
-            if (!best) break;
-            [x, y] = best;
-            if (path.length > 200) break;
-        }
-        for (let [px, py] of path) {
-            if (py >= 0 && py < rows && px >= 0 && px < cols) {
-                riverMask[py][px] = true;
-            }
-        }
-    }
-    return riverMask;
-}
-
 function dilateMask(mask, radius = 1) {
     const rows = mask.length;
     const cols = mask[0].length;
@@ -451,28 +385,59 @@ function generateTerrainImage() {
         }
     }
 
-    // ---- Step 3: Draw rivers (pixel-wise) ----
-    const targetRiverCount = Math.floor(area / 2000);
+    // ---- Step 3: River generation (meandering, thin) ----
+    const targetRiverCount = Math.floor(area / 3000); // fewer rivers, adjust as needed
     let riverMask = Array(height).fill().map(() => Array(width).fill(false));
     const rngRiver = new Math.seedrandom(seed + 10000);
-    const riverStartCandidates = [];
+
+    // Build candidate start cells: local maxima in heightmap (or just high elevation)
+    let startCandidates = [];
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const h = heightmap[y][x];
-            const m = moistureMap[y][x];
-            if (h >= thresholds.hills && m > 0.6) {
-                riverStartCandidates.push([x, y]);
+            if (h >= thresholds.hills) {
+                // Check if it's a local maximum
+                let isLocalMax = true;
+                for (let dy = -1; dy <= 1 && isLocalMax; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            if (heightmap[ny][nx] > h) {
+                                isLocalMax = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (isLocalMax) {
+                    startCandidates.push([x, y]);
+                }
             }
         }
     }
-    for (let i = riverStartCandidates.length - 1; i > 0; i--) {
-        const j = Math.floor(rngRiver() * (i + 1));
-        [riverStartCandidates[i], riverStartCandidates[j]] = [riverStartCandidates[j], riverStartCandidates[i]];
+    if (startCandidates.length === 0) {
+        // fallback: use all high-elevation cells
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                if (heightmap[y][x] >= thresholds.hills) {
+                    startCandidates.push([x, y]);
+                }
+            }
+        }
     }
-    for (let r = 0; r < targetRiverCount && r < riverStartCandidates.length; r++) {
-        let [x, y] = riverStartCandidates[r];
+
+    // Shuffle candidates
+    for (let i = startCandidates.length - 1; i > 0; i--) {
+        const j = Math.floor(rngRiver() * (i + 1));
+        [startCandidates[i], startCandidates[j]] = [startCandidates[j], startCandidates[i]];
+    }
+
+    for (let r = 0; r < targetRiverCount && r < startCandidates.length; r++) {
+        let [x, y] = startCandidates[r];
         const visited = new Set();
         const path = [];
+        let steps = 0;
         while (true) {
             if (y < 0 || y >= height || x < 0 || x >= width) break;
             const key = `${x},${y}`;
@@ -483,25 +448,44 @@ function generateTerrainImage() {
             const h = heightmap[y][x];
             if (h < thresholds.ocean || lakeMask[y][x]) break;
 
-            let best = null;
-            let bestH = h;
+            // Collect lower neighbors
+            const neighbors = [];
             for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
                     if (dx === 0 && dy === 0) continue;
                     const nx = x + dx;
                     const ny = y + dy;
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited.has(`${nx},${ny}`)) {
                         const nh = heightmap[ny][nx];
-                        if (nh < bestH) {
-                            bestH = nh;
-                            best = [nx, ny];
+                        if (nh < h) {
+                            neighbors.push({ x: nx, y: ny, height: nh });
                         }
                     }
                 }
             }
-            if (!best) break;
-            [x, y] = best;
-            if (path.length > 200) break;
+            if (neighbors.length === 0) break;
+
+            // Weighted random selection (lower height = higher probability)
+            let totalWeight = 0;
+            const weights = neighbors.map(n => {
+                const w = (h - n.height) + 0.1;
+                totalWeight += w;
+                return w;
+            });
+            let rand = rngRiver() * totalWeight;
+            let chosen = null;
+            for (let i = 0; i < neighbors.length; i++) {
+                if (rand < weights[i]) {
+                    chosen = neighbors[i];
+                    break;
+                }
+                rand -= weights[i];
+            }
+            if (!chosen) chosen = neighbors[0];
+            x = chosen.x;
+            y = chosen.y;
+            steps++;
+            if (steps > 300) break;
         }
         for (let [px, py] of path) {
             if (py >= 0 && py < height && px >= 0 && px < width) {
@@ -509,12 +493,8 @@ function generateTerrainImage() {
             }
         }
     }
-    // Dilate rivers for thickness
-    const riverThickness = 1;
-    if (riverThickness > 0) {
-        riverMask = dilateMask(riverMask, riverThickness);
-    }
-    // Draw rivers on canvas
+
+    // Draw rivers on canvas (thin, 1 pixel wide)
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (riverMask[y][x]) {
