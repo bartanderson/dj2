@@ -327,15 +327,58 @@ function generateTerrainImage() {
     const terrainGen = new TerrainGenerator(seed, width, height);
     const heightmap = terrainGen.generateHeightmap();
 
+    // --- Lower edges to create ocean ring (instead of radial gradient) ---
+    const borderWidth = 30; // pixels from edge that will be lowered (adjust)
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            // Distance to nearest border (in pixels)
+            const distX = Math.min(x, width - 1 - x);
+            const distY = Math.min(y, height - 1 - y);
+            const dist = Math.min(distX, distY);
+            // factor = 1 in interior (dist >= borderWidth), 0 at edge (dist=0)
+            let factor = Math.min(1, dist / borderWidth);
+            // Quadratic ease‑in to make edge drop more abruptly
+            factor = factor * factor;
+            // Multiply height by factor (edges become low)
+            heightmap[y][x] *= factor;
+        }
+    }
+    // Re‑normalize heightmap to full [0,1] range (after edge lowering)
+    let minH = Infinity, maxH = -Infinity;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            if (h < minH) minH = h;
+            if (h > maxH) maxH = h;
+        }
+    }
+    console.log("Before renormalization: minH =", minH, "maxH =", maxH);
+    if (maxH - minH > 0) {
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                heightmap[y][x] = (heightmap[y][x] - minH) / (maxH - minH);
+            }
+        }
+    }
+    let minAfter = Infinity, maxAfter = -Infinity;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            if (h < minAfter) minAfter = h;
+            if (h > maxAfter) maxAfter = h;
+        }
+    }
+    console.log("After renormalization: minH =", minAfter, "maxH =", maxAfter);
+
     // Moisture map (for lakes/rivers)
     const moistureMap = generateMoistureMap(seed, width, height);
 
     const thresholds = {
-        ocean: 0.45,
-        coast: 0.5,
-        plains: 0.58,
-        hills: 0.65,
-        mountains: 0.73
+        ocean: 0.000001,
+        coast: 0.0000015,
+        plains: 0.0001,
+        hills: 0.99999,
+        mountains: 0.99999999
     };
 
     // ---- Step 1: Render base terrain to temporary canvas ----
@@ -356,9 +399,9 @@ function generateTerrainImage() {
     let lakeSeeds = [];
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const h = heightmap[y][x];
+            let h = heightmap[y][x];
             const m = moistureMap[y][x];
-            if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+            if (h = thresholds.ocean && h <= thresholds.plains && m > 0.6) {
                 lakeSeeds.push([x, y]);
             }
         }
@@ -606,6 +649,25 @@ function generateTerrainImage() {
                 terrainColorsGrid[row][col] = '#4a90e2';
             }
         }
+    }
+
+    // ... after the river override loop (which modifies terrainNamesGrid) ...
+
+    // Store final grids
+    worldMap.terrain_grid = terrainNamesGrid;
+    worldMap.terrain_colors_grid = terrainColorsGrid;
+
+    // Debug: count terrain types (after full grid built)
+    if (terrainNamesGrid && terrainNamesGrid.length > 0) {
+        let counts = { ocean:0, coast:0, plains:0, hills:0, mountains:0, snowcaps:0, lake:0, river:0 };
+        for (let y = 0; y < terrainNamesGrid.length; y++) {
+            if (!terrainNamesGrid[y]) continue;
+            for (let x = 0; x < terrainNamesGrid[y].length; x++) {
+                let t = terrainNamesGrid[y][x];
+                if (counts[t] !== undefined) counts[t]++;
+            }
+        }
+        console.log("Terrain counts after classification:", counts);
     }
 
     // ---- Step 7: Store grids ----
