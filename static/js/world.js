@@ -350,8 +350,8 @@ function generateTerrainImage() {
 
     // ---- Step 2: Draw lakes (pixel-wise) ----
     const area = width * height;
-    const targetLakeCount = Math.floor(area / 2000);
-    const targetLakeSize = Math.floor(Math.sqrt(area) / 10);
+    const targetLakeCount = Math.floor(area / 10000);
+    const targetLakeSize = Math.floor(Math.sqrt(area) / 30);
     let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
     let lakeSeeds = [];
     for (let y = 0; y < height; y++) {
@@ -379,14 +379,14 @@ function generateTerrainImage() {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (lakeMask[y][x]) {
-                tempCtx.fillStyle = '#4a90e2';
+                tempCtx.fillStyle = '#3a80c2';
                 tempCtx.fillRect(x, y, 1, 1);
             }
         }
     }
 
     // ---- Step 3: River generation (meandering, thin) ----
-    const targetRiverCount = Math.floor(area / 3000); // fewer rivers, adjust as needed
+    const targetRiverCount = Math.floor(area / 1000); // fewer rivers, adjust as needed
     let riverMask = Array(height).fill().map(() => Array(width).fill(false));
     const rngRiver = new Math.seedrandom(seed + 10000);
 
