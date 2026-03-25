@@ -9,6 +9,7 @@ let worldState = {
     parties: []
 };
 let terrainImage = null; // will hold the terrain as an Image or offscreen canvas
+let fogOpacity = 1.0;
 
 // ===== LOCATION PREVIEW =====
 class LocationPreview {
@@ -287,37 +288,6 @@ async function setHexTerrain(col, row, terrain) {
     } catch (e) {
         console.warn('Failed to set hex terrain:', e);
     }
-}
-
-let showTerrainLabels = false;
-
-function drawTerrainLabels() {
-    if (!showTerrainLabels || !worldMap || !worldMap.terrain_grid) return;
-    const canvas = document.getElementById('terrain-canvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const hexes = worldMap.hexes;
-    if (!hexes) return;
-
-    ctx.save();
-    ctx.font = 'bold 14px monospace';
-    ctx.fillStyle = 'white';
-    ctx.shadowColor = 'black';
-    ctx.shadowBlur = 2;
-
-    hexes.forEach(hex => {
-        const col = hex.grid_x;
-        const row = hex.grid_y;
-        if (row >= 0 && row < worldMap.terrain_grid.length &&
-            col >= 0 && col < worldMap.terrain_grid[row].length) {
-            const terrain = worldMap.terrain_grid[row][col];
-            if (terrain) {
-                const letter = terrain.charAt(0).toUpperCase();
-                ctx.fillText(letter, hex.x - 6, hex.y + 5);
-            }
-        }
-    });
-    ctx.restore();
 }
 
 // ----- River generation (same as test page) -----
@@ -742,8 +712,56 @@ function redraw() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
+    // Debug: draw sampling dots with classification letter
+    if (worldMap.terrain_colors_grid && worldMap.terrain_grid && worldMap.hexes) {
+        worldMap.hexes.forEach(hex => {
+            const col = hex.grid_x;
+            const row = hex.grid_y;
+            if (row >= 0 && row < worldMap.terrain_colors_grid.length &&
+                col >= 0 && col < worldMap.terrain_colors_grid[row].length &&
+                row < worldMap.terrain_grid.length &&
+                col < worldMap.terrain_grid[row].length) {
+                const color = worldMap.terrain_colors_grid[row][col];
+                const terrain = worldMap.terrain_grid[row][col];
+                const letter = terrain ? terrain.charAt(0).toUpperCase() : '?';
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(hex.x, hex.y, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                // Draw letter
+                ctx.fillStyle = 'white';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 2;
+                ctx.font = 'bold 10px monospace';
+                ctx.fillText(letter, hex.x - 3, hex.y + 4);
+                ctx.shadowBlur = 0;
+            }
+        });
+    }
+    // Debug: draw sampling dots (in world coordinates)
+    // if (worldMap.terrain_colors_grid && worldMap.hexes) {
+    //     worldMap.hexes.forEach(hex => {
+    //         const col = hex.grid_x;
+    //         const row = hex.grid_y;
+    //         if (row >= 0 && row < worldMap.terrain_colors_grid.length &&
+    //             col >= 0 && col < worldMap.terrain_colors_grid[row].length) {
+    //             const color = worldMap.terrain_colors_grid[row][col];
+    //             ctx.fillStyle = color;
+    //             ctx.beginPath();
+    //             ctx.arc(hex.x, hex.y, 5, 0, 2 * Math.PI);
+    //             ctx.fill();
+    //             ctx.strokeStyle = 'black';
+    //             ctx.lineWidth = 1;
+    //             ctx.stroke();
+    //         }
+    //     });
+    // }
+
     // 2. Dark overlay (fog) over everything
-    ctx.fillStyle = 'rgba(0, 0, 0, 1.0)'; // made fully opaque now
+    ctx.fillStyle = `rgba(0, 0, 0, ${fogOpacity})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // 3. For discovered hexes, redraw terrain image inside the hex (reveals it)
@@ -793,7 +811,6 @@ function redraw() {
     }
 
     ctx.restore();
-    drawTerrainLabels();
 }
 
 // Initial view centered on start location
@@ -1177,10 +1194,11 @@ document.addEventListener('DOMContentLoaded', function() {
         window.dmChat = { sendMessage(){}, receiveMessage(){} };
     }
 
-    const labelCheckbox = document.getElementById('show-terrain-labels');
-    if (labelCheckbox) {
-        labelCheckbox.addEventListener('change', function(e) {
-            showTerrainLabels = e.target.checked;
+    const fogCheckbox = document.getElementById('toggle-fog');
+    if (fogCheckbox) {
+        fogCheckbox.addEventListener('change', function(e) {
+            // Set fogOpacity to 0 if checked, 1 if unchecked (or vice versa)
+            fogOpacity = e.target.checked ? 0 : 1;
             redraw();
         });
     }
