@@ -8,6 +8,19 @@ import uuid
 
 class PartyManager:
     """Manages party state and operations"""
+
+    PARTY_COLORS = [
+        "#FFD700",  # gold
+        "#FF4444",  # red
+        "#44FF44",  # green
+        "#4444FF",  # blue
+        "#FF44FF",  # magenta
+        "#44FFFF",  # cyan
+        "#FFA500",  # orange
+        "#FF00FF",  # pink
+        "#00FF00",  # lime
+        "#FFFF00"   # yellow
+    ]
     
     def __init__(self, starting_location_id: str):
         self.parties: Dict[str, Dict] = {}
@@ -15,13 +28,21 @@ class PartyManager:
         self.active_parties: Set[str] = set()
         self.default_party_id = "main_party"
         self.starting_location_id = starting_location_id
+        self._next_color_index = 0
         
         # Initialize default party
         self.parties[self.default_party_id] = {
             "name": "Main Party",
             "members": [],
-            "location": self.starting_location_id
+            "location": self.starting_location_id,
+            "color": self.PARTY_COLORS[0]
         }
+        self._next_color_index = 1
+
+    def _get_next_color(self):
+        color = self.PARTY_COLORS[self._next_color_index % len(self.PARTY_COLORS)]
+        self._next_color_index += 1
+        return color
 
     def create_party(self, party_name: str, member_ids: List[str]) -> str:
         """Create a new party"""
@@ -33,14 +54,15 @@ class PartyManager:
             "members": member_ids,
             "quests": [],
             "location": self.starting_location_id,
-            "in_tavern": True
+            "in_tavern": True,
+            "color": self._get_next_color()
         }
         self.active_parties.add(party_id)
         
         # Link members to party
         for char_id in member_ids:
             self.character_parties[char_id] = party_id
-            
+        print(f"DEBUG: Party created, now parties = {self.parties}")    
         return party_id
 
     def add_to_party(self, char_id: str, party_id: str) -> bool:

@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dungeon World Explorer</title>
     <link rel="icon" href="{{ url_for('static', filename='dungeon-classic.svg') }}" type="image/svg+xml">
+    <link rel="icon" href="data:,"> <!-- to get rid of 404 -->
+    <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script>
@@ -545,9 +550,13 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 </div>
                 <div id="game-date" class="game-date" 
                      hx-get="/api/game/date" 
-                     hx-trigger="every 5s" 
                      hx-swap="innerHTML">
                     <!-- Date will be loaded here -->
+                </div>
+                <div id="player-name" class="player-name" 
+                     hx-get="/api/player/name" 
+                     hx-swap="innerHTML">
+                    Loading...
                 </div>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
@@ -607,6 +616,21 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     <div class="tab-icon"><i class="fa-solid fa-scroll"></i></div>
                     <span>Quests</span>
                 </button>
+            </div>
+            <div class="menu-section" style="margin-top: auto; border-top: 1px solid #4ecca3;">
+                    <button onclick="window.open('/terrain-test', '_blank')">Terrain Test</button>
+                <div class="menu-header">World Chat</div>
+                <div id="world-chat-messages" style="height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 10px; margin: 10px; border-radius: 4px; font-size: 12px;">
+                    <div class="chat-message system">Type a command to interact with the world. Try "go north".</div>
+                </div>
+                <div style="display: flex; gap: 8px; padding: 0 10px 10px 10px;">
+                    <input type="text" id="world-chat-input" placeholder="Command..." style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px;">
+                    <button id="world-chat-send" class="btn" style="padding: 8px 12px;">Send</button>
+                    
+                    <label style="position: fixed; bottom: 5px; left: 5px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 5px 8px; border-radius: 5px; color: white; font-family: monospace;">
+                        <input type="checkbox" id="toggle-fog">Clear</input>
+                    </label>
+                </div>
             </div>
         </nav>
         
@@ -677,8 +701,11 @@ document.addEventListener('DOMContentLoaded', checkMode);
             <div id="party-tab" class="tab-content">
                 <div class="tab-panel">
                     <h2>Party Management</h2>
-                    <div id="party-list">
-                        <p>No active party. Create or join a party to begin your adventure.</p>
+                    <div id="party-list-container"
+                         hx-get="/api/party/list-html"
+                         hx-trigger="load, every 10s"
+                         hx-swap="innerHTML">
+                        Loading parties...
                     </div>
                     <div style="margin-top: 20px;">
                         <button id="create-party-btn" class="btn">Create Party</button>
@@ -1594,6 +1621,10 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 return response.json();
             })
             .then(data => {
+                if (data.reload) {
+                    location.reload();
+                    return;
+                }
                 // Display each response
                 data.responses.forEach(r => addMessage(r.speaker, r.content));
 
@@ -1608,19 +1639,17 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     })
                     .then(r => r.json())
                     .then(finalData => {
-                        finalData.responses.forEach(r => addMessage(r.speaker, r.content));
-                        if (finalData.new_state === null) {
-                            fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
-                                .then(() => {
-                                    htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                                    document.getElementById('backstory-chat').style.display = 'none';
-                                    document.getElementById('character-narrative').style.display = 'block';
-                                });
+                        // Display any remaining responses (e.g., secrets)
+                        if (finalData.responses) {
+                            finalData.responses.forEach(r => addMessage(r.speaker, r.content));
                         }
+                        // The session is over – reload the page to show the backstory
+                        location.reload();
                     })
                     .catch(err => {
                         console.error('Auto-continue error:', err);
-                        addMessage('System', 'Error during backstory completion. Check console.', 'error');
+                        // Even if the fetch fails, the session is likely over, so reload
+                        location.reload();
                     });
                     return;
                 }
@@ -1718,6 +1747,37 @@ document.addEventListener('DOMContentLoaded', checkMode);
             setTimeout(loadActiveCharacter, 1000);
         });
     })();
+    document.getElementById('create-party-btn').addEventListener('click', async function() {
+        const partyName = prompt("Enter party name:", "My Party");
+        if (!partyName) return;
+
+        try {
+            // Get active character ID
+            const resp = await fetch('/api/player/active-character');
+            const data = await resp.json();
+            const characterId = data.character_id;
+            if (!characterId) {
+                alert("No active character found. Please create a character first.");
+                return;
+            }
+
+            // Create party
+            const createRes = await fetch('/api/create-party', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: partyName, members: [characterId] })
+            });
+            const createData = await createRes.json();
+            if (createData.success) {
+                location.reload();
+            } else {
+                alert("Failed to create party: " + (createData.error || "Unknown error"));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Error creating party: " + err.message);
+        }
+    });
     </script>
     <!-- Debug Overlay (hidden by default) -->
     <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">

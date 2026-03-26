@@ -24,7 +24,6 @@ from engine.game_engine import GameEngine, GamePhase, GameContext
 # Add to world_app.py, near other imports
 import requests
 
-
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
@@ -136,6 +135,7 @@ def debug_connectivity():
         "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
     })
 
+<<<<<<< HEAD
 @app.route('/api/character/<character_id>')
 def get_character(character_id):
     wc = current_app.config.get('WORLD_CONTROLLER')
@@ -145,6 +145,8 @@ def get_character(character_id):
     if not character:
         return jsonify({"error": "Character not found"}), 404
     return jsonify(character.to_dict())
+=======
+>>>>>>> phase3-clean
     
 class DungeonHTTPClient:
     def __init__(self, base_url="http://localhost:5005"):
@@ -517,40 +519,83 @@ class DungeonPersistenceSystem:
             return {"saved": False, "error": str(e)}
 
 #====+ outside of classes =====
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204  # Returns "No Content" and stops the 404
+    
+@app.route('/terrain-test')
+def terrain_test():
+    return render_template('terrain_test.html')
 
-def get_active_parties_helper():
-    """Helper function to get active parties when WorldController doesn't have the method"""
+
+@app.route('/api/update-location', methods=['POST'])
+def update_location():
+    data = request.get_json()
+    loc_id = data.get('id')
+    col = data.get('col')
+    row = data.get('row')
+    x = data.get('x')
+    y = data.get('y')
+    if not loc_id or col is None or row is None:
+        return jsonify({'error': 'Missing id, col, or row'}), 400
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({'error': 'World controller not available'}), 500
+    loc = wc.world_map.get_location(loc_id)
+    if not loc:
+        return jsonify({'error': 'Location not found'}), 404
+    # Update in‑memory location
+    loc.col = col
+    loc.row = row
+    if x is not None and y is not None:
+        loc.x = x
+        loc.y = y
+
+    # Optional: persist to database
+    from world.db import Database
+    conn = Database.get_connection()
     try:
-        # Try to get parties from session_manager if available
-        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'session_manager'):
-            session_manager = app.world_controller.session_manager
-            if hasattr(session_manager, 'party_views'):
-                parties = []
-                for party_id, members in session_manager.party_views.items():
-                    parties.append({
-                        'id': party_id,
-                        'name': f'Party {party_id}',
-                        'members': list(members) if members else [],
-                        'location': 'unknown'
-                    })
-                return parties
-        
-        # Fallback to default party
-        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'default_party_id'):
-            return [{
-                'id': app.world_controller.default_party_id,
-                'name': 'Default Party',
-                'members': [],
-                'location': getattr(app.world_controller, 'starting_location_id', 'unknown')
-            }]
-        
-        # Empty fallback
-        return []
-        
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE locations SET col = %s, row = %s, position[1] = %s, position[2] = %s WHERE id = %s",
+                (col, row, x, y, loc_id)
+            )
+            conn.commit()
     except Exception as e:
-        print(f"Error in get_active_parties_helper: {e}")
-        return []
+        print(f"Error updating location in database: {e}")
+        # Optionally roll back or log
+    finally:
+        Database.return_connection(conn)
 
+    return jsonify({'success': True})
+
+
+@app.route('/api/set-hex-terrain', methods=['POST'])
+def set_hex_terrain():
+    data = request.get_json()
+    col = data.get('col')
+    row = data.get('row')
+    terrain = data.get('terrain')
+    wc = current_app.world_controller
+    if wc is None:
+        return jsonify({'success': False, 'error': 'World controller not available'}), 500
+    hex = wc.campaign_state.get_hex(col, row)
+    if hex:
+        hex['terrain'] = terrain
+        hex['discovered'] = True
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Hex not found'}), 404
+
+@app.route('/api/command', methods=['POST'])
+def handle_command():
+    data = request.get_json()
+    command = data.get('command', '')
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({"error": "World controller not available"}), 500
+    result = wc.process_command(command)
+    return jsonify(result)
+    
 def initialize_dungeon_systems():
     """Initialize complete HTTP-based dungeon system with all phase systems"""
     print("\n" + "="*50)
@@ -645,36 +690,20 @@ def get_world_controller():
     else:
         print("World controller not available")
         return None
-
+        
 def get_active_parties_helper():
-    """Helper function to get active parties when WorldController doesn't have the method"""
+    """Return list of active parties from the party manager."""
     try:
-        # Try to get parties from session_manager if available
-        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'session_manager'):
-            session_manager = app.world_controller.session_manager
-            if hasattr(session_manager, 'party_views'):
-                parties = []
-                for party_id, members in session_manager.party_views.items():
-                    parties.append({
-                        'id': party_id,
-                        'name': f'Party {party_id}',
-                        'members': list(members) if members else [],
-                        'location': 'unknown'
-                    })
-                return parties
-        
-        # Fallback to default party
-        if hasattr(app, 'world_controller') and hasattr(app.world_controller, 'default_party_id'):
-            return [{
-                'id': app.world_controller.default_party_id,
-                'name': 'Default Party',
-                'members': [],
-                'location': getattr(app.world_controller, 'starting_location_id', 'unknown')
-            }]
-        
-        # Empty fallback
-        return []
-        
+        wc = current_app.world_controller
+        if wc and hasattr(wc, 'party_manager'):
+            # Use party_manager.get_active_parties()
+            parties = wc.party_manager.get_active_parties()
+            # Ensure each party has a name (party_manager stores name)
+            for party in parties:
+                party['name'] = party.get('name', f"Party {party['id']}")
+            return parties
+        else:
+            return []
     except Exception as e:
         print(f"Error in get_active_parties_helper: {e}")
         return []
@@ -821,13 +850,6 @@ def main():
         traceback.print_exc()
         return None, None
 
-# World loading endpoint
-@app.route('/api/load-world/<int:world_id>', methods=['POST'])
-def load_world(world_id):
-    global world_controller
-    world_controller = WorldController(world_id, ai_system)
-    return jsonify({"success": True})
-
 # Get context endpoint
 @app.route('/api/context/<player_id>')
 def get_context(player_id):
@@ -874,8 +896,13 @@ def retry_failed_images():
         # Update character avatars
         updated_characters = []
         for char_id in successes:
+<<<<<<< HEAD
             if char_id in world_controller.characters:
                 current_app.world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
+=======
+            if char_id in current_app.world_controller.characters:
+                world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
+>>>>>>> phase3-clean
                 updated_characters.append(char_id)
         
         return jsonify({
@@ -888,6 +915,30 @@ def retry_failed_images():
         return jsonify({"success": False, "error": str(e)})
 
 # ===== Character Endpoints =====
+@app.route('/api/party/list-html')
+def party_list_html():
+    parties = get_active_parties_helper()
+    # Fetch character names for members
+    wc = current_app.world_controller
+    if wc:
+        for party in parties:
+            member_names = []
+            for char_id in party.get('members', []):
+                char = wc.character_manager.get_character(char_id)
+                member_names.append(char.name if char else char_id)
+            party['member_names'] = member_names
+    return render_template('partials/party_list.html', parties=parties)
+    
+@app.route('/api/player/name')
+def get_player_name():
+    session_id = request.cookies.get('session_id')
+    if not session_id:
+        return "Guest"
+    player = current_app.world_controller.get_player_by_session(session_id)
+    if not player:
+        return "Guest"
+    return player.name
+    
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
     session_id = request.cookies.get('session_id')
@@ -902,6 +953,16 @@ def get_player_characters():
         if char:
             characters.append(char.to_dict())
     return jsonify({'characters': characters})
+
+@app.route('/api/player/active-character', methods=['GET'])
+def get_active_character():
+    session_id = request.cookies.get('session_id')
+    if not session_id:
+        return jsonify({'character_id': None})
+    player = current_app.world_controller.get_player_by_session(session_id)
+    if not player:
+        return jsonify({'character_id': None})
+    return jsonify({'character_id': player.active_character_id})
 
 @app.route('/api/player/active-character', methods=['POST'])
 def set_active_character():
@@ -1347,12 +1408,23 @@ def backstory_continue(character_id):
 
     # If session finished, remove it
     if result['new_state'] is None:
+<<<<<<< HEAD
         # Transfer backstory data to character object
         character = current_app.world_controller.character_manager.get_character(character_id)
         if character:
             character.backstory = session_state.get('backstory', {})
+=======
+        # Save backstory to character
+        character = current_app.world_controller.character_manager.get_character(character_id)
+        if character:
+            backstory_data = session_state.get('backstory', {})
+            print(f"DEBUG: Saving backstory for {character_id}: {backstory_data}")
+            character.backstory = backstory_data
+>>>>>>> phase3-clean
             current_app.world_controller.character_manager._save_character_to_db(character)
         del narrative.backstory_sessions[character_id]
+        # Tell client to reload page to show updated backstory
+        return jsonify({"responses": responses, "reload": True})
 
     return jsonify({"responses": responses})
 
@@ -1367,10 +1439,14 @@ def build_connections(character_id):
 # ===== World Navigation Endpoints =====
 @app.route('/api/travel/<location_id>', methods=['POST'])
 def travel_to(location_id):
+<<<<<<< HEAD
     wc = current_app.world_controller
     if wc is None:
         return jsonify({"error": "World controller not initialized"}), 500
     success = wc.travel_to_location(location_id)
+=======
+    success = current_app.world_controller.travel_to_location(location_id)
+>>>>>>> phase3-clean
     return jsonify({
         "success": success,
         "location": wc.get_current_location_data()
@@ -1391,7 +1467,10 @@ def enter_dungeon():
 def create_party():
     print(">>> /api/create-party called")
     data = request.json
+<<<<<<< HEAD
     print(">>> data:", data)
+=======
+>>>>>>> phase3-clean
     wc = current_app.world_controller
     if wc is None:
         return jsonify({"error": "World controller not initialized"}), 500
@@ -1399,7 +1478,11 @@ def create_party():
         name=data.get('name', 'New Party'),
         initial_members=data.get('members', [])
     )
+<<<<<<< HEAD
     print(">>> party_id:", party_id)
+=======
+    print(f"DEBUG: create_party returned party_id = {party_id}")
+>>>>>>> phase3-clean
     return jsonify({"success": True, "party_id": party_id})
 
 @app.route('/api/move-character', methods=['POST'])
@@ -2271,6 +2354,10 @@ def create_player():
 if __name__ == '__main__':
     # Only initialize when not in reloader
     if not os.environ.get('WERKZEUG_RUN_MAIN'):
+<<<<<<< HEAD
         initialize_app()  # It already sets app.world_controller and app.game_engine
+=======
+        initialize_app()
+>>>>>>> phase3-clean
     
     socketio.run(app, debug=True, host="0.0.0.0", port=5000, use_reloader=False) 

@@ -78,6 +78,21 @@ class DMChatHandler:
             "attribute_range": "0-4, total 4 points, max 3 per attribute",
             "skill_limit": "2-3 starting skills",
         }
+        # Add hex info if in world mode
+        if not getattr(self.world_controller, 'dungeon_mode', False):
+            party_pos = self.world_controller.campaign_state.party_position
+            hex = self.world_controller.campaign_state.get_hex(*party_pos)
+            if hex:
+                pois = self.world_controller.campaign_state.get_or_generate_pois(hex)
+                discovered_pois = [p for p in pois if p.get('discovered', False)]
+                available = self.world_controller.get_available_hex_moves(*party_pos)
+                context["current_hex"] = {
+                    "terrain": hex['terrain'],
+                    "explored": hex.get('explored', False),
+                    "discovered_pois": discovered_pois,
+                    "available_moves": [{"direction": d, "terrain": t['terrain']} for d, t in available]
+                }
+        # Add character info if present
         if character:
             # Add character-specific info
             context["character"] = {
@@ -228,6 +243,55 @@ Your answer:
             else:
                 errors.append(f"Unknown field: {field}")
         return len(errors) == 0, errors
+
+    def handle_movement(self, direction: str, success: bool, new_hex=None, block_reason=None):
+        """Generate a narrative for a movement attempt."""
+        # Build context as usual (includes current hex, available moves, etc.)
+        context = self._build_game_context(...)  # we need session and character, but for movement we can pass dummy
+        # For now, we'll use a simple prompt
+        if success:
+            # Get description of new hex
+            hex_desc = self._describe_hex(new_hex)
+            prompt = f"The party moves {direction}. They arrive at: {hex_desc}. Describe the scene in an immersive way."
+        else:
+            prompt = f"The party tries to move {direction} but is blocked by {block_reason}. Describe what happens."
+        # Use the AI to generate a response
+        response = get_ai_response(prompt, None, context)  # simplified, we'll need proper session/context
+        # Parse and return DialogResponse(s)
+        return [DialogResponse(speaker="DM", content=response, dialog_type="narration")]
+
+    def _describe_hex(self, hex):
+        desc = f"A {hex['terrain']} hex."
+        if hex.get('pois'):
+            discovered = [p['name'] for p in hex['pois'] if p.get('discovered')]
+            if discovered:
+                desc += f" You see {', '.join(discovered)}."
+        return desc
+
+    def generate_movement_narrative(self, direction: str, success: bool, new_hex=None, block_reason=None):
+        """Generate narrative for a movement attempt using AI."""
+        # Build minimal context (no session/character needed)
+        context = {
+            "current_hex": self.world_controller.describe_current_hex(),
+            "available_moves": self.world_controller.get_available_hex_moves(*self.world_controller.campaign_state.party_position),
+            # add any other relevant data
+        }
+        if success:
+            # new_hex is a dict
+            prompt = f"The party moves {direction} and arrives at a {new_hex['terrain']} hex. "
+            # Add discovered POIs if any
+            pois = [p for p in new_hex.get('pois', []) if p.get('discovered')]
+            if pois:
+                prompt += f"They see {', '.join(p['name'] for p in pois)}. "
+            prompt += "Describe the scene in an immersive, vivid way."
+        else:
+            prompt = f"The party tries to move {direction} but is blocked by {block_reason}. Describe what happens."
+        
+        # Use the AI to generate a response
+        from world.dm_chat_ai import get_ai_response
+        narrative = get_ai_response(prompt, None, context)  # adjust parameters as needed
+        # Return a list of DialogResponse objects (for consistency)
+        return [{"speaker": "DM", "content": narrative, "dialog_type": "narration"}]
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None) -> Dict[str, Any]:
         """

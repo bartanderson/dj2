@@ -1,5 +1,6 @@
 # world/campaign.py
 import uuid
+import random
 from typing import List, Dict, Optional, Any
 
 # ----------------------------------------------------------------------
@@ -201,6 +202,13 @@ class CampaignState:
         self.time_factor = 1
         self.game_started = False
 
+        # World hex/Party
+        self.hex_grid = []                # list of hex dicts
+        self.party_position = (0, 0)      # (col, row)
+        self.grid_width = 0
+        self.grid_height = 0
+        self.hex_size = 0
+
     def to_dict(self) -> dict:
         return {
             "world_seed": self.world_seed,
@@ -315,3 +323,45 @@ class CampaignState:
         """Advance game time by given minutes."""
         self.game_time += minutes
         # You can add logic here to trigger events, faction turns, etc. based on date changes.
+
+    def get_hex(self, col, row):
+        """Return the hex dict at grid coordinates (col, row) or None."""
+        for h in self.hex_grid:
+            if h['grid_x'] == col and h['grid_y'] == row:
+                return h
+        return None
+
+    def get_or_generate_pois(self, hex):
+        """Return list of POIs for a hex, generating lazily if needed."""
+        if hex.get('pois') is not None:
+            return hex['pois']
+        # Use deterministic RNG based on world seed and hex coordinates
+        rng = random.Random(f"{self.world_seed}:{hex['grid_x']},{hex['grid_y']}")
+        num = rng.randint(0, 3)      # 0‑3 POIs per hex
+        pois = []
+        for i in range(num):
+            poi_type = self._choose_poi_type(hex['terrain'], rng)
+            pois.append({
+                "id": f"poi_{hex['grid_x']}_{hex['grid_y']}_{i}",
+                "type": poi_type,
+                "name": self._generate_poi_name(poi_type, rng),
+                "discovered": False,
+                "description": None
+            })
+        hex['pois'] = pois
+        return pois
+
+    def _choose_poi_type(self, terrain, rng):
+        """Choose a POI type based on terrain (simplified)."""
+        # For now, just a static list; later we can make it more varied.
+        types = ["settlement", "ruin", "lair", "resource", "shrine", "oddity"]
+        return rng.choice(types)
+
+    def _generate_poi_name(self, poi_type, rng):
+        """Generate a simple name for a POI."""
+        prefixes = ["Old", "New", "Dark", "Hidden", "Sacred", "Forgotten"]
+        suffixes = ["Keep", "Tower", "Grove", "Mine", "Shrine", "Crossroads"]
+        if poi_type == "settlement":
+            return f"{rng.choice(prefixes)} {rng.choice(suffixes)}"
+        else:
+            return f"{rng.choice(prefixes)} {poi_type.capitalize()}"

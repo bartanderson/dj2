@@ -161,6 +161,26 @@ class TerrainGenerator {
         return terrain;
     }
 
+    getTerrainGrid() {
+        const heightmap = this.generateHeightmap();
+        const terrainGrid = [];
+        for (let y = 0; y < this.height; y++) {
+            terrainGrid[y] = [];
+            for (let x = 0; x < this.width; x++) {
+                const height = heightmap[y][x];
+                let terrain;
+                if (height >= 0.73) terrain = 'snowcaps';
+                else if (height >= 0.65) terrain = 'mountains';
+                else if (height >= 0.58) terrain = 'hills';
+                else if (height >= 0.5) terrain = 'plains';
+                else if (height >= 0.45) terrain = 'coast';
+                else terrain = 'ocean';
+                terrainGrid[y][x] = terrain;
+            }
+        }
+        return terrainGrid;
+    }
+
     renderTerrain(terrain, canvasId) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) {
@@ -209,7 +229,7 @@ class HexGridRenderer {
         this.hexSize = hexSize;
     }
 
-    renderGrid(canvasId) {
+    renderGrid(canvasId, discoveredHexes = []) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -227,8 +247,16 @@ class HexGridRenderer {
         const scaleX = canvasWidth / this.width;
         const scaleY = canvasHeight / this.height;
 
+        // Create a set for quick lookup
+        const discoveredSet = new Set(discoveredHexes.map(h => `${h.col},${h.row}`));
+
         for (let x = 0; x < this.width / (hexWidth * 0.75); x++) {
             for (let y = 0; y < this.height / hexHeight; y++) {
+                // Skip drawing if hex is not discovered
+                if (!discoveredSet.has(`${x},${y}`)) {
+                    continue;
+                }
+
                 const center_x = (x * hexWidth * 0.75 + this.hexSize) * scaleX;
                 const center_y = (y * hexHeight + (x % 2) * hexHeight / 2 + hexHeight / 2) * scaleY;
                 

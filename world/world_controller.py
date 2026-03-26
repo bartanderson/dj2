@@ -18,6 +18,7 @@ from collections import Counter
 from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
+from world.perlin import PerlinNoise
 from world.world_map import WorldMap, Location
 from world.campaign import Region, Faction, Quest, CampaignState
 from world.narrative_system import NarrativeSystem
@@ -29,7 +30,6 @@ from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work
 from world.world_session import SessionManager
 from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
 from engine.game_engine import GameEngine, GamePhase
-from .terrain import TerrainGenerator
 from .paths import PathGenerator
 from .map_utils import MapUtils
 from .party_manager import PartyManager
@@ -84,7 +84,6 @@ class WorldController:
         self.seed = seed
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
-        self.terrain_generator = TerrainGenerator(seed)
         self.path_generator = PathGenerator(seed)
         self.map_utils = MapUtils(seed)
         self.world_map = WorldMap()
@@ -116,7 +115,6 @@ class WorldController:
             ai_system.tool_registry.register_from_class(self.character_builder)
         
         self.ai_system = ai_system
-        self.terrain_types = self.terrain_generator.terrain_types
         self.fog_of_war = True
 
         # Initialize state tracking
@@ -124,6 +122,7 @@ class WorldController:
         self.current_location: Optional[Location] = None
         
         self.default_party_id = "main_party"
+        self.party_id = self.default_party_id
 
         # Initialize players
         self.players: Dict[str, Player] = {}
@@ -219,20 +218,32 @@ class WorldController:
         # Set up the world
         self.setup_world(self.world_data)
         
-        # Set starting location
+        # Find the starting location (tavern)
         starting_location = None
-        self.starting_location_id = None
-        # After loading all locations, find the tavern and set its grid position
-        grid_w = self.campaign_state.grid_width
-        grid_h = self.campaign_state.grid_height
-        if grid_w and grid_h:
-            center_col = grid_w // 2
         for location in self.world_map.locations.values():
-            if location.type == "tavern" and "adventurer" in location.name.lower(): #and "respite" in location.name.lower():
+            if location.type == "tavern" and "adventurer" in location.name.lower():
                 starting_location = location
                 break
 
         if starting_location:
+            # Assign hex to the starting location using pixel coordinates
+            hex = self._find_hex_at_pixel(starting_location.x, starting_location.y)
+            if hex:
+                starting_location.col = hex['grid_x']
+                starting_location.row = hex['grid_y']
+                self.campaign_state.party_position = (hex['grid_x'], hex['grid_y'])
+                hex['discovered'] = True
+                print(f"Starting hex discovered: {hex['grid_x']},{hex['grid_y']}")
+            else:
+                # Fallback: use hex (0,0)
+                default_hex = self.campaign_state.get_hex(0,0)
+                if default_hex:
+                    starting_location.col = 0
+                    starting_location.row = 0
+                    self.campaign_state.party_position = (0,0)
+                    default_hex['discovered'] = True
+                    print("Using fallback hex (0,0) as starting hex")
+
             print("Found starting location")
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
@@ -287,6 +298,7 @@ class WorldController:
 
         # Finally, create DMChatHandler (needs consequence_engine, which is now available)
         self.dm_chat_handler = DMChatHandler(self)
+        self.dungeon_mode = False
 
         print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
@@ -335,66 +347,30 @@ class WorldController:
         return rng.choice(options)
 
     def generate_world_structure(self):
-        """Generate hex grid and regions from seed and campaign parameters."""
         import random
         import math
-        from collections import defaultdict
 
-        # Get generation parameters from stored campaign_data
+        # Get grid size from campaign data
         world_gen = self.campaign_data.get("world_generation", {})
         surface = world_gen.get("world_layers", {}).get("surface", {})
         hex_grid_params = surface.get("hex_grid", {})
-        print(f"Hex grid size from JSON: {hex_grid_params.get('size')}")
         size_str = hex_grid_params.get("size", "50x50")
         try:
             w, h = map(int, size_str.split('x'))
         except:
             w, h = 50, 50
-        print(f"Width: { w }, Height: { h }")
+
         self.campaign_state.grid_width = w
         self.campaign_state.grid_height = h
-        self.campaign_state.hex_size = 60  # could also come from JSON
+        self.campaign_state.hex_size = 60
 
-        terrain_types = hex_grid_params.get("terrain_types", 
-            ["plains", "forest", "mountain", "swamp", "desert", "coast", "urban"])
-
-        # Use a deterministic RNG based on the seed
         seed = int(self.campaign_state.world_seed) if self.campaign_state.world_seed else 42
         rng = random.Random(seed)
 
-        # Generate a simple terrain grid (random with smoothing)
-        terrain_grid = [[rng.choice(terrain_types) for _ in range(w)] for _ in range(h)]
-
-        # ----- Smoothing pass to create larger contiguous areas -----
-        smooth_iterations = 3  # adjust as needed; more iterations = larger regions
-        # Define neighbor offsets for hex grid (flat-top, axial coordinates)
-        # For a given (x,y) in a rectangular grid approximating hexes, we use:
-        neighbors = [
-            (1, 0), (-1, 0), (0, 1), (0, -1),
-            (1, 1), (-1, -1)  # these approximate diagonals for hex connectivity
-        ]
-        for _ in range(smooth_iterations):
-            new_grid = [row[:] for row in terrain_grid]  # copy
-            for y in range(h):
-                for x in range(w):
-                    # Collect terrain of current cell and its valid neighbors
-                    terrain_counts = Counter()
-                    terrain_counts[terrain_grid[y][x]] += 1
-                    for dx, dy in neighbors:
-                        nx, ny = x + dx, y + dy
-                        if 0 <= nx < w and 0 <= ny < h:
-                            terrain_counts[terrain_grid[ny][nx]] += 1
-                    # Set to most common terrain (mode)
-                    most_common = terrain_counts.most_common(1)[0][0]
-                    new_grid[y][x] = most_common
-            terrain_grid = new_grid
-        # -------------------------------------------------------------
-
-        # Convert to hex list (axial coordinates or pixel coordinates)
+        # Build empty hex grid
         hexes = []
         for y in range(h):
             for x in range(w):
-                # Convert to pixel coordinates (flat-top hex grid)
                 x_pos = x * self.campaign_state.hex_size * 0.75
                 y_pos = y * self.campaign_state.hex_size + (self.campaign_state.hex_size/2 if x % 2 else 0)
                 hexes.append({
@@ -402,118 +378,29 @@ class WorldController:
                     "y": y_pos,
                     "grid_x": x,
                     "grid_y": y,
-                    "terrain": terrain_grid[y][x],
-                    "region_id": None
+                    "terrain": 'plains',        # placeholder
+                    "region_id": None,
+                    "discovered": False
                 })
-
-        # Cluster hexes into regions using flood fill
-        region_id_counter = 0
-        visited = set()
-        regions = {}  # This will hold the region objects keyed by ID
-
-        def flood_fill(start_x, start_y, terrain):
-            stack = [(start_x, start_y)]
-            region_hexes = []
-            while stack:
-                cx, cy = stack.pop()
-                if (cx, cy) in visited or cx < 0 or cx >= w or cy < 0 or cy >= h:
-                    continue
-                if terrain_grid[cy][cx] != terrain:
-                    continue
-                visited.add((cx, cy))
-                region_hexes.append((cx, cy))
-                # Add neighbors (axial neighbors for hex grid)
-                # For simplicity, we'll use 4-directional neighbors plus two diagonals
-                # Adjust based on actual hex connectivity
-                for dx, dy in [(1,0), (-1,0), (0,1), (0,-1), (1,1), (-1,-1)]:
-                    nx, ny = cx + dx, cy + dy
-                    if 0 <= nx < w and 0 <= ny < h:
-                        stack.append((nx, ny))
-            return region_hexes
-
-        for y in range(h):
-            for x in range(w):
-                if (x, y) not in visited:
-                    terrain = terrain_grid[y][x]
-                    hex_list = flood_fill(x, y, terrain)
-                    if hex_list:
-                        region_id = f"region_{region_id_counter}"
-                        region_id_counter += 1
-                        # Compute region centroid (average grid coordinates)
-                        avg_col = sum(hx for hx, hy in hex_list) / len(hex_list)
-                        avg_row = sum(hy for hx, hy in hex_list) / len(hex_list)
-                        # Determine danger level based on terrain
-                        danger = self._terrain_danger(terrain)
-                        # Create Region object (import Region from campaign)
-                        from world.campaign import Region
-                        region = Region(
-                            id=region_id,
-                            name=f"{terrain.capitalize()} Region",
-                            terrain_tags=[terrain],
-                            faction_control="contested",
-                            danger_level=danger,
-                            discovered=False,
-                            explored=0.0,
-                            settlements=[],
-                            dungeons=[],
-                            active_quests=[]
-                        )
-                        regions[region_id] = region
-                        # Assign region_id to hexes
-                        for hx, hy in hex_list:
-                            for hex_item in hexes:
-                                if hex_item["grid_x"] == hx and hex_item["grid_y"] == hy:
-                                    hex_item["region_id"] = region_id
-                                    break
-
-        # Store in campaign_state
-        self.campaign_state.surface_regions = regions
         self.campaign_state.hex_grid = hexes
-        self.campaign_state.terrain_grid = terrain_grid
 
-        # Initialize potential_locations dict if not present
-        if not hasattr(self.campaign_state, 'potential_locations'):
-            self.campaign_state.potential_locations = {}
+        # Set party position based on starting location
+        start_loc = self.world_map.get_location(self.starting_location_id)
+        if start_loc:
+            for h in hexes:
+                if (h['x'] <= start_loc.x <= h['x'] + self.campaign_state.hex_size * 0.75 and
+                    h['y'] <= start_loc.y <= h['y'] + self.campaign_state.hex_size):
+                    self.campaign_state.party_position = (h['grid_x'], h['grid_y'])
+                    h['discovered'] = True
+                    break
+        else:
+            self.campaign_state.party_position = (0,0)
+            hexes[0]['discovered'] = True
 
-        # Generate potential locations for each region
-        for region_id, region in regions.items():
-            # Number of settlements (0-3) based on region terrain
-            if region.terrain_tags[0] in ["plains", "coast"]:
-                num_settlements = rng.randint(0, 3)
-            else:
-                num_settlements = rng.randint(0, 2)
-            for i in range(num_settlements):
-                # Get all hexes in this region
-                region_hexes = [(h["grid_x"], h["grid_y"]) for h in hexes if h["region_id"] == region_id]
-                if not region_hexes:
-                    continue
-                col, row = rng.choice(region_hexes)
-                pot_id = f"settlement_{region_id}_{i}"
-                region.settlements.append(pot_id)
-                self.campaign_state.potential_locations[pot_id] = {
-                    "region_id": region_id,
-                    "col": col,
-                    "row": row,
-                    "type": "settlement"
-                }
-            # Number of dungeons (0-2) based on terrain
-            if region.terrain_tags[0] in ["mountain", "forest", "swamp"]:
-                num_dungeons = rng.randint(0, 2)
-            else:
-                num_dungeons = rng.randint(0, 1)
-            for i in range(num_dungeons):
-                region_hexes = [(h["grid_x"], h["grid_y"]) for h in hexes if h["region_id"] == region_id]
-                if not region_hexes:
-                    continue
-                col, row = rng.choice(region_hexes)
-                pot_id = f"dungeon_{region_id}_{i}"
-                region.dungeons.append(pot_id)
-                self.campaign_state.potential_locations[pot_id] = {
-                    "region_id": region_id,
-                    "col": col,
-                    "row": row,
-                    "type": "dungeon"
-                }
+        # Optionally generate potential locations (settlements, dungeons) – you can keep this or remove
+        self.campaign_state.surface_regions = {}
+        self.campaign_state.potential_locations = {}
+
 
         # Note this is outside of the for loop above
         # Generate encounter points for each region
@@ -739,12 +626,7 @@ class WorldController:
             # Add to world state
             self.world_map.factions[faction.id] = faction
         
-        # 5. Generate terrain
-        self.terrain_grid = self.terrain_generator.generate_terrain()
-        self.hexes = self.terrain_generator.generate_hex_map(self.terrain_grid)
-        # location dicts not part of the object, just a temp var to simplify self.paths call
-        location_dicts = [loc.to_dict() for loc in self.world_map.locations.values()]
-        self.paths = self.path_generator.generate_paths(location_dicts, self.hexes)
+        self.paths = []
 
     def get_quests_for_location(self, location_id: str) -> List[Quest]:
         """Return all quests (active or completed) that involve this location."""
@@ -779,6 +661,12 @@ class WorldController:
         
         # Return the terrain of the closest hex
         return closest_hex.get("terrain", "plains")  # Added .get() for safety
+
+    def create_party(self, name: str, initial_members: List[str]) -> Optional[str]:
+        print(f"DEBUG: WorldController.create_party called with name={name}, members={initial_members}")
+        party_id = self.party_manager.create_party(name, initial_members)
+        print(f"DEBUG: party_manager.create_party returned {party_id}")
+        return party_id
 
     # TODO: will need to fix/replace with og_system data/methods
     def _connect_regions(self, centroids, regions, hexes):
@@ -888,7 +776,6 @@ class WorldController:
             "currentLocation": self.world_map.current_location_id,
             "hexes": hexes,
             "paths": self.paths,
-            "terrainColors": self.terrain_generator.get_terrain_colors(),
             "generation": {
                 "seed": seed,
                 "width": world_width,
@@ -912,6 +799,26 @@ class WorldController:
             for pid, p in self.campaign_state.potential_locations.items()
             if pid not in self.world_map.locations
         ]
+
+        map_data["discovered_hexes"] = [
+            {"col": h['grid_x'], "row": h['grid_y']}
+            for h in self.campaign_state.hex_grid
+            if h.get('discovered', False)
+        ]
+        map_data["party_position"] = {
+            "col": self.campaign_state.party_position[0],
+            "row": self.campaign_state.party_position[1]
+        }
+        # Include party color for the marker
+        party = None
+        if hasattr(self, 'party_manager') and self.party_manager:
+            try:
+                party = self.party_manager.parties.get(self.party_id)
+                map_data["party_color"] = party.get("color", "#FFD700") if party else "#FFD700"
+            except Exception:
+                map_data["party_color"] = "#FFD700"
+
+        map_data["hexes"] = self.campaign_state.hex_grid
         return map_data
 
     def get_current_location_data(self) -> dict:
@@ -1387,50 +1294,85 @@ class WorldController:
         # Return to world map after dungeon completion
         return True
 
-    def process_command(self, command: str) -> dict:
-        """Process command through GameEngine for phase compliance"""
-        # Try to use GameEngine if available
+    def process_command(self, input_data):
+        """Process a command (string or dict) and return response dict."""
+        if isinstance(input_data, str):
+            command = input_data
+            target_terrain = None
+        else:
+            command = input_data.get('command', '')
+            target_terrain = input_data.get('target_terrain')
+
+        # World movement: if command is a direction, handle it directly
+        if not self.dungeon_mode:
+            cmd = command.lower().strip()
+            direction_map = {
+                'n': 'n', 'north': 'n',
+                'ne': 'ne', 'northeast': 'ne',
+                'se': 'se', 'southeast': 'se',
+                's': 's', 'south': 's',
+                'sw': 'sw', 'southwest': 'sw',
+                'nw': 'nw', 'northwest': 'nw'
+            }
+            if cmd.startswith('go '):
+                cmd = cmd[3:].strip()
+            if cmd in ['e', 'east']:
+                col, row = self.campaign_state.party_position
+                if row % 2 == 0:
+                    dir = 'ne'
+                else:
+                    dir = 'se'
+            elif cmd in ['w', 'west']:
+                col, row = self.campaign_state.party_position
+                if row % 2 == 0:
+                    dir = 'nw'
+                else:
+                    dir = 'sw'
+            else:
+                dir = direction_map.get(cmd)
+            if dir:
+                result = self.move_hex(dir, terrain=target_terrain)
+                if result['success']:
+                    narrative = f"You move {dir}."
+                    return {
+                        "response": narrative,
+                        "map_data": self.get_map_data(),
+                        "location_data": self.get_current_location_data(),
+                        "success": True
+                    }
+                else:
+                    return {
+                        "response": result.get('message', f"Cannot move {dir}."),
+                        "map_data": self.get_map_data(),
+                        "success": False
+                    }
+
+        # Fallback to GameEngine (if any)
         if hasattr(self, 'game_engine') and self.game_engine:
             try:
                 print(f"↻ Processing command via GameEngine: '{command[:50]}...'")
-                
-                # Pass through GameEngine for phase-compliant processing
                 result = self.game_engine.advance(player_input=command)
-                
-                # Extract UI data from engine result
                 ui_data = result.get("ui_data", {})
-                
-                # Check for phase violations
                 violations = result.get("violations", 0)
-                if violations > 0:
-                    print(f"⚠  Phase violations detected: {violations}")
-                    # Log violations for debugging
-                    for violation in self.game_engine.get_phase_violations().get("recent_violations", []):
-                        print(f"   - {violation}")
-                
-                # Maintain backward compatibility with existing callers
                 return {
                     "response": ui_data.get("narration", "Command processed via GameEngine"),
                     "map_data": ui_data.get("map", self.get_map_data()),
                     "location_data": ui_data.get("location", self.get_current_location_data()),
-                    "engine_result": result,  # Include full result for debugging
                     "phase_compliant": True,
                     "violations": violations
                 }
-                
             except Exception as e:
                 print(f"✗ GameEngine processing failed: {e}")
-                print("  Falling back to legacy AI processing")
-                # Fall through to legacy processing
-        
-        # LEGACY PROCESSING (fallback if GameEngine fails or not available)
+                # fall through
+
+        # Legacy AI processing (if nothing else)
         print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
         if self.dungeon_ai:
             result = self.dungeon_ai.process_command(command)
         else:
             result = self.world_ai.process_command(command)
         # Assume action takes 10 minutes
-        self.campaign_state.advance_time(10) # advance time 10 minutes
+        self.campaign_state.advance_time(10)
         return result
 
     def get_game_engine_state(self) -> dict:
@@ -1592,3 +1534,103 @@ class WorldController:
         location = self.world_map.get_location(location_id)
         scene_desc = f"{location.name}: {location.description}"
         self.narrative_system.set_current_scene(scene_desc)
+
+
+    def get_available_hex_moves(self, col, row):
+        """Return list of (direction, target_hex) for passable adjacent hexes."""
+        # Flat‑top hex directions (no east/west)
+        dir_map = {
+            'n': (0, -1),
+            'ne': (1, -1),
+            'se': (1, 0),
+            's': (0, 1),
+            'sw': (-1, 1),
+            'nw': (-1, 0)
+        }
+        available = []
+        for dir_name, (dc, dr) in dir_map.items():
+            nc, nr = col + dc, row + dr
+            target = self.campaign_state.get_hex(nc, nr)
+            if target:
+                # We'll consider all hexes as potentially traversable; obstacles handled later
+                available.append((dir_name, target))
+        return available
+
+    def move_hex(self, direction, terrain=None):
+        """Move party one hex in the given direction, optionally setting hex terrain."""
+        col, row = self.campaign_state.party_position
+        dir_map = {
+            'n': (0, -1), 'ne': (1, -1), 'se': (1, 0),
+            's': (0, 1), 'sw': (-1, 1), 'nw': (-1, 0)
+        }
+        if direction not in dir_map:
+            return {"success": False, "message": f"Unknown direction: {direction}"}
+        dc, dr = dir_map[direction]
+        nc, nr = col + dc, row + dr
+        target = self.campaign_state.get_hex(nc, nr)
+        if not target:
+            return {"success": False, "message": "You cannot go that way (edge of the world)."}
+
+        # Set terrain if provided (from frontend)
+        if terrain is not None:
+            target['terrain'] = terrain
+
+        # Passability check (optional, but safe)
+        if not self._is_hex_passable(target):
+            return {
+                "success": False,
+                "blocked": True,
+                "reason": f"The {target['terrain']} blocks your path.",
+                "terrain": target['terrain']
+            }
+
+        # Move
+        self.campaign_state.party_position = (nc, nr)
+        target['discovered'] = True
+        self._reveal_hexes_around(nc, nr)
+        self.explore_hex()
+        return {"success": True, "new_hex": target}
+
+    def _is_hex_passable(self, hex):
+        """Basic passability based on terrain. Later we'll check party assets."""
+        terrain = hex['terrain']
+        # For now, water is impassable unless party has boat/swim (to be added)
+        if terrain in ('ocean', 'lake', 'river'):
+            # TODO: check party inventory for boat or other method of travel through/over/under water
+            return False
+        return True
+
+    def _find_hex_at_pixel(self, x, y):
+        """
+        Return the hex dict containing pixel (x, y), or None.
+        Uses approximate bounding box: hex width ~ hex_size * 0.75, height = hex_size.
+        """
+        for h in self.campaign_state.hex_grid:
+            # Check if (x,y) lies within the hex's bounding box
+            # Hex center is at (h['x'], h['y'])
+            if (abs(h['x'] - x) < self.campaign_state.hex_size * 0.75 and
+                abs(h['y'] - y) < self.campaign_state.hex_size):
+                return h
+        return None
+
+    def _reveal_hexes_around(self, col, row, radius=1):
+        """Mark hexes within radius as discovered."""
+        for dc in range(-radius, radius+1):
+            for dr in range(-radius, radius+1):
+                h = self.campaign_state.get_hex(col+dc, row+dr)
+                if h:
+                    h['discovered'] = True
+
+    def explore_hex(self):
+        """Mark current hex as explored and generate its POIs."""
+        hex = self.campaign_state.get_hex(*self.campaign_state.party_position)
+        if not hex:
+            return {"success": False, "message": "Not in a hex."}
+        if hex.get('explored'):
+            return {"success": True, "new_pois": []}
+        hex['explored'] = True
+        pois = self.campaign_state.get_or_generate_pois(hex)
+        new_pois = [p for p in pois if not p['discovered']]
+        for p in new_pois:
+            p['discovered'] = True
+        return {"success": True, "new_pois": new_pois}
