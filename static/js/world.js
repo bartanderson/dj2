@@ -312,6 +312,8 @@ function dilateMask(mask, radius = 1) {
     return dilated;
 }
 
+const FOREST_COLOR = '#2c5e2e';
+
 function generateTerrainImage() {
     if (!worldMap) return;
 
@@ -335,10 +337,11 @@ function generateTerrainImage() {
     // Terrain thresholds
     const thresholds = {
         low: 0.3,       // below this: lakes
-        medium: 0.5,    // between 0.3 and 0.5: oceans (with moisture)
-        plains: 0.55,
-        hills: 0.7,
-        mountains: 0.85
+        plains: 0.54,   // 0.3–0.54 is plains (but we override low to lake)
+        forest: 0.65,   // 0.54–0.65 is forest
+        hills: 0.73,    // 0.65–0.73 is hills
+        mountains: 0.85, // 0.73–0.85 is mountains
+        // above 0.85 is snowcaps
     };
 
     // ---- Step 1: Render base terrain to a temporary canvas ----
@@ -491,6 +494,21 @@ function generateTerrainImage() {
         }
     }
 
+    // ---- Paint forest on canvas (based on height and moisture) ----
+    const forestMinMoisture = 0.6;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            const m = moistureMap[y][x];
+            if (h >= thresholds.plains && h <= thresholds.forest && m > forestMinMoisture) {
+                if (!riverMask[y][x]) {
+                    tempCtx.fillStyle = FOREST_COLOR;
+                    tempCtx.fillRect(x, y, 1, 1);
+                }
+            }
+        }
+    }
+
     // ---- Step 5: Create final image (offscreen) ----
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
@@ -513,7 +531,8 @@ function generateTerrainImage() {
         '#8d99ae': 'mountains',
         '#ffffff': 'snowcaps',
         '#4a90e2': 'river',
-        '#3a80c2': 'lake'
+        '#3a80c2': 'lake',
+        [FOREST_COLOR]: 'forest'
     };
 
     function rgbToHex(r, g, b) {
@@ -603,35 +622,6 @@ function generateTerrainImage() {
             }
         }
     }
-
-    // // Lake override with coverage threshold (30%)
-    // const coverageThreshold = 0.3;
-    // for (let row = 0; row < terrainNamesGrid.length; row++) {
-    //     for (let col = 0; col < terrainNamesGrid[row].length; col++) {
-    //         const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
-    //         if (!hex) continue;
-    //         const minX = Math.max(0, Math.floor(hex.x - 30));
-    //         const maxX = Math.min(width - 1, Math.ceil(hex.x + 30));
-    //         const minY = Math.max(0, Math.floor(hex.y - 30));
-    //         const maxY = Math.min(height - 1, Math.ceil(hex.y + 30));
-    //         let lakePixelCount = 0;
-    //         let totalPixelCount = (maxX - minX + 1) * (maxY - minY + 1);
-    //         for (let yy = minY; yy <= maxY; yy++) {
-    //             for (let xx = minX; xx <= maxX; xx++) {
-    //                 if (lakeMask[yy][xx]) {
-    //                     lakePixelCount++;
-    //                 }
-    //             }
-    //         }
-    //         const coverage = lakePixelCount / totalPixelCount;
-    //         if (coverage >= coverageThreshold) {
-    //             if (terrainNamesGrid[row][col] !== 'river') {
-    //                 terrainNamesGrid[row][col] = 'lake';
-    //                 terrainColorsGrid[row][col] = '#3a80c2';
-    //             }
-    //         }
-    //     }
-    // }
 
     // ---- Step 8: Ensure starting location is on land ----
     function getNeighborHex(col, row, dir) {
