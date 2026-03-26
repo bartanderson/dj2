@@ -409,7 +409,7 @@ function generateTerrainImage() {
     }
 
     // ---- Step 3: Lake generation (pixel‑based, irregular) ----
-    const targetLakeCount = 5; // max lakes
+    const targetLakeCount = Math.floor(area / 5000); // max lakes
     const targetLakeSize = Math.floor(Math.sqrt(width * height) / 6); // pixel radius
     let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
 
@@ -461,7 +461,7 @@ function generateTerrainImage() {
     }
 
     // ---- Step 4: River generation (meandering, thin) ----
-    const targetRiverCount = Math.floor(area / 3000);
+    const targetRiverCount = Math.floor(area / 50000);
     let riverMask = Array(height).fill().map(() => Array(width).fill(false));
     const rngRiver = new Math.seedrandom(seed + 10000);
 
@@ -659,8 +659,11 @@ function generateTerrainImage() {
         for (let col = 0; col < terrainNamesGrid[row].length; col++) {
             const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
             if (hex && hexContainsMask(hex, riverMask, width, height)) {
-                terrainNamesGrid[row][col] = 'river';
-                terrainColorsGrid[row][col] = '#4a90e2';
+                // Do not override snowcaps with rivers
+                if (terrainNamesGrid[row][col] !== 'snowcaps') {
+                    terrainNamesGrid[row][col] = 'river';
+                    terrainColorsGrid[row][col] = '#4a90e2';
+                }
             }
         }
     }
