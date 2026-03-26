@@ -497,6 +497,47 @@ def terrain_test():
     return render_template('terrain_test.html')
 
 
+@app.route('/api/update-location', methods=['POST'])
+def update_location():
+    data = request.get_json()
+    loc_id = data.get('id')
+    col = data.get('col')
+    row = data.get('row')
+    x = data.get('x')
+    y = data.get('y')
+    if not loc_id or col is None or row is None:
+        return jsonify({'error': 'Missing id, col, or row'}), 400
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({'error': 'World controller not available'}), 500
+    loc = wc.world_map.get_location(loc_id)
+    if not loc:
+        return jsonify({'error': 'Location not found'}), 404
+    # Update in‑memory location
+    loc.col = col
+    loc.row = row
+    if x is not None and y is not None:
+        loc.x = x
+        loc.y = y
+
+    # Optional: persist to database
+    from world.db import Database
+    conn = Database.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE locations SET col = %s, row = %s, position[1] = %s, position[2] = %s WHERE id = %s",
+                (col, row, x, y, loc_id)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error updating location in database: {e}")
+        # Optionally roll back or log
+    finally:
+        Database.return_connection(conn)
+
+    return jsonify({'success': True})
+
 
 @app.route('/api/set-hex-terrain', methods=['POST'])
 def set_hex_terrain():

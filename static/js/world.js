@@ -317,6 +317,26 @@ function generateTerrainImage() {
 
     const width = worldMap.width;
     const height = worldMap.height;
+    const hexes = worldMap.hexes;
+    const area = width * height; 
+
+    const thresholds = {
+        ocean: 0.05,
+        coast: 0.10,
+        plains: 0.35,
+        hills: 0.65,
+        mountains: 0.85
+    };
+
+    // Helper to get neighbor hex coordinates (used for relocation)
+    function getNeighborHex(col, row, dir) {
+        const dirMap = {
+            'n': [0, -1], 'ne': [1, -1], 'se': [1, 0],
+            's': [0, 1], 'sw': [-1, 1], 'nw': [-1, 0]
+        };
+        const [dc, dr] = dirMap[dir];
+        return [col + dc, row + dr];
+    }
 
     if (typeof TerrainGenerator === 'undefined') {
         console.warn('TerrainGenerator not available');
@@ -369,16 +389,6 @@ function generateTerrainImage() {
     // Moisture map (for lakes/rivers)
     const moistureMap = generateMoistureMap(seed, width, height);
 
-    // ===== NEW THRESHOLDS (adjust to taste) =====
-    const thresholds = {
-        ocean: 0.001,      // heights below this are ocean
-        coast: 0.005,      // up to this are coast
-        plains: 0.35,     // up to this are plains
-        hills: 0.85,      // up to this are hills
-        mountains: 0.95,  // up to this are mountains
-        // above 0.85 is snowcaps (not used in classification, but we can leave it)
-    };
-
     // ---- Step 1: Render base terrain to temporary canvas ----
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = width;
@@ -389,40 +399,93 @@ function generateTerrainImage() {
     document.body.appendChild(tempCanvas);
     terrainGen.renderTerrain(terrainGen.generateTerrain(heightmap), tempId);
 
-    // ---- Step 2: Draw lakes (few, large) ----
-    const area = width * height;
-    const targetLakeCount = Math.floor(area / 5000); // ~1 lake for 80x80
-    const targetLakeSize = Math.floor(Math.sqrt(area) / 6); // radius in cells, ~13 cells
-    let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
-    let lakeSeeds = [];
+    // ---- Step 2: Lakes (pixel‑based, land only, irregular shapes) ----
+    // Build a land mask (pixels that are not ocean/coast)
+    const landMask = Array(height).fill().map(() => Array(width).fill(false));
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            const h = heightmap[y][x];
-            const m = moistureMap[y][x];
-            // Narrow range: only moist areas in the lower plains (0.2-0.4)
-            if (h >= 0.2 && h <= 0.4 && m > 0.6) {
-                lakeSeeds.push([x, y]);
+            if (heightmap[y][x] >= thresholds.coast) {
+                landMask[y][x] = true;
             }
         }
     }
-    console.log(`Lake seeds found: ${lakeSeeds.length}`);
+
+    // Build set of hexes that contain a location (to avoid placing lakes on them)
+    const locHexSet = new Set();
+    const locations = worldMap.locations || [];
+    for (let loc of locations) {
+        if (loc.col !== undefined && loc.row !== undefined) {
+            locHexSet.add(`${loc.col},${loc.row}`);
+        } else {
+            // Fallback: find hex by pixel coordinates
+            const locX = loc.x;
+            const locY = loc.y;
+            for (let hex of hexes) {
+                if (Math.abs(hex.x - locX) < 30 && Math.abs(hex.y - locY) < 30) {
+                    locHexSet.add(`${hex.grid_x},${hex.grid_y}`);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Find lake seeds (pixels on land, suitable height/moisture, and not in a location hex)
+    let lakeSeeds = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (!landMask[y][x]) continue;
+            const h = heightmap[y][x];
+            const m = moistureMap[y][x];
+            // Height range for lakes: 0.2 – 0.5 (adjust as desired)
+            if (h >= 0.2 && h <= 0.5 && m > 0.6) {
+                // Find hex containing this pixel
+                let hexFound = false;
+                for (let hex of hexes) {
+                    if (Math.abs(hex.x - x) < 30 && Math.abs(hex.y - y) < 30) {
+                        const hexKey = `${hex.grid_x},${hex.grid_y}`;
+                        if (!locHexSet.has(hexKey)) {
+                            lakeSeeds.push([x, y]);
+                        }
+                        hexFound = true;
+                        break;
+                    }
+                }
+                if (!hexFound) {
+                    // Fallback: allow seed if no hex found (should not happen)
+                    lakeSeeds.push([x, y]);
+                }
+            }
+        }
+    }
+    console.log(`Found ${lakeSeeds.length} lake seeds`);
+
+    // Shuffle seeds
     for (let i = lakeSeeds.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [lakeSeeds[i], lakeSeeds[j]] = [lakeSeeds[j], lakeSeeds[i]];
     }
-    const rngLake = new Math.seedrandom(seed + 5000);
-    for (let i = 0; i < Math.min(targetLakeCount, lakeSeeds.length); i++) {
-        const [sx, sy] = lakeSeeds[i];
+
+    // Limit number of lakes (e.g., up to 5)
+    const maxLakes = 5;
+    const selectedSeeds = lakeSeeds.slice(0, maxLakes);
+
+    // Lake size (pixel radius)
+    const targetLakeSize = Math.floor(Math.sqrt(width * height) / 6); // ~13 cells for 80x80
+    let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
+
+    for (let i = 0; i < selectedSeeds.length; i++) {
+        const [sx, sy] = selectedSeeds[i];
         if (lakeMask[sy][sx]) continue;
-        const sizeVariation = 0.5 + rngLake() * 0.5;
+        const sizeVariation = 0.5 + Math.random() * 0.5;
         const thisSize = Math.floor(targetLakeSize * sizeVariation);
-        lakeMask = growLake(lakeMask, heightmap, moistureMap, thresholds, seed + 5000 + i, sx, sy, thisSize);
+        lakeMask = growLake(lakeMask, heightmap, moistureMap, thresholds, seed + 5000 + i, sx, sy, thisSize, landMask);
     }
-    // Draw lakes
+
+    // Draw lakes on the temporary canvas
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (lakeMask[y][x]) {
-                tempCtx.fillStyle = '#ff1122';
+                tempCtx.fillStyle = '#3a80c2'; // lake blue
                 tempCtx.fillRect(x, y, 1, 1);
             }
         }
@@ -490,7 +553,7 @@ function generateTerrainImage() {
             path.push([x, y]);
 
             const h = heightmap[y][x];
-            if (h < thresholds.ocean || lakeMask[y][x]) break;
+            if (h < thresholds.ocean) break; // stop at ocean only
 
             // Collect lower neighbors
             const neighbors = [];
@@ -547,21 +610,48 @@ function generateTerrainImage() {
             }
         }
     }
-    let lakeCount = lakeMask.flat().filter(v => v).length;
-    let riverCount = riverMask.flat().filter(v => v).length;
-    console.log(`Lake pixels drawn: ${lakeCount}, River pixels drawn: ${riverCount}`);
 
-    // ---- Step 4: Create final image ----
+    // ---- Lake override (mark hexes containing lake pixels) ----
+    const terrainNamesGrid = [];
+    const terrainColorsGrid = [];
     const offscreen = document.createElement('canvas');
     offscreen.width = width;
     offscreen.height = height;
     const offCtx = offscreen.getContext('2d');
+    const imageData = offCtx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    for (let row = 0; row < terrainNamesGrid.length; row++) {
+        for (let col = 0; col < terrainNamesGrid[row].length; col++) {
+            const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
+            if (!hex) continue;
+            const minX = Math.max(0, Math.floor(hex.x - 30));
+            const maxX = Math.min(width - 1, Math.ceil(hex.x + 30));
+            const minY = Math.max(0, Math.floor(hex.y - 30));
+            const maxY = Math.min(height - 1, Math.ceil(hex.y + 30));
+            let isLake = false;
+            for (let yy = minY; yy <= maxY && !isLake; yy++) {
+                for (let xx = minX; xx <= maxX && !isLake; xx++) {
+                    if (lakeMask[yy][xx]) {
+                        isLake = true;
+                        break;
+                    }
+                }
+            }
+            if (isLake) {
+                terrainNamesGrid[row][col] = 'lake';
+                terrainColorsGrid[row][col] = '#3a80c2';
+            }
+        }
+    }
+
+    // ---- Step 4: Create final image ----
+
     offCtx.drawImage(tempCanvas, 0, 0);
     document.body.removeChild(tempCanvas);
     terrainImage = offscreen;
 
     // ---- Step 5: Sample hex centers to get base terrain ----
-    const hexes = worldMap.hexes;
     if (!hexes) return;
 
     const colorToTerrain = {
@@ -597,11 +687,6 @@ function generateTerrainImage() {
         }
         return best || 'plains';
     }
-
-    const terrainNamesGrid = [];
-    const terrainColorsGrid = [];
-    const imageData = offCtx.getImageData(0, 0, width, height);
-    const data = imageData.data;
 
     // First, sample centers to fill grids
     hexes.forEach(hex => {
@@ -651,6 +736,78 @@ function generateTerrainImage() {
         }
     }
 
+
+    // ===== ENSURE STARTING LOCATION IS ON LAND =====
+    if (worldMap.starting_location_id) {
+        const startLoc = worldMap.locations.find(l => l.id === worldMap.starting_location_id);
+        if (startLoc) {
+            let startHex = null;
+            if (startLoc.col !== undefined && startLoc.row !== undefined) {
+                startHex = hexes.find(h => h.grid_x === startLoc.col && h.grid_y === startLoc.row);
+            } else {
+                for (let hex of hexes) {
+                    if (Math.abs(hex.x - startLoc.x) < 30 && Math.abs(hex.y - startLoc.y) < 30) {
+                        startHex = hex;
+                        break;
+                    }
+                }
+            }
+            if (startHex) {
+                const terrain = terrainNamesGrid[startHex.grid_y]?.[startHex.grid_x];
+                if (terrain === 'ocean' || terrain === 'coast' || terrain === 'lake' || terrain === 'river') {
+                    const queue = [startHex];
+                    const visited = new Set();
+                    visited.add(`${startHex.grid_x},${startHex.grid_y}`);
+                    let newHex = null;
+                    while (queue.length > 0 && !newHex) {
+                        const current = queue.shift();
+                        const curTerrain = terrainNamesGrid[current.grid_y]?.[current.grid_x];
+                        if (curTerrain && !['ocean','coast','lake','river'].includes(curTerrain)) {
+                            newHex = current;
+                            break;
+                        }
+                        const dirs = ['n','ne','se','s','sw','nw'];
+                        for (let d of dirs) {
+                            const [nc, nr] = getNeighborHex(current.grid_x, current.grid_y, d);
+                            const nKey = `${nc},${nr}`;
+                            if (visited.has(nKey)) continue;
+                            const nHex = hexes.find(h => h.grid_x === nc && h.grid_y === nr);
+                            if (nHex) {
+                                visited.add(nKey);
+                                queue.push(nHex);
+                            }
+                        }
+                    }
+                    if (newHex) {
+                        startLoc.col = newHex.grid_x;
+                        startLoc.row = newHex.grid_y;
+                        startLoc.x = newHex.x;
+                        startLoc.y = newHex.y;
+                        worldMap.party_position = { col: newHex.grid_x, row: newHex.grid_y };
+                        if (typeof locationHexSet !== 'undefined') locationHexSet.add(`${newHex.grid_x},${newHex.grid_y}`);
+                        console.log(`Moved starting location from (${startHex.grid_x},${startHex.grid_y}) to (${newHex.grid_x},${newHex.grid_y})`);
+
+                        fetch('/api/update-location', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                id: startLoc.id,
+                                col: newHex.grid_x,
+                                row: newHex.grid_y,
+                                x: newHex.x,
+                                y: newHex.y
+                            })
+                        }).catch(e => console.warn('Failed to update location on backend:', e));
+                    } else {
+                        console.warn('No land hex found near starting location!');
+                    }
+                }
+            } else {
+                console.warn('Starting location not found in any hex');
+            }
+        }
+    }
+
     // Store final grids
     worldMap.terrain_grid = terrainNamesGrid;
     worldMap.terrain_colors_grid = terrainColorsGrid;
@@ -678,7 +835,7 @@ function generateMoistureMap(seed, width, height) {
 }
 
 // ----- Flood‑fill lake generation (natural shapes) -----
-function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY, targetSize) {
+function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY, targetSize, landMask) {
     const rows = heightmap.length;
     const cols = heightmap[0].length;
     const queue = [[startX, startY]];
@@ -696,12 +853,14 @@ function growLake(mask, heightmap, moistureMap, thresholds, seed, startX, startY
                 const nx = x + dx;
                 const ny = y + dy;
                 if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !mask[ny][nx] && !visited.has(`${nx},${ny}`)) {
-                    const h = heightmap[ny][nx];
-                    const m = moistureMap[ny][nx];
-                    if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
-                        if (rng() < 0.7) {  // fixed: use rng() not rng.random()
-                            visited.add(`${nx},${ny}`);
-                            queue.push([nx, ny]);
+                    if (landMask[ny][nx]) {
+                        const h = heightmap[ny][nx];
+                        const m = moistureMap[ny][nx];
+                        if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+                            if (rng() < 0.7) {
+                                visited.add(`${nx},${ny}`);
+                                queue.push([nx, ny]);
+                            }
                         }
                     }
                 }
