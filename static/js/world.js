@@ -371,11 +371,11 @@ function generateTerrainImage() {
 
     // ===== NEW THRESHOLDS (adjust to taste) =====
     const thresholds = {
-        ocean: 0.05,      // heights below this are ocean
-        coast: 0.10,      // up to this are coast
+        ocean: 0.001,      // heights below this are ocean
+        coast: 0.005,      // up to this are coast
         plains: 0.35,     // up to this are plains
-        hills: 0.65,      // up to this are hills
-        mountains: 0.85,  // up to this are mountains
+        hills: 0.85,      // up to this are hills
+        mountains: 0.95,  // up to this are mountains
         // above 0.85 is snowcaps (not used in classification, but we can leave it)
     };
 
@@ -389,23 +389,23 @@ function generateTerrainImage() {
     document.body.appendChild(tempCanvas);
     terrainGen.renderTerrain(terrainGen.generateTerrain(heightmap), tempId);
 
-    // ---- Step 2: Draw lakes (pixel-wise) ----
+    // ---- Step 2: Draw lakes (few, large) ----
     const area = width * height;
-    // Make lakes more numerous and larger
-    const targetLakeCount = Math.floor(area / 2000); // e.g., ~3 lakes for 80x80
-    const targetLakeSize = Math.floor(Math.sqrt(area) / 10); // larger lakes
+    const targetLakeCount = Math.floor(area / 5000); // ~1 lake for 80x80
+    const targetLakeSize = Math.floor(Math.sqrt(area) / 6); // radius in cells, ~13 cells
     let lakeMask = Array(height).fill().map(() => Array(width).fill(false));
     let lakeSeeds = [];
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const h = heightmap[y][x];
             const m = moistureMap[y][x];
-            // FIX: use >=, not =
-            if (h >= thresholds.ocean && h <= thresholds.plains && m > 0.6) {
+            // Narrow range: only moist areas in the lower plains (0.2-0.4)
+            if (h >= 0.2 && h <= 0.4 && m > 0.6) {
                 lakeSeeds.push([x, y]);
             }
         }
     }
+    console.log(`Lake seeds found: ${lakeSeeds.length}`);
     for (let i = lakeSeeds.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [lakeSeeds[i], lakeSeeds[j]] = [lakeSeeds[j], lakeSeeds[i]];
@@ -422,7 +422,7 @@ function generateTerrainImage() {
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             if (lakeMask[y][x]) {
-                tempCtx.fillStyle = '#3a80c2'; // distinct lake color
+                tempCtx.fillStyle = '#ff1122';
                 tempCtx.fillRect(x, y, 1, 1);
             }
         }
@@ -547,6 +547,9 @@ function generateTerrainImage() {
             }
         }
     }
+    let lakeCount = lakeMask.flat().filter(v => v).length;
+    let riverCount = riverMask.flat().filter(v => v).length;
+    console.log(`Lake pixels drawn: ${lakeCount}, River pixels drawn: ${riverCount}`);
 
     // ---- Step 4: Create final image ----
     const offscreen = document.createElement('canvas');
@@ -569,7 +572,7 @@ function generateTerrainImage() {
         '#8d99ae': 'mountains',
         '#ffffff': 'snowcaps',
         '#4a90e2': 'river',   // rivers
-        '#3a80c2': 'lake'      // lakes
+        '#ff1122': 'lake'      // lakes
     };
 
     function rgbToHex(r, g, b) {
