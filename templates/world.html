@@ -154,6 +154,10 @@ function switchToDungeon() {
     const locationId = window.worldState?.currentLocation?.id;
     const characters = getCurrentPartyCharacters();
     
+    console.log("partyId:", partyId);
+    console.log("locationId:", locationId);
+    console.log("characters:", characters);
+
     if (!partyId) {
         addToChatLog("You need to be in a party to enter a dungeon.", 'error');
         return;
@@ -715,12 +719,14 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
                 </div>
                 <div id="game-date" class="game-date" 
-                     hx-get="/api/game/date" 
+                     hx-get="/api/game/date"
+                     hx-trigger="load"  
                      hx-swap="innerHTML">
                     <!-- Date will be loaded here -->
                 </div>
                 <div id="player-name" class="player-name" 
-                     hx-get="/api/player/name" 
+                     hx-get="/api/player/name"
+                     hx-trigger="load"  
                      hx-swap="innerHTML">
                     Loading...
                 </div>
