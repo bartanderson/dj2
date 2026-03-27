@@ -118,6 +118,30 @@ function addWorldMessage(text) {
     }
 }
 
+async function enterDungeon() {
+    try {
+        const response = await fetch('/api/enter-dungeon', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            // Switch to dungeon mode
+            document.body.setAttribute('data-mode', 'dungeon');
+            document.getElementById('current-mode').textContent = 'dungeon';
+            document.getElementById('enter-dungeon').style.display = 'none';
+            document.getElementById('return-world').style.display = 'inline-block';
+            addWorldMessage(data.message || "You enter the dungeon.");
+            // Trigger dungeon UI initialization
+            // if (typeof initDungeonUI === 'function') {
+            //     initDungeonUI();
+            // }
+        } else {
+            addWorldMessage(data.message || "Cannot enter dungeon.");
+        }
+    } catch (error) {
+        console.error('Enter dungeon error:', error);
+        addWorldMessage("Error entering dungeon.");
+    }
+}
+
 // async function sendWorldCommand(command) {
 //     try {
 //         const response = await fetch('/api/command', {

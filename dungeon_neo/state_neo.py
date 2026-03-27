@@ -65,7 +65,14 @@ class DungeonStateNeo:
         # Initialize visibility system
         self.visibility_system = None # Will be set later
         self.movement = None # Will be set later
+        # Add party member tracking
+        self.party_member_ids = []   # list of character IDs
 
+    def set_party_members(self, member_ids):
+        """Set the party members in this dungeon."""
+        self.party_member_ids = member_ids
+        print(f"[Dungeon] Party set with {len(member_ids)} members: {member_ids}")
+        
     def save_debug_grid(self, filename="dungeon_debug.txt", show_blocking=True, show_types=False):
         """
         Save text-based grid representation to file

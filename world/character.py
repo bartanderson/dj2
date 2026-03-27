@@ -1,5 +1,5 @@
 
-# og_character.py - standalone Character class using OG System data
+# character.py - standalone Character class using OG System data
 """
 OG System Character class - replaces dnd_character dependency.
 Standalone implementation using OG System attributes and mechanics.

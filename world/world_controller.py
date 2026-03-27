@@ -298,7 +298,14 @@ class WorldController:
 
         # Finally, create DMChatHandler (needs consequence_engine, which is now available)
         self.dm_chat_handler = DMChatHandler(self)
-        self.dungeon_mode = False
+
+        # Dungeon integration now
+        self.current_dungeon = None           # Will hold DungeonSystem instance
+        self.current_dungeon_location_id = None   # Which world location we're in
+        
+        # Ensure dungeon_mode exists (it may already be set elsewhere)
+        if not hasattr(self, 'dungeon_mode'):
+            self.dungeon_mode = False
 
         print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
@@ -412,8 +419,9 @@ class WorldController:
                 points = self._generate_encounter_points_for_region(region_id, region_hexes, self.rng)
                 region.encounter_points.update(points)
 
-        print(f"[WORLD] Generated {len(regions)} regions, {len(self.campaign_state.potential_locations)} potential locations")
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
+        print(f"[WORLD] Surface regions: {len(self.campaign_state.surface_regions)} regions")
+        print(f"[WORLD] Potential locations: {len(self.campaign_state.potential_locations)} potential locations")
         print(f"[ENCOUNTER] Generated {sum(len(r.encounter_points) for r in self.campaign_state.surface_regions.values())} encounter points.")
 
     def test_generate_random_encounter(self):
@@ -1264,35 +1272,81 @@ class WorldController:
         
         return paths
 
-    def enter_dungeon(self) -> bool:
-        """Enter dungeon at current location"""
-        if not self.current_location or not self.current_location.dungeon_type:
-            return False
+    def exit_dungeon(self) -> dict:
+        """
+        Exit the current dungeon and return to world mode.
+        Returns dict with success, message, and updated world state.
+        """
+        if not self.dungeon_mode:
+            return {"success": False, "message": "Not in a dungeon"}
         
-        # Initialize dungeon AI with current state
-        self.dungeon_ai = DungeonAI(dungeon_state=self)
+        # Advance world time (10 minutes per dungeon turn, we'll use 1 hour for exit)
+        self.campaign_state.advance_time(60)
         
-        # Generate dungeon based on location properties
-        dungeon_type = self.current_location.dungeon_type
-        dungeon_level = self.current_location.dungeon_level
+        # Store dungeon state for later re-entry (in memory only)
+        # The dungeon stays in current_dungeon for re-entry
         
-        # Placeholder for actual dungeon generation
-        print(f"Generating {dungeon_type} dungeon (Level {dungeon_level})")
-
-        # # Transfer party
-        # party = self.party_system.get_active_party()
-        # dungeon.set_party(party)
+        # Switch to world mode
+        self.dungeon_mode = False
         
-        # # Set game state
-        # self.game_state.set_mode('dungeon')
-        # self.game_state.current_dungeon = dungeon
-        # self.game_state.dungeon_location = location_id
+        # Get the entrance location
+        location = self.world_map.get_location(self.current_dungeon_location_id)
+        location_name = location.name if location else "the dungeon"
         
-        # # Narrative trigger
-        # self.narrative.on_dungeon_enter(location)
+        return {
+            "success": True,
+            "message": f"You emerge from {location_name}.",
+            "dungeon_mode": False
+        }
+    
+    def enter_dungeon(self) -> dict:
+        """Enter dungeon at current location."""
+        if not self.current_location:
+            return {"success": False, "message": "Not at a location"}
         
-        # Return to world map after dungeon completion
-        return True
+        if not self.current_location.dungeon_type:
+            return {"success": False, "message": f"{self.current_location.name} has no dungeon"}
+        
+        # Check if we already have a dungeon for this location
+        if self.current_dungeon and self.current_dungeon_location_id == self.current_location.id:
+            self.dungeon_mode = True
+            return {
+                "success": True,
+                "message": f"You re-enter {self.current_location.name}'s dungeon.",
+                "dungeon_ready": True
+            }
+        
+        # Create new dungeon
+        from core.dungeon import DungeonSystem
+        self.current_dungeon = DungeonSystem(enable_ai=True)
+        
+        # Generate dungeon with location's type
+        dungeon_type = self.current_location.dungeon_type or "cave"
+        if not self.current_dungeon.generate(dungeon_type):
+            self.current_dungeon = None
+            return {"success": False, "message": "Failed to generate dungeon"}
+        
+        # Store reference
+        self.current_dungeon_location_id = self.current_location.id
+        self.dungeon_mode = True
+        
+        # Get party members for this location
+        party_members = []
+        # Try to get party from any character with a non-default party
+        for char in self.character_manager.characters.values():
+            if char.party_id and char.party_id != "main_party":
+                party_members = self.party_manager.get_party_members(char.party_id)
+                break
+        
+        # Set party members in dungeon state
+        if self.current_dungeon and self.current_dungeon.state:
+            self.current_dungeon.state.set_party_members(party_members)
+        
+        return {
+            "success": True,
+            "message": f"You descend into {self.current_location.name}'s {dungeon_type}.",
+            "dungeon_ready": True
+        }
 
     def process_command(self, input_data):
         """Process a command (string or dict) and return response dict."""

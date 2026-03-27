@@ -134,19 +134,6 @@ def debug_connectivity():
         "results": results,
         "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
     })
-
-<<<<<<< HEAD
-@app.route('/api/character/<character_id>')
-def get_character(character_id):
-    wc = current_app.config.get('WORLD_CONTROLLER')
-    if not wc:
-        return jsonify({"error": "World controller not available"}), 500
-    character = wc.character_manager.get_character(character_id)
-    if not character:
-        return jsonify({"error": "Character not found"}), 404
-    return jsonify(character.to_dict())
-=======
->>>>>>> phase3-clean
     
 class DungeonHTTPClient:
     def __init__(self, base_url="http://localhost:5005"):
@@ -896,13 +883,8 @@ def retry_failed_images():
         # Update character avatars
         updated_characters = []
         for char_id in successes:
-<<<<<<< HEAD
-            if char_id in world_controller.characters:
-                current_app.world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
-=======
             if char_id in current_app.world_controller.characters:
                 world_controller.characters[char_id].avatar_url = f"/static/character_avatars/{successes[char_id]}"
->>>>>>> phase3-clean
                 updated_characters.append(char_id)
         
         return jsonify({
@@ -1408,20 +1390,15 @@ def backstory_continue(character_id):
 
     # If session finished, remove it
     if result['new_state'] is None:
-<<<<<<< HEAD
-        # Transfer backstory data to character object
-        character = current_app.world_controller.character_manager.get_character(character_id)
-        if character:
-            character.backstory = session_state.get('backstory', {})
-=======
+
         # Save backstory to character
         character = current_app.world_controller.character_manager.get_character(character_id)
         if character:
             backstory_data = session_state.get('backstory', {})
             print(f"DEBUG: Saving backstory for {character_id}: {backstory_data}")
             character.backstory = backstory_data
->>>>>>> phase3-clean
             current_app.world_controller.character_manager._save_character_to_db(character)
+
         del narrative.backstory_sessions[character_id]
         # Tell client to reload page to show updated backstory
         return jsonify({"responses": responses, "reload": True})
@@ -1439,14 +1416,10 @@ def build_connections(character_id):
 # ===== World Navigation Endpoints =====
 @app.route('/api/travel/<location_id>', methods=['POST'])
 def travel_to(location_id):
-<<<<<<< HEAD
     wc = current_app.world_controller
     if wc is None:
         return jsonify({"error": "World controller not initialized"}), 500
     success = wc.travel_to_location(location_id)
-=======
-    success = current_app.world_controller.travel_to_location(location_id)
->>>>>>> phase3-clean
     return jsonify({
         "success": success,
         "location": wc.get_current_location_data()
@@ -1462,15 +1435,20 @@ def enter_dungeon():
     success = current_app.world_controller.enter_dungeon()
     return jsonify({"success": success})
 
+@app.route('/api/exit-dungeon', methods=['POST'])
+def exit_dungeon():
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({"error": "World controller not available"}), 500
+    result = wc.exit_dungeon()
+    return jsonify(result)
+
 # ===== Party Management Endpoints =====
 @app.route('/api/create-party', methods=['POST'])
 def create_party():
     print(">>> /api/create-party called")
     data = request.json
-<<<<<<< HEAD
     print(">>> data:", data)
-=======
->>>>>>> phase3-clean
     wc = current_app.world_controller
     if wc is None:
         return jsonify({"error": "World controller not initialized"}), 500
@@ -1478,11 +1456,8 @@ def create_party():
         name=data.get('name', 'New Party'),
         initial_members=data.get('members', [])
     )
-<<<<<<< HEAD
-    print(">>> party_id:", party_id)
-=======
     print(f"DEBUG: create_party returned party_id = {party_id}")
->>>>>>> phase3-clean
+
     return jsonify({"success": True, "party_id": party_id})
 
 @app.route('/api/move-character', methods=['POST'])
@@ -2354,10 +2329,5 @@ def create_player():
 if __name__ == '__main__':
     # Only initialize when not in reloader
     if not os.environ.get('WERKZEUG_RUN_MAIN'):
-<<<<<<< HEAD
         initialize_app()  # It already sets app.world_controller and app.game_engine
-=======
-        initialize_app()
->>>>>>> phase3-clean
-    
     socketio.run(app, debug=True, host="0.0.0.0", port=5000, use_reloader=False) 
