@@ -5,6 +5,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import uuid
 import logging
+import json
 
 # Global dungeon cache
 DUNGEON_CACHE = {}
@@ -12,6 +13,9 @@ DUNGEON_CACHE = {}
 app = Flask(__name__)
 app.secret_key = 'dungeon_secret_key'
 app.campaign = TestCampaign()
+
+# In-memory dungeon storage
+dungeon_states = {}  # location_id -> dungeon
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -199,6 +203,119 @@ def reset_dungeon():
         message="Dungeon reset" if success else "Reset failed"
     )
 
+@app.route('/api/dungeon/enter', methods=['POST'])
+def dungeon_enter():
+    """Receive party snapshot from world server."""
+    data = request.get_json()
+    party_id = data.get('party_id')
+    location_id = data.get('location_id')
+    characters = data.get('characters', [])
+    world_url = data.get('world_url', 'http://localhost:5000')
+    
+    print(f"[Dungeon] Enter request: party={party_id}, location={location_id}, characters={len(characters)}")
+    
+    # Get or create dungeon state for this location
+    dungeon = dungeon_states.get(location_id)
+    if not dungeon:
+        print(f"[Dungeon] Creating new dungeon for location {location_id}")
+        dungeon = DungeonSystem(enable_ai=True)
+        success = dungeon.generate()
+        if not success:
+            return jsonify({"success": False, "message": "Failed to generate dungeon"})
+        dungeon.location_id = location_id
+        dungeon_states[location_id] = dungeon
+    
+    # Add party to dungeon
+    dungeon.state.add_party(party_id, characters)
+    
+    # Store world URL for callbacks
+    dungeon.world_url = world_url
+    
+    return jsonify({
+        "success": True,
+        "dungeon_id": location_id,
+        "message": f"Party entered dungeon. {len(dungeon.state.parties)} party(s) now inside."
+    })
+
+@app.route('/api/dungeon/exit', methods=['POST'])
+def dungeon_exit():
+    """Party exits dungeon. Send updates back to world."""
+    data = request.get_json()
+    party_id = data.get('party_id')
+    exiting_character_ids = data.get('exiting_character_ids', [])
+    all_characters = data.get('all_characters', False)
+    
+    print(f"[Dungeon] Exit request: party={party_id}, exiting={len(exiting_character_ids)}, all={all_characters}")
+    
+    # Find which dungeon this party is in
+    dungeon = None
+    location_id = None
+    for loc_id, d in dungeon_states.items():
+        if party_id in d.state.parties:
+            dungeon = d
+            location_id = loc_id
+            break
+    
+    if not dungeon:
+        return jsonify({"success": False, "message": "Party not found in any dungeon"}), 404
+    
+    party = dungeon.state.get_party(party_id)
+    if not party:
+        return jsonify({"success": False, "message": "Party not found"}), 404
+    
+    # Determine which characters are exiting
+    if all_characters:
+        exiting_characters = party["characters"]
+        remaining_characters = []
+    else:
+        exiting_characters = [c for c in party["characters"] if c.get("id") in exiting_character_ids]
+        remaining_characters = [c for c in party["characters"] if c.get("id") not in exiting_character_ids]
+    
+    # Calculate elapsed time
+    elapsed = getattr(dungeon, 'elapsed_minutes', 0)
+    
+    # Send exiting characters back to world
+    if exiting_characters:
+        import requests
+        try:
+            world_response = requests.post(
+                f"{dungeon.world_url}/api/dungeon/exit",
+                json={
+                    "party_id": party_id,
+                    "characters": exiting_characters,
+                    "elapsed_minutes": elapsed,
+                    "partial_exit": len(remaining_characters) > 0,
+                    "remaining_characters": [c["id"] for c in remaining_characters]
+                },
+                timeout=5
+            )
+            print(f"[Dungeon] World response: {world_response.status_code}")
+        except Exception as e:
+            print(f"[Dungeon] Error calling world: {e}")
+    
+    # Update dungeon state
+    if remaining_characters:
+        # Update party with remaining characters
+        party["characters"] = remaining_characters
+        dungeon.state.parties[party_id] = party
+        print(f"[Dungeon] Party {party_id} now has {len(remaining_characters)} characters")
+    else:
+        # Remove party from dungeon
+        del dungeon.state.parties[party_id]
+        if hasattr(dungeon.state, 'party_positions') and party_id in dungeon.state.party_positions:
+            del dungeon.state.party_positions[party_id]
+        print(f"[Dungeon] Party {party_id} removed from dungeon")
+    
+    # If no parties left, unload dungeon state
+    if not dungeon.state.parties:
+        print(f"[Dungeon] No parties left in dungeon {location_id}, unloading")
+        del dungeon_states[location_id]
+    
+    return jsonify({
+        "success": True,
+        "message": f"{len(exiting_characters)} character(s) exited. {len(remaining_characters)} remain in dungeon."
+    })
+    
 # ---------- HELPER FUNCTIONS ----------
 def serve_pil_image(pil_img):
     img_io = BytesIO()

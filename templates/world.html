@@ -167,7 +167,7 @@ function switchToWorld() {
         }
         
         // Refresh world map
-        if (typeof renderWorldMap === 'function' && window.worldState) {
+        if (typeof redraw  === 'function' && window.worldState) {
             setTimeout(() => renderWorldMap(window.worldState.worldMap), 100);
         }
         

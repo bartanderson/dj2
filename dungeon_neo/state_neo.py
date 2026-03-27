@@ -67,6 +67,47 @@ class DungeonStateNeo:
         self.movement = None # Will be set later
         # Add party member tracking
         self.party_member_ids = []   # list of character IDs
+        # Party tracking
+        self.parties = {}  # party_id -> {"characters": [char_ids], "position": (x,y), "in_dungeon": True}
+        self.next_party_id = 0
+
+
+    def add_party(self, party_id: str, characters: List[dict], start_position: tuple = None):
+        """Add a party to the dungeon."""
+        self.parties[party_id] = {
+            "characters": characters,
+            "position": start_position or self._get_entry_position(),
+            "in_dungeon": True
+        }
+        # If this is the first party, also set the primary party position for movement
+        if len(self.parties) == 1:
+            self.party_position = self.parties[party_id]["position"]
+
+    def get_party(self, party_id: str):
+        """Get party data."""
+        return self.parties.get(party_id)
+
+    def get_parties_in_cell(self, x, y):
+        """Return all parties currently in a given cell."""
+        return [pid for pid, party in self.parties.items() if party["position"] == (x, y)]
+
+    def move_party(self, party_id: str, direction: str, steps: int = 1) -> dict:
+        """Move a specific party."""
+        party = self.parties.get(party_id)
+        if not party:
+            return {"success": False, "message": "Party not found"}
+        
+        # After movement, check for other parties
+        new_x, new_y = result['new_position']
+        other_parties = self.state.get_parties_in_cell(new_x, new_y)
+        
+        if len(other_parties) > 1:
+            # Multiple parties in same cell
+            result['other_parties'] = other_parties
+            result['message'] += " You see another adventuring party here."
+        
+        return result
+
 
     def set_party_members(self, member_ids):
         """Set the party members in this dungeon."""
