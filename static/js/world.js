@@ -10,6 +10,24 @@ let worldState = {
 };
 let terrainImage = null; // will hold the terrain as an Image or offscreen canvas
 let fogOpacity = 1.0;
+window.currentPartyId = null;  // Will be set when player joins/creates party
+window.currentLocationId = null;  // Will be set from world state
+
+// After worldState is loaded, set currentPartyId from player's party
+if (worldState.parties && worldState.parties.length > 0) {
+    // Find party that contains the active character
+    const activeCharId = worldState.activeCharacterId;
+    if (activeCharId) {
+        const playerParty = worldState.parties.find(p => p.members.includes(activeCharId));
+        if (playerParty) {
+            window.currentPartyId = playerParty.id;
+        }
+    }
+    // Fallback to first party
+    if (!window.currentPartyId && worldState.parties[0]) {
+        window.currentPartyId = worldState.parties[0].id;
+    }
+}
 
 // ===== LOCATION PREVIEW =====
 class LocationPreview {
@@ -88,6 +106,31 @@ class LocationPreview {
 }
 
 const locationPreview = new LocationPreview();
+
+function getCurrentPartyCharacters() {
+    // Get the active party from world state
+    const activeParty = worldState.parties.find(p => p.id === window.currentPartyId);
+    if (!activeParty) return [];
+    
+    return activeParty.members.map(charId => {
+        const char = worldState.characters[charId];
+        if (!char) return null;
+        return {
+            id: char.id,
+            name: char.name,
+            race: char.race,
+            class: char.class,
+            hp: char.hp,
+            max_hp: char.max_hp,
+            sp: char.sp,
+            max_sp: char.max_sp,
+            conditions: char.conditions || [],
+            inventory: char.inventory || [],
+            skills: char.skills || {},
+            attributes: char.attributes || {}
+        };
+    }).filter(c => c !== null);
+}
 
 function addWorldChatMessage(text, sender = 'system') {
     const chatDiv = document.getElementById('world-chat-messages');

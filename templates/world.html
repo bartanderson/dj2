@@ -106,29 +106,102 @@ function updateDungeonMap() {
     map.src = `http://localhost:5005/dungeon-image?t=${now}`;
 }
 
+// function switchToDungeon() {
+//     // Call world controller to enter dungeon
+//     fetch('/api/enter-dungeon', { method: 'POST' })
+//     .then(response => response.json())
+//     .then(data => {
+//         if (data.success) {
+//             // Set game engine mode to dungeon
+//             return fetch('/api/engine/mode', {
+//                 method: 'POST',
+//                 headers: {'Content-Type': 'application/json'},
+//                 body: JSON.stringify({mode: 'dungeon'})
+//             }).then(() => data);
+//         } else {
+//             throw new Error(data.message || "Cannot enter dungeon");
+//         }
+//     })
+//     .then((data) => {
+//         updateUIForMode('dungeon');
+        
+//         // Add entry narrative to dungeon chat
+//         if (data.message && typeof addToChatLog === 'function') {
+//             addToChatLog(data.message, 'system');
+//         }
+        
+//         // Initialize dungeon display
+//         if (typeof refreshDungeonImage === 'function') {
+//             refreshDungeonImage();
+//         }
+//         if (typeof updateDungeonPosition === 'function') {
+//             updateDungeonPosition();
+//         }
+//     })
+//     .catch(error => {
+//         console.error("Enter dungeon error:", error);
+//         if (typeof addToChatLog === 'function') {
+//             addToChatLog(error.message || "Error entering dungeon.", 'error');
+//         }
+//     });
+// }
+
 function switchToDungeon() {
-    // Call world controller to enter dungeon
+    console.log("Entering dungeon...");
+    
+    // Get current party info
+    const partyId = window.currentPartyId;
+    const locationId = window.worldState?.currentLocation?.id;
+    const characters = getCurrentPartyCharacters();
+    
+    if (!partyId) {
+        addToChatLog("You need to be in a party to enter a dungeon.", 'error');
+        return;
+    }
+    
+    if (!locationId) {
+        addToChatLog("Not at a valid location.", 'error');
+        return;
+    }
+    
+    // Step 1: Tell world server we're entering
     fetch('/api/enter-dungeon', { method: 'POST' })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            // Set game engine mode to dungeon
-            return fetch('/api/engine/mode', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({mode: 'dungeon'})
-            }).then(() => data);
-        } else {
+        if (!data.success) {
             throw new Error(data.message || "Cannot enter dungeon");
         }
+        
+        // Step 2: Tell dungeon server to create party instance
+        const partyData = {
+            party_id: partyId,
+            location_id: locationId,
+            characters: characters,
+            world_url: window.location.origin
+        };
+        
+        return fetch('http://localhost:5005/api/dungeon/enter', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(partyData)
+        });
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            throw new Error(data.message || "Failed to create dungeon instance");
+        }
+        
+        // Step 3: Switch UI to dungeon mode
+        return fetch('/api/engine/mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mode: 'dungeon'})
+        }).then(() => data);
     })
     .then((data) => {
         updateUIForMode('dungeon');
-        
-        // Add entry narrative to dungeon chat
-        if (data.message && typeof addToChatLog === 'function') {
-            addToChatLog(data.message, 'system');
-        }
+        addToChatLog(data.message || "Entered dungeon.", 'system');
         
         // Initialize dungeon display
         if (typeof refreshDungeonImage === 'function') {
@@ -140,18 +213,88 @@ function switchToDungeon() {
     })
     .catch(error => {
         console.error("Enter dungeon error:", error);
-        if (typeof addToChatLog === 'function') {
-            addToChatLog(error.message || "Error entering dungeon.", 'error');
-        }
+        addToChatLog(error.message, 'error');
     });
 }
 
+// function switchToWorld() {
+//     // Call world controller to exit dungeon
+//     fetch('/api/exit-dungeon', { method: 'POST' })
+//     .then(response => response.json())
+//     .then(data => {
+//         // Set game engine mode back to world
+//         return fetch('/api/engine/mode', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({mode: 'world'})
+//         }).then(() => data);
+//     })
+//     .then((data) => {
+//         updateUIForMode('world');
+        
+//         // Add exit narrative to world chat
+//         if (data && data.message && typeof addWorldMessage === 'function') {
+//             addWorldMessage(data.message);
+//         }
+        
+//         // Refresh world map
+//         if (typeof redraw  === 'function' && window.worldState) {
+//             setTimeout(() => renderWorldMap(window.worldState.worldMap), 100);
+//         }
+        
+//         // Force a world state refresh to update party position
+//         if (typeof refreshWorldState === 'function') {
+//             refreshWorldState();
+//         }
+//     })
+//     .catch(error => {
+//         console.error("Exit dungeon error:", error);
+//         // Still try to switch mode even if exit fails
+//         fetch('/api/engine/mode', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({mode: 'world'})
+//         })
+//         .then(() => {
+//             updateUIForMode('world');
+//             if (typeof addWorldMessage === 'function') {
+//                 addWorldMessage("Exited dungeon.");
+//             }
+//         });
+//     });
+// }
+
 function switchToWorld() {
-    // Call world controller to exit dungeon
-    fetch('/api/exit-dungeon', { method: 'POST' })
+    console.log("Exiting dungeon...");
+    
+    const partyId = window.currentPartyId;
+    if (!partyId) {
+        // No party, just switch UI
+        fetch('/api/engine/mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mode: 'world'})
+        }).then(() => updateUIForMode('world'));
+        return;
+    }
+    
+    // Step 1: Tell dungeon server we're exiting (whole party)
+    fetch('http://localhost:5005/api/dungeon/exit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            party_id: partyId,
+            exiting_character_ids: [],
+            all_characters: true
+        })
+    })
     .then(response => response.json())
     .then(data => {
-        // Set game engine mode back to world
+        if (!data.success) {
+            throw new Error(data.message || "Cannot exit dungeon");
+        }
+        
+        // Step 2: Switch UI to world mode
         return fetch('/api/engine/mode', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -160,36 +303,23 @@ function switchToWorld() {
     })
     .then((data) => {
         updateUIForMode('world');
+        addWorldMessage(data.message || "Returned to the world.");
         
-        // Add exit narrative to world chat
-        if (data && data.message && typeof addWorldMessage === 'function') {
-            addWorldMessage(data.message);
-        }
-        
-        // Refresh world map
-        if (typeof redraw  === 'function' && window.worldState) {
-            setTimeout(() => renderWorldMap(window.worldState.worldMap), 100);
-        }
-        
-        // Force a world state refresh to update party position
+        // Refresh world state to get updated characters
         if (typeof refreshWorldState === 'function') {
             refreshWorldState();
         }
     })
     .catch(error => {
         console.error("Exit dungeon error:", error);
-        // Still try to switch mode even if exit fails
+        addWorldMessage(error.message);
+        
+        // Force exit UI anyway
         fetch('/api/engine/mode', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({mode: 'world'})
-        })
-        .then(() => {
-            updateUIForMode('world');
-            if (typeof addWorldMessage === 'function') {
-                addWorldMessage("Exited dungeon.");
-            }
-        });
+        }).then(() => updateUIForMode('world'));
     });
 }
 
@@ -581,7 +711,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
                     <span>Mode: </span>
                     <span id="current-mode">world</span>
-                    <button id="enter-dungeon" onclick="enterDungeon()">Enter Dungeon</button>
+                    <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
                     <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
                 </div>
                 <div id="game-date" class="game-date" 

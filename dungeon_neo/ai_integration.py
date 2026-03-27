@@ -10,6 +10,7 @@ import json
 class DungeonAI:
     def __init__(self, dungeon_state, ollama_host="http://localhost:11434"):
         self.state = dungeon_state
+        self._current_party_id = party_id  # Store which party this AI instance serves
         self.ollama = Client(host=ollama_host)
         self.tool_registry = ToolRegistry()
         
@@ -173,6 +174,30 @@ class DungeonAI:
         try:
             # Call the movement service
             result = self.state.movement.move_party(direction, steps)
+            
+            # After movement, check for other parties in the same cell
+            if result.get('success'):
+                new_x, new_y = result.get('new_position', (None, None))
+                if new_x is not None and new_y is not None:
+                    # # Get all parties at this position
+                    # other_parties = self.state.get_parties_at_position(new_x, new_y)
+                    
+                    # # Remove current party from the list
+                    # current_party_id = getattr(self, '_current_party_id', None)
+                    # if current_party_id in other_parties:
+                    #     other_parties.remove(current_party_id)
+                    
+                    # if other_parties:
+                    #     result['other_parties'] = other_parties
+                    #     result['message'] += f" You see another adventuring party here."
+                
+                    # Check for stairs (exit trigger)
+                    cell = self.state.get_cell(new_x, new_y)
+                    if cell and cell.is_stairs:
+                        if hasattr(cell, 'key') and cell.key == 'up':
+                            result['exit_dungeon'] = True
+                            result['message'] += " You find stairs leading up. Type 'exit' to leave."
+            
             return result
         except Exception as e:
             return {"success": False, "message": f"Movement error: {str(e)}"}

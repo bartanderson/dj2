@@ -248,6 +248,11 @@ class WorldController:
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
             self.travel_to_location(starting_location.id)
+            # For testing only - add dungeon to starting location
+            if self.current_location:
+                self.current_location.dungeon_type = 'cave'
+                self.current_location.dungeon_level = 1
+                print(f"[DEBUG] Added dungeon to {self.current_location.name}")
         else:
             # Fallback to first location if no tavern found
             first_location_id = list(self.world_map.locations.keys())[0]
@@ -1023,6 +1028,7 @@ class WorldController:
             
             # Player progression
             "parties": party_states,
+            "characters": characters_dict,
             "fog_of_war": self.fog_of_war,
             "starting_location": self.starting_location_id,
             
