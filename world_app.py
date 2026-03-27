@@ -60,7 +60,7 @@ socketio = SocketIO(app,
                    logger=True,
                    engineio_logger=True)
 
-# Add this class to world_app.py or a separate test file
+
 class DungeonConnectionHelper:
     @staticmethod
     def check_all_endpoints():
@@ -99,42 +99,6 @@ class DungeonConnectionHelper:
         
         return results
 
-# temp route for testing encounter
-@app.route('/api/debug/test-encounter', methods=['GET'])
-def debug_test_encounter():
-    import traceback
-    try:
-        wc = current_app.config.get('WORLD_CONTROLLER')
-        if not wc:
-            return jsonify({"error": "World controller not available"}), 500
-        encounter = wc.test_generate_random_encounter()
-        if encounter:
-            return jsonify({
-                "message": "Encounter generated",
-                "description": encounter.description,
-                "monsters": [{"id": m.monster_id, "hp": m.current_hp} for m in encounter.monsters]
-            })
-        return jsonify({"message": "No untouched encounter points found"})
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
-
-# Add a debug endpoint to use this helper
-@app.route('/api/debug/connectivity', methods=['GET'])
-def debug_connectivity():
-    """Debug endpoint to test all connections"""
-    results = DungeonConnectionHelper.check_all_endpoints()
-    
-    # Count successes
-    successful = sum(1 for r in results if r.get("success", False))
-    total = len(results)
-    
-    return jsonify({
-        "overall_status": f"{successful}/{total} endpoints successful",
-        "results": results,
-        "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
-    })
-    
 class DungeonHTTPClient:
     def __init__(self, base_url="http://localhost:5005"):
         self.base_url = base_url
@@ -277,21 +241,6 @@ class DungeonHTTPClient:
                 return {"success": False, "error": f"HTTP {response.status_code}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
-
-@app.route('/api/test-dungeon-connection', methods=['GET'])
-def test_dungeon_connection():
-    """Test direct connection to dungeon server"""
-    try:
-        response = requests.get("http://localhost:5005/", timeout=2)
-        return jsonify({
-            "dungeon_server_status": response.status_code,
-            "dungeon_server_response": response.text[:100] if response.text else "No content"
-        })
-    except Exception as e:
-        return jsonify({
-            "dungeon_server_status": "error",
-            "error": str(e)
-        })
 
 class DungeonInputSystem:
     """Dungeon Input Phase - receives player input"""
@@ -505,7 +454,95 @@ class DungeonPersistenceSystem:
             print(f"[Dungeon Persistence Error] {e}")
             return {"saved": False, "error": str(e)}
 
+
 #====+ outside of classes =====
+# ===== Dungeon Integration Endpoints =====
+
+@app.route('/api/dungeon/enter', methods=['POST'])
+def dungeon_enter():
+    """Dungeon server calls this when party enters."""
+    data = request.get_json()
+    party_id = data.get('party_id')
+    location_id = data.get('location_id')
+    characters = data.get('characters', [])
+    
+    wc = current_app.world_controller
+    result = wc.enter_dungeon(party_id, location_id, characters)
+    return jsonify(result)
+
+@app.route('/api/dungeon/exit', methods=['POST'])
+def dungeon_exit():
+    """Dungeon server calls this when party exits."""
+    data = request.get_json()
+    party_id = data.get('party_id')
+    exiting_characters = data.get('characters', [])
+    elapsed_minutes = data.get('elapsed_minutes', 0)
+    partial_exit = data.get('partial_exit', False)
+    remaining_character_ids = data.get('remaining_characters', [])
+    
+    wc = current_app.world_controller
+    result = wc.exit_dungeon(
+        party_id=party_id,
+        exiting_characters=exiting_characters,
+        elapsed_minutes=elapsed_minutes,
+        partial_exit=partial_exit,
+        remaining_character_ids=remaining_character_ids
+    )
+    return jsonify(result)
+
+# temp route for testing encounter
+@app.route('/api/debug/test-encounter', methods=['GET'])
+def debug_test_encounter():
+    import traceback
+    try:
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({"error": "World controller not available"}), 500
+        encounter = wc.test_generate_random_encounter()
+        if encounter:
+            return jsonify({
+                "message": "Encounter generated",
+                "description": encounter.description,
+                "monsters": [{"id": m.monster_id, "hp": m.current_hp} for m in encounter.monsters]
+            })
+        return jsonify({"message": "No untouched encounter points found"})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+# Add a debug endpoint to use this helper
+@app.route('/api/debug/connectivity', methods=['GET'])
+def debug_connectivity():
+    """Debug endpoint to test all connections"""
+    results = DungeonConnectionHelper.check_all_endpoints()
+    
+    # Count successes
+    successful = sum(1 for r in results if r.get("success", False))
+    total = len(results)
+    
+    return jsonify({
+        "overall_status": f"{successful}/{total} endpoints successful",
+        "results": results,
+        "recommendation": "Start dungeon_neo_web_app.py on port 5005 if dungeon endpoints fail"
+    })
+    
+
+@app.route('/api/test-dungeon-connection', methods=['GET'])
+def test_dungeon_connection():
+    """Test direct connection to dungeon server"""
+    try:
+        response = requests.get("http://localhost:5005/", timeout=2)
+        return jsonify({
+            "dungeon_server_status": response.status_code,
+            "dungeon_server_response": response.text[:100] if response.text else "No content"
+        })
+    except Exception as e:
+        return jsonify({
+            "dungeon_server_status": "error",
+            "error": str(e)
+        })
+
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204  # Returns "No Content" and stops the 404
