@@ -107,6 +107,27 @@ class LocationPreview {
 
 const locationPreview = new LocationPreview();
 
+async function loadActiveCharacter() {
+    try {
+        const response = await fetch('/api/player/active-character');
+        const data = await response.json();
+        if (data.character_id) {
+            worldState.activeCharacterId = data.character_id;
+            // Now set currentPartyId from the character's party
+            if (worldState.parties) {
+                for (const party of worldState.parties) {
+                    if (party.members.includes(data.character_id)) {
+                        window.currentPartyId = party.id;
+                        break;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error loading active character:', error);
+    }
+}
+
 function getCurrentPartyCharacters() {
     // Get the active party from world state
     const activeParty = worldState.parties.find(p => p.id === window.currentPartyId);
@@ -1188,6 +1209,7 @@ async function loadWorldData() {
         worldMap = worldState.worldMap;
         setInitialView();
         generateTerrainImage()
+        await loadActiveCharacter();
         // After terrain grid is generated, set starting hex terrain in backend
         if (worldMap.party_position && worldMap.terrain_grid) {
             const {col, row} = worldMap.party_position;

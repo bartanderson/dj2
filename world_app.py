@@ -1469,8 +1469,22 @@ def get_location_rumors(location_id):
 
 @app.route('/api/enter-dungeon', methods=['POST'])
 def enter_dungeon():
-    success = current_app.world_controller.enter_dungeon()
-    return jsonify({"success": success})
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "No data provided"}), 400
+    
+    party_id = data.get('party_id')
+    location_id = data.get('location_id')
+    characters = data.get('characters', [])
+    
+    if not party_id:
+        return jsonify({"success": False, "message": "Missing party_id"}), 400
+    if not location_id:
+        return jsonify({"success": False, "message": "Missing location_id"}), 400
+    
+    wc = current_app.world_controller
+    result = wc.enter_dungeon(party_id, location_id, characters)
+    return jsonify(result)
 
 @app.route('/api/exit-dungeon', methods=['POST'])
 def exit_dungeon():

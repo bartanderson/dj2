@@ -106,71 +106,41 @@ function updateDungeonMap() {
     map.src = `http://localhost:5005/dungeon-image?t=${now}`;
 }
 
-// function switchToDungeon() {
-//     // Call world controller to enter dungeon
-//     fetch('/api/enter-dungeon', { method: 'POST' })
-//     .then(response => response.json())
-//     .then(data => {
-//         if (data.success) {
-//             // Set game engine mode to dungeon
-//             return fetch('/api/engine/mode', {
-//                 method: 'POST',
-//                 headers: {'Content-Type': 'application/json'},
-//                 body: JSON.stringify({mode: 'dungeon'})
-//             }).then(() => data);
-//         } else {
-//             throw new Error(data.message || "Cannot enter dungeon");
-//         }
-//     })
-//     .then((data) => {
-//         updateUIForMode('dungeon');
-        
-//         // Add entry narrative to dungeon chat
-//         if (data.message && typeof addToChatLog === 'function') {
-//             addToChatLog(data.message, 'system');
-//         }
-        
-//         // Initialize dungeon display
-//         if (typeof refreshDungeonImage === 'function') {
-//             refreshDungeonImage();
-//         }
-//         if (typeof updateDungeonPosition === 'function') {
-//             updateDungeonPosition();
-//         }
-//     })
-//     .catch(error => {
-//         console.error("Enter dungeon error:", error);
-//         if (typeof addToChatLog === 'function') {
-//             addToChatLog(error.message || "Error entering dungeon.", 'error');
-//         }
-//     });
-// }
-
 function switchToDungeon() {
     console.log("Entering dungeon...");
     
-    // Get current party info
     const partyId = window.currentPartyId;
     const locationId = window.worldState?.currentLocation?.id;
     const characters = getCurrentPartyCharacters();
     
-    console.log("partyId:", partyId);
-    console.log("locationId:", locationId);
-    console.log("characters:", characters);
-
     if (!partyId) {
         addToChatLog("You need to be in a party to enter a dungeon.", 'error');
         return;
     }
-    
     if (!locationId) {
         addToChatLog("Not at a valid location.", 'error');
         return;
     }
+    console.log("partyId:", partyId);
+    console.log("locationId:", locationId);
+    console.log("characters:", characters);
     
-    // Step 1: Tell world server we're entering
-    fetch('/api/enter-dungeon', { method: 'POST' })
-    .then(response => response.json())
+    // Step 1: Tell world server we're entering, send party data
+    fetch('/api/enter-dungeon', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            party_id: partyId,
+            location_id: locationId,
+            characters: characters
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         if (!data.success) {
             throw new Error(data.message || "Cannot enter dungeon");
@@ -206,67 +176,14 @@ function switchToDungeon() {
     .then((data) => {
         updateUIForMode('dungeon');
         addToChatLog(data.message || "Entered dungeon.", 'system');
-        
-        // Initialize dungeon display
-        if (typeof refreshDungeonImage === 'function') {
-            refreshDungeonImage();
-        }
-        if (typeof updateDungeonPosition === 'function') {
-            updateDungeonPosition();
-        }
+        if (typeof refreshDungeonImage === 'function') refreshDungeonImage();
+        if (typeof updateDungeonPosition === 'function') updateDungeonPosition();
     })
     .catch(error => {
         console.error("Enter dungeon error:", error);
         addToChatLog(error.message, 'error');
     });
 }
-
-// function switchToWorld() {
-//     // Call world controller to exit dungeon
-//     fetch('/api/exit-dungeon', { method: 'POST' })
-//     .then(response => response.json())
-//     .then(data => {
-//         // Set game engine mode back to world
-//         return fetch('/api/engine/mode', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({mode: 'world'})
-//         }).then(() => data);
-//     })
-//     .then((data) => {
-//         updateUIForMode('world');
-        
-//         // Add exit narrative to world chat
-//         if (data && data.message && typeof addWorldMessage === 'function') {
-//             addWorldMessage(data.message);
-//         }
-        
-//         // Refresh world map
-//         if (typeof redraw  === 'function' && window.worldState) {
-//             setTimeout(() => renderWorldMap(window.worldState.worldMap), 100);
-//         }
-        
-//         // Force a world state refresh to update party position
-//         if (typeof refreshWorldState === 'function') {
-//             refreshWorldState();
-//         }
-//     })
-//     .catch(error => {
-//         console.error("Exit dungeon error:", error);
-//         // Still try to switch mode even if exit fails
-//         fetch('/api/engine/mode', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({mode: 'world'})
-//         })
-//         .then(() => {
-//             updateUIForMode('world');
-//             if (typeof addWorldMessage === 'function') {
-//                 addWorldMessage("Exited dungeon.");
-//             }
-//         });
-//     });
-// }
 
 function switchToWorld() {
     console.log("Exiting dungeon...");
@@ -875,7 +792,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
                     <h2>Party Management</h2>
                     <div id="party-list-container"
                          hx-get="/api/party/list-html"
-                         hx-trigger="load, every 10s"
+                         hx-trigger="load"
                          hx-swap="innerHTML">
                         Loading parties...
                     </div>
