@@ -1005,6 +1005,7 @@ class WorldController:
         return {"status": "success", "quest_assigned": False}
 
     def get_world_state(self):
+        print("get_world_state called")
         # Get active parties with their quests
         party_states = []
         for party_id in self.party_manager.active_parties:
@@ -1019,11 +1020,15 @@ class WorldController:
                 "in_tavern": party.get("in_tavern", False),
                 "quests": party_quests
             })
-            
-            characters_dict = {}
-            for char_id, char in self.character_manager.characters.items():
-                characters_dict[char_id] = char.to_dict()
-        
+
+        # Build characters dictionary (outside the loop)
+        print(f"DEBUG: get_world_state called, characters count: {len(self.character_manager.characters)}")
+        characters_dict = {}
+        for char_id, char in self.character_manager.characters.items():
+            print(f"  character: {char_id} - {char.name}")
+            characters_dict[char_id] = char.to_dict()
+        print(f"DEBUG: get_world_state returning {len(characters_dict)} characters")
+
         return {
             # Core world data
             "world_map": self.world_map.serialize(),

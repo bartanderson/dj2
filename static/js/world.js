@@ -108,6 +108,7 @@ class LocationPreview {
 const locationPreview = new LocationPreview();
 
 async function loadActiveCharacter() {
+    console.log("loadActiveCharacter: worldState.characters at start =", worldState.characters);
     try {
         const response = await fetch('/api/player/active-character');
         const data = await response.json();
@@ -135,7 +136,14 @@ function getCurrentPartyCharacters() {
     
     return activeParty.members.map(charId => {
         const char = worldState.characters[charId];
-        if (!char) return null;
+        if (!char) {
+            console.log('charId not in worldState.characters')
+            return null;
+        }
+        console.log("char id", char.id)
+        console.log("char name", char.name)
+        console.log("char race", char.race)
+        console.log("char class", char.class)
         return {
             id: char.id,
             name: char.name,
@@ -1205,6 +1213,7 @@ async function loadWorldData() {
             parties: data.parties || [],
             characters: data.characters || {}
         };
+        console.log("loadWorldData: worldState.characters after assignment =", worldState.characters);
         window.worldState = worldState;
         worldMap = worldState.worldMap;
         setInitialView();

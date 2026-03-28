@@ -91,11 +91,13 @@ class DungeonStateNeo:
 
     def add_party(self, party_id: str, characters: List[dict], start_position: tuple = None):
         """Add a party to the dungeon."""
+        print(f"[State] add_party called: party={party_id}, characters count={len(characters)}")
         self.parties[party_id] = {
             "characters": characters,
             "position": start_position or self._get_entry_position(),
             "in_dungeon": True
         }
+        print(f"[State] Party stored with {len(self.parties[party_id]['characters'])} characters")
         # If this is the first party, also set the primary party position for movement
         if len(self.parties) == 1:
             self.party_position = self.parties[party_id]["position"]

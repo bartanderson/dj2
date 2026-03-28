@@ -490,6 +490,16 @@ def dungeon_exit():
     )
     return jsonify(result)
 
+@app.route('/api/debug/characters', methods=['GET'])
+def debug_characters():
+    wc = current_app.world_controller
+    if not wc:
+        return jsonify({"error": "No world controller"}), 500
+    return jsonify({
+        "count": len(wc.character_manager.characters),
+        "character_ids": list(wc.character_manager.characters.keys())
+    })
+    
 # temp route for testing encounter
 @app.route('/api/debug/test-encounter', methods=['GET'])
 def debug_test_encounter():
@@ -1534,6 +1544,39 @@ def disband_party(party_id):
     return jsonify({"success": success})
 
 # ===== Core Game State Endpoints =====
+# @app.route('/api/world-state')
+# def world_state():
+#     try:
+#         # Check if world_controller is available
+#         if not hasattr(app, 'world_controller') or app.world_controller is None:
+#             return jsonify({
+#                 "worldMap": {"error": "World controller not initialized"},
+#                 "currentLocation": None,
+#                 "parties": [],
+#                 "characters": {}
+#             })
+            
+#         # Convert characters to dict representation
+#         characters_dict = {}
+#         if hasattr(app.world_controller, 'characters'):
+#             for char_id, char in app.world_controller.characters.items():
+#                 characters_dict[char_id] = char.to_dict()
+
+#         return jsonify({
+#             "worldMap": app.world_controller.get_map_data(),
+#             "currentLocation": app.world_controller.get_current_location_data(),
+#             "parties": get_active_parties_helper(), #app.world_controller.get_active_parties(),
+#             "characters": characters_dict
+#         })
+#     except Exception as e:
+#         print(f"Error in world_state: {str(e)}")
+#         return jsonify({
+#             "worldMap": {"error": "Map data unavailable"},
+#             "currentLocation": None,
+#             "parties": [],
+#             "characters": {}
+#         })
+
 @app.route('/api/world-state')
 def world_state():
     try:
@@ -1545,13 +1588,18 @@ def world_state():
                 "parties": [],
                 "characters": {}
             })
-            
-        # Convert characters to dict representation
+        
+        # Build characters dictionary from character_manager
         characters_dict = {}
-        if hasattr(app.world_controller, 'characters'):
-            for char_id, char in app.world_controller.characters.items():
+        if hasattr(app.world_controller, 'character_manager') and app.world_controller.character_manager:
+            for char_id, char in app.world_controller.character_manager.characters.items():
                 characters_dict[char_id] = char.to_dict()
-
+        else:
+            # fallback to direct characters attribute (if it exists)
+            if hasattr(app.world_controller, 'characters'):
+                for char_id, char in app.world_controller.characters.items():
+                    characters_dict[char_id] = char.to_dict()
+        
         return jsonify({
             "worldMap": app.world_controller.get_map_data(),
             "currentLocation": app.world_controller.get_current_location_data(),

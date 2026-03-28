@@ -207,11 +207,11 @@ def reset_dungeon():
 def dungeon_enter():
     """Receive party snapshot from world server."""
     data = request.get_json()
+    print(f"[Dungeon] Received data: {data}")
     party_id = data.get('party_id')
     location_id = data.get('location_id')
     characters = data.get('characters', [])
     world_url = data.get('world_url', 'http://localhost:5000')
-    
     print(f"[Dungeon] Enter request: party={party_id}, location={location_id}, characters={len(characters)}")
     
     # Get or create dungeon state for this location
@@ -230,7 +230,7 @@ def dungeon_enter():
     
     # Store world URL for callbacks
     dungeon.world_url = world_url
-    
+    print(f"[Dungeon] About to add_party with {len(characters)} characters")
     return jsonify({
         "success": True,
         "dungeon_id": location_id,

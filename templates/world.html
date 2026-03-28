@@ -108,19 +108,44 @@ function updateDungeonMap() {
 
 function switchToDungeon() {
     console.log("Entering dungeon...");
-    
+
     const partyId = window.currentPartyId;
     const locationId = window.worldState?.currentLocation?.id;
-    const characters = getCurrentPartyCharacters();
-    
-    if (!partyId) {
-        addToChatLog("You need to be in a party to enter a dungeon.", 'error');
+    const activeParty = worldState.parties.find(p => p.id === partyId);
+
+    if (!activeParty) {
+        console.error("No active party found for partyId", partyId);
+        addToChatLog("You are not in a party.", 'error');
         return;
     }
-    if (!locationId) {
-        addToChatLog("Not at a valid location.", 'error');
-        return;
-    }
+
+    console.log("activeParty.members:", activeParty.members);
+    console.log("worldState.characters keys:", Object.keys(worldState.characters));
+
+    const mapped = activeParty.members.map(charId => {
+        const char = worldState.characters[charId];
+        if (!char) {
+            console.log('charId not in worldState.characters', charId);
+            return null;
+        }
+        return {
+            id: char.id,
+            name: char.name,
+            race: char.race,
+            class: char.class,
+            hp: char.hp,
+            max_hp: char.max_hp,
+            sp: char.sp,
+            max_sp: char.max_sp,
+            conditions: char.conditions || [],
+            inventory: char.inventory || [],
+            skills: char.skills || {},
+            attributes: char.attributes || {}
+        };
+    })
+    console.log("mapped before filter:", mapped);
+    const characters = mapped.filter(c => c !== null);
+
     console.log("partyId:", partyId);
     console.log("locationId:", locationId);
     console.log("characters:", characters);
@@ -153,6 +178,8 @@ function switchToDungeon() {
             characters: characters,
             world_url: window.location.origin
         };
+        
+        console.log("Sending to dungeon:", JSON.stringify(partyData, null, 2));
         
         return fetch('http://localhost:5005/api/dungeon/enter', {
             method: 'POST',
@@ -1801,40 +1828,6 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 console.error(err);
             }
         }
-
-        async function loadActiveCharacter() {
-            // This assumes you have a way to get the active character ID from worldState
-            // For now, we'll use the first character from worldState.characters
-            if (!window.worldState || !window.worldState.characters) {
-                setTimeout(loadActiveCharacter, 500);
-                return;
-            }
-            const characters = window.worldState.characters;
-            const characterIds = Object.keys(characters);
-            if (characterIds.length === 0) return;
-
-            const characterId = characterIds[0]; // use first character
-            document.querySelector('.backstory-section').setAttribute('data-character-id', characterId);
-
-            // Load character details from server (or use worldState if it already has backstory)
-            try {
-                const response = await fetch(`/api/character/${characterId}`);
-                if (!response.ok) throw new Error('Failed to load character');
-                const character = await response.json();
-                const backstory = character.backstory?.story || 'No backstory yet.';
-                document.getElementById('backstory-text').value = backstory;
-                document.getElementById('save-backstory-btn').disabled = false;
-            } catch (err) {
-                console.error(err);
-                document.getElementById('backstory-text').value = 'Error loading backstory.';
-            }
-        }
-
-        // Call after worldState is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            // Wait a bit for worldState to be populated
-            setTimeout(loadActiveCharacter, 1000);
-        });
     })();
     document.getElementById('create-party-btn').addEventListener('click', async function() {
         const partyName = prompt("Enter party name:", "My Party");
