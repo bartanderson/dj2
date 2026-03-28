@@ -71,6 +71,23 @@ class DungeonStateNeo:
         self.parties = {}  # party_id -> {"characters": [char_ids], "position": (x,y), "in_dungeon": True}
         self.next_party_id = 0
 
+    def _get_entry_position(self):
+        """Determine a good entry position (near stairs)."""
+        # Try to find up stairs first
+        if hasattr(self, 'stairs') and self.stairs:
+            up_stairs = [s for s in self.stairs if s.get('key') == 'up']
+            if up_stairs:
+                stair = up_stairs[0]
+                # Return position adjacent to stairs (where party would stand)
+                return (stair['x'] + stair.get('dx', 0), stair['y'] + stair.get('dy', 0))
+        
+        # Fallback to first room center
+        if hasattr(self, 'rooms') and self.rooms:
+            room = self.rooms[0]
+            return ((room['west'] + room['east']) // 2, (room['north'] + room['south']) // 2)
+        
+        # Final fallback: center of grid
+        return (self.width // 2, self.height // 2)
 
     def add_party(self, party_id: str, characters: List[dict], start_position: tuple = None):
         """Add a party to the dungeon."""

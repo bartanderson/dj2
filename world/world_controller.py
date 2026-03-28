@@ -1019,6 +1019,10 @@ class WorldController:
                 "in_tavern": party.get("in_tavern", False),
                 "quests": party_quests
             })
+            
+            characters_dict = {}
+            for char_id, char in self.character_manager.characters.items():
+                characters_dict[char_id] = char.to_dict()
         
         return {
             # Core world data

@@ -10,7 +10,7 @@ import json
 class DungeonAI:
     def __init__(self, dungeon_state, ollama_host="http://localhost:11434"):
         self.state = dungeon_state
-        self._current_party_id = party_id  # Store which party this AI instance serves
+        #self._current_party_id = party_id  # If we need it for party split/join have to add it back
         self.ollama = Client(host=ollama_host)
         self.tool_registry = ToolRegistry()
         
