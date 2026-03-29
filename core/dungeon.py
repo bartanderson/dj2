@@ -9,10 +9,12 @@ from dungeon_neo.ai_integration import DungeonAI
 
 # DUNGEON SYSTEM COORDINATE CONTRACT
 # ==================================
-# ROLE: Adapter between generator-space (r,c/x,y) and world-space (x,y)
-# WARNING: Contains INTENTIONAL coordinate swaps at generator handoff points
+# ROLE: Adapter between generator-space (r,c) -> world-space (x,y)
+# Conversion: x = c + dc, y = r + dr  (dc/dr = column/row delta to approach cell)
+# WARNING: Contains intentional coordinate swaps. Do not "fix" without reading stair_ends().
 # MAINTENANCE: Do not "normalize" coordinate usage without tracing full pipeline
 #              See _set_initial_party_position() for stair adaptation logic
+
 class DungeonSystem:
     """
     Unified dungeon system supporting both integrated and standalone usage.
@@ -103,18 +105,32 @@ class DungeonSystem:
             up_stairs = [s for s in self.state.stairs if s.get('key') == 'up']
             if up_stairs:
                 stair = up_stairs[0]
-                # Offset moves party AWAY from stair (where they would enter)
-
-                # *** ding *** ding *** ding ***
-                # INTENTIONAL coordinate adaptation: generator exports {x: r, y: c}, 
-                # world-space expects (x=col, y=row). This swap is correct.
-                self.state.party_position = (
-                    stair['y'] + stair.get('dy', 0), # y here is actually column (horizontal)
-                    stair['x'] + stair.get('dx', 0)  # x here is actually row (vertical)
-                )
-                return
+                
+                # ADAPTER SEAM: Convert generator-space (r,c) to world-space (x,y)
+                # Generator: r=row (vertical), c=column (horizontal)
+                # World: x=column (horizontal), y=row (vertical)
+                # Party should stand in approach cell: (c + dc, r + dr)
+                
+                world_x = stair['c'] + stair.get('dc', 0)  # column + col_delta = horizontal
+                world_y = stair['r'] + stair.get('dr', 0)  # row + row_delta = vertical
+                
+                # SAFETY CHECK: Ensure we're placing in passable space, not a wall
+                cell = self.state.get_cell(world_x, world_y)
+                if cell and (cell.is_corridor or cell.is_room):
+                    self.state.party_position = (world_x, world_y)
+                    return
+                else:
+                    # Fallback: search for any adjacent open space to the stair
+                    # Try all 4 directions in world-space
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        check_x = stair['c'] + dx
+                        check_y = stair['r'] + dy
+                        check_cell = self.state.get_cell(check_x, check_y)
+                        if check_cell and (check_cell.is_corridor or check_cell.is_room):
+                            self.state.party_position = (check_x, check_y)
+                            return
         
-        # 2. Fallback to first room center : don't ever want to use this, just precaution
+        # 2. Fallback to first room center
         if hasattr(self.state, 'rooms') and self.state.rooms:
             room = self.state.rooms[0]
             self.state.party_position = (
@@ -124,8 +140,6 @@ class DungeonSystem:
             return
         
         # 3. Final fallback: find nearest open space to center (spiral search)
-        # hope to never ever need to use this but should we find ourself 
-        # in a weird place without up stairs or rooms ...
         center_x = self.state.grid_system.width // 2
         center_y = self.state.grid_system.height // 2
         max_dim = max(self.state.width, self.state.height)

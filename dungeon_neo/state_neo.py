@@ -1,5 +1,7 @@
-# dungeon_neo\state_neo.py: World-space state layer (x=horizontal, y=vertical)
-# Note: stair/door metadata from generator may need adaptation at import
+# dungeon_neo\state_neo.py: 
+# WORLD SPACE: (x,y) = (horizontal,vertical)
+# Stairs imported as {r,c} -> stored as x=c, y=r
+# Grid access: get_cell(x,y) in world coordinates
 
 from typing import List, Dict, Any, Tuple, Optional, Union
 from dungeon_neo.grid_system import GridSystem
@@ -52,7 +54,9 @@ class DungeonStateNeo:
         self.stair_orientations = {}
         self.stairs = generator_result.get('stairs', [])
         for stair in self.stairs:
-            x, y = stair['x'], stair['y']
+            # Generator uses r=row, c=col; State uses x=col, y=row
+            x = stair['c']  # column becomes x (horizontal)
+            y = stair['r']  # row becomes y (vertical)
             orientation = stair.get('orientation', 'horizontal')
             self.stair_orientations[(x, y)] = orientation
             #print(f"STORED: Stair at ({x},{y}) orientation={orientation}")

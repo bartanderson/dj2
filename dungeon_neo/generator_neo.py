@@ -5,8 +5,12 @@ from typing import List, Dict, Any, Tuple, Optional
 from dungeon_neo.constants import CELL_FLAGS, DIRECTION_VECTORS, OPPOSITE_DIRECTIONS
 
 # Generator coordinate space: (r, c) = (row, col) = (vertical, horizontal)
-# WARNING: Exported metadata {x, y} uses generator-space (x=r, y=c), NOT world-space
-# See: stair_ends() for coordinate handoff to world systems
+# Exported stair metadata: {r, c, dr, dc} where:
+#   r = row index (vertical position), c = column index (horizontal position)
+#   dr = row delta to approach cell, dc = column delta to approach cell
+# Consumer must convert: world_x = c + dc, world_y = r + dr
+# See: stair_ends() for coordinate handoff logic
+
 class DungeonGeneratorNeo:
 
     NOTHING = CELL_FLAGS['NOTHING']
@@ -782,6 +786,10 @@ class DungeonGeneratorNeo:
         return True
 
     def emplace_stairs(self):
+        # COORDINATE NOTE: Consumes stair ends with {r, c, dr, dc} keys.
+        # Sets 'key' field to 'up' or 'down' for gameplay identification.
+        # Party entry point uses 'up' stairs (climbing down into dungeon).
+    
         # Reset stairList at start
         self.stairList = []
 
@@ -798,57 +806,68 @@ class DungeonGeneratorNeo:
             # First stair: down
             if ends:
                 end = ends.pop(0)
-                r, c = end['x'], end['y']
+                r, c = end['r'], end['c']
                 self.cell[r][c] |= self.STAIR_DN
-                end['key'] = 'down'
-                self.stairs.append(end)
-                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={end.get('orientation')} key=down")
+                stair = {
+                    'r': r,
+                    'c': c,
+                    'dr': end['dr'],
+                    'dc': end['dc'],
+                    'orientation': end['orientation'],
+                    'key': 'down'
+                }
+                self.stairList.append(stair)
+                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=down")
             
             # Second stair: up
             if ends:
                 end = ends.pop(0)
-                r, c = end['x'], end['y']
+                r, c = end['r'], end['c']
                 self.cell[r][c] |= self.STAIR_UP
-                end['key'] = 'up'
-                self.stairs.append(end)
-                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={end.get('orientation')} key=up")
+                stair = {
+                    'r': r,
+                    'c': c,
+                    'dr': end['dr'],
+                    'dc': end['dc'],
+                    'orientation': end['orientation'],
+                    'key': 'up'
+                }
+                self.stairList.append(stair)
+                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=up")
                 
         else:
+            # For n != 2: first stair down, second up, remainder random
             for i in range(n):
                 if not ends:
                     break
                 end = ends.pop(0)
-                x, y = end['x'], end['y']
-                # Store corridor direction vector
-                next_pos = end['next']
-                end['corridor_dx'] = next_pos[0]
-                end['corridor_dy'] = next_pos[1]
+                r, c = end['r'], end['c']
                 
-                # For n != 2, maintain existing random behavior
-                # the first two stairs are up and
-                stair_type = i if i < 2 else random.randint(0, 1)
-
-                stair = {
-                    'x': end['x'],  # column position
-                    'y': end['y'],  # row position
-                    'dx': end['dx'],
-                    'dy': end['dy'],
-                    'orientation': end['orientation'],  # Use calculated orientation
-                    'key': 'down' if (i == 0 and n == 2) else 'up'
-                } 
-                print(f"STAIR_EMPLACE: pos=({stair['x']},{stair['y']}) orientation={stair['orientation']} key={stair['key']}")
-                if stair_type == 0:
-                    self.cell[y][x] |= self.STAIR_DN
-                    end['key'] = 'down'
+                # Determine stair type
+                if i == 0:
+                    stair_key = 'down'
+                elif i == 1:
+                    stair_key = 'up'
                 else:
-                    self.cell[y][x] |= self.STAIR_UP
-                    end['key'] = 'up'   
+                    stair_key = 'down' if random.randint(0, 1) == 0 else 'up'
+                
+                stair = {
+                    'r': r,
+                    'c': c,
+                    'dr': end['dr'],
+                    'dc': end['dc'],
+                    'orientation': end['orientation'],
+                    'key': stair_key
+                }
+                
+                # Apply flags
+                if stair_key == 'down':
+                    self.cell[r][c] |= self.STAIR_DN
+                else:
+                    self.cell[r][c] |= self.STAIR_UP
                 
                 self.stairList.append(stair)
-        if False:   # debug output you can turn on for identifying stair position for orientation fix      
-            for stair in self.stairList:
-                print(f"GENERATOR stair: pos=({stair['x']},{stair['y']}) "
-                      f"orientation={stair['orientation']}")
+                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key={stair_key}")
 
     def stair_ends(self):
         ends = []
@@ -861,31 +880,42 @@ class DungeonGeneratorNeo:
                 if self.cell[r][c] & self.STAIRS:
                     continue
                 
-                for dir, config in self.stair_end.items():
+                for dir_name, config in self.stair_end.items():
                     if self.check_tunnel(self.cell, r, c, config):
                         next_vec = config['next']
-                        # The stair orientation is wrong for one type because the generator uses 
-                        # the direction from the stair to the corridor (next_vec) to set orientation, 
-                        # but the renderer expects the approach direction (corridor to stair). 
-                        # This causes a 90‑degree mismatch for stairs where the corridor has 
-                        # a turn at the end, because the exit direction may point along the 
-                        # turn while the approach direction points straight.
-
-                        # Solution: In stair_ends, compute the approach vector as the negative 
-                        # of next_vec and use that for orientation. This ensures the stair graphic 
-                        # faces the party regardless of turns.
-
-                        # Use approach direction (opposite of next_vec) for orientation
-                        approach_vec = (-next_vec[0], -next_vec[1]) # use
-                        orientation = 'horizontal' if next_vec[0] != 0 else 'vertical' # orientation of stair                
-                        # DEBUG: print the stair candidate and its orientation
-                        print(f"STAIR_END candidate: pos=({r},{c}) next_vec={next_vec} orientation={orientation}")
+                        
+                        # Verify the approach cell is actually corridor
+                        approach_r = r + next_vec[0]
+                        approach_c = c + next_vec[1]
+                        
+                        is_valid_approach = (
+                            0 <= approach_r <= self.opts['n_rows'] and 
+                            0 <= approach_c <= self.opts['n_cols'] and
+                            (self.cell[approach_r][approach_c] & self.CORRIDOR)
+                        )
+                        
+                        if not is_valid_approach:
+                            # Search for any adjacent corridor cell
+                            for dr, dc in [(0,1), (0,-1), (1,0), (-1,0)]:
+                                nr, nc = r + dr, c + dc
+                                if (0 <= nr <= self.opts['n_rows'] and 
+                                    0 <= nc <= self.opts['n_cols'] and
+                                    (self.cell[nr][nc] & self.CORRIDOR)):
+                                    next_vec = (dr, dc)
+                                    break
+                        
+                        # Orientation: stairs face the approach direction
+                        # Horizontal stairs (|) for N/S approach, Vertical (—) for E/W
+                        orientation = 'horizontal' if next_vec[0] != 0 else 'vertical'
+                        
+                        # COORDINATE HANDOFF: Generator-space (r=row, c=col) -> Consumer adapts to world-space
                         end = {
-                            'y': c,  # column = horizontal in world-space
-                            'x': r,  # row = vertical in world-space
-                            'dx': next_vec[0],  # horizontal direction
-                            'dy': next_vec[1],  # vertical direction
-                            'orientation': orientation
+                            'r': r,              # row = vertical position in generator grid
+                            'c': c,              # column = horizontal position in generator grid
+                            'dr': next_vec[0],   # delta row to approach cell
+                            'dc': next_vec[1],   # delta column to approach cell
+                            'orientation': orientation,
+                            'approach_dir': dir_name
                         }
                         ends.append(end)
                         break
