@@ -7,7 +7,12 @@ from dungeon_neo.visibility_neo import VisibilitySystemNeo
 from dungeon_neo.movement_service import MovementService
 from dungeon_neo.ai_integration import DungeonAI
 
-
+# DUNGEON SYSTEM COORDINATE CONTRACT
+# ==================================
+# ROLE: Adapter between generator-space (r,c/x,y) and world-space (x,y)
+# WARNING: Contains INTENTIONAL coordinate swaps at generator handoff points
+# MAINTENANCE: Do not "normalize" coordinate usage without tracing full pipeline
+#              See _set_initial_party_position() for stair adaptation logic
 class DungeonSystem:
     """
     Unified dungeon system supporting both integrated and standalone usage.
@@ -99,13 +104,17 @@ class DungeonSystem:
             if up_stairs:
                 stair = up_stairs[0]
                 # Offset moves party AWAY from stair (where they would enter)
+
+                # *** ding *** ding *** ding ***
+                # INTENTIONAL coordinate adaptation: generator exports {x: r, y: c}, 
+                # world-space expects (x=col, y=row). This swap is correct.
                 self.state.party_position = (
-                    stair['y'] + stair.get('dy', 0),
-                    stair['x'] + stair.get('dx', 0)
+                    stair['y'] + stair.get('dy', 0), # y here is actually column (horizontal)
+                    stair['x'] + stair.get('dx', 0)  # x here is actually row (vertical)
                 )
                 return
         
-        # 2. Fallback to first room center
+        # 2. Fallback to first room center : don't ever want to use this, just precaution
         if hasattr(self.state, 'rooms') and self.state.rooms:
             room = self.state.rooms[0]
             self.state.party_position = (
@@ -115,6 +124,8 @@ class DungeonSystem:
             return
         
         # 3. Final fallback: find nearest open space to center (spiral search)
+        # hope to never ever need to use this but should we find ourself 
+        # in a weird place without up stairs or rooms ...
         center_x = self.state.grid_system.width // 2
         center_y = self.state.grid_system.height // 2
         max_dim = max(self.state.width, self.state.height)

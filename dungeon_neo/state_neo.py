@@ -1,9 +1,12 @@
+# dungeon_neo\state_neo.py: World-space state layer (x=horizontal, y=vertical)
+# Note: stair/door metadata from generator may need adaptation at import
+
 from typing import List, Dict, Any, Tuple, Optional, Union
 from dungeon_neo.grid_system import GridSystem
 from dungeon_neo.constants import CELL_FLAGS, DIRECTION_VECTORS_8
 from dungeon_neo.cell_neo import DungeonCellNeo
 from dungeon_neo.visibility_neo import VisibilitySystemNeo
-
+ 
 class DungeonStateNeo:
     NOTHING = CELL_FLAGS['NOTHING']
     BLOCKED = CELL_FLAGS['BLOCKED']
@@ -183,6 +186,7 @@ class DungeonStateNeo:
         return grid
 
     def _populate_grid(self, generator_grid):
+        # Boundary: Converting generator row-major grid[y][x] to world-facing cells
         for door in self.generator_result.get('doors', []):
             if door['key'] != 'potential':  # Only register actual doors
                 x, y = door['x'], door['y']
@@ -199,6 +203,7 @@ class DungeonStateNeo:
                     continue  # Skip missing columns
                     
                 value = generator_grid[y][x]
+                # boundary
                 cell = DungeonCellNeo(value, x, y)
                 
                 if cell.is_door and (x, y) in self.door_orientations:

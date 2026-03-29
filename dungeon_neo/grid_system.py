@@ -1,3 +1,7 @@
+# dungeon_new\grid_system.py
+
+# GridSystem: World-space API (x=col, y=row) over row-major storage (grid[y][x])
+# Do NOT change indexing to grid[x][y] - internal storage is intentionally row-major
 class GridSystem:
     def __init__(self, width, height):
         self.width = width

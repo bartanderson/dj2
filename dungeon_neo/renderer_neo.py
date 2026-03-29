@@ -1,3 +1,4 @@
+# dungeon_neo\renderer_neo.py World-space consumer (x=horizontal, y=vertical)
 from PIL import Image, ImageDraw, ImageFont
 from dungeon_neo.state_neo import DungeonStateNeo
 from dungeon_neo.generator_neo import DungeonGeneratorNeo
@@ -361,6 +362,7 @@ class DungeonRendererNeo:
             )
 
     def _draw_stairs(self, draw, stair_type, orientation, x_pix, y_pix, cell_size):
+        print(f"DRAW_STAIRS: type={stair_type}, orientation={orientation}, pos=({x_pix},{y_pix})")
         """Draw stairs with proper orientation"""
         color = self.COLORS['stairs_up'] if stair_type == 'up' else self.COLORS['stairs_down']
         step_count = 5
