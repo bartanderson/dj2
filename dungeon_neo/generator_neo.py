@@ -818,22 +818,24 @@ class DungeonGeneratorNeo:
                 end['corridor_dy'] = next_pos[1]
                 
                 # For n != 2, maintain existing random behavior
+                # the first two stairs are up and
                 stair_type = i if i < 2 else random.randint(0, 1)
+
+                stair = {
+                    'x': end['x'],  # column position
+                    'y': end['y'],  # row position
+                    'dx': end['dx'],
+                    'dy': end['dy'],
+                    'orientation': end['orientation'],  # Use calculated orientation
+                    'key': 'down' if (i == 0 and n == 2) else 'up'
+                } 
                 
                 if stair_type == 0:
                     self.cell[y][x] |= self.STAIR_DN
                     end['key'] = 'down'
                 else:
                     self.cell[y][x] |= self.STAIR_UP
-                    end['key'] = 'up'
-                    stair = {
-                        'x': end['x'],  # row position
-                        'y': end['y'],  # column position
-                        'dx': end['dx'],
-                        'dy': end['dy'],
-                        'orientation': end['orientation'],  # Use calculated orientation
-                        'key': 'down' if (i == 0 and n == 2) else 'up'
-                    }    
+                    end['key'] = 'up'   
                 
                 self.stairList.append(stair)
         if False:   # debug output you can turn on for identifying stair position for orientation fix      
