@@ -88,32 +88,35 @@ def index():
 
 @app.route('/dungeon-image')
 def dungeon_image():
+    game_id = request.args.get('game_id')
+    if not game_id:
+        # fallback to session-based if standalone
+        game_id = session.get('active_game_id')
+    if not game_id:
+        return create_placeholder_image("Missing game_id")
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return create_placeholder_image("Dungeon not found")
     debug = request.args.get('debug', 'false').lower() == 'true'
-    logger.info(f"dungeon-image request for game_id: {getattr(g, 'game_id', 'None')}")
-    
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return create_placeholder_image("Dungeon not initialized")
-    
     try:
-        img = g.dungeon.get_image(debug)
+        img = dungeon.get_image(debug)
         return serve_pil_image(img)
     except Exception as e:
-        logger.error(f"Rendering error: {str(e)}")
         return create_placeholder_image(f"Rendering error: {str(e)}")
-
+        
 @app.route('/move', methods=['POST'])
 def move():
-    logger.info(f"move request for game_id: {getattr(g, 'game_id', 'None')}")
-    
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return jsonify({"success": False, "message": "Dungeon not initialized"})
-    
     data = request.json or {}
+    game_id = data.get('game_id')
+    if not game_id:
+        return jsonify({"success": False, "message": "Missing game_id"})
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return jsonify({"success": False, "message": "Dungeon not found"})
     direction = data.get('direction')
     steps = data.get('steps', 1)
-    
     try:
-        result = g.dungeon.state.movement.move_party(direction, steps)
+        result = dungeon.state.movement.move_party(direction, steps)
         return jsonify(result)
     except Exception as e:
         logger.error(f"Movement error: {str(e)}")
@@ -121,27 +124,32 @@ def move():
 
 @app.route('/position', methods=['GET'])
 def get_position():
-    """Get current party position"""
-    logger.info(f"position request for game_id: {getattr(g, 'game_id', 'None')}")
-    
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return jsonify({"error": "Dungeon not initialized"})
-    
+    game_id = request.args.get('game_id')
+    if not game_id:
+        game_id = session.get('active_game_id')
+    if not game_id:
+        return jsonify({"error": "Missing game_id"})
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return jsonify({"error": "Dungeon not found"})
     try:
-        position = g.dungeon.state.party_position
-        return jsonify({"position": position, "game_id": g.game_id})
+        position = dungeon.state.party_position
+        return jsonify({"position": position, "game_id": game_id})
     except Exception as e:
         return jsonify({"error": str(e)})
 
 @app.route('/debug-state', methods=['GET'])
 def debug_state():
-    """Debug endpoint to see what's in the dungeon state"""
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return jsonify({"error": "No dungeon"})
-    
-    dungeon = g.dungeon
+    game_id = request.args.get('game_id')
+    if not game_id:
+        game_id = session.get('active_game_id')
+    if not game_id:
+        return jsonify({"error": "Missing game_id"})
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return jsonify({"error": "Dungeon not found"})
     return jsonify({
-        "game_id": g.game_id,
+        "game_id": game_id,
         "has_state": hasattr(dungeon, 'state'),
         "party_position": dungeon.state.party_position if hasattr(dungeon.state, 'party_position') else "No party_position",
         "state_type": type(dungeon.state).__name__
@@ -149,16 +157,16 @@ def debug_state():
 
 @app.route('/ai-command', methods=['POST'])
 def ai_command():
-    logger.info(f"ai-command request for game_id: {getattr(g, 'game_id', 'None')}")
-    
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return jsonify({"success": False, "message": "Dungeon not initialized"})
-    
     data = request.json or {}
+    game_id = data.get('game_id')
+    if not game_id:
+        return jsonify({"success": False, "message": "Missing game_id"})
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return jsonify({"success": False, "message": "Dungeon not found"})
     command = data.get('command', '')
-    
     try:
-        result = g.dungeon.process_ai_command(command)
+        result = dungeon.process_ai_command(command)
         return jsonify(result)
     except Exception as e:
         logger.error(f"AI error: {str(e)}")
@@ -188,20 +196,17 @@ def new_game():
 
 @app.route('/reset', methods=['POST'])
 def reset_dungeon():
-    """Reset the current dungeon (uses game_id from init)"""
-    logger.info(f"reset request for game_id: {getattr(g, 'game_id', 'None')}")
-    
-    if not hasattr(g, 'dungeon') or not g.dungeon:
-        return jsonify(success=False, message="Dungeon not initialized")
-    
+    data = request.json or {}
+    game_id = data.get('game_id')
+    if not game_id:
+        return jsonify(success=False, message="Missing game_id")
+    dungeon = dungeon_states.get(game_id)
+    if not dungeon:
+        return jsonify(success=False, message="Dungeon not found")
     location = app.campaign.get_location("test_dungeon")
     dungeon_type = location["dungeon_type"] if location else "cave"
-    success = g.dungeon.reset_dungeon(dungeon_type)
-    
-    return jsonify(
-        success=success,
-        message="Dungeon reset" if success else "Reset failed"
-    )
+    success = dungeon.reset_dungeon(dungeon_type)
+    return jsonify(success=success, message="Dungeon reset" if success else "Reset failed")
 
 @app.route('/api/dungeon/enter', methods=['POST'])
 def dungeon_enter():

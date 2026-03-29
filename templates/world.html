@@ -192,7 +192,7 @@ function switchToDungeon() {
         if (!data.success) {
             throw new Error(data.message || "Failed to create dungeon instance");
         }
-        
+         window.dungeonGameId = data.dungeon_id;
         // Step 3: Switch UI to dungeon mode
         return fetch('/api/engine/mode', {
             method: 'POST',
