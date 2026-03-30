@@ -166,7 +166,6 @@ class DungeonGeneratorNeo:
         self.init_dungeon_size()
         self.init_cells()
         self.emplace_rooms()
-        # Initialize diagnostics collection
         self.room_diagnostics = []
         self.open_rooms()
         self.label_rooms()
@@ -177,55 +176,50 @@ class DungeonGeneratorNeo:
                 
         self.clean_dungeon()
 
-        # NEW: Clean stray door flags
+        # Clean stray door flags - doors use x/y
         for r in range(len(self.cell)):
             for c in range(len(self.cell[r])):
                 if self.cell[r][c] & self.DOORSPACE:
-                    # Check if door is registered
-                    if not any(d['x'] == c and d['y'] == r for d in self.doorList):
-                        #print(f"Cleaning stray door at ({c},{r})")
-                        self.cell[r][c] &= ~self.DOORSPACE  # Remove door flags
-                        self.cell[r][c] |= self.ENTRANCE  # Keep as regular entrance
+                    if not any(d['y'] == r and d['x'] == c for d in self.doorList):
+                        self.cell[r][c] &= ~self.DOORSPACE
+                        self.cell[r][c] |= self.ENTRANCE
         
-        # Before returning, ensure all grid values are integers
-        for x in range(len(self.cell)):
-            for y in range(len(self.cell[x])):
-                if not isinstance(self.cell[x][y], int):
-                    print(f"Non-int value at ({x},{y}): {self.cell[x][y]} - converting to NOTHING")
-                    self.cell[x][y] = self.NOTHING
+        # Ensure grid values are integers
+        for r in range(len(self.cell)):
+            for c in range(len(self.cell[r])):
+                if not isinstance(self.cell[r][c], int):
+                    self.cell[r][c] = self.NOTHING
         
-        # Prepare stairs and doors in world coordinates
+        # Stairs: r/c/dr/dc (generator-space)
         stairs = []
         for stair in self.stairList:
-            # Convert to standardized coordinate system
             stairs.append({
-                'x': stair['x'],  # column = horizontal position
-                'y': stair['y'],  # row = vertical position
-                'dx': stair['dx'],
-                'dy': stair['dy'],
+                'r': stair['r'],
+                'c': stair['c'],
+                'dr': stair['dr'],
+                'dc': stair['dc'],
                 'key': stair['key'],
                 'orientation': stair.get('orientation', 'horizontal')
             })
         
-        # Prepare doors in world coordinates
+        # Doors: x/y (already world-facing)
         doors = []
         for door in self.doorList:
-            # Convert to standardized coordinate system
             doors.append({
-                'x': door['x'],  # column = horizontal position
-                'y': door['y'],  # row = vertical position
+                'x': door['x'],
+                'y': door['y'],
                 'orientation': door.get('orientation', 'horizontal'),
                 'key': door.get('key', 'door'),
                 'out_id': door.get('out_id')
             })
 
-        # Prepare rooms in world coordinates
+        # Rooms: x/y (already world-facing)
         rooms = []
         for room in self.room:
             rooms.append({
                 'id': room['id'],
-                'x': room['west'],  # horizontal start
-                'y': room['north'],  # vertical start
+                'x': room['west'],
+                'y': room['north'],
                 'width': room['east'] - room['west'] + 1,
                 'height': room['south'] - room['north'] + 1,
                 'north': room['north'],
@@ -233,19 +227,19 @@ class DungeonGeneratorNeo:
                 'west': room['west'],
                 'east': room['east']
             })
-
-        self.fill_blocks() # set blocked which cannot be traveled through.
-        #print(f"Cell (6,5) flags: {hex(self.cell[5][6])}")  # [row][col]        
+        
+        self.fill_blocks()
+        
         return {
             'grid': self.cell,
             'stairs': stairs,
             'doors': doors,
-            'rooms': self.room,
+            'rooms': rooms,
             'n_rows': self.opts['n_rows'],
             'n_cols': self.opts['n_cols'],
-            'diagnostics': self.room_diagnostics  # Add diagnostics to output
+            'diagnostics': self.room_diagnostics
         }
-    
+
     # Core generation methods
     def init_dungeon_size(self):
         self.n_i = self.opts['n_rows'] // 2
@@ -817,7 +811,7 @@ class DungeonGeneratorNeo:
                     'key': 'down'
                 }
                 self.stairList.append(stair)
-                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=down")
+                #print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=down")
             
             # Second stair: up
             if ends:
@@ -833,7 +827,7 @@ class DungeonGeneratorNeo:
                     'key': 'up'
                 }
                 self.stairList.append(stair)
-                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=up")
+                #print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key=up")
                 
         else:
             # For n != 2: first stair down, second up, remainder random
@@ -867,7 +861,7 @@ class DungeonGeneratorNeo:
                     self.cell[r][c] |= self.STAIR_UP
                 
                 self.stairList.append(stair)
-                print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key={stair_key}")
+                #print(f"STAIR_EMPLACE: pos=({r},{c}) orientation={stair['orientation']} key={stair_key}")
 
     def stair_ends(self):
         ends = []

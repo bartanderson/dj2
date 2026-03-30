@@ -65,7 +65,6 @@ class DungeonSystem:
             if dungeon_type:
                 self.options['dungeon_type'] = dungeon_type
             self.generator.options = self.options
-            
             generator_result = self.generator.create_dungeon()
             if not generator_result:
                 return False
@@ -91,7 +90,11 @@ class DungeonSystem:
             
             # Initialize movement service
             self.state.movement = MovementService(self.state)
-            
+
+            # Update AI state if it exists
+            if self.ai:
+                self.ai.state = self.state            
+
             return True
             
         except Exception as e:
@@ -100,6 +103,9 @@ class DungeonSystem:
     
     def _set_initial_party_position(self):
         """Set initial party position near first up stair, with fallbacks."""
+        # print(f"[DEBUG] stairs data: {getattr(self.state, 'stairs', 'NO STAIRS')}")
+        # for s in getattr(self.state, 'stairs', []):
+        #     print(f"  stair keys: {s.keys()}")
         # 1. Try stairs first (most common case)
         if hasattr(self.state, 'stairs') and self.state.stairs:
             up_stairs = [s for s in self.state.stairs if s.get('key') == 'up']
@@ -113,7 +119,7 @@ class DungeonSystem:
                 
                 world_x = stair['c'] + stair.get('dc', 0)  # column + col_delta = horizontal
                 world_y = stair['r'] + stair.get('dr', 0)  # row + row_delta = vertical
-                
+
                 # SAFETY CHECK: Ensure we're placing in passable space, not a wall
                 cell = self.state.get_cell(world_x, world_y)
                 if cell and (cell.is_corridor or cell.is_room):

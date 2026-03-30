@@ -85,8 +85,9 @@ class DungeonStateNeo:
             up_stairs = [s for s in self.stairs if s.get('key') == 'up']
             if up_stairs:
                 stair = up_stairs[0]
-                # Return position adjacent to stairs (where party would stand)
-                return (stair['x'] + stair.get('dx', 0), stair['y'] + stair.get('dy', 0))
+                # ADAPTER: Generator (r,c) -> World (x,y)
+                # x = column + column_delta, y = row + row_delta
+                return (stair['c'] + stair.get('dc', 0), stair['r'] + stair.get('dr', 0))
         
         # Fallback to first room center
         if hasattr(self, 'rooms') and self.rooms:

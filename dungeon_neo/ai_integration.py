@@ -126,11 +126,18 @@ class DungeonAI:
     @tool(
         name="inspect_cell",
         description="Get detailed information about a dungeon cell",
-        x="X coordinate (number)",
-        y="Y coordinate (number)"
+        x="X coordinate (number, optional: defaults to current party x)",
+        y="Y coordinate (number, optional: defaults to current party y)"
     )
-    def inspect_cell(self, x: int, y: int) -> dict:
-        """Get detailed information about a cell"""
+    def inspect_cell(self, x: int = None, y: int = None) -> dict:
+        """Get detailed information about a cell, default to current party position"""
+        if x is None or y is None:
+            px, py = self.state.party_position
+            if x is None:
+                x = px
+            if y is None:
+                y = py
+        
         cell = self.state.get_cell(x, y)
         if not cell:
             return {"success": False, "message": f"No cell at ({x}, {y})"}
@@ -168,16 +175,23 @@ class DungeonAI:
     )
     def move_party(self, direction: str, steps: int = 1) -> dict:
         """Move party using movement service"""
+        print(f"[AI move_party] Called with direction={direction}, steps={steps} (type={type(steps)})")
+        
         if not hasattr(self.state, 'movement') or not self.state.movement:
+            print("[AI move_party] ERROR: Movement service not available")
             return {"success": False, "message": "Movement service not available"}
         
         try:
             # Call the movement service
+            steps = int(steps) if isinstance(steps, str) else steps
+            print(f"[AI move_party] Calling movement.move_party({direction}, {steps})")
             result = self.state.movement.move_party(direction, steps)
+            print(f"[AI move_party] Result: {result}")
             
             # After movement, check for other parties in the same cell
             if result.get('success'):
                 new_x, new_y = result.get('new_position', (None, None))
+                print(f"[AI move_party] New position: ({new_x}, {new_y})")
                 if new_x is not None and new_y is not None:
                     # # Get all parties at this position
                     # other_parties = self.state.get_parties_at_position(new_x, new_y)
@@ -200,6 +214,9 @@ class DungeonAI:
             
             return result
         except Exception as e:
+            print(f"[AI move_party] EXCEPTION: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {"success": False, "message": f"Movement error: {str(e)}"}
 
     @tool(
@@ -283,8 +300,10 @@ class DungeonAI:
             result["debug_info"] = debug_info
             return result
         except json.JSONDecodeError:
+            print("AI exception JSONDecodeError")
             return {"success": False, "message": "AI returned invalid JSON"}
         except Exception as e:
+            print("AI exception ", str(e))
             return {
                 "success": False,
                 "message": f"Tool execution error: {str(e)}",

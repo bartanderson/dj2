@@ -368,7 +368,10 @@ class DungeonRendererNeo:
         step_count = 5
         spacing = cell_size / (step_count + 1)
         max_length = cell_size * 0.7
-        
+        # This is a calculated change to draw the stairs.
+        # we need to swap the orientation for drawing the stairs now that we fixed the orientation
+        # the stairs are drawn perpendicular to the tunnel flow
+        orientation = 'vertical' if orientation == 'horizontal' else 'horizontal'
         if orientation == 'horizontal':
             center_y = y_pix + cell_size // 2
             for i in range(1, step_count + 1):
