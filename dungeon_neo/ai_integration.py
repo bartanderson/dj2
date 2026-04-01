@@ -6,6 +6,7 @@ from .dm_tools import DMTools
 from .overlay import Overlay
 import re
 import json
+import time
 
 class DungeonAI:
     def __init__(self, dungeon_state, ollama_host="http://localhost:11434"):
@@ -20,6 +21,8 @@ class DungeonAI:
         # Register tools from DMTools
         self.dm_tools = DMTools(dungeon_state)
         self.tool_registry.register_from_class(self.dm_tools)
+        self.pending_action = None  # Stores action requiring confirmation
+        self.pending_context = None  # Additional context for the action
 
         # If we need to register other tools, do it like DMTools above
         #
@@ -31,6 +34,15 @@ class DungeonAI:
         
         # Generate dynamic system prompt
         self.system_prompt = self._create_system_prompt()
+
+    def set_pending_action(self, action_type: str, action_data: dict, confirmation_prompt: str):
+        """Store an action that requires player confirmation."""
+        self.pending_action = {
+            'type': action_type,
+            'data': action_data,
+            'prompt': confirmation_prompt,
+            'timestamp': time.time()
+        }
 
     def process_prompt(self, prompt: str) -> str:
         # For testing, return a mock location in JSON format
@@ -63,71 +75,59 @@ class DungeonAI:
 
     def create_dm_prompt(game_state, player_action):
         prompt = f"""
-        You are the Dungeon Master for an ongoing adventure. 
-        Current story arc: {game_state.narrative.active_arc}
-        Player motivation: {game_state.motivations.current_motivation}
-        Tension level: {game_state.pacing.tension_level}/100
-        
-        The players just: {player_action}
-        
-        Consider these narrative tools:
-        1. Gentle nudge: {game_state.guide.get_gentle_nudge(player_action)}
-        2. Motivational leverage: {game_state.motivations.get_narrative_leverage()}
-        3. Available consequence: {game_state.consequences.get_pending_consequence()}
-        
-        Respond by:
-        - Acknowledging the player action
-        - Incorporating narrative guidance if needed
-        - Advancing the story meaningfully
-        - Maintaining dramatic tension
-        - Preserving player agency
-        """
+You are the Dungeon Master for an ongoing adventure. 
+Current story arc: {game_state.narrative.active_arc}
+Player motivation: {game_state.motivations.current_motivation}
+Tension level: {game_state.pacing.tension_level}/100
+
+The players just: {player_action}
+
+Consider these narrative tools:
+1. Gentle nudge: {game_state.guide.get_gentle_nudge(player_action)}
+2. Motivational leverage: {game_state.motivations.get_narrative_leverage()}
+3. Available consequence: {game_state.consequences.get_pending_consequence()}
+
+Respond by:
+- Acknowledging the player action
+- Incorporating narrative guidance if needed
+- Advancing the story meaningfully
+- Maintaining dramatic tension
+- Preserving player agency
+"""
         return prompt
     
     def _create_system_prompt(self) -> str:
-        """Create prompt with dynamic tool descriptions"""
-        tools_spec = self.tool_registry.get_tools_spec()
-        tools_json = json.dumps(tools_spec, indent=2)
-
-        primitives_desc = "\n".join([
-            f"- {prim}: Parameters: {self._get_primitive_params(prim)}"
-            for prim in Overlay.PRIMITIVE_TYPES
-        ])
+        """Generate system prompt dynamically from registered tools."""
+        tools_list = []
+        for tool in self.tool_registry.tools.values():
+            tools_list.append(tool.to_prompt_string())
+        
+        tools_description = "\n".join(tools_list)
         
         return f"""
-        You are a Dungeon Master (but currently testing assistant) in a D&D type game. 
-        The player can give you commands to interact with the dungeon. Follow these rules:
+You are a Dungeon Master assistant. The player can give you commands to interact with the dungeon.
 
-        1. ALWAYS respond with VALID JSON containing "thoughts", "tool", and "arguments"
-        2. NEVER output tool specifications - only use them
-        3. Use this exact JSON format:
-            {{
-                "thoughts": "Brief reasoning",
-                "tool": "tool_name",
-                "arguments": {{"arg1": value, "arg2": value}}
-            }}
-        4. Only use the tools provided
-        5. Use simple, direct commands
-        6. For movement: 'move_party direction steps'
-        7. If a request requires multiple steps, break it into separate responses
-        8. If there is a color, Always specify color parameter as hexadecimal (#000000 - #FFFFFF)
-        9. If you need to set positions withing a cell, use relative coordinates (0.0-1.0)
-        10. If overlay - Available types that you could possibly combine serially:
-        {primitives_desc}
+You MUST respond with VALID JSON containing exactly these fields:
+- "thoughts": Brief reasoning about what to do
+- "tool": The name of the tool to execute (must be one of the tools listed below)
+- "arguments": An object with the required parameters for that tool
 
-        Available tools (DO NOT OUTPUT THESE):
-        {tools_json}
+DO NOT output any text outside the JSON. DO NOT invent tools not listed.
 
-        Important command mappings:
-        - "debug grid" -> use "get_debug_grid" tool
-        - "reset" -> use "reset_dungeon" tool
-        """
+Available tools:
+{tools_description}
+
+Rules:
+- If the player says "yes" or "no" in response to a prompt, interpret it as confirmation for the pending action.
+- If no tool matches, respond with a narrative description instead (use tool="none", arguments={{}}, and put narrative in "thoughts").
+- Always include "thoughts" explaining your reasoning.
+    """
 
     @tool(
         name="inspect_cell",
-        description="Get detailed information about a dungeon cell",
-        x="X coordinate (number, optional: defaults to current party x)",
-        y="Y coordinate (number, optional: defaults to current party y)"
+        description="Get detailed information about a dungeon cell. If coordinates omitted, uses current party position.",
+        x="X coordinate (optional, defaults to current party x)",
+        y="Y coordinate (optional, defaults to current party y)"
     )
     def inspect_cell(self, x: int = None, y: int = None) -> dict:
         """Get detailed information about a cell, default to current party position"""
@@ -168,70 +168,123 @@ class DungeonAI:
         }
 
     @tool(
-        name="move_party",
-        description="Move the party in a direction",
-        direction="Direction (north, south, east, west, northeast, northwest, southeast, southwest)",
-        steps="Number of steps (default 1)"
+        name="move",
+        description="Move the party in a direction. Steps default to 1.",
+        direction="Direction: north, south, east, west, northeast, northwest, southeast, southwest",
+        steps="Number of steps (optional, default=1)"
     )
-    def move_party(self, direction: str, steps: int = 1) -> dict:
-        """Move party using movement service"""
-        print(f"[AI move_party] Called with direction={direction}, steps={steps} (type={type(steps)})")
-        
+    def move(self, direction: str, steps: int = 1) -> dict:
         if not hasattr(self.state, 'movement') or not self.state.movement:
-            print("[AI move_party] ERROR: Movement service not available")
             return {"success": False, "message": "Movement service not available"}
-        
         try:
-            # Call the movement service
-            steps = int(steps) if isinstance(steps, str) else steps
-            print(f"[AI move_party] Calling movement.move_party({direction}, {steps})")
             result = self.state.movement.move_party(direction, steps)
-            print(f"[AI move_party] Result: {result}")
+            print(f"[DEBUG move] result = {result}, type = {type(result)}")
             
-            # After movement, check for other parties in the same cell
-            if result.get('success'):
-                new_x, new_y = result.get('new_position', (None, None))
-                print(f"[AI move_party] New position: ({new_x}, {new_y})")
-                if new_x is not None and new_y is not None:
-                    # # Get all parties at this position
-                    # other_parties = self.state.get_parties_at_position(new_x, new_y)
-                    
-                    # # Remove current party from the list
-                    # current_party_id = getattr(self, '_current_party_id', None)
-                    # if current_party_id in other_parties:
-                    #     other_parties.remove(current_party_id)
-                    
-                    # if other_parties:
-                    #     result['other_parties'] = other_parties
-                    #     result['message'] += f" You see another adventuring party here."
-                
-                    # Check for stairs (exit trigger)
-                    cell = self.state.get_cell(new_x, new_y)
-                    if cell and cell.is_stairs:
-                        if hasattr(cell, 'key') and cell.key == 'up':
-                            result['exit_dungeon'] = True
-                            result['message'] += " You find stairs leading up. Type 'exit' to leave."
+            # If result is a tuple, convert to dict
+            if isinstance(result, tuple):
+                if len(result) >= 2:
+                    result = {"success": result[0], "message": result[1]}
+                else:
+                    return {"success": False, "message": str(result)}
+            if not isinstance(result, dict):
+                return {"success": False, "message": f"Unexpected result type: {type(result)}"}
+            
+            print(f"[DEBUG] move result message: {result.get('message')}")
+            
+            # Check for stairs confirmation
+            if result.get('success') is False and 'stairs' in result.get('message', '').lower():
+                print(f"[DEBUG] Stairs detected! Setting pending action.")
+                self.set_pending_action(
+                    action_type='stairs',
+                    action_data={'direction': direction, 'steps': steps},
+                    confirmation_prompt=result.get('message', 'Do you wish to take the stairs?')
+                )
+                print(f"[DEBUG] pending_action set to: {self.pending_action}")
+                result['requires_confirmation'] = True
+                result['message'] = result.get('message', '') + " (Type 'yes' to confirm)"
             
             return result
         except Exception as e:
-            print(f"[AI move_party] EXCEPTION: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return {"success": False, "message": f"Movement error: {str(e)}"}
 
     @tool(
-        name="move",
-        description="Alias for move_party - Move the party in a direction",
-        direction="Direction (north, south, east, west, northeast, northwest, southeast, southwest)",
-        steps="Number of steps (default 1)"
+        name="inspect",
+        description="Describe the current cell and visible surroundings."
     )
-    def move(self, direction: str, steps: int = 1) -> dict:
-        """Alias for move_party"""
-        return self.move_party(direction, steps)
-    
+    def inspect(self, radius: int = 2) -> dict:
+        """Describe the current cell and visible cells within radius."""
+        x, y = self.state.party_position
+        
+        # Get current cell description
+        current = self._describe_cell(x, y)
+        
+        # Get surrounding cells
+        surroundings = []
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = x + dx, y + dy
+                if self.state.get_cell(nx, ny):
+                    # Only include if it's not blocked by line of sight (simplified)
+                    # For now, include all within radius
+                    cell_desc = self._describe_cell(nx, ny, direction=(dx, dy))
+                    surroundings.append(cell_desc)
+        
+        description = f"You are {current}.\n"
+        if surroundings:
+            description += "You see:\n" + "\n".join(surroundings)
+        
+        return {"success": True, "message": description}
+
+    def _describe_cell(self, x: int, y: int, direction: tuple = None) -> str:
+        """Return a description of a single cell."""
+        cell = self.state.get_cell(x, y)
+        if not cell:
+            return "nothing (out of bounds)"
+        
+        dir_text = ""
+        if direction:
+            dx, dy = direction
+            if dx < 0: dir_text = "west"
+            elif dx > 0: dir_text = "east"
+            if dy < 0: dir_text += "north" if not dir_text else "-north"
+            elif dy > 0: dir_text += "south" if not dir_text else "-south"
+            dir_text = f" to the {dir_text}" if dir_text else ""
+        
+        if cell.is_room:
+            return f"a room{dir_text}"
+        elif cell.is_corridor:
+            return f"a corridor{dir_text}"
+        elif cell.is_door:
+            door_type = "arch" if cell.is_arch else "door"
+            return f"a {door_type}{dir_text}"
+        elif cell.is_stairs:
+            stair_type = "up" if cell.is_stair_up else "down"
+            return f"stairs leading {stair_type}{dir_text}"
+        elif cell.is_blocked:
+            return f"a solid wall{dir_text}"
+        else:
+            return f"an empty space{dir_text}"
+
+    @tool(
+        name="exit_dungeon",
+        description="Exit the current dungeon. Optionally specify a destination location ID.",
+        location_id="(Optional) Destination location ID. If not provided, returns to the entrance."
+    )
+    def exit_dungeon(self, location_id: str = None) -> dict:
+        """Exit the dungeon, optionally to a specific location."""
+        return {
+            "success": True,
+            "exit_dungeon": True,
+            "location_id": location_id,
+            "message": "You exit the dungeon." + 
+                       (f" You find yourself at {location_id}." if location_id else "")
+        }
+
     @tool(
         name="get_current_position",
-        description="Get the party's current position: if you have x,y then you don't use this"
+        description="Get the party's current position coordinates."
     )
     def get_current_position(self) -> dict:
         """Get party's current position"""
@@ -267,48 +320,125 @@ class DungeonAI:
         return debug_info        
         
     def process_command(self, natural_language: str) -> dict:
-        #print(f"\n=== FULL SYSTEM PROMPT ===\n{self.system_prompt}\n")
+        print(f"[DEBUG] process_command: pending_action = {self.pending_action}")
+        print(f"[DEBUG] natural_language = '{natural_language}'")
         print(f"\n=== USER COMMAND ===\n{natural_language}\n")
-        # Generate response chunks
+        
+        # ===== STEP 1: Check for pending action confirmation =====
+        if self.pending_action and natural_language.lower() in ['yes', 'y', 'confirm', 'take', 'proceed', 'take stairs']:
+            print(f"[DEBUG] Confirmation detected for pending action: {self.pending_action['type']}")
+            action = self.pending_action
+            self.pending_action = None
+            
+            if action['type'] == 'stairs':
+                result = self.state.movement.move_party(
+                    action['data']['direction'],
+                    action['data']['steps']
+                )
+                if result.get('success'):
+                    narrative = f"You take the stairs. {result.get('message', '')}"
+                else:
+                    narrative = f"Unable to take stairs: {result.get('message', 'Unknown error')}"
+                return {
+                    "success": result.get('success', False),
+                    "message": narrative,
+                    "tool": "move",
+                    "confirmed": True,
+                    "refresh_map": True
+                }
+            # TODO: Add other action types (doors, traps, etc.) here
+            # elif action['type'] == 'door':
+            #     ...
+            else:
+                return {"success": False, "message": f"Unknown pending action type: {action['type']}"}
+        
+        # ===== STEP 2: Clear pending action if user didn't confirm =====
+        if self.pending_action:
+            print(f"Clearing pending action (user didn't confirm): {natural_language}")
+            self.pending_action = None
+        
+        # ===== STEP 3: Normal AI processing =====
         response_chunks = self.ollama.generate(
-            #model="deepseek-r1:8b",
             model="llama3.2:3b",
             system=self.system_prompt,
             prompt=natural_language,
             format="json",
             options={"temperature": 0.1},
-            stream=True  # Enable streaming to get chunks
+            stream=True
         )
-        
-        # Collect all response chunks
         full_response = ""
         for chunk in response_chunks:
             full_response += chunk.get("response", "")
-
         print(f"AI DBG Response{full_response}")
         
         try:
-            # Parse the full response
             response_json = json.loads(full_response)
             tool_name = response_json.get("tool")
             arguments = response_json.get("arguments", {})
             
-            # Execute the selected tool
+            # Narrative-only response
+            if tool_name == "none" or tool_name is None:
+                return {
+                    "success": True,
+                    "message": response_json.get("thoughts", "The DM considers your words..."),
+                    "ai_response": full_response
+                }
+            
+            # Validate tool exists
+            if tool_name not in self.tool_registry.tools:
+                return {
+                    "success": False,
+                    "message": f"Tool '{tool_name}' not found. Available: {', '.join(self.tool_registry.tools.keys())}"
+                }
+            
+            # Execute the tool
             result = self.tool_registry.execute_tool(tool_name, arguments)
-            # Add debug info to response
-            debug_info = self.log_tool_call(tool_name, arguments)
-            result["debug_info"] = debug_info
+            
+            # If the tool requires confirmation (e.g., stairs), return immediately
+            if result.get('requires_confirmation'):
+                return result
+            
+            # Generate narrative for successful tool execution
+            if result.get('success'):
+                try:
+                    narrative_prompt = f"""
+The player said: "{natural_language}"
+The tool '{tool_name}' was executed with arguments: {json.dumps(arguments)}
+The result was: {json.dumps(result, indent=2)}
+Write a short, immersive narrative (1-2 sentences) describing what happened.
+Do not include technical details like coordinates or flags.
+Do NOT start your response with any label like "AI:" or "DM:". Start directly with the narrative.
+"""
+
+                    system_prompt = "You are a narrator. Respond directly with the narrative, without any labels or prefixes."
+                    narrative_response = self.ollama.generate(
+                        model="llama3.2:3b",
+                        system=system_prompt,
+                        prompt=narrative_prompt,
+                        options={"temperature": 0.7},
+                        stream=True
+                    )
+                    narrative = ""
+                    for chunk in narrative_response:
+                        # Extract the 'response' attribute correctly
+                        if hasattr(chunk, 'response'):
+                            narrative += chunk.response
+                        elif isinstance(chunk, dict):
+                            narrative += chunk.get("response", "")
+                        else:
+                            narrative += str(chunk)
+                    print(f"[DEBUG] Raw narrative from model: {repr(narrative)}") 
+                    result['message'] = narrative.strip() if narrative.strip() else result.get('message', 'Action completed.')
+                except Exception as e:
+                    print(f"[ERROR] Narrative generation failed: {e}")
+                    result['message'] = result.get('message', 'Action completed.')
+            
             return result
+            
         except json.JSONDecodeError:
-            print("AI exception JSONDecodeError")
-            return {"success": False, "message": "AI returned invalid JSON"}
+            return {"success": False, "message": "AI returned invalid JSON", "ai_response": full_response}
         except Exception as e:
-            print("AI exception ", str(e))
-            return {
-                "success": False,
-                "message": f"Tool execution error: {str(e)}",
-                "ai_response": full_response  # Use the full_response variable
-            }
+            return {"success": False, "message": f"Tool execution error: {str(e)}", "ai_response": full_response}
 
     def generate_structured_data(self, prompt: str, response_format: dict) -> dict:
         """

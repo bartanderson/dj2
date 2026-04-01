@@ -1290,40 +1290,50 @@ class WorldController:
         
         return paths
 
-    def exit_dungeon(self, party_id: str, updated_characters: List[dict], elapsed_minutes: int) -> dict:
+    def exit_dungeon(self, party_id: str = None, exiting_characters: list = None,
+                     elapsed_minutes: int = 0, partial_exit: bool = False,
+                     remaining_character_ids: list = None) -> dict:
         """
-        Called when a party exits a dungeon.
-        Receives updated character data and elapsed time.
+        Handle exit from dungeon. Can be called with just a party_id (simple exit)
+        or with full character data (when dungeon server calls back).
         """
-        if party_id not in self.parties_in_dungeon:
-            return {"success": False, "message": "Party not in dungeon"}
-        
-        # Update characters with dungeon changes
-        for char_data in updated_characters:
-            char_id = char_data.get("id")
-            if char_id in self.character_manager.characters:
-                char = self.character_manager.characters[char_id]
-                char.hp = char_data.get("hp", char.hp)
-                char.sp = char_data.get("sp", char.sp)
-                char.conditions = char_data.get("conditions", char.conditions)
-                char.inventory = char_data.get("inventory", char.inventory)
-                char.in_dungeon = False
-                char.dungeon_party_id = None
-        
-        # Advance world time by elapsed minutes
-        self.campaign_state.advance_time(elapsed_minutes)
-        
-        # Remove from dungeon tracking
-        del self.parties_in_dungeon[party_id]
-        
-        location_id = self.parties_in_dungeon.get(party_id, {}).get("location_id")
-        location = self.world_map.get_location(location_id) if location_id else None
-        location_name = location.name if location else "the dungeon"
-        
-        return {
-            "success": True,
-            "message": f"You emerge from {location_name} after {elapsed_minutes} minutes."
-        }
+        # CASE 1: Called with exiting_characters (dungeon server callback)
+        if exiting_characters is not None:
+            # Update characters with dungeon changes
+            for char_data in exiting_characters:
+                char_id = char_data.get('id')
+                char = self.character_manager.get_character(char_id)
+                if char:
+                    char.hp = char_data.get('hp', char.hp)
+                    char.sp = char_data.get('sp', char.sp)
+                    char.conditions = char_data.get('conditions', char.conditions)
+                    char.inventory = char_data.get('inventory', char.inventory)
+                    char.in_dungeon = False
+                    char.dungeon_party_id = None
+                    self.character_manager._save_character_to_db(char)
+
+            # Advance world time
+            self.campaign_state.advance_time(elapsed_minutes or 10)
+
+            # Remove party from dungeon tracking if applicable
+            if party_id and party_id in self.parties_in_dungeon:
+                del self.parties_in_dungeon[party_id]
+
+            # If partial exit, update the party members list? (Optional, later)
+            return {"success": True, "message": f"Updated {len(exiting_characters)} characters."}
+
+        # CASE 2: Simple exit by party_id (called from frontend "Return to World" button)
+        if party_id and party_id in self.parties_in_dungeon:
+            dungeon_info = self.parties_in_dungeon[party_id]
+            location_id = dungeon_info['location_id']
+            self.campaign_state.advance_time(10)  # placeholder
+            if party_id in self.party_manager.parties:
+                self.party_manager.set_party_location(party_id, location_id)
+            del self.parties_in_dungeon[party_id]
+            location = self.world_map.get_location(location_id)
+            return {"success": True, "message": f"Party returns to {location.name if location else 'the entrance'}."}
+
+        return {"success": False, "message": "No exit data provided."}
 
     def enter_dungeon(self, party_id: str, location_id: str, characters: List[dict]) -> dict:
         """
@@ -1550,6 +1560,51 @@ class WorldController:
                 return result[0] if result else None
         finally:
             Database.return_connection(conn)
+
+    def exit_dungeon(self, party_id: str) -> dict:
+        """Normal exit: return to dungeon entrance."""
+        if party_id not in self.parties_in_dungeon:
+            return {"success": False, "message": "Party not in dungeon"}
+        
+        dungeon_info = self.parties_in_dungeon[party_id]
+        location_id = dungeon_info['location_id']
+        
+        # Advance time (placeholder)
+        self.campaign_state.advance_time(10)
+        
+        # Update party location
+        if party_id in self.party_manager.parties:
+            self.party_manager.set_party_location(party_id, location_id)
+        
+        # Remove from dungeon tracking
+        del self.parties_in_dungeon[party_id]
+        
+        location = self.world_map.get_location(location_id)
+        return {
+            "success": True,
+            "message": f"Party returns to {location.name if location else 'the entrance'}."
+        }
+
+    def exit_dungeon_to_location(self, party_id: str, location_id: str) -> dict:
+        """Special exit: teleport party to a specific location."""
+        if party_id not in self.parties_in_dungeon:
+            return {"success": False, "message": "Party not in dungeon"}
+        
+        # Advance time (teleport takes time? could be instant)
+        self.campaign_state.advance_time(10)
+        
+        # Update party location
+        if party_id in self.party_manager.parties:
+            self.party_manager.set_party_location(party_id, location_id)
+        
+        # Remove from dungeon tracking
+        del self.parties_in_dungeon[party_id]
+        
+        location = self.world_map.get_location(location_id)
+        return {
+            "success": True,
+            "message": f"Party teleports to {location.name if location else location_id}."
+        }
 
     def travel_to_location(self, location_id: str) -> bool:
         if self.world_map.travel_to(location_id):

@@ -1498,10 +1498,17 @@ def enter_dungeon():
 
 @app.route('/api/exit-dungeon', methods=['POST'])
 def exit_dungeon():
+    data = request.get_json()
+    party_id = data.get('party_id')
+    location_id = data.get('location_id')
+    
     wc = current_app.world_controller
-    if not wc:
-        return jsonify({"error": "World controller not available"}), 500
-    result = wc.exit_dungeon()
+    if location_id:
+        # Special exit: teleport to specific location
+        result = wc.exit_dungeon_to_location(party_id, location_id)
+    else:
+        # Normal exit: return to entrance
+        result = wc.exit_dungeon(party_id)
     return jsonify(result)
 
 # ===== Party Management Endpoints =====
