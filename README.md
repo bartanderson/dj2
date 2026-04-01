@@ -1,5 +1,10 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/bartanderson/dj2)
 
+To start the system use 
+"""python
+python run_game.py
+"""
+
 This is my long tern attempt to create a DM AI for playing games by myself and or with friends so that we don't have to have a dungeon master on call to play when we want.
 The idea is to create characters in a world/campaign that the DM creates and have it evolve with our decisions and there will be resulutions with consequences new quests and whatver comes next.
 When its time for a new world the DM will create it and we will travel there. We may even travel back and forth. Who knows. I started with the dungeon generation that I took from donjon.
