@@ -2,8 +2,10 @@
 <html>
 <head>
     <title>Dungeon Explorer</title>
-    <!-- <link rel="icon" href="image/favicon.svg" type="image/svg+xml"> -->
-    <a href="/image/favicon.svg" type="image/svg+xml" class="text-underline font-size-sm" target="_blank">Dungeon classic</a> by <a href="https://iconscout.com/contributors/rengised" class="text-underline font-size-sm">Alex Martynov</a> on <a href="https://iconscout.com" class="text-underline font-size-sm">IconScout</a>
+    <link rel="icon" href="image/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="data:,"> <!-- gets rid of favicon 404 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="{{ url_for('static', filename='js/dungeon.js') }}"></script>
     <style>
         :root {
             --sidebar-width: 300px;
@@ -184,252 +186,82 @@
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Main Map Area -->
-        <div class="map-container">
-            <img id="dungeon-map" src="" alt="Dungeon Map">
-        </div>
-        
-        <!-- Chat Sidebar -->
-        <div class="sidebar">
-            <div class="controls">
-                <div class="direction-buttons">
-                    <!-- Row 1: Northwest, North, Northeast -->
-                    <button id="northwest">↖ NW</button>
-                    <button id="north">↑ North</button>
-                    <button id="northeast">↗ NE</button>
-                    <button id="west">← West</button>
-                    <button id="wait">Wait</button>
-                    <button id="east">East →</button>
-                    <button id="southwest">↙ SW</button>
-                    <button id="south">↓ South</button>
-                    <button id="southeast">↘ SE</button>
+    <!-- Dungeon UI -->
+    <div id="dungeon-ui" class="dungeon-only">
+        <div style="display: grid; grid-template-columns: minmax(400px, 3fr) minmax(300px, 1fr); height: 100vh; margin: 0; padding: 0; overflow: hidden; gap: 0;">
+            <!-- LEFT COLUMN: Dungeon Map (resizes automatically) -->
+            <div style="background: #0a0a1a; padding: 10px; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+                    <h2 style="color: #4ecca3; margin: 0;">Dungeon Map</h2>
                 </div>
-                <div class="debug-controls">
-                    <button id="debug-toggle">Toggle Debug View</button>
-                    <button id="reset">Generate New Dungeon</button>
-                    <button id="debug-state">Debug State</button>
-                    <div class="position-info">
-                        <p>Position: <span id="position">(?, ?)</span></p>
-                    </div>
+                <div style="flex: 1; min-height: 0; display: flex; align-items: stretch; justify-content: stretch; overflow: hidden; border: 2px solid #4ecca3; border-radius: 4px; background: black;">
+                    <img id="dungeon-map" src="http://localhost:5005/dungeon-image" 
+                         style="width: 100%; height: 100%; object-fit: contain; display: block; min-width: 0; min-height: 0;">
                 </div>
-             </div>
-            <div class="chat-container">
-                <div class="chat-header">Dungeon Master Assistant</div>
-                <div class="chat-log" id="chat-log">
-                    <div class="message ai">
-                        Welcome to the dungeon! I'm your AI Dungeon Master assistant. 
-                        What would you like to do?
-                    </div>
-                </div>
-                <div class="chat-input">
-                    <div class="chat-buttons">
-                        <div class="debug-controls">
-                            <button id="debug-grid">Debug Grid</button>
+            </div>
+            
+            <!-- RIGHT COLUMN: Resizable AI Controls -->
+            <div id="dungeon-chat-panel" 
+                 style="background: linear-gradient(135deg, #1a1a2e, #16213e); 
+                        padding: 10px; 
+                        display: flex; 
+                        flex-direction: column; 
+                        overflow: hidden;
+                        resize: horizontal;
+                        min-width: 300px;
+                        max-width: 600px;
+                        border-left: 2px solid #4ecca3;">
+                
+                <h2 style="color: #4ecca3; margin-bottom: 15px; text-align: center;">AI Dungeon Master</h2>
+                
+                <!-- Debug controls and position -->
+                <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <button onclick="toggleDebug()" style="padding: 6px 12px; margin-right: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Toggle Debug</button>
+                            <button onclick="resetDungeon()" style="padding: 6px 12px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">New Dungeon</button>
                         </div>
-                        <button id="send-chat">Send</button>
+                        <span style="font-family: monospace; font-size: 13px; color: #cccccc;">
+                            Position: <span id="dungeon-position">(?, ?)</span>
+                        </span>
                     </div>
+                    
+                    <!-- Movement grid -->
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Movement Controls:</div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                            <button onclick="moveDungeon('northwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↖ NW</button>
+                            <button onclick="moveDungeon('north')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↑ North</button>
+                            <button onclick="moveDungeon('northeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↗ NE</button>
+                            <button onclick="moveDungeon('west')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">← West</button>
+                            <button onclick="dungeonWait()" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Wait</button>
+                            <button onclick="moveDungeon('east')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">→ East</button>
+                            <button onclick="moveDungeon('southwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↙ SW</button>
+                            <button onclick="moveDungeon('south')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↓ South</button>
+                            <button onclick="moveDungeon('southeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↘ SE</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat log -->
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 200px;">
+                    <div style="color: #cccccc; margin-bottom: 5px; font-size: 14px;">Chat Log:</div>
+                    <div id="dungeon-chat" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; font-size: 12px; line-height: 1.3; margin-bottom: 10px;">
+                        <div style="color: #cccccc;">Use movement buttons or type commands.</div>
+                    </div>
+                    
+                    <!-- AI Command input -->
                     <div>
-                    <textarea id="chat-text" 
-                              placeholder="Tell the AI what to do..."
-                              rows="3"></textarea>
+                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Send AI Command:</div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="dungeon-ai-command" placeholder="Type command..." 
+                                   style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px; font-size: 13px;">
+                            <button onclick="sendAICommand()" style="padding: 8px 15px; background: #4ecca3; color: #232931; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">Send</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script>
-        // ===== INITIALIZATION =====
-        // Parse game_id from URL (if present)
-        const urlParams = new URLSearchParams(window.location.search);
-        window.gameId = urlParams.get('game_id');
-        
-        let debugMode = false;
-        const chatLog = document.getElementById('chat-log');
-        const chatInput = document.getElementById('chat-text');
-        
-        // ===== MAP FUNCTIONS =====
-        function updateMap() {
-            const map = document.getElementById('dungeon-map');
-            const now = Date.now();
-            let url = `/dungeon-image?debug=${debugMode}&t=${now}`;
-            if (window.gameId) {
-                url += `&game_id=${window.gameId}`;
-            }
-            map.src = url;
-        }
-        
-        // ===== MOVEMENT =====
-        function move(direction) {
-            const map = document.getElementById('dungeon-map');
-            map.style.opacity = '0.7';
-            
-            const body = {direction: direction, steps: 1};
-            if (window.gameId) {
-                body.game_id = window.gameId;
-            }
-            
-            fetch('/api/move', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    document.getElementById('position').textContent = 
-                        `${data.new_position[0]}, ${data.new_position[1]}`;
-                    updateMap();
-                }
-                addToChatLog(data.message, data.success ? 'system' : 'error');
-            })
-            .finally(() => {
-                setTimeout(() => map.style.opacity = '1', 300);
-            });
-        }
-        
-        // ===== CHAT =====
-        function sendChat() {
-            const message = chatInput.value.trim();
-            if (!message) return;
-            
-            addToChatLog(message, 'user');
-            chatInput.value = '';
-            
-            const sendBtn = document.getElementById('send-chat');
-            sendBtn.disabled = true;
-            sendBtn.textContent = 'Sending...';
-            
-            const body = {command: message};
-            if (window.gameId) {
-                body.game_id = window.gameId;
-            }
-            
-            fetch('/api/ai-command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    addToChatLog(`AI: ${data.message}`, 'ai');
-                    updateMap();
-                } else {
-                    let errorMsg = `Error: ${data.message}`;
-                    if (data.traceback) errorMsg += `\n\nTechnical Details:\n${data.traceback}`;
-                    if (data.ai_response) errorMsg += `\n\nAI Response:\n${data.ai_response}`;
-                    addToChatLog(errorMsg, 'error');
-                }
-            })
-            .catch(error => {
-                addToChatLog(`System Error: ${error.message}`, 'ai');
-            })
-            .finally(() => {
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'Send';
-            });
-        }
-        
-        // ===== DEBUG GRID =====
-        document.getElementById('debug-grid').addEventListener('click', () => {
-            const body = {command: "!debug grid"};
-            if (window.gameId) {
-                body.game_id = window.gameId;
-            }
-            
-            fetch('/api/ai-command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const filename = data.filename || 'dungeon_debug.txt';
-                    const downloadLink = document.createElement('a');
-                    downloadLink.href = `/api/download-debug?file=${filename}`;
-                    downloadLink.textContent = 'Download Dungeon Debug Grid';
-                    downloadLink.download = filename;
-                    
-                    const messageDiv = document.createElement('div');
-                    messageDiv.classList.add('message', 'system');
-                    messageDiv.innerHTML = `Debug grid saved!<br>`;
-                    messageDiv.appendChild(downloadLink);
-                    
-                    chatLog.appendChild(messageDiv);
-                    chatLog.scrollTop = chatLog.scrollHeight;
-                } else {
-                    addToChatLog(`Error: ${data.message}`, 'error');
-                }
-            });
-        });
-        
-        // ===== UTILITY =====
-        function addToChatLog(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message', sender);
-            messageDiv.textContent = text;
-            chatLog.appendChild(messageDiv);
-            chatLog.scrollTop = chatLog.scrollHeight;
-        }
-        
-        function initMovementControls() {
-            const directions = ['north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'];
-            directions.forEach(dir => {
-                const btn = document.getElementById(dir);
-                if (btn) btn.addEventListener('click', () => move(dir));
-            });
-            
-            const waitBtn = document.getElementById('wait');
-            if (waitBtn) {
-                waitBtn.addEventListener('click', () => {
-                    addToChatLog("Party waits and observes", 'system');
-                    updateMap();
-                });
-            }
-            
-            // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                const key = e.key.toLowerCase();
-                const mapping = {
-                    'w': 'north', 's': 'south', 'a': 'west', 'd': 'east',
-                    'q': 'northwest', 'e': 'northeast', 'z': 'southwest', 'c': 'southeast',
-                    'x': 'south', ' ': 'wait'
-                };
-                if (mapping[key]) {
-                    if (mapping[key] === 'wait') {
-                        addToChatLog("Party waits and observes", 'system');
-                        updateMap();
-                    } else {
-                        move(mapping[key]);
-                    }
-                    e.preventDefault();
-                }
-            });
-        }
-        
-        // ===== EVENT LISTENERS =====
-        document.getElementById('debug-toggle').addEventListener('click', () => {
-            debugMode = !debugMode;
-            updateMap();
-        });
-        
-        document.getElementById('send-chat').addEventListener('click', sendChat);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendChat();
-            }
-        });
-        
-        window.addEventListener('load', () => {
-            updateMap();
-            chatInput.focus();
-            initMovementControls();
-        });
-    </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-from flask import Flask, send_file, request, jsonify, session, g
+from flask import render_template, Flask, send_file, request, jsonify, session, g
 from core.dungeon import DungeonSystem
 from dungeon_neo.test_campaign import TestCampaign
 from io import BytesIO
@@ -84,24 +84,22 @@ def init_session_and_dungeon():
 
 @app.route('/')
 def index():
-    return send_file('templates\\dungeon.html')
+    return render_template('dungeon.html')
 
 @app.route('/dungeon-image')
 def dungeon_image():
     game_id = request.args.get('game_id')
-    if not game_id:
-        # fallback to session-based if standalone
-        game_id = session.get('active_game_id')
+    debug = request.args.get('debug', 'false').lower() == 'true'
     if not game_id:
         return create_placeholder_image("Missing game_id")
     dungeon = dungeon_states.get(game_id)
     if not dungeon:
         return create_placeholder_image("Dungeon not found")
-    debug = request.args.get('debug', 'false').lower() == 'true'
     try:
         img = dungeon.get_image(debug)
         return serve_pil_image(img)
     except Exception as e:
+        logger.error(f"Rendering error: {str(e)}")
         return create_placeholder_image(f"Rendering error: {str(e)}")
         
 @app.route('/move', methods=['POST'])
@@ -125,8 +123,8 @@ def move():
 @app.route('/position', methods=['GET'])
 def get_position():
     game_id = request.args.get('game_id')
-    if not game_id:
-        game_id = session.get('active_game_id')
+    print(f"[DEBUG] /position called with game_id: {game_id}")
+    print(f"[DEBUG] dungeon_states keys: {list(dungeon_states.keys())}")
     if not game_id:
         return jsonify({"error": "Missing game_id"})
     dungeon = dungeon_states.get(game_id)
@@ -174,24 +172,22 @@ def ai_command():
 
 @app.route('/api/new-game', methods=['POST'])
 def new_game():
-    """Create a new game instance with a unique ID"""
     data = request.json or {}
     game_id = data.get('game_id', f"game_{uuid.uuid4()}")
-    
-    # Store in session so subsequent requests use this game_id
-    session['active_game_id'] = game_id
-    
-    if game_id not in DUNGEON_CACHE:
+    print(f"[DEBUG] /api/new-game called with game_id: {game_id}")
+    if game_id not in dungeon_states:
+        print(f"[DEBUG] Creating new dungeon for {game_id}")
         dungeon = DungeonSystem()
+        # Use a default location type or get from campaign
         location = app.campaign.get_location("test_dungeon")
         dungeon_type = location["dungeon_type"] if location else "cave"
         if dungeon.generate(dungeon_type):
-            DUNGEON_CACHE[game_id] = dungeon
-            logger.info(f"Created new game: {game_id}")
+            dungeon_states[game_id] = dungeon
+            print(f"[DEBUG] Dungeon created, now dungeon_states keys: {list(dungeon_states.keys())}")
             return jsonify({"game_id": game_id, "created": True})
         else:
+            print(f"[DEBUG] Dungeon generation failed")
             return jsonify({"error": "Failed to create dungeon"}), 500
-    
     return jsonify({"game_id": game_id, "exists": True})
 
 @app.route('/reset', methods=['POST'])
@@ -210,32 +206,36 @@ def reset_dungeon():
 
 @app.route('/api/dungeon/enter', methods=['POST'])
 def dungeon_enter():
-    """Receive party snapshot from world server."""
     data = request.get_json()
-    print(f"[Dungeon] Received data: {data}")
     party_id = data.get('party_id')
     location_id = data.get('location_id')
-    characters = data.get('characters', [])
     world_url = data.get('world_url', 'http://localhost:5000')
-    print(f"[Dungeon] Enter request: party={party_id}, location={location_id}, characters={len(characters)}")
-    
-    # Get or create dungeon state for this location
+    if not party_id or not location_id:
+        return jsonify({"success": False, "message": "Missing party_id or location_id"})
+
+    # Fetch party data from world server
+    try:
+        resp = requests.get(f"{world_url}/api/party/{party_id}", timeout=5)
+        if resp.status_code != 200:
+            return jsonify({"success": False, "message": "Failed to fetch party data"})
+        party_data = resp.json()
+        characters = party_data.get('characters', [])
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Error fetching party data: {str(e)}"})
+
+    # Get or create dungeon state
     dungeon = dungeon_states.get(location_id)
     if not dungeon:
-        print(f"[Dungeon] Creating new dungeon for location {location_id}")
         dungeon = DungeonSystem(enable_ai=True)
         success = dungeon.generate()
         if not success:
             return jsonify({"success": False, "message": "Failed to generate dungeon"})
         dungeon.location_id = location_id
         dungeon_states[location_id] = dungeon
-    
-    # Add party to dungeon
+
     dungeon.state.add_party(party_id, characters)
-    
-    # Store world URL for callbacks
     dungeon.world_url = world_url
-    print(f"[Dungeon] About to add_party with {len(characters)} characters")
+
     return jsonify({
         "success": True,
         "dungeon_id": location_id,

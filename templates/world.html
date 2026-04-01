@@ -296,8 +296,8 @@ document.addEventListener('DOMContentLoaded', checkMode);
                 <div id="mode-indicator" style="padding: 10px; background: #2a2a4a; color: white;">
                     <span>Mode: </span>
                     <span id="current-mode">world</span>
-                    <button id="enter-dungeon" onclick="switchToDungeon()">Enter Dungeon</button>
-                    <button id="return-world" onclick="switchToWorld()" style="display:none;">Return to World</button>
+                    <button id="enter-dungeon" onclick="enterDungeon()">Enter Dungeon</button>
+
                 </div>
                 <div id="game-date" class="game-date" 
                      hx-get="/api/game/date"
@@ -496,85 +496,7 @@ document.addEventListener('DOMContentLoaded', checkMode);
         </main>
     </div>
 
-    <!-- Dungeon UI -->
-    <div id="dungeon-ui" class="dungeon-only">
-        <div style="display: grid; grid-template-columns: minmax(400px, 3fr) minmax(300px, 1fr); height: 100vh; margin: 0; padding: 0; overflow: hidden; gap: 0;">
-            <!-- LEFT COLUMN: Dungeon Map (resizes automatically) -->
-            <div style="background: #0a0a1a; padding: 10px; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
-                    <h2 style="color: #4ecca3; margin: 0;">Dungeon Map</h2>
-                    <button onclick="switchToWorld()" style="padding: 8px 15px; background: #4ecca3; color: #232931; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Return to World</button>
-                </div>
-                <div style="flex: 1; min-height: 0; display: flex; align-items: stretch; justify-content: stretch; overflow: hidden; border: 2px solid #4ecca3; border-radius: 4px; background: black;">
-                    <img id="dungeon-map" src="http://localhost:5005/dungeon-image" 
-                         style="width: 100%; height: 100%; object-fit: contain; display: block; min-width: 0; min-height: 0;">
-                </div>
-            </div>
-            
-            <!-- RIGHT COLUMN: Resizable AI Controls -->
-            <div id="dungeon-chat-panel" 
-                 style="background: linear-gradient(135deg, #1a1a2e, #16213e); 
-                        padding: 10px; 
-                        display: flex; 
-                        flex-direction: column; 
-                        overflow: hidden;
-                        resize: horizontal;
-                        min-width: 300px;
-                        max-width: 600px;
-                        border-left: 2px solid #4ecca3;">
-                
-                <h2 style="color: #4ecca3; margin-bottom: 15px; text-align: center;">AI Dungeon Master</h2>
-                
-                <!-- Debug controls and position -->
-                <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <div>
-                            <button onclick="toggleDebug()" style="padding: 6px 12px; margin-right: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Toggle Debug</button>
-                            <button onclick="resetDungeon()" style="padding: 6px 12px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">New Dungeon</button>
-                        </div>
-                        <span style="font-family: monospace; font-size: 13px; color: #cccccc;">
-                            Position: <span id="dungeon-position">(?, ?)</span>
-                        </span>
-                    </div>
-                    
-                    <!-- Movement grid -->
-                    <div style="margin-bottom: 10px;">
-                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Movement Controls:</div>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
-                            <button onclick="moveDungeon('northwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↖ NW</button>
-                            <button onclick="moveDungeon('north')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↑ North</button>
-                            <button onclick="moveDungeon('northeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↗ NE</button>
-                            <button onclick="moveDungeon('west')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">← West</button>
-                            <button onclick="dungeonWait()" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Wait</button>
-                            <button onclick="moveDungeon('east')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">→ East</button>
-                            <button onclick="moveDungeon('southwest')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↙ SW</button>
-                            <button onclick="moveDungeon('south')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↓ South</button>
-                            <button onclick="moveDungeon('southeast')" style="padding: 8px; background: #0f3460; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">↘ SE</button>
-                        </div>
-                        <div style="font-size: 11px; color: #888; text-align: center; margin-top: 3px;">Keyboard: Q W E / A S D / Z X C</div>
-                    </div>
-                </div>
-                
-                <!-- Chat log -->
-                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 200px;">
-                    <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Chat Log:</div>
-                    <div id="dungeon-chat" style="flex: 1; overflow-y: auto; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; font-size: 12px; line-height: 1.3; margin-bottom: 10px;">
-                        <div style="color: #cccccc; font-style: italic;">AI Dungeon Master ready. Use movement buttons or type commands.</div>
-                    </div>
-                    
-                    <!-- AI Command input -->
-                    <div>
-                        <div style="color: #cccccc; margin-bottom: 5px; font-size: 13px;">Send AI Command:</div>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="dungeon-ai-command" placeholder="Type command..." 
-                                   style="flex: 1; padding: 8px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; color: white; border-radius: 4px; font-size: 13px;">
-                            <button onclick="sendAICommand()" style="padding: 8px 15px; background: #4ecca3; color: #232931; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">Send</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+
     <!-- ===== MODALS ===== -->
     
     <!-- Travel Modal -->
@@ -673,7 +595,6 @@ document.addEventListener('DOMContentLoaded', checkMode);
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
     <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
     <script src="{{ url_for('static', filename='js/world.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/dungeon.js') }}"></script>
     
     <!-- Unified UI System -->
     <script>

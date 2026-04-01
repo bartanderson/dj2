@@ -457,6 +457,18 @@ class DungeonPersistenceSystem:
 
 #====+ outside of classes =====
 # ===== Dungeon Integration Endpoints =====
+@app.route('/api/party/<party_id>', methods=['GET'])
+def get_party_data(party_id):
+    wc = current_app.world_controller
+    party = wc.party_manager.parties.get(party_id)
+    if not party:
+        return jsonify({"error": "Party not found"}), 404
+    characters = []
+    for char_id in party.get("members", []):
+        char = wc.character_manager.get_character(char_id)
+        if char:
+            characters.append(char.to_dict())
+    return jsonify({"party": party, "characters": characters})
 
 @app.route('/api/dungeon/enter', methods=['POST'])
 def dungeon_enter():

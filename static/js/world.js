@@ -129,6 +129,21 @@ async function loadActiveCharacter() {
     }
 }
 
+function enterDungeon() {
+    const partyId = window.currentPartyId;
+    const locationId = window.worldState?.currentLocation?.id;
+    if (!partyId || !locationId) {
+        addWorldMessage("Cannot enter dungeon: missing party or location.");
+        return;
+    }
+    // Store context for dungeon page
+    sessionStorage.setItem('dungeon_party_id', partyId);
+    sessionStorage.setItem('dungeon_location_id', locationId);
+    sessionStorage.setItem('dungeon_world_url', window.location.origin);
+    // Navigate to dungeon server
+    window.location.href = 'http://localhost:5005/';
+}
+
 function getCurrentPartyCharacters() {
     // Get the active party from world state
     const activeParty = worldState.parties.find(p => p.id === window.currentPartyId);
