@@ -348,7 +348,8 @@ Rules:
                     "message": narrative,
                     "tool": "move",
                     "confirmed": True,
-                    "refresh_map": True
+                    "refresh_map": True,
+                    "exit_dungeon": result.get('exit_dungeon', False)
                 }
             # TODO: Add other action types (doors, traps, etc.) here
             # elif action['type'] == 'door':

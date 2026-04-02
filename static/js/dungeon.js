@@ -9,11 +9,13 @@ window.dungeonGameId = null;
 function initDungeonDisplay() {
     refreshDungeonImage();
     updateDungeonPosition();
-    addToChatLog("Dungeon ready.", 'system');
+    addToChatLog("You are in the dungeon.", 'DM');
 }
 
 // ===== INTEGRATED MODE (via sessionStorage) =====
 function enterIntegratedMode(partyId, locationId, worldUrl) {
+    window.currentPartyId = partyId;
+    window.currentWorldUrl = worldUrl || 'http://localhost:5000';
     fetch('/api/dungeon/enter', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -89,20 +91,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ===== EXIT FUNCTION =====
 function exitDungeon() {
-    const partyId = sessionStorage.getItem('dungeon_party_id');
-    const worldUrl = sessionStorage.getItem('dungeon_world_url') || 'http://localhost:5000';
+    console.log("exitDungeon called, partyId=", window.currentPartyId, "worldUrl=", window.currentWorldUrl);
+    if (!window.currentPartyId) {
+        console.error("No party ID available");
+        return;
+    }
     fetch('/api/dungeon/exit', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ party_id: partyId, all_characters: true })
+        body: JSON.stringify({ party_id: window.currentPartyId, all_characters: true })
     })
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            sessionStorage.removeItem('dungeon_party_id');
-            sessionStorage.removeItem('dungeon_location_id');
-            sessionStorage.removeItem('dungeon_world_url');
-            window.location.href = worldUrl;
+            window.location.href = window.currentWorldUrl;
         } else {
             alert("Failed to exit dungeon: " + data.message);
         }
@@ -126,7 +128,9 @@ function addToChatLog(text, sender = 'system') {
         sender === 'user' ? 'rgba(78, 204, 163, 0.2)' :
         sender === 'DM' ? 'rgba(15, 52, 96, 0.3)' :
         'rgba(0,0,0,0.3)';
-    
+
+    // Set text color to light gray/white for all messages
+    div.style.color = '#f0f0f0';    
     const label = sender === 'DM' ? 'DM' : sender;
     div.innerHTML = `<strong>${label}:</strong> ${text}`;
     chat.appendChild(div);
@@ -163,24 +167,11 @@ function updateDungeonPosition() {
 
 function moveDungeon(direction) {
     if (!window.dungeonGameId) return;
-    
-    addToChatLog(`Moving ${direction}...`, 'user');
-    
-    fetch('/move', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            direction: direction, 
-            steps: 1,
-            game_id: window.dungeonGameId
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        addToChatLog(data.message || `Moved ${direction}`, 'system');
-        refreshDungeonImage();
-        updateDungeonPosition();
-    });
+    // Instead of calling /move directly, use the AI command
+    // Set the AI command input value and call sendAICommand
+    const input = document.getElementById('dungeon-ai-command');
+    input.value = direction;
+    sendAICommand();
 }
 
 function sendAICommand() {
@@ -203,7 +194,9 @@ function sendAICommand() {
     })
     .then(r => r.json())
     .then(data => {
+        console.log("AI response data:", data);
         if (data.exit_dungeon) {
+            console.log("Exit dungeon flag received, calling exitDungeon()");
             exitDungeon();
         } else if (data.success) {
             addToChatLog(data.message, 'DM');

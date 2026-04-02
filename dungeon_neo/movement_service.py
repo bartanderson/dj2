@@ -151,15 +151,16 @@ class MovementService:
         
         target_cell = dungeon_state.get_cell(target_x, target_y)
         print(f"Target cell at ({target_x},{target_y}) is_stairs: {target_cell.is_stairs if target_cell else False}")
-        
         # --- Check for stairs BEFORE any movement calculation ---
         if target_cell and target_cell.is_stairs:
             if confirm_stairs:
                 # Actually move onto stairs
                 dungeon_state.party_position = (target_x, target_y)
                 exit_dungeon = False
-                if hasattr(target_cell, 'key') and target_cell.key == 'up':
+                if target_cell.is_stair_up:
                     exit_dungeon = True
+                else:
+                    exit_dungeon = False
                 # Update visibility
                 if dungeon_state.visibility_system:
                     dungeon_state.visibility_system.party_position = (target_x, target_y)

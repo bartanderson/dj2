@@ -1297,6 +1297,7 @@ class WorldController:
         Handle exit from dungeon. Can be called with just a party_id (simple exit)
         or with full character data (when dungeon server calls back).
         """
+        print("exit_dungeon method called with parameters:", party_id, exiting_characters)
         # CASE 1: Called with exiting_characters (dungeon server callback)
         if exiting_characters is not None:
             # Update characters with dungeon changes
