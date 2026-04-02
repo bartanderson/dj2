@@ -136,12 +136,8 @@ function enterDungeon() {
         addWorldMessage("Cannot enter dungeon: missing party or location.");
         return;
     }
-    // Store context for dungeon page
-    sessionStorage.setItem('dungeon_party_id', partyId);
-    sessionStorage.setItem('dungeon_location_id', locationId);
-    sessionStorage.setItem('dungeon_world_url', window.location.origin);
     // Navigate to dungeon server
-    window.location.href = 'http://localhost:5005/';
+    window.location.href = `http://localhost:5005/?party_id=${encodeURIComponent(partyId)}&location_id=${encodeURIComponent(locationId)}&world_url=${encodeURIComponent(window.location.origin)}`;
 }
 
 function getCurrentPartyCharacters() {

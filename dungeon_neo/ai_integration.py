@@ -326,15 +326,19 @@ Rules:
         
         # ===== STEP 1: Check for pending action confirmation =====
         if self.pending_action and natural_language.lower() in ['yes', 'y', 'confirm', 'take', 'proceed', 'take stairs']:
+            print(f"[DEBUG] Confirming stairs with confirm_stairs=True")
             print(f"[DEBUG] Confirmation detected for pending action: {self.pending_action['type']}")
             action = self.pending_action
             self.pending_action = None
             
             if action['type'] == 'stairs':
+                print(f"[DEBUG CONFIRM] Taking stairs: direction={action['data']['direction']}, steps={action['data']['steps']}")
                 result = self.state.movement.move_party(
                     action['data']['direction'],
-                    action['data']['steps']
+                    action['data']['steps'],
+                    confirm_stairs=True
                 )
+                print(f"[DEBUG CONFIRM] move_party result = {result}")
                 if result.get('success'):
                     narrative = f"You take the stairs. {result.get('message', '')}"
                 else:

@@ -113,8 +113,9 @@ class MovementService:
             "steps_moved": actual_steps
         }
     
-    def move_party(self, direction, steps=1):
+    def move_party(self, direction, steps=1, confirm_stairs=False):
         """Move party with proper validation and visibility updates"""
+        print("=== move_party called ===")
         # Convert steps to integer if it's a string
         try:
             steps = int(steps)
@@ -133,11 +134,57 @@ class MovementService:
         
         # Get current position
         x0, y0 = dungeon_state.party_position
+        # Determine direction vector
+        dx, dy = DIRECTION_VECTORS_8.get(direction.lower(), (0, 0))
+        if dx == 0 and dy == 0:
+            return {"success": False, "message": f"Invalid direction: {direction}"}
         
         # Validate current position
         if not dungeon_state.grid_system.is_valid_position(x0, y0):
             return {"success": False, "message": "Invalid starting position"}
         
+        # Calculate target cell
+        target_x = x0 + dx * steps
+        target_y = y0 + dy * steps
+        if not dungeon_state.grid_system.is_valid_position(target_x, target_y):
+            return {"success": False, "message": "Movement would go out of bounds"}
+        
+        target_cell = dungeon_state.get_cell(target_x, target_y)
+        print(f"Target cell at ({target_x},{target_y}) is_stairs: {target_cell.is_stairs if target_cell else False}")
+        
+        # --- Check for stairs BEFORE any movement calculation ---
+        if target_cell and target_cell.is_stairs:
+            if confirm_stairs:
+                # Actually move onto stairs
+                dungeon_state.party_position = (target_x, target_y)
+                exit_dungeon = False
+                if hasattr(target_cell, 'key') and target_cell.key == 'up':
+                    exit_dungeon = True
+                # Update visibility
+                if dungeon_state.visibility_system:
+                    dungeon_state.visibility_system.party_position = (target_x, target_y)
+                    dungeon_state.visibility_system.update_visibility()
+                print(f"Moving onto stairs, exit_dungeon={exit_dungeon}")
+                return {
+                    "success": True,
+                    "message": f"Party moves onto stairs at ({target_x}, {target_y})",
+                    "old_position": (x0, y0),
+                    "new_position": (target_x, target_y),
+                    "steps_moved": steps,
+                    "exit_dungeon": exit_dungeon
+                }
+            else:
+                # Return confirmation request
+                print("Stair confirmation required")
+                return {
+                    "success": False,
+                    "message": f"Do you wish to take stairs at ({target_x}, {target_y})",
+                    "old_position": (x0, y0),
+                    "new_position": (x0, y0),
+                    "steps_moved": 0
+                }
+        
+        # --- Normal movement (non-stairs) ---
         # Update visibility along the path BEFORE moving
         if dungeon_state.visibility_system:
             dungeon_state.visibility_system.update_visibility_directional(direction, steps)

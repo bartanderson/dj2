@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 import uuid
 import logging
 import json
+import requests
 
 # Global dungeon cache
 DUNGEON_CACHE = {}
@@ -106,15 +107,16 @@ def dungeon_image():
 def move():
     data = request.json or {}
     game_id = data.get('game_id')
+    direction = data.get('direction')
+    steps = data.get('steps', 1)
+    confirm_stairs = data.get('confirm_stairs', False)   # <-- add this
     if not game_id:
         return jsonify({"success": False, "message": "Missing game_id"})
     dungeon = dungeon_states.get(game_id)
     if not dungeon:
         return jsonify({"success": False, "message": "Dungeon not found"})
-    direction = data.get('direction')
-    steps = data.get('steps', 1)
     try:
-        result = dungeon.state.movement.move_party(direction, steps)
+        result = dungeon.state.movement.move_party(direction, steps, confirm_stairs)
         return jsonify(result)
     except Exception as e:
         logger.error(f"Movement error: {str(e)}")
@@ -123,8 +125,12 @@ def move():
 @app.route('/position', methods=['GET'])
 def get_position():
     game_id = request.args.get('game_id')
+    if not game_id:
+        return jsonify({"error": "Missing game_id"})
+    dungeon = dungeon_states.get(game_id)
     print(f"[DEBUG] /position called with game_id: {game_id}")
     print(f"[DEBUG] dungeon_states keys: {list(dungeon_states.keys())}")
+    print(f"[DEBUG] parties in dungeon: {dungeon.state.parties.keys()}")
     if not game_id:
         return jsonify({"error": "Missing game_id"})
     dungeon = dungeon_states.get(game_id)
@@ -209,6 +215,7 @@ def dungeon_enter():
     data = request.get_json()
     party_id = data.get('party_id')
     location_id = data.get('location_id')
+    print(f"[DEBUG] Enter: party_id={party_id}, location_id={location_id}")
     world_url = data.get('world_url', 'http://localhost:5000')
     if not party_id or not location_id:
         return jsonify({"success": False, "message": "Missing party_id or location_id"})
@@ -233,7 +240,9 @@ def dungeon_enter():
         dungeon.location_id = location_id
         dungeon_states[location_id] = dungeon
 
+    print(f"[DEBUG] /api/dungeon/enter: party_id={party_id}, characters count={len(characters)}")
     dungeon.state.add_party(party_id, characters)
+    print(f"[DEBUG] After add_party, dungeon.state.parties keys: {list(dungeon.state.parties.keys())}")
     dungeon.world_url = world_url
 
     return jsonify({
@@ -247,6 +256,7 @@ def dungeon_exit():
     """Party exits dungeon. Send updates back to world."""
     data = request.get_json()
     party_id = data.get('party_id')
+    print(f"[DEBUG] Exit: party_id={party_id}")
     exiting_character_ids = data.get('exiting_character_ids', [])
     all_characters = data.get('all_characters', False)
     
@@ -256,6 +266,7 @@ def dungeon_exit():
     dungeon = None
     location_id = None
     for loc_id, d in dungeon_states.items():
+        print(f"[DEBUG] Checking {loc_id}: parties = {d.state.parties.keys()}")
         if party_id in d.state.parties:
             dungeon = d
             location_id = loc_id

@@ -65,50 +65,6 @@
         }
     </style>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-
-    <script>
-function checkMode() {
-    console.log("Checking current mode...");
-    fetch('/api/engine/mode')
-        .then(r => r.json())
-        .then(data => {
-            console.log("Mode API response:", data);
-            const mode = data.current_mode || 'world';
-            console.log("Setting mode to:", mode);
-            updateUIForMode(mode);
-        })
-        .catch(error => console.error("Mode check error:", error));
-}
-
-function updateUIForMode(mode) {
-    console.log("Updating UI for mode:", mode);
-    
-    // Set body attribute for CSS
-    document.body.setAttribute('data-mode', mode);
-    
-    // Update mode text
-    document.getElementById('current-mode').textContent = mode;
-    
-    // Show/hide mode buttons
-    if (mode === 'dungeon') {
-        document.getElementById('enter-dungeon').style.display = 'none';
-        document.getElementById('return-world').style.display = 'inline-block';
-    } else {
-        document.getElementById('enter-dungeon').style.display = 'inline-block';
-        document.getElementById('return-world').style.display = 'none';
-    }
-}
-
-function updateDungeonMap() {
-    const map = document.getElementById('dungeon-map');
-    if (!map) return;
-    const now = Date.now();
-    map.src = `http://localhost:5005/dungeon-image?t=${now}`;
-}
-
-// Check mode on page load
-document.addEventListener('DOMContentLoaded', checkMode);
-    </script>
     <style>
         /* ===== BASE RESET ===== */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -154,15 +110,6 @@ document.addEventListener('DOMContentLoaded', checkMode);
             z-index: 1000;
             /*display: none;  Initially hidden, will be shown by CSS based on data-mode */
         }
-
-        /* This rule is now separate - no .app-container here */
-/*        .app-container { 
-            display: grid !important; 
-            grid-template-columns: 250px 1fr !important; 
-            grid-template-rows: 70px 1fr !important; 
-            height: 100vh !important; 
-            position: relative !important; /* Not absolute! */
-        }*/
 
         /* Make .app-container use grid when visible */
         .world-only.app-container {
@@ -873,58 +820,6 @@ document.addEventListener('DOMContentLoaded', checkMode);
         // Add a welcome message from the server? Not needed; the server will respond when we send a message.
         // Instead, we could fetch some initial context, but it's fine to start with nothing.
     }
-    // function setupChat() {
-    //     const chatInput = document.getElementById('chat-input');
-    //     const chatMessages = document.getElementById('chat-messages');
-    //     const sendChatBtn = document.getElementById('send-chat');
-        
-    //     function addMessage(text, sender = 'player') {
-    //         const msgDiv = document.createElement('div');
-    //         msgDiv.className = `chat-message ${sender}`;
-    //         msgDiv.innerHTML = `
-    //             <div style="font-weight: bold; color: ${sender === 'player' ? '#4ecca3' : '#ff9800'}">
-    //                 ${sender === 'player' ? 'You' : 'DM'}:
-    //             </div>
-    //             <div style="margin-left: 10px;">${text}</div>
-    //         `;
-    //         msgDiv.style.marginBottom = '10px';
-    //         msgDiv.style.padding = '8px';
-    //         msgDiv.style.background = 'rgba(0,0,0,0.3)';
-    //         msgDiv.style.borderRadius = '4px';
-            
-    //         chatMessages.appendChild(msgDiv);
-    //         chatMessages.scrollTop = chatMessages.scrollHeight;
-    //     }
-        
-    //     function sendChatMessage() {
-    //         const message = chatInput.value.trim();
-    //         if (message) {
-    //             addMessage(message, 'player');
-    //             chatInput.value = '';
-                
-    //             // Simulate DM response (placeholder)
-    //             setTimeout(() => {
-    //                 const responses = [
-    //                     "Interesting choice, adventurer. How shall we proceed?",
-    //                     "The dungeon awaits. Are you prepared?",
-    //                     "Your words echo in the ancient halls...",
-    //                     "What would you like to do next?",
-    //                     "The journey continues. Tell me more."
-    //                 ];
-    //                 const response = responses[Math.floor(Math.random() * responses.length)];
-    //                 addMessage(response, 'dm');
-    //             }, 1000);
-    //         }
-    //     }
-        
-    //     sendChatBtn.addEventListener('click', sendChatMessage);
-    //     chatInput.addEventListener('keypress', (e) => {
-    //         if (e.key === 'Enter') sendChatMessage();
-    //     });
-        
-    //     // Add welcome message
-    //     addMessage("Welcome to Dungeon World! How can I help you create your character?", 'dm');
-    // }
     
     // ===== SETTINGS FUNCTIONALITY =====
     function setupSettings() {

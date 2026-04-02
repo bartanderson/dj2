@@ -70,11 +70,12 @@ function enterStandaloneMode(gameIdFromUrl) {
 
 // ===== MAIN INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', function() {
-    // First, check if we are in integrated mode (coming from world)
-    const partyId = sessionStorage.getItem('dungeon_party_id');
-    const locationId = sessionStorage.getItem('dungeon_location_id');
-    const worldUrl = sessionStorage.getItem('dungeon_world_url');
-
+    console.log("Full URL:", window.location.href);
+    console.log("URL params:", window.location.search);
+    const urlParams = new URLSearchParams(window.location.search);
+    const partyId = urlParams.get('party_id');
+    const locationId = urlParams.get('location_id');
+    const worldUrl = urlParams.get('world_url');
     if (partyId && locationId) {
         // Integrated mode
         enterIntegratedMode(partyId, locationId, worldUrl || 'http://localhost:5000');
