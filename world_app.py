@@ -460,6 +460,8 @@ class DungeonPersistenceSystem:
 @app.route('/api/party/<party_id>', methods=['GET'])
 def get_party_data(party_id):
     wc = current_app.world_controller
+    import inspect
+    print("DEBUG: wc.exit_dungeon signature:", inspect.signature(wc.exit_dungeon))
     party = wc.party_manager.parties.get(party_id)
     if not party:
         return jsonify({"error": "Party not found"}), 404
@@ -493,6 +495,9 @@ def dungeon_exit():
     remaining_character_ids = data.get('remaining_characters', [])
     
     wc = current_app.world_controller
+    import inspect
+    print("DEBUG: wc.exit_dungeon signature:", inspect.signature(wc.exit_dungeon))
+
     result = wc.exit_dungeon(
         party_id=party_id,
         exiting_characters=exiting_characters,

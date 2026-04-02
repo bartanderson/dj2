@@ -276,6 +276,11 @@ def dungeon_exit():
         return jsonify({"success": False, "message": "Party not found in any dungeon"}), 404
     
     party = dungeon.state.get_party(party_id)
+    print(f"[DEBUG] Party object from state: {party}")
+    if party:
+        print(f"[DEBUG] Party characters list: {party.get('characters')}")
+        print(f"[DEBUG] Length of characters: {len(party.get('characters', []))}")
+
     if not party:
         return jsonify({"success": False, "message": "Party not found"}), 404
     
@@ -283,9 +288,11 @@ def dungeon_exit():
     if all_characters:
         exiting_characters = party["characters"]
         remaining_characters = []
+        print(f"[DEBUG] all_characters True, exiting_characters count: {len(exiting_characters)}")
     else:
         exiting_characters = [c for c in party["characters"] if c.get("id") in exiting_character_ids]
         remaining_characters = [c for c in party["characters"] if c.get("id") not in exiting_character_ids]
+        print(f"[DEBUG] partial exit, exiting count: {len(exiting_characters)}")
     
     # Calculate elapsed time
     elapsed = getattr(dungeon, 'elapsed_minutes', 0)

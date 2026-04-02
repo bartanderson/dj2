@@ -42,7 +42,7 @@ from world.tool_system import ToolRegistry
 from world.authority_system import AuthoritySystem
 from world.encounter_models import EncounterPoint
 from world.bestiary import Monster
-
+print("Loading world_controller.py (new version with exit_dungeon fix)")
 
 import warnings
 warnings.filterwarnings("ignore", message=".*Triton.*")
@@ -1561,51 +1561,6 @@ class WorldController:
                 return result[0] if result else None
         finally:
             Database.return_connection(conn)
-
-    def exit_dungeon(self, party_id: str) -> dict:
-        """Normal exit: return to dungeon entrance."""
-        if party_id not in self.parties_in_dungeon:
-            return {"success": False, "message": "Party not in dungeon"}
-        
-        dungeon_info = self.parties_in_dungeon[party_id]
-        location_id = dungeon_info['location_id']
-        
-        # Advance time (placeholder)
-        self.campaign_state.advance_time(10)
-        
-        # Update party location
-        if party_id in self.party_manager.parties:
-            self.party_manager.set_party_location(party_id, location_id)
-        
-        # Remove from dungeon tracking
-        del self.parties_in_dungeon[party_id]
-        
-        location = self.world_map.get_location(location_id)
-        return {
-            "success": True,
-            "message": f"Party returns to {location.name if location else 'the entrance'}."
-        }
-
-    def exit_dungeon_to_location(self, party_id: str, location_id: str) -> dict:
-        """Special exit: teleport party to a specific location."""
-        if party_id not in self.parties_in_dungeon:
-            return {"success": False, "message": "Party not in dungeon"}
-        
-        # Advance time (teleport takes time? could be instant)
-        self.campaign_state.advance_time(10)
-        
-        # Update party location
-        if party_id in self.party_manager.parties:
-            self.party_manager.set_party_location(party_id, location_id)
-        
-        # Remove from dungeon tracking
-        del self.parties_in_dungeon[party_id]
-        
-        location = self.world_map.get_location(location_id)
-        return {
-            "success": True,
-            "message": f"Party teleports to {location.name if location else location_id}."
-        }
 
     def travel_to_location(self, location_id: str) -> bool:
         if self.world_map.travel_to(location_id):

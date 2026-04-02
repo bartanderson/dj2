@@ -130,7 +130,11 @@ Rules:
         y="Y coordinate (optional, defaults to current party y)"
     )
     def inspect_cell(self, x: int = None, y: int = None) -> dict:
-        """Get detailed information about a cell, default to current party position"""
+        # TODO: Replace raw cell data with natural language description.
+        # Example: "You are in a dimly lit corridor. To the north, you see a closed wooden door."
+        # Use cell properties (is_room, is_corridor, is_door, etc.) to generate contextual narrative.
+        # Consider using AI to produce varied descriptions based on cell type and surroundings.
+                """Get detailed information about a cell, default to current party position"""
         if x is None or y is None:
             px, py = self.state.party_position
             if x is None:
@@ -174,6 +178,7 @@ Rules:
         steps="Number of steps (optional, default=1)"
     )
     def move(self, direction: str, steps: int = 1) -> dict:
+        # TODO: After moving, describe the new cell using natural language (e.g., "You enter a dusty room with a faint glow in the corner.")
         if not hasattr(self.state, 'movement') or not self.state.movement:
             return {"success": False, "message": "Movement service not available"}
         try:
@@ -212,6 +217,10 @@ Rules:
         description="Describe the current cell and visible surroundings."
     )
     def inspect(self, radius: int = 2) -> dict:
+        # TODO: Replace raw cell data with natural language description.
+        # Example: "You are in a dimly lit corridor. To the north, you see a closed wooden door."
+        # Use cell properties (is_room, is_corridor, is_door, etc.) to generate contextual narrative.
+        # Consider using AI to produce varied descriptions based on cell type and surroundings.
         """Describe the current cell and visible cells within radius."""
         x, y = self.state.party_position
         
@@ -320,6 +329,12 @@ Rules:
         return debug_info        
         
     def process_command(self, natural_language: str) -> dict:
+        # TODO: Replace raw tool messages with AI-generated narrative.
+        # Currently, some tools return technical details (e.g., 'Moved east to (5, 3)').
+        # Enhance by calling the LLM to convert the result into an immersive description,
+        # similar to the narrative generation block for 'success' cases.
+        # Do this for all tools including move, inspect, etc.
+
         print(f"[DEBUG] process_command: pending_action = {self.pending_action}")
         print(f"[DEBUG] natural_language = '{natural_language}'")
         print(f"\n=== USER COMMAND ===\n{natural_language}\n")
