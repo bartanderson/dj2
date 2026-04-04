@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Original Terrain Map (Exact JS Version)</title>
+    <style>
+        body { background: #111; color: #eee; font-family: monospace; }
+        canvas { border: 1px solid #888; margin: 20px; }
+        .controls { margin: 10px; }
+        input, button { padding: 5px; margin: 5px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/seedrandom@3.0.5/seedrandom.min.js"></script>
+</head>
+<body>
+    <div class="controls">
+        Seed: <input type="text" id="seed" value="42">
+        <button id="generate">Generate</button>
+        <button id="randomSeed">Random Seed</button>
+    </div>
+    <canvas id="mapCanvas" width="800" height="600"></canvas>
+    <div id="info"></div>
+
+<script>
+// ============================================================================
+// Original PerlinNoise class (from your terrain-generator.js)
+// ============================================================================
+class PerlinNoise {
+    constructor(seed) {
+        this.p = new Array(512);
+        const perm = this.generatePermutation(seed);
+        for (let i = 0; i < 512; i++) {
+            this.p[i] = perm[i % 256];
+        }
+    }
+    generatePermutation(seed) {
+        const rng = new Math.seedrandom(seed.toString());
+        const p = new Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        for (let i = 255; i >= 0; i--) {
+            const j = Math.floor(rng() * (i + 1));
+            [p[i], p[j]] = [p[j], p[i]];
+        }
+        return p;
+    }
+    noise(x, y, z) {
+        const X = Math.floor(x) & 255;
+        const Y = Math.floor(y) & 255;
+        const Z = Math.floor(z) & 255;
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        z -= Math.floor(z);
+        const u = this.fade(x);
+        const v = this.fade(y);
+        const w = this.fade(z);
+        const A = (this.p[X] + Y) & 255;
+        const AA = (this.p[A] + Z) & 255;
+        const AB = (this.p[A + 1] + Z) & 255;
+        const B = (this.p[X + 1] + Y) & 255;
+        const BA = (this.p[B] + Z) & 255;
+        const BB = (this.p[B + 1] + Z) & 255;
+        return this.lerp(w, this.lerp(v, this.lerp(u, this.grad(this.p[AA], x, y, z), this.grad(this.p[BA], x - 1, y, z)), this.lerp(u, this.grad(this.p[AB], x, y - 1, z), this.grad(this.p[BB], x - 1, y - 1, z))), this.lerp(v, this.lerp(u, this.grad(this.p[AA + 1], x, y, z - 1), this.grad(this.p[BA + 1], x - 1, y, z - 1)), this.lerp(u, this.grad(this.p[AB + 1], x, y - 1, z - 1), this.grad(this.p[BB + 1], x - 1, y - 1, z - 1))));
+    }
+    fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    lerp(t, a, b) { return a + t * (b - a); }
+    grad(hash, x, y, z) {
+        const h = hash & 15;
+        const u = h < 8 ? x : y;
+        const v = h < 4 ? y : (h === 12 || h === 14 ? x : z);
+        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+    }
+}
+
+// ============================================================================
+// Original TerrainGenerator (from your terrain-generator.js)
+// ============================================================================
+class TerrainGenerator {
+    constructor(seed, width, height) {
+        this.seed = seed;
+        this.width = width;
+        this.height = height;
+        this.rng = new Math.seedrandom(this.seed.toString());
+        this.perlinNoise = new PerlinNoise(this.seed);
+        this.terrainTypes = {
+            "ocean": {"color": "#4d6fb8", "height_range": [-1, 0.45]},
+            "coast": {"color": "#a2c4c9", "height_range": [0.45, 0.5]},
+            "plains": {"color": "#689f38", "height_range": [0.5, 0.58]},
+            "hills": {"color": "#8d9946", "height_range": [0.58, 0.65]},
+            "mountains": {"color": "#8d99ae", "height_range": [0.65, 0.73]},
+            "snowcaps": {"color": "#ffffff", "height_range": [0.73, 1]}
+        };
+    }
+    
+    generateHeightmap() {
+        const generateStats = 0;
+        const heightmap = new Array(this.height).fill(null).map(() => new Array(this.width).fill(0));
+        const scale = 0.005;
+        const octaves = 4;
+        const persistence = 0.5;
+        const lacunarity = 2;
+        
+        let maxNoise = 0;
+        let amplitude = 1;
+        for (let i = 0; i < octaves; i++) {
+            maxNoise += amplitude;
+            amplitude *= persistence;
+        }
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                let noise = 0;
+                amplitude = 1;
+                let frequency = 1;
+                for (let i = 0; i < octaves; i++) {
+                    noise += this.perlinNoise.noise(x * scale * frequency, y * scale * frequency, this.seed) * amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
+                }
+                heightmap[y][x] = (noise + maxNoise) / (2 * maxNoise);
+            }
+        }
+        return heightmap;
+    }
+    
+    generateTerrain(heightmap) {
+        const terrain = new Array(this.height).fill(null).map(() => new Array(this.width).fill(0));
+        for (let y = 0; y < this.height; y++) {
+            for (let x = 0; x < this.width; x++) {
+                const height = heightmap[y][x];
+                let terrainType = "ocean";
+                if (height >= this.terrainTypes["snowcaps"].height_range[0]) {
+                    terrainType = "snowcaps";
+                } else if (height >= this.terrainTypes["mountains"].height_range[0]) {
+                    terrainType = "mountains";
+                } else if (height >= this.terrainTypes["hills"].height_range[0]) {
+                    terrainType = "hills";
+                } else if (height >= this.terrainTypes["plains"].height_range[0]) {
+                    terrainType = "plains";
+                } else if (height >= this.terrainTypes["coast"].height_range[0]) {
+                    terrainType = "coast";
+                }
+                terrain[y][x] = this.terrainTypes[terrainType].color;
+            }
+        }
+        return terrain;
+    }
+}
+
+// ============================================================================
+// Original generateTerrainImage from world.js (with all the extra steps: rivers, lakes, forests)
+// This is a direct copy from your world.js file, with renderTerrain replaced.
+// ============================================================================
+function generateTerrainImage(worldMap) {
+    if (!worldMap) return;
+
+    const width = worldMap.width;
+    const height = worldMap.height;
+    const area = width * height;
+
+    const seed = worldMap.seed || 42;
+    const terrainGen = new TerrainGenerator(seed, width, height);
+    const heightmap = terrainGen.generateHeightmap();
+
+    // Moisture map (using a separate Perlin noise)
+    const moistureGen = new TerrainGenerator(seed + 1000, width, height);
+    const moistureHeightmap = moistureGen.generateHeightmap();
+    const moistureMap = moistureHeightmap; // normalized already
+
+    // Terrain thresholds
+    const thresholds = {
+        low: 0.3,
+        plains: 0.54,
+        forest: 0.65,
+        hills: 0.73,
+        mountains: 0.85,
+    };
+
+    // ---- Step 1: Render base terrain to a temporary canvas ----
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+    // Get terrain color grid
+    const terrainGrid = terrainGen.generateTerrain(heightmap);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            tempCtx.fillStyle = terrainGrid[y][x];
+            tempCtx.fillRect(x, y, 1, 1);
+        }
+    }
+
+    // ---- River generation (meandering, thin) ----
+    const targetRiverCount = Math.floor(area / 8000);
+    let riverMask = Array(height).fill().map(() => Array(width).fill(false));
+    const rngRiver = new Math.seedrandom(seed + 10000);
+
+    let startCandidates = [];
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            if (h >= thresholds.hills && h <= thresholds.mountains) {
+                let isLocalMax = true;
+                for (let dy = -1; dy <= 1 && isLocalMax; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            if (heightmap[ny][nx] > h) {
+                                isLocalMax = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (isLocalMax) startCandidates.push([x, y]);
+            }
+        }
+    }
+    if (startCandidates.length === 0) {
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                if (heightmap[y][x] >= thresholds.hills && heightmap[y][x] <= thresholds.mountains) {
+                    startCandidates.push([x, y]);
+                }
+            }
+        }
+    }
+    // Shuffle
+    for (let i = startCandidates.length - 1; i > 0; i--) {
+        const j = Math.floor(rngRiver() * (i + 1));
+        [startCandidates[i], startCandidates[j]] = [startCandidates[j], startCandidates[i]];
+    }
+
+    for (let r = 0; r < targetRiverCount && r < startCandidates.length; r++) {
+        let [x, y] = startCandidates[r];
+        const visited = new Set();
+        const path = [];
+        let steps = 0;
+        while (true) {
+            if (y < 0 || y >= height || x < 0 || x >= width) break;
+            const key = `${x},${y}`;
+            if (visited.has(key)) break;
+            visited.add(key);
+            path.push([x, y]);
+
+            const h = heightmap[y][x];
+            if (h < thresholds.low) break;
+
+            const neighbors = [];
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited.has(`${nx},${ny}`)) {
+                        const nh = heightmap[ny][nx];
+                        if (nh < h) {
+                            neighbors.push({ x: nx, y: ny, height: nh });
+                        }
+                    }
+                }
+            }
+            if (neighbors.length === 0) break;
+
+            let totalWeight = 0;
+            const weights = neighbors.map(n => (h - n.height) + 0.1);
+            weights.forEach(w => totalWeight += w);
+            let rand = rngRiver() * totalWeight;
+            let chosen = null;
+            for (let i = 0; i < neighbors.length; i++) {
+                if (rand < weights[i]) {
+                    chosen = neighbors[i];
+                    break;
+                }
+                rand -= weights[i];
+            }
+            if (!chosen) chosen = neighbors[0];
+            [x, y] = [chosen.x, chosen.y];
+            steps++;
+            if (steps > 300) break;
+        }
+        for (let [px, py] of path) {
+            riverMask[py][px] = true;
+        }
+    }
+
+    // ---- Paint forest on canvas (based on height and moisture) ----
+    const forestMinMoisture = 0.6;
+    const forestColor = '#2c5e2e';
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            const m = moistureMap[y][x];
+            if (h >= thresholds.plains && h <= thresholds.forest && m > forestMinMoisture) {
+                if (!riverMask[y][x]) {
+                    tempCtx.fillStyle = forestColor;
+                    tempCtx.fillRect(x, y, 1, 1);
+                }
+            }
+        }
+    }
+
+    // ---- Mark low‑lying hexes as lakes ----
+    const waterHeight = 0.3;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const h = heightmap[y][x];
+            if (h < waterHeight) {
+                tempCtx.fillStyle = '#3a80c2'; // lake color
+                tempCtx.fillRect(x, y, 1, 1);
+            }
+        }
+    }
+
+    // ---- River override (skip snowcaps) ----
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if (riverMask[y][x]) {
+                const h = heightmap[y][x];
+                if (h < 0.73) { // not snowcaps
+                    tempCtx.fillStyle = '#4a90e2';
+                    tempCtx.fillRect(x, y, 1, 1);
+                }
+            }
+        }
+    }
+
+    // ---- Final image ----
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const offCtx = offscreen.getContext('2d');
+    offCtx.drawImage(tempCanvas, 0, 0);
+    if (tempCanvas && tempCanvas.parentNode) {
+        tempCanvas.parentNode.removeChild(tempCanvas);
+    }
+    return offscreen;
+}
+
+// ============================================================================
+// Main: Use the original generateTerrainImage to create the map
+// ============================================================================
+function generateMap(seed) {
+    const width = 1000;
+    const height = 800;
+    const worldMap = {
+        width: width,
+        height: height,
+        seed: seed,
+        hexes: []
+    };
+    const terrainCanvas = generateTerrainImage(worldMap);
+    const displayCanvas = document.getElementById('mapCanvas');
+    displayCanvas.width = width;
+    displayCanvas.height = height;
+    const ctx = displayCanvas.getContext('2d');
+    ctx.drawImage(terrainCanvas, 0, 0);
+    document.getElementById('info').innerHTML = `Seed: ${seed} | Size: ${width}x${height}`;
+}
+
+document.getElementById('generate').addEventListener('click', () => {
+    const seed = parseInt(document.getElementById('seed').value);
+    generateMap(seed);
+});
+document.getElementById('randomSeed').addEventListener('click', () => {
+    const seed = Math.floor(Math.random() * 1000000);
+    document.getElementById('seed').value = seed;
+    generateMap(seed);
+});
+// Initial generation
+generateMap(42);
+</script>
+</body>
+</html>

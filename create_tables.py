@@ -164,6 +164,18 @@ def create_tables():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS name_cache (
+            id SERIAL PRIMARY KEY,
+            world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+            region_id VARCHAR(64) NOT NULL,
+            place_type VARCHAR(32) NOT NULL,
+            context_hash VARCHAR(64) NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(world_id, region_id, place_type, context_hash)
+        );
         """
     ]
     

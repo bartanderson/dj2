@@ -1,4 +1,7 @@
 # world_app.py
+
+# TODO: Create shop class that loads items from 05_equipment.json and handles transactions
+
 # import eventlet
 # eventlet.monkey_patch() # this has to be run before importing any other modules
 import os
@@ -620,31 +623,15 @@ def update_location():
 
     return jsonify({'success': True})
 
-
-@app.route('/api/set-hex-terrain', methods=['POST'])
-def set_hex_terrain():
-    data = request.get_json()
-    col = data.get('col')
-    row = data.get('row')
-    terrain = data.get('terrain')
-    wc = current_app.world_controller
-    if wc is None:
-        return jsonify({'success': False, 'error': 'World controller not available'}), 500
-    hex = wc.campaign_state.get_hex(col, row)
-    if hex:
-        hex['terrain'] = terrain
-        hex['discovered'] = True
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Hex not found'}), 404
-
 @app.route('/api/command', methods=['POST'])
 def handle_command():
     data = request.get_json()
     command = data.get('command', '')
+    session_id = request.cookies.get('session_id')
     wc = current_app.world_controller
     if not wc:
         return jsonify({"error": "World controller not available"}), 500
-    result = wc.process_command(command)
+    result = wc.process_command(command, session_id)
     return jsonify(result)
     
 def initialize_dungeon_systems():
@@ -2450,7 +2437,5 @@ def create_player():
     return response
 
 if __name__ == '__main__':
-    # Only initialize when not in reloader
-    if not os.environ.get('WERKZEUG_RUN_MAIN'):
-        initialize_app()  # It already sets app.world_controller and app.game_engine
+    initialize_app()
     socketio.run(app, debug=True, host="0.0.0.0", port=5000, use_reloader=False) 

@@ -1,4 +1,23 @@
 # world_controller.py
+
+"""
+# ===== PHASE 4c TODOs =====
+- Remove test dungeon hack (temporary dungeon at starting location)
+x Implement fast travel to discovered locations
+x Add shop system and inventory management
+- Generate encounter points on world map (random encounters)
+- Implement region system from 14_campaign.json (factions, quests)
+x Cache world terrain image on server for faster frontend rendering
+- Add multi-player test button (open new tab with different session)
+x Replace client-side terrain generation (terrain-generator.js) with backend data
+- Implement AI-powered name generation (already done, but ensure caching works)
+- Add services to settlements (shop, temple, quest board) based on size
+- Determine dungeon type from terrain (cave, crypt, etc.)
+
+# ===== Before PHASE 5 TODO =====
+# TODO: Refactor WorldController into smaller modules
+"""
+
 """
 WorldController Module
 =====================
@@ -42,6 +61,9 @@ from world.tool_system import ToolRegistry
 from world.authority_system import AuthoritySystem
 from world.encounter_models import EncounterPoint
 from world.bestiary import Monster
+from world.name_generator import NameGenerator
+from pathlib import Path
+from world.terrain_generator import TerrainGenerator
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
 import warnings
@@ -82,6 +104,7 @@ class WorldController:
     def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
         # Initialize core components
         self.seed = seed
+        self.world_id = world_id
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
         self.path_generator = PathGenerator(seed)
@@ -167,6 +190,9 @@ class WorldController:
         # Store quest archetypes for later generation
         self.quest_archetypes = campaign_data.get("quest_system", {}).get("quest_archetypes", {})
 
+        # Name generator
+        self.name_gen = NameGenerator(self.seed, self.campaign_data.get("theme", "generic"))
+
         # Load player narrative framework
         narrative_json = dnd_data._get_player_narrative_data()
         print("[WorldController] narrative_json keys:", narrative_json.keys() if narrative_json else "None")
@@ -248,7 +274,9 @@ class WorldController:
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
             self.travel_to_location(starting_location.id)
+
             # For testing only - add dungeon to starting location
+            # TODO: Remove temporary dungeon assignment once proper dungeon locations are generated
             if self.current_location:
                 self.current_location.dungeon_type = 'cave'
                 self.current_location.dungeon_level = 1
@@ -363,9 +391,9 @@ class WorldController:
 
     def generate_world_structure(self):
         import random
-        import math
+        import json
 
-        # Get grid size from campaign data
+        # Get grid size from campaign data, it defaults to 80x80
         world_gen = self.campaign_data.get("world_generation", {})
         surface = world_gen.get("world_layers", {}).get("surface", {})
         hex_grid_params = surface.get("hex_grid", {})
@@ -382,7 +410,7 @@ class WorldController:
         seed = int(self.campaign_state.world_seed) if self.campaign_state.world_seed else 42
         rng = random.Random(seed)
 
-        # Build empty hex grid
+        # Build empty hex grid (placeholder terrain)
         hexes = []
         for y in range(h):
             for x in range(w):
@@ -393,13 +421,13 @@ class WorldController:
                     "y": y_pos,
                     "grid_x": x,
                     "grid_y": y,
-                    "terrain": 'plains',        # placeholder
+                    "terrain": 'plains',
                     "region_id": None,
                     "discovered": False
                 })
         self.campaign_state.hex_grid = hexes
 
-        # Set party position based on starting location
+        # Set party position based on starting location (will be refined later)
         start_loc = self.world_map.get_location(self.starting_location_id)
         if start_loc:
             for h in hexes:
@@ -412,25 +440,122 @@ class WorldController:
             self.campaign_state.party_position = (0,0)
             hexes[0]['discovered'] = True
 
-        # Optionally generate potential locations (settlements, dungeons) – you can keep this or remove
-        self.campaign_state.surface_regions = {}
+        # ------------------------------------------------------------
+        # Generate terrain using the new standalone generator
+        # ------------------------------------------------------------
+        from world.terrain_generator import TerrainGenerator
+        from pathlib import Path
+
+        # Compute canvas dimensions from hex grid
+        hex_size = self.campaign_state.hex_size
+        max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
+        max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
+        canvas_w = int(max_x)
+        canvas_h = int(max_y)
+
+        # Create terrain generator (tuned to eliminate blue)
+        terrain_gen = TerrainGenerator(
+            seed=self.seed,
+            grid_width=w,
+            grid_height=h,
+            ocean_height=0.0,
+            coast_height=0.0,
+            lake_height=.37,
+            plains_high=0.58,
+            hills_high=0.65,
+            mountains_high=0.68,
+            snowcaps_low=0.7,
+            forest_min_moisture=0.6,
+            forest_height_min=0.54,
+            forest_height_max=0.65,
+            river_target_per_10000_cells=0.0,
+            river_hill_threshold=0.5
+        )
+
+        heightmap = terrain_gen.generate_heightmap()
+        moisture = terrain_gen.generate_moisture_map()
+        river_mask = terrain_gen.generate_rivers(heightmap)
+
+        print(f"Heightmap min: {min(min(row) for row in heightmap):.3f}, max: {max(max(row) for row in heightmap):.3f}")
+
+        # Render and save the terrain image
+        img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, canvas_w, canvas_h)
+        static_dir = Path("static/world_images")
+        static_dir.mkdir(parents=True, exist_ok=True)
+        filename = str(static_dir / f"world_{self.world_id}_terrain.png")
+        img.save(filename)
+        self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
+
+        # Assign terrain type to each hex by sampling the heightmap at its center
+        for hex in self.campaign_state.hex_grid:
+            cx = hex["x"]
+            cy = hex["y"]
+            gx = int((cx / canvas_w) * (w - 1))
+            gy = int((cy / canvas_h) * (h - 1))
+            gx = max(0, min(gx, w - 1))
+            gy = max(0, min(gy, h - 1))
+            h_val = heightmap[gy][gx]
+            m_val = moisture[gy][gx]
+            if h_val < terrain_gen.ocean_height:
+                terrain = 'ocean'
+            elif h_val < terrain_gen.coast_height:
+                terrain = 'coast'
+            elif h_val < terrain_gen.plains_high:
+                terrain = 'plains'
+            elif h_val < terrain_gen.hills_high:
+                terrain = 'hills'
+            elif h_val < terrain_gen.mountains_high:
+                terrain = 'mountains'
+            else:
+                terrain = 'snowcaps'
+            if terrain_gen.forest_height_min <= h_val <= terrain_gen.forest_height_max and m_val > terrain_gen.forest_min_moisture:
+                terrain = 'forest'
+            if h_val < terrain_gen.lake_height:
+                terrain = 'lake'
+            hex["terrain"] = terrain
+
+        from collections import Counter
+        terrain_counts = Counter(hex["terrain"] for hex in self.campaign_state.hex_grid)
+        print("Game hex terrain distribution:", terrain_counts)
+
+        # ------------------------------------------------------------
+        # Generate potential locations based on terrain density
+        # ------------------------------------------------------------
         self.campaign_state.potential_locations = {}
+        terrain_density = {
+            'plains': 0.05,
+            'forest': 0.07,
+            'hills': 0.08,
+            'mountains': 0.10,
+            'snowcaps': 0.03,
+            'lake': 0.0,      # no locations on lakes
+            'ocean': 0.0,
+            'coast': 0.0
+        }
 
+        for hex in self.campaign_state.hex_grid:
+            terrain = hex["terrain"]
+            density = terrain_density.get(terrain, 0.03)
+            if self.rng.random() < density:
+                pot_id = f"loc_{hex['grid_x']}_{hex['grid_y']}"
+                loc_type = self.rng.choice(["settlement", "dungeon", "poi"])
+                self.campaign_state.potential_locations[pot_id] = {
+                    "region_id": None,
+                    "col": hex["grid_x"],
+                    "row": hex["grid_y"],
+                    "type": loc_type,
+                    "generated": False
+                }
 
-        # Note this is outside of the for loop above
-        # Generate encounter points for each region
-        # We need a deterministic RNG for the whole world; use self.rng (already seeded)
-        for region_id, region in self.campaign_state.surface_regions.items():
-            # Collect hexes belonging to this region
-            region_hexes = [h for h in self.campaign_state.hex_grid if h.get("region_id") == region_id]
-            if region_hexes:
-                points = self._generate_encounter_points_for_region(region_id, region_hexes, self.rng)
-                region.encounter_points.update(points)
+        # Surface regions remain empty for now (we are not using regions yet)
+        self.campaign_state.surface_regions = {}
 
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
-        print(f"[WORLD] Surface regions: {len(self.campaign_state.surface_regions)} regions")
         print(f"[WORLD] Potential locations: {len(self.campaign_state.potential_locations)} potential locations")
-        print(f"[ENCOUNTER] Generated {sum(len(r.encounter_points) for r in self.campaign_state.surface_regions.values())} encounter points.")
+        # TODO: Implement region generation from campaign data (14_campaign.json) and use for encounter points, faction control, etc.
+        # TODO: Generate encounter points on the world map (using encounter_points system, not dependent on regions)
+        # TODO: is there anything that could benefit from having heightmap, moisture_map, and river_mask after having used them to generate the image data?
+
 
     def test_generate_random_encounter(self):
         """Test: pick a random untouched encounter point and generate an encounter."""
@@ -495,6 +620,9 @@ class WorldController:
         return mapping.get(terrain, 1)  # default 1 for unknown terrains
     
     def generate_location_from_potential(self, pot_id: str) -> Optional[Location]:
+        # TODO: Add services (shop, temple, quest board) based on settlement size and region
+        # TODO: Determine dungeon type from terrain (cave, crypt, ruins, etc.)
+        # TODO: Generate POI descriptions using AI
         pot = self.campaign_state.potential_locations.get(pot_id)
         if not pot:
             return None
@@ -767,6 +895,124 @@ class WorldController:
         
         return paths
 
+    def _render_terrain_image(self, heightmap, moisture_map, river_mask, terrain_config):
+        from PIL import Image
+        from pathlib import Path
+        import math
+
+        terrain_thresholds = terrain_config["terrain"]
+        forest = terrain_config["forest"]
+        lake = terrain_config["lake"]
+        river_color = terrain_config.get("river", {}).get("color", "#4a90e2")
+
+        # Convert hex colors to RGB
+        def hex_to_rgb(hex_str):
+            hex_str = hex_str.lstrip('#')
+            return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+
+        color_map = {}
+        for name, props in terrain_thresholds.items():
+            color_map[name] = hex_to_rgb(props["color"])
+        color_map["forest"] = hex_to_rgb(forest["color"])
+        color_map["lake"] = hex_to_rgb(lake["color"])
+        color_map["river"] = hex_to_rgb(river_color)
+
+        # Get height ranges
+        ocean_high = terrain_thresholds["ocean"]["height_range"][1]
+        coast_high = terrain_thresholds["coast"]["height_range"][1] if "coast" in terrain_thresholds else ocean_high
+        plains_low = terrain_thresholds["plains"]["height_range"][0]
+        plains_high = terrain_thresholds["plains"]["height_range"][1]
+        hills_low = terrain_thresholds["hills"]["height_range"][0]
+        hills_high = terrain_thresholds["hills"]["height_range"][1]
+        mountains_low = terrain_thresholds["mountains"]["height_range"][0]
+        mountains_high = terrain_thresholds["mountains"]["height_range"][1]
+        snowcaps_low = terrain_thresholds["snowcaps"]["height_range"][0]
+
+        forest_min_h = forest["height_min"]
+        forest_max_h = forest["height_max"]
+        forest_min_m = forest["min_moisture"]
+        lake_h = lake["water_height"]
+
+        # Canvas dimensions
+        hex_size = self.campaign_state.hex_size
+        max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
+        max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
+        canvas_w = int(max_x)
+        canvas_h = int(max_y)
+
+        grid_w = self.campaign_state.grid_width
+        grid_h = self.campaign_state.grid_height
+
+        img = Image.new('RGB', (canvas_w, canvas_h))
+        pixels = img.load()
+
+        for py in range(canvas_h):
+            for px in range(canvas_w):
+                # Map pixel to grid coordinates
+                nx = (px / canvas_w) * (grid_w - 1)
+                ny = (py / canvas_h) * (grid_h - 1)
+
+                x0 = int(math.floor(nx))
+                x1 = min(x0 + 1, grid_w - 1)
+                y0 = int(math.floor(ny))
+                y1 = min(y0 + 1, grid_h - 1)
+                dx = nx - x0
+                dy = ny - y0
+
+                # Interpolate height
+                h00 = heightmap[y0][x0]
+                h01 = heightmap[y1][x0]
+                h10 = heightmap[y0][x1]
+                h11 = heightmap[y1][x1]
+                h = (1-dx)*(1-dy)*h00 + dx*(1-dy)*h10 + (1-dx)*dy*h01 + dx*dy*h11
+
+                # Interpolate moisture
+                m00 = moisture_map[y0][x0]
+                m01 = moisture_map[y1][x0]
+                m10 = moisture_map[y0][x1]
+                m11 = moisture_map[y1][x1]
+                m = (1-dx)*(1-dy)*m00 + dx*(1-dy)*m10 + (1-dx)*dy*m01 + dx*dy*m11
+
+                # Base terrain
+                if h < ocean_high:
+                    terrain = 'ocean'
+                elif h < coast_high:
+                    terrain = 'coast'
+                elif h < plains_high:
+                    terrain = 'plains'
+                elif h < hills_high:
+                    terrain = 'hills'
+                elif h < mountains_high:
+                    terrain = 'mountains'
+                else:
+                    terrain = 'snowcaps'
+
+                # Forest override
+                if forest_min_h <= h <= forest_max_h and m > forest_min_m:
+                    terrain = 'forest'
+
+                # Lake override (only on land, not ocean/coast)
+                if h < lake_h and h >= coast_high:
+                    terrain = 'lake'
+
+                pixels[px, py] = color_map[terrain]
+
+        # Rivers
+        for y in range(grid_h):
+            for x in range(grid_w):
+                if river_mask[y][x]:
+                    px = int((x / (grid_w - 1)) * (canvas_w - 1))
+                    py = int((y / (grid_h - 1)) * (canvas_h - 1))
+                    if 0 <= px < canvas_w and 0 <= py < canvas_h:
+                        pixels[px, py] = color_map['river']
+
+        # Save
+        static_dir = Path("static/world_images")
+        static_dir.mkdir(parents=True, exist_ok=True)
+        filename = str(static_dir / f"world_{self.world_id}_terrain.png")
+        img.save(filename)
+        self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
+
     def get_map_data(self) -> dict:
         locations = []
         for loc in self.world_map.locations.values():
@@ -835,6 +1081,7 @@ class WorldController:
                 map_data["party_color"] = "#FFD700"
 
         map_data["hexes"] = self.campaign_state.hex_grid
+        map_data["terrain_image_url"] = self.campaign_state.terrain_image_url        
         return map_data
 
     def get_current_location_data(self) -> dict:
@@ -1371,7 +1618,10 @@ class WorldController:
             "message": f"You descend into {location.name}."
         }
 
-    def process_command(self, input_data):
+    def process_command(self, input_data, session_id=None):
+        # TODO: Implement "travel to <location>" command (fast travel)
+        # TODO: Implement "buy <item>" and "sell <item>" commands (shop)
+        # TODO: Implement "inventory" command to list items
         """Process a command (string or dict) and return response dict."""
         if isinstance(input_data, str):
             command = input_data
@@ -1379,6 +1629,54 @@ class WorldController:
         else:
             command = input_data.get('command', '')
             target_terrain = input_data.get('target_terrain')
+
+        # Fast travel command
+        if command.lower().startswith("travel to "):
+            target = command[10:].strip().lower()
+            for loc in self.world_map.locations.values():
+                if loc.discovered and loc.name.lower() == target:
+                    self.campaign_state.party_position = (loc.col, loc.row)
+                    self._reveal_hexes_around(loc.col, loc.row)
+                    self.current_location = loc
+                    self.campaign_state.advance_time(24 * 60)  # 1 day travel
+                    return {
+                        "response": f"You travel to {loc.name}.",
+                        "map_data": self.get_map_data(),
+                        "location_data": self.get_current_location_data(),
+                        "success": True
+                    }
+            return {"response": f"Location '{target}' not found or not discovered.", "success": False}
+
+        # Buy command
+        if command.lower().startswith("buy "):
+            item_name = command[4:].strip()
+            if self.current_location and "shop" in self.current_location.services:
+                if not hasattr(self.current_location, 'shop'):
+                    from world.shop import Shop
+                    self.current_location.shop = Shop()
+                # Get active character
+                char = self._get_active_character()
+                if not char:
+                    return {"response": "No active character found.", "success": False}
+                result = self.current_location.shop.buy(item_name, char)
+                return {"response": result["message"], "success": result["success"]}
+            else:
+                return {"response": "No shop here.", "success": False}
+
+        # Sell command
+        if command.lower().startswith("sell "):
+            item_name = command[5:].strip()
+            if self.current_location and "shop" in self.current_location.services:
+                if not hasattr(self.current_location, 'shop'):
+                    from world.shop import Shop
+                    self.current_location.shop = Shop()
+                char = self._get_active_character()
+                if not char:
+                    return {"response": "No active character found.", "success": False}
+                result = self.current_location.shop.sell(item_name, char)
+                return {"response": result["message"], "success": result["success"]}
+            else:
+                return {"response": "No shop here.", "success": False}
 
         # World movement: if command is a direction, handle it directly
         if not self.dungeon_mode:
@@ -1468,6 +1766,14 @@ class WorldController:
             }
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
+    def _get_active_character(self, session_id):
+        if not session_id:
+            return None
+        player = self.get_player_by_session(session_id)
+        if not player or not player.active_character_id:
+            return None
+        return self.character_manager.get_character(player.active_character_id)
 
     def get_or_create_player(self, session_id, player_name=None):
         """Get existing player or create a new one for the session"""

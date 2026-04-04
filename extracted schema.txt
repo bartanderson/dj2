@@ -1,0 +1,120 @@
+=== Table: characters ===
+  id: uuid (nullable=NO, default=None)
+  player_id: uuid (nullable=YES, default=None)
+  name: text (nullable=NO, default=None)
+  race: text (nullable=YES, default=None)
+  class: text (nullable=YES, default=None)
+  level: integer (nullable=YES, default=1)
+  attributes: jsonb (nullable=YES, default=None)
+  inventory: jsonb (nullable=YES, default=None)
+  avatar_url: text (nullable=YES, default=None)
+  created_at: timestamp without time zone (nullable=YES, default=CURRENT_TIMESTAMP)
+  updated_at: timestamp without time zone (nullable=YES, default=CURRENT_TIMESTAMP)
+  backstory: jsonb (nullable=YES, default='{}'::jsonb)
+  connections: jsonb (nullable=YES, default='[]'::jsonb)
+  secrets: jsonb (nullable=YES, default='[]'::jsonb)
+  vows: jsonb (nullable=YES, default='{}'::jsonb)
+  PRIMARY KEY: id
+  FOREIGN KEY: player_id -> players.id
+  INDEX: characters_pkey -> CREATE UNIQUE INDEX characters_pkey ON public.characters USING btree (id)
+  INDEX: idx_characters_player_id -> CREATE INDEX idx_characters_player_id ON public.characters USING btree (player_id)
+
+=== Table: factions ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  world_id: integer (nullable=YES, default=None)
+  name: character varying (nullable=NO, default=None)
+  ideology: text (nullable=YES, default=None)
+  goals: jsonb (nullable=YES, default=None)
+  relationships: jsonb (nullable=YES, default=None)
+  activities: jsonb (nullable=YES, default=None)
+  PRIMARY KEY: id
+  FOREIGN KEY: world_id -> worlds.id
+  INDEX: factions_pkey -> CREATE UNIQUE INDEX factions_pkey ON public.factions USING btree (id)
+  INDEX: idx_factions_world -> CREATE INDEX idx_factions_world ON public.factions USING btree (world_id)
+
+=== Table: locations ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  world_id: integer (nullable=YES, default=None)
+  name: character varying (nullable=NO, default=None)
+  type: character varying (nullable=NO, default=None)
+  position: point (nullable=NO, default=None)
+  data: jsonb (nullable=NO, default=None)
+  discovered: boolean (nullable=YES, default=false)
+  PRIMARY KEY: id
+  FOREIGN KEY: world_id -> worlds.id
+  INDEX: locations_pkey -> CREATE UNIQUE INDEX locations_pkey ON public.locations USING btree (id)
+  INDEX: idx_locations_world -> CREATE INDEX idx_locations_world ON public.locations USING btree (world_id)
+  INDEX: idx_locations_data -> CREATE INDEX idx_locations_data ON public.locations USING gin (data)
+
+=== Table: narrative_context ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  world_id: integer (nullable=YES, default=None)
+  player_id: uuid (nullable=YES, default=None)
+  timestamp: timestamp with time zone (nullable=YES, default=now())
+  context_type: character varying (nullable=NO, default=None)
+  content: jsonb (nullable=NO, default=None)
+  embedding: USER-DEFINED (nullable=YES, default=None)
+  PRIMARY KEY: id
+  FOREIGN KEY: world_id -> worlds.id
+  FOREIGN KEY: player_id -> players.id
+  INDEX: narrative_context_pkey -> CREATE UNIQUE INDEX narrative_context_pkey ON public.narrative_context USING btree (id)
+  INDEX: idx_narrative_world -> CREATE INDEX idx_narrative_world ON public.narrative_context USING btree (world_id)
+  INDEX: idx_narrative_player -> CREATE INDEX idx_narrative_player ON public.narrative_context USING btree (player_id)
+  INDEX: idx_narrative_timestamp -> CREATE INDEX idx_narrative_timestamp ON public.narrative_context USING btree ("timestamp")
+  INDEX: idx_narrative_embedding -> CREATE INDEX idx_narrative_embedding ON public.narrative_context USING ivfflat (embedding)
+
+=== Table: npcs ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  world_id: integer (nullable=YES, default=None)
+  location_id: uuid (nullable=YES, default=None)
+  name: character varying (nullable=NO, default=None)
+  role: character varying (nullable=YES, default=None)
+  motivation: text (nullable=YES, default=None)
+  dialogue: jsonb (nullable=YES, default=None)
+  PRIMARY KEY: id
+  FOREIGN KEY: world_id -> worlds.id
+  FOREIGN KEY: location_id -> locations.id
+  INDEX: npcs_pkey -> CREATE UNIQUE INDEX npcs_pkey ON public.npcs USING btree (id)
+  INDEX: idx_npcs_world -> CREATE INDEX idx_npcs_world ON public.npcs USING btree (world_id)
+  INDEX: idx_npcs_location -> CREATE INDEX idx_npcs_location ON public.npcs USING btree (location_id)
+
+=== Table: player_sessions ===
+  session_id: uuid (nullable=NO, default=None)
+  player_id: uuid (nullable=YES, default=None)
+  created_at: timestamp with time zone (nullable=YES, default=now())
+  last_seen: timestamp with time zone (nullable=YES, default=now())
+  PRIMARY KEY: session_id
+  FOREIGN KEY: player_id -> players.id
+  INDEX: player_sessions_pkey -> CREATE UNIQUE INDEX player_sessions_pkey ON public.player_sessions USING btree (session_id)
+
+=== Table: players ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  name: character varying (nullable=NO, default=None)
+  attributes: jsonb (nullable=YES, default=None)
+  PRIMARY KEY: id
+  INDEX: players_pkey -> CREATE UNIQUE INDEX players_pkey ON public.players USING btree (id)
+
+=== Table: quests ===
+  id: uuid (nullable=NO, default=gen_random_uuid())
+  world_id: integer (nullable=YES, default=None)
+  title: character varying (nullable=NO, default=None)
+  description: text (nullable=YES, default=None)
+  objectives: jsonb (nullable=YES, default=None)
+  location_id: uuid (nullable=YES, default=None)
+  completed: boolean (nullable=YES, default=false)
+  dungeon_required: boolean (nullable=YES, default=false)
+  PRIMARY KEY: id
+  FOREIGN KEY: world_id -> worlds.id
+  FOREIGN KEY: location_id -> locations.id
+  INDEX: quests_pkey -> CREATE UNIQUE INDEX quests_pkey ON public.quests USING btree (id)
+  INDEX: idx_quests_world -> CREATE INDEX idx_quests_world ON public.quests USING btree (world_id)
+  INDEX: idx_quests_location -> CREATE INDEX idx_quests_location ON public.quests USING btree (location_id)
+
+=== Table: worlds ===
+  id: integer (nullable=NO, default=nextval('worlds_id_seq'::regclass))
+  theme: character varying (nullable=NO, default=None)
+  seed: integer (nullable=NO, default=None)
+  created_at: timestamp with time zone (nullable=YES, default=now())
+  metadata: jsonb (nullable=YES, default=None)
+  PRIMARY KEY: id
+  INDEX: worlds_pkey -> CREATE UNIQUE INDEX worlds_pkey ON public.worlds USING btree (id)

@@ -60,6 +60,8 @@ class Character:
         self.race = race
         self.background = background
         self.player_id = player_id
+        self.inventory = []
+        self.gold = 50
         
         # Handle class (can be string name or OGClass object)
         if isinstance(classs, str):
