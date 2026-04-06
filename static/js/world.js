@@ -310,23 +310,23 @@ function drawLocations(ctx, locations, scale) {
     });
 }
 
-function drawHexagon(ctx, cx, cy, size, color) {
-    // Flat‑top hexagons; adjust size if needed
-    size = size * 1.17
-    let hexScale = 0.83; // local scaling – does not affect global zoom
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-        let angle = i * Math.PI / 3; // 0°,60°,120°,...
-        let x = cx + size * hexScale * Math.cos(angle);
-        let y = cy + size * Math.sin(angle);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 0.5;
-    ctx.stroke();
-}
+// function drawHexagon(ctx, cx, cy, size, color) {
+//     // Flat‑top hexagons; adjust size if needed
+//     size = size * 1.17
+//     let hexScale = 0.83; // local scaling – does not affect global zoom
+//     ctx.beginPath();
+//     for (let i = 0; i < 6; i++) {
+//         let angle = i * Math.PI / 3; // 0°,60°,120°,...
+//         let x = cx + size * hexScale * Math.cos(angle);
+//         let y = cy + size * Math.sin(angle);
+//         if (i === 0) ctx.moveTo(x, y);
+//         else ctx.lineTo(x, y);
+//     }
+//     ctx.closePath();
+//     ctx.strokeStyle = color;
+//     ctx.lineWidth = 0.5;
+//     ctx.stroke();
+// }
 
 function hexagonPath(ctx, cx, cy, size) {
     // flat‑top hexagon keep in sync with drawHexagon as far as values goes
@@ -363,27 +363,27 @@ function getTargetHex(col, row, direction) {
     return [col + dc, row + dr];
 }
 
-function dilateMask(mask, radius = 1) {
-    const rows = mask.length;
-    const cols = mask[0].length;
-    const dilated = Array(rows).fill().map(() => Array(cols).fill(false));
-    for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-            if (mask[y][x]) {
-                for (let dy = -radius; dy <= radius; dy++) {
-                    for (let dx = -radius; dx <= radius; dx++) {
-                        const ny = y + dy;
-                        const nx = x + dx;
-                        if (ny >= 0 && ny < rows && nx >= 0 && nx < cols) {
-                            dilated[ny][nx] = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return dilated;
-}
+// function dilateMask(mask, radius = 1) {
+//     const rows = mask.length;
+//     const cols = mask[0].length;
+//     const dilated = Array(rows).fill().map(() => Array(cols).fill(false));
+//     for (let y = 0; y < rows; y++) {
+//         for (let x = 0; x < cols; x++) {
+//             if (mask[y][x]) {
+//                 for (let dy = -radius; dy <= radius; dy++) {
+//                     for (let dx = -radius; dx <= radius; dx++) {
+//                         const ny = y + dy;
+//                         const nx = x + dx;
+//                         if (ny >= 0 && ny < rows && nx >= 0 && nx < cols) {
+//                             dilated[ny][nx] = true;
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     return dilated;
+// }
 
 // ===== MINIMAL MAP =====
 let worldMap = null;
@@ -418,23 +418,26 @@ function redraw() {
     ctx.fillStyle = '#0a1729';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw terrain image inside discovered hexes (clipping)
-    if (terrainImage && worldMap.discovered_hexes && worldMap.hexes) {
-        const discoveredSet = new Set(worldMap.discovered_hexes.map(h => `${h.col},${h.row}`));
-        const drawAll = (fogOpacity === 0);
-        worldMap.hexes.forEach(hex => {
-            if (!drawAll && !discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
-            ctx.save();
-            hexagonPath(ctx, hex.x, hex.y, 30);
-            ctx.clip();
-            ctx.drawImage(terrainImage, 0, 0);
-            ctx.restore();
-        });
-    }
+    // // Draw terrain image inside discovered hexes (clipping)
+    // if (terrainImage && worldMap.discovered_hexes && worldMap.hexes) {
+    //     const discoveredSet = new Set(worldMap.discovered_hexes.map(h => `${h.col},${h.row}`));
+    //     const drawAll = (fogOpacity === 0);
+    //     worldMap.hexes.forEach(hex => {
+    //         if (!drawAll && !discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
+    //         ctx.save();
+    //         hexagonPath(ctx, hex.x, hex.y, 30);
+    //         ctx.clip();
+    //         ctx.drawImage(terrainImage, 0, 0);
+    //         ctx.restore();
+    //     });
+    // }
+
+    ctx.fillStyle = 'green';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw paths and locations (only discovered ones)
     const discoveredLocations = (worldMap.locations || []).filter(loc => loc.discovered);
-    drawPaths(ctx, worldMap.connections || [], discoveredLocations);
+    // drawPaths(ctx, worldMap.connections || [], discoveredLocations);
     drawLocations(ctx, discoveredLocations, scale);
 
     // Draw party location
@@ -868,9 +871,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.travelToLocation = travelToLocation;
     window.redraw = redraw;
-    window.loadWorldDataWithRetry = loadWorldDataWithRetry;
+    // window.loadWorldDataWithRetry = loadWorldDataWithRetry;
 
-    loadWorldDataWithRetry();
+    // loadWorldDataWithRetry();
 });
 
 // ===== GLOBAL EXPORTS =====

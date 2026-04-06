@@ -443,43 +443,50 @@ class WorldController:
         # ------------------------------------------------------------
         # Generate terrain using the new standalone generator
         # ------------------------------------------------------------
-        from world.terrain_generator import TerrainGenerator
-        from pathlib import Path
 
         # Compute canvas dimensions from hex grid
         hex_size = self.campaign_state.hex_size
         max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
         max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
-        canvas_w = int(max_x)
-        canvas_h = int(max_y)
+        canvas_w = 1600 #int(max_x)
+        canvas_h = 1200 #int(max_y)
 
         # Create terrain generator (tuned to eliminate blue)
         terrain_gen = TerrainGenerator(
             seed=self.seed,
             grid_width=w,
             grid_height=h,
-            ocean_height=0.0,
-            coast_height=0.0,
-            lake_height=.37,
-            plains_high=0.58,
-            hills_high=0.65,
-            mountains_high=0.68,
-            snowcaps_low=0.7,
-            forest_min_moisture=0.6,
-            forest_height_min=0.54,
+            ocean_height=-1.0,
+            coast_height=-1.0,
+            lake_height=.05,
+            plains_high=0.35,
+            hills_high=0.8,
+            mountains_high=0.9,
+            snowcaps_low=0.97,
+            forest_min_moisture=0.5,
+            forest_height_min=0.5,
             forest_height_max=0.65,
-            river_target_per_10000_cells=0.6,
-            river_hill_threshold=0.5
+            river_target_per_10000_cells=0.0002,
+            river_hill_threshold=0.7,
+            river_mountain_threshold=0.95
         )
 
         heightmap = terrain_gen.generate_heightmap()
         moisture = terrain_gen.generate_moisture_map()
-        river_mask = terrain_gen.generate_rivers(heightmap)
+        river_mask, river_paths = terrain_gen.generate_rivers(heightmap)
+        print(f"width: {w} ,height: {h}")
+
+        # Rescale heightmap to 0-1 based on actual min/max (needed for small grids)
+        min_h = min(min(row) for row in heightmap)
+        max_h = max(max(row) for row in heightmap)
+        for y in range(self.campaign_state.grid_height):
+            for x in range(self.campaign_state.grid_width):
+                heightmap[y][x] = (heightmap[y][x] - min_h) / (max_h - min_h)
 
         print(f"Heightmap min: {min(min(row) for row in heightmap):.3f}, max: {max(max(row) for row in heightmap):.3f}")
 
         # Render and save the terrain image
-        img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, canvas_w, canvas_h)
+        img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, river_paths, canvas_w, canvas_h)
         static_dir = Path("static/world_images")
         static_dir.mkdir(parents=True, exist_ok=True)
         filename = str(static_dir / f"world_{self.world_id}_terrain.png")
@@ -894,124 +901,6 @@ class WorldController:
                     connected_pairs.add(pair_id)
         
         return paths
-
-    def _render_terrain_image(self, heightmap, moisture_map, river_mask, terrain_config):
-        from PIL import Image
-        from pathlib import Path
-        import math
-
-        terrain_thresholds = terrain_config["terrain"]
-        forest = terrain_config["forest"]
-        lake = terrain_config["lake"]
-        river_color = terrain_config.get("river", {}).get("color", "#4a90e2")
-
-        # Convert hex colors to RGB
-        def hex_to_rgb(hex_str):
-            hex_str = hex_str.lstrip('#')
-            return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
-
-        color_map = {}
-        for name, props in terrain_thresholds.items():
-            color_map[name] = hex_to_rgb(props["color"])
-        color_map["forest"] = hex_to_rgb(forest["color"])
-        color_map["lake"] = hex_to_rgb(lake["color"])
-        color_map["river"] = hex_to_rgb(river_color)
-
-        # Get height ranges
-        ocean_high = terrain_thresholds["ocean"]["height_range"][1]
-        coast_high = terrain_thresholds["coast"]["height_range"][1] if "coast" in terrain_thresholds else ocean_high
-        plains_low = terrain_thresholds["plains"]["height_range"][0]
-        plains_high = terrain_thresholds["plains"]["height_range"][1]
-        hills_low = terrain_thresholds["hills"]["height_range"][0]
-        hills_high = terrain_thresholds["hills"]["height_range"][1]
-        mountains_low = terrain_thresholds["mountains"]["height_range"][0]
-        mountains_high = terrain_thresholds["mountains"]["height_range"][1]
-        snowcaps_low = terrain_thresholds["snowcaps"]["height_range"][0]
-
-        forest_min_h = forest["height_min"]
-        forest_max_h = forest["height_max"]
-        forest_min_m = forest["min_moisture"]
-        lake_h = lake["water_height"]
-
-        # Canvas dimensions
-        hex_size = self.campaign_state.hex_size
-        max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
-        max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
-        canvas_w = int(max_x)
-        canvas_h = int(max_y)
-
-        grid_w = self.campaign_state.grid_width
-        grid_h = self.campaign_state.grid_height
-
-        img = Image.new('RGB', (canvas_w, canvas_h))
-        pixels = img.load()
-
-        for py in range(canvas_h):
-            for px in range(canvas_w):
-                # Map pixel to grid coordinates
-                nx = (px / canvas_w) * (grid_w - 1)
-                ny = (py / canvas_h) * (grid_h - 1)
-
-                x0 = int(math.floor(nx))
-                x1 = min(x0 + 1, grid_w - 1)
-                y0 = int(math.floor(ny))
-                y1 = min(y0 + 1, grid_h - 1)
-                dx = nx - x0
-                dy = ny - y0
-
-                # Interpolate height
-                h00 = heightmap[y0][x0]
-                h01 = heightmap[y1][x0]
-                h10 = heightmap[y0][x1]
-                h11 = heightmap[y1][x1]
-                h = (1-dx)*(1-dy)*h00 + dx*(1-dy)*h10 + (1-dx)*dy*h01 + dx*dy*h11
-
-                # Interpolate moisture
-                m00 = moisture_map[y0][x0]
-                m01 = moisture_map[y1][x0]
-                m10 = moisture_map[y0][x1]
-                m11 = moisture_map[y1][x1]
-                m = (1-dx)*(1-dy)*m00 + dx*(1-dy)*m10 + (1-dx)*dy*m01 + dx*dy*m11
-
-                # Base terrain
-                if h < ocean_high:
-                    terrain = 'ocean'
-                elif h < coast_high:
-                    terrain = 'coast'
-                elif h < plains_high:
-                    terrain = 'plains'
-                elif h < hills_high:
-                    terrain = 'hills'
-                elif h < mountains_high:
-                    terrain = 'mountains'
-                else:
-                    terrain = 'snowcaps'
-
-                # Forest override
-                if forest_min_h <= h <= forest_max_h and m > forest_min_m:
-                    terrain = 'forest'
-
-                # Lake override (only on land, not ocean/coast)
-                if h < lake_h and h >= coast_high:
-                    terrain = 'lake'
-
-                pixels[px, py] = color_map[terrain]
-
-        # Rivers
-        for y in range(grid_h):
-            for x in range(grid_w):
-                if river_mask[y][x]:
-                    px = int((x / (grid_w - 1)) * (canvas_w - 1))
-                    py = int((y / (grid_h - 1)) * (canvas_h - 1))
-                    if 0 <= px < canvas_w and 0 <= py < canvas_h:
-                        pixels[px, py] = color_map['river']
-
-        # Save
-        static_dir = Path("static/world_images")
-        static_dir.mkdir(parents=True, exist_ok=True)
-        filename = str(static_dir / f"world_{self.world_id}_terrain.png")
-        img.save(filename)
-        self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
 
     def get_map_data(self) -> dict:
         locations = []
