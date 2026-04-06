@@ -7,6 +7,7 @@ Usage: python test_terrain.py --seed 42 --grid-width 80 --grid-height 80 --canva
 import argparse
 from collections import Counter
 from world.terrain_generator import TerrainGenerator
+from PIL import ImageDraw
 
 def main():
     parser = argparse.ArgumentParser()
@@ -29,6 +30,7 @@ def main():
     parser.add_argument('--forest-height-max', type=float, default=0.65)
     parser.add_argument('--river-target', type=float, default=0.0)
     parser.add_argument('--hill-threshold', type=float, default=0.5)
+    parser.add_argument('--mountain-threshold', type=float, default=0.65)
 
     args = parser.parse_args()
 
@@ -47,12 +49,15 @@ def main():
         forest_height_min=args.forest_height_min,
         forest_height_max=args.forest_height_max,
         river_target_per_10000_cells=args.river_target,
-        river_hill_threshold=args.hill_threshold
+        river_hill_threshold=args.hill_threshold,
+        river_mountain_threshold=args.mountain_threshold
     )
+
+    print("river_mountain_threshold: ", gen.river_mountain_threshold)
 
     heightmap = gen.generate_heightmap()
     moisture = gen.generate_moisture_map()
-    rivers = gen.generate_rivers(heightmap)
+    rivers, river_paths = gen.generate_rivers(heightmap)
 
     # Simulate hex terrain assignment (sample at grid centers)
     hex_terrain_counts = Counter()
@@ -79,7 +84,9 @@ def main():
             hex_terrain_counts[terrain] += 1
     print("Hex terrain distribution:", dict(hex_terrain_counts))
 
-    img = gen.render_terrain_image(heightmap, moisture, rivers, args.canvas_width, args.canvas_height)
+    img = gen.render_terrain_image(heightmap, moisture, rivers, river_paths, args.canvas_width, args.canvas_height)
+    # draw = ImageDraw.Draw(img)
+    # draw.line([(0, 0), (100, 100)], fill=(255, 0, 0), width=5)
     img.save(args.output)
     print(f"Saved image to {args.output}")
 

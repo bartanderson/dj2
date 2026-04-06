@@ -468,7 +468,7 @@ class WorldController:
             forest_min_moisture=0.6,
             forest_height_min=0.54,
             forest_height_max=0.65,
-            river_target_per_10000_cells=0.0,
+            river_target_per_10000_cells=0.6,
             river_hill_threshold=0.5
         )
 
