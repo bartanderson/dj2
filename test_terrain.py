@@ -52,8 +52,23 @@ def main():
         river_hill_threshold=args.hill_threshold,
         river_mountain_threshold=args.mountain_threshold
     )
-
-    print("river_mountain_threshold: ", gen.river_mountain_threshold)
+    
+    print("seed: ", args.seed)
+    print("grid_width: ", args.grid_width)
+    print("grid_height: ", args.grid_height)
+    print("ocean_height: ", args.ocean_height)
+    print("coast_height: ", args.coast_height)
+    print("lake_height: ", args.lake_height)
+    print("plains_high: ", args.plains_high)
+    print("hills_high: ", args.hills_high)
+    print("mountains_high: ", args.mountains_high)
+    print("snowcaps_low: ", args.snowcaps_low)
+    print("forest_min_moisture: ", args.forest_min_moisture)
+    print("forest_height_min: ", args.forest_height_min)
+    print("forest_height_max: ", args.forest_height_max)
+    print("river_target_per_10000_cells: ", args.hill_threshold)
+    print("river_hill_threshold: ", args.hill_threshold)
+    print("river_mountain_threshold: ", args.mountain_threshold)
 
     heightmap = gen.generate_heightmap()
     moisture = gen.generate_moisture_map()
