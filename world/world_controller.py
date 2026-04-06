@@ -30,10 +30,10 @@ import math
 import random
 import uuid
 import numpy as np
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
 from collections import Counter
-
 from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
@@ -45,6 +45,7 @@ from world.character_builder import CharacterBuilder
 from world.character import Character
 from world.persistence import WorldManager
 from world.dm_chat_ai import DMChatAI
+# TODO: since world and dungeon are separate, do we need to create a unified shared AI that manages either/both to address whether we actually import DungeonAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
 from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
@@ -62,8 +63,9 @@ from world.authority_system import AuthoritySystem
 from world.encounter_models import EncounterPoint
 from world.bestiary import Monster
 from world.name_generator import NameGenerator
-from pathlib import Path
 from world.terrain_generator import TerrainGenerator
+from world.terrain_image_generator import generate_terrain_image
+
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
 import warnings
@@ -441,89 +443,159 @@ class WorldController:
             hexes[0]['discovered'] = True
 
         # ------------------------------------------------------------
-        # Generate terrain using the new standalone generator
+        # Generate terrain image using high‑resolution heightmap
         # ------------------------------------------------------------
 
-        # Compute canvas dimensions from hex grid
-        hex_size = self.campaign_state.hex_size
-        max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
-        max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
-        canvas_w = 1600 #int(max_x)
-        canvas_h = 1200 #int(max_y)
-
-        # Create terrain generator (tuned to eliminate blue)
-        terrain_gen = TerrainGenerator(
-            seed=self.seed,
-            grid_width=w,
-            grid_height=h,
-            ocean_height=-1.0,
-            coast_height=-1.0,
-            lake_height=.05,
-            plains_high=0.35,
-            hills_high=0.8,
-            mountains_high=0.9,
-            snowcaps_low=0.97,
-            forest_min_moisture=0.5,
-            forest_height_min=0.5,
-            forest_height_max=0.65,
-            river_target_per_10000_cells=0.0002,
-            river_hill_threshold=0.7,
-            river_mountain_threshold=0.95
-        )
-
-        heightmap = terrain_gen.generate_heightmap()
-        moisture = terrain_gen.generate_moisture_map()
-        river_mask, river_paths = terrain_gen.generate_rivers(heightmap)
-        print(f"width: {w} ,height: {h}")
-
-        # Rescale heightmap to 0-1 based on actual min/max (needed for small grids)
-        min_h = min(min(row) for row in heightmap)
-        max_h = max(max(row) for row in heightmap)
-        for y in range(self.campaign_state.grid_height):
-            for x in range(self.campaign_state.grid_width):
-                heightmap[y][x] = (heightmap[y][x] - min_h) / (max_h - min_h)
-
-        print(f"Heightmap min: {min(min(row) for row in heightmap):.3f}, max: {max(max(row) for row in heightmap):.3f}")
-
-        # Render and save the terrain image
-        img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, river_paths, canvas_w, canvas_h)
         static_dir = Path("static/world_images")
         static_dir.mkdir(parents=True, exist_ok=True)
-        filename = str(static_dir / f"world_{self.world_id}_terrain.png")
-        img.save(filename)
+
+        # Parameters (tuned to match test_terrain.py)
+        terrain_params = {
+            'ocean_height': -1.0,
+            'coast_height': -1.0,
+            'lake_height': 0.05,
+            'plains_high': 0.35,
+            'hills_high': 0.8,
+            'mountains_high': 0.9,
+            'snowcaps_low': 0.97,
+            'forest_min_moisture': 0.5,
+            'forest_height_min': 0.5,
+            'forest_height_max': 0.65,
+            'river_target_per_10000_cells': 0.0002,
+            'river_hill_threshold': 0.7,
+            'river_mountain_threshold': 0.95
+        }
+
+        img, heightmap, moisture, river_mask = generate_terrain_image(
+            seed=self.seed,
+            output_path=str(static_dir / f"world_{self.world_id}_terrain.png"),
+            width=1000,
+            height=800,
+            canvas_width=1600,
+            canvas_height=1200,
+            params=terrain_params
+        )
         self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
 
-        # Assign terrain type to each hex by sampling the heightmap at its center
+        # Now assign terrain to each hex by sampling the high‑res heightmap
+        # Map hex pixel coordinates to heightmap indices
+        # (We need canvas_w and canvas_h from the image; they are 1600,1200)
+        canvas_w = 1600
+        canvas_h = 1200
+        hm_w = 1000
+        hm_h = 800
+
         for hex in self.campaign_state.hex_grid:
-            cx = hex["x"]
-            cy = hex["y"]
-            gx = int((cx / canvas_w) * (w - 1))
-            gy = int((cy / canvas_h) * (h - 1))
-            gx = max(0, min(gx, w - 1))
-            gy = max(0, min(gy, h - 1))
+            # hex center (x, y) in world pixel coordinates
+            cx = hex['x']
+            cy = hex['y']
+            # Map to heightmap grid (0..hm_w-1, 0..hm_h-1)
+            gx = int((cx / canvas_w) * (hm_w - 1))
+            gy = int((cy / canvas_h) * (hm_h - 1))
+            gx = max(0, min(gx, hm_w - 1))
+            gy = max(0, min(gy, hm_h - 1))
             h_val = heightmap[gy][gx]
             m_val = moisture[gy][gx]
-            if h_val < terrain_gen.ocean_height:
+
+            # Classify terrain (same logic as in render_terrain_image)
+            if h_val < terrain_params['ocean_height']:
                 terrain = 'ocean'
-            elif h_val < terrain_gen.coast_height:
+            elif h_val < terrain_params['coast_height']:
                 terrain = 'coast'
-            elif h_val < terrain_gen.plains_high:
+            elif h_val < terrain_params['plains_high']:
                 terrain = 'plains'
-            elif h_val < terrain_gen.hills_high:
+            elif h_val < terrain_params['hills_high']:
                 terrain = 'hills'
-            elif h_val < terrain_gen.mountains_high:
+            elif h_val < terrain_params['mountains_high']:
                 terrain = 'mountains'
             else:
                 terrain = 'snowcaps'
-            if terrain_gen.forest_height_min <= h_val <= terrain_gen.forest_height_max and m_val > terrain_gen.forest_min_moisture:
+            if terrain_params['forest_height_min'] <= h_val <= terrain_params['forest_height_max'] and m_val > terrain_params['forest_min_moisture']:
                 terrain = 'forest'
-            if h_val < terrain_gen.lake_height:
+            if h_val < terrain_params['lake_height']:
                 terrain = 'lake'
-            hex["terrain"] = terrain
+            hex['terrain'] = terrain
 
-        from collections import Counter
-        terrain_counts = Counter(hex["terrain"] for hex in self.campaign_state.hex_grid)
-        print("Game hex terrain distribution:", terrain_counts)
+        # # Compute canvas dimensions from hex grid
+        # hex_size = self.campaign_state.hex_size
+        # max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
+        # max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
+        # canvas_w = 1600 #int(max_x)
+        # canvas_h = 1200 #int(max_y)
+
+        # # Create terrain generator (tuned to eliminate blue)
+        # terrain_gen = TerrainGenerator(
+        #     seed=self.seed,
+        #     grid_width=w,
+        #     grid_height=h,
+        #     ocean_height=-1.0,
+        #     coast_height=-1.0,
+        #     lake_height=.05,
+        #     plains_high=0.35,
+        #     hills_high=0.8,
+        #     mountains_high=0.9,
+        #     snowcaps_low=0.97,
+        #     forest_min_moisture=0.5,
+        #     forest_height_min=0.5,
+        #     forest_height_max=0.65,
+        #     river_target_per_10000_cells=0.0002,
+        #     river_hill_threshold=0.7,
+        #     river_mountain_threshold=0.95
+        # )
+
+        # heightmap = terrain_gen.generate_heightmap()
+        # moisture = terrain_gen.generate_moisture_map()
+        # river_mask, river_paths = terrain_gen.generate_rivers(heightmap)
+        # print(f"width: {w} ,height: {h}")
+
+        # # Rescale heightmap to 0-1 based on actual min/max (needed for small grids)
+        # min_h = min(min(row) for row in heightmap)
+        # max_h = max(max(row) for row in heightmap)
+        # for y in range(self.campaign_state.grid_height):
+        #     for x in range(self.campaign_state.grid_width):
+        #         heightmap[y][x] = (heightmap[y][x] - min_h) / (max_h - min_h)
+
+        # print(f"Heightmap min: {min(min(row) for row in heightmap):.3f}, max: {max(max(row) for row in heightmap):.3f}")
+
+        # # Render and save the terrain image
+        # img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, river_paths, canvas_w, canvas_h)
+        # static_dir = Path("static/world_images")
+        # static_dir.mkdir(parents=True, exist_ok=True)
+        # filename = str(static_dir / f"world_{self.world_id}_terrain.png")
+        # img.save(filename)
+        # self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
+
+        # # Assign terrain type to each hex by sampling the heightmap at its center
+        # for hex in self.campaign_state.hex_grid:
+        #     cx = hex["x"]
+        #     cy = hex["y"]
+        #     gx = int((cx / canvas_w) * (w - 1))
+        #     gy = int((cy / canvas_h) * (h - 1))
+        #     gx = max(0, min(gx, w - 1))
+        #     gy = max(0, min(gy, h - 1))
+        #     h_val = heightmap[gy][gx]
+        #     m_val = moisture[gy][gx]
+        #     if h_val < terrain_gen.ocean_height:
+        #         terrain = 'ocean'
+        #     elif h_val < terrain_gen.coast_height:
+        #         terrain = 'coast'
+        #     elif h_val < terrain_gen.plains_high:
+        #         terrain = 'plains'
+        #     elif h_val < terrain_gen.hills_high:
+        #         terrain = 'hills'
+        #     elif h_val < terrain_gen.mountains_high:
+        #         terrain = 'mountains'
+        #     else:
+        #         terrain = 'snowcaps'
+        #     if terrain_gen.forest_height_min <= h_val <= terrain_gen.forest_height_max and m_val > terrain_gen.forest_min_moisture:
+        #         terrain = 'forest'
+        #     if h_val < terrain_gen.lake_height:
+        #         terrain = 'lake'
+        #     hex["terrain"] = terrain
+
+        # from collections import Counter
+        # terrain_counts = Counter(hex["terrain"] for hex in self.campaign_state.hex_grid)
+        # print("Game hex terrain distribution:", terrain_counts)
 
         # ------------------------------------------------------------
         # Generate potential locations based on terrain density
