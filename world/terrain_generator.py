@@ -1,6 +1,6 @@
 import math
 import random
-from PIL import Image
+from PIL import Image, ImageDraw
 
 # ============================================================================
 # Perlin Noise (exact JS port)
@@ -236,13 +236,12 @@ class TerrainGenerator:
             for (px, py) in path:
                 river_mask[py][px] = True
             river_paths.append(path)
-        print(f"Target count: {target_count}")
-        print(f"River mask cells: {sum(sum(row) for row in river_mask)}")
-        print(f"Start candidates: {len(candidates)}")
+        #print(f"Target count: {target_count}")
+        #print(f"River mask cells: {sum(sum(row) for row in river_mask)}")
+        #print(f"Start candidates: {len(candidates)}")
         return river_mask, river_paths
 
     def render_terrain_image(self, heightmap, moisture_map, river_mask, river_paths, canvas_w, canvas_h):
-        from PIL import ImageDraw
         # ... (pixel-by-pixel terrain drawing as before, but using draw.point for speed? Actually pixel loop is fine)
         # Instead of setting pixels directly, we can keep the pixel loop, then draw lines over it.
         grid_w, grid_h = self.grid_w, self.grid_h
@@ -313,53 +312,13 @@ class TerrainGenerator:
                 if h < self.lake_height:
                     terrain = 'lake'
 
-                # if px < 5 and py < 5:   # print first 5x5 pixels
-                #     print(f"({px},{py}) h={h:.3f} m={m:.3f} terrain={terrain}")
-
                 pixels[px, py] = color_map[terrain]
 
-        # Draw rivers (thin lines)
-        # for y in range(grid_h):
-        #     for x in range(grid_w):
-        #         if river_mask[y][x]:
-        #             px = int((x / (grid_w - 1)) * (canvas_w - 1))
-        #             py = int((y / (grid_h - 1)) * (canvas_h - 1))
-        #             if 0 <= px < canvas_w and 0 <= py < canvas_h:
-        #                 pixels[px, py] = color_map['river']
-
-        # print the first 5 points
-        # for i, path in enumerate(river_paths):
-        #     if i < 5:
-        #         print(f"Path {i}: length {len(path)}")
-        #         print(f"First point: {path[0]}, last point: {path[-1]}")
-        #         # map to canvas
-        #         px0 = int((path[0][0] / (self.grid_w - 1)) * (canvas_w - 1))
-        #         py0 = int((path[0][1] / (self.grid_h - 1)) * (canvas_h - 1))
-        #         print(f"Mapped: ({px0}, {py0})")
-
-        # for path in river_paths:
-        #     if len(path) < 2:
-        #         continue
-        #     points = []
-        #     pointFrom = []
-        #     pointTo = []
-        #     for (x,y) in path:
-        #         px = int((x / (self.grid_w - 1)) * (canvas_w - 1))
-        #         py = int((y / (self.grid_h - 1)) * (canvas_h - 1))
-        #         points.append((px, py))
-        #         pixels[px, py] = color_map['river'] # replicating previous
-        #     if len(points) >= 2:
-        #         print("drawing lines", len(points))
-        #         draw.line(points, fill=(250,0,0), width=1) #fill=color_map['river'], width=1)
-        #print("river_paths count:", len(path))
-        print(f"DEBUG: lake_height = {self.lake_height}")
-
-        # river_img = Image.new('RGB', (canvas_w, canvas_h), (0,0,0))
-        # river_draw = ImageDraw.Draw(river_img)
+        #print(f"DEBUG: lake_height = {self.lake_height}")
         for path in river_paths:
             if len(path) < 2: continue
             points = [(int((x/(self.grid_w-1))*(canvas_w-1)), int((y/(self.grid_h-1))*(canvas_h-1))) for (x,y) in path]
-            draw.line(points, fill=(58, 128, 194), width=2)
+            draw.line(points, fill=color_map['lake'], width=2)
         # river_img.save("rivers_only.png")
 
         return img
