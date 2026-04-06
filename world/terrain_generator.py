@@ -187,7 +187,7 @@ class TerrainGenerator:
                     candidates.append((x, y))
         rng.shuffle(candidates)
 
-        max_steps = 300
+        max_steps = 500
         for r in range(min(target_count, len(candidates))):
             x, y = candidates[r]
             visited = set()
@@ -359,7 +359,7 @@ class TerrainGenerator:
         for path in river_paths:
             if len(path) < 2: continue
             points = [(int((x/(self.grid_w-1))*(canvas_w-1)), int((y/(self.grid_h-1))*(canvas_h-1))) for (x,y) in path]
-            draw.line(points, fill=(255,0,0), width=2)
+            draw.line(points, fill=(58, 128, 194), width=2)
         # river_img.save("rivers_only.png")
 
         return img
