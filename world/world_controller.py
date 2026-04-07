@@ -466,25 +466,25 @@ class WorldController:
             'river_mountain_threshold': 0.95
         }
 
+        canvas_w = int(self.campaign_state.grid_width * self.campaign_state.hex_size * 0.75)
+        canvas_h = int(self.campaign_state.grid_height * self.campaign_state.hex_size)
+        hm_w = 1000
+        hm_h = 800
+
         img, heightmap, moisture, river_mask = generate_terrain_image(
             seed=self.seed,
             output_path=str(static_dir / f"world_{self.world_id}_terrain.png"),
-            width=1000,
-            height=800,
-            canvas_width=1600,
-            canvas_height=1200,
+            width=hm_w,
+            height=hm_h,
+            canvas_width=canvas_w,
+            canvas_height=canvas_h,
             params=terrain_params
         )
         self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
 
         # Now assign terrain to each hex by sampling the high‑res heightmap
-        # Map hex pixel coordinates to heightmap indices
-        # (We need canvas_w and canvas_h from the image; they are 1600,1200)
-        canvas_w = 1600
-        canvas_h = 1200
-        hm_w = 1000
-        hm_h = 800
 
+        # Map hex centers to heightmap indices
         for hex in self.campaign_state.hex_grid:
             # hex center (x, y) in world pixel coordinates
             cx = hex['x']
@@ -516,86 +516,12 @@ class WorldController:
                 terrain = 'lake'
             hex['terrain'] = terrain
 
-        # # Compute canvas dimensions from hex grid
-        # hex_size = self.campaign_state.hex_size
-        # max_x = max(h['x'] for h in self.campaign_state.hex_grid) + hex_size
-        # max_y = max(h['y'] for h in self.campaign_state.hex_grid) + hex_size
-        # canvas_w = 1600 #int(max_x)
-        # canvas_h = 1200 #int(max_y)
+        # Debug prints
 
-        # # Create terrain generator (tuned to eliminate blue)
-        # terrain_gen = TerrainGenerator(
-        #     seed=self.seed,
-        #     grid_width=w,
-        #     grid_height=h,
-        #     ocean_height=-1.0,
-        #     coast_height=-1.0,
-        #     lake_height=.05,
-        #     plains_high=0.35,
-        #     hills_high=0.8,
-        #     mountains_high=0.9,
-        #     snowcaps_low=0.97,
-        #     forest_min_moisture=0.5,
-        #     forest_height_min=0.5,
-        #     forest_height_max=0.65,
-        #     river_target_per_10000_cells=0.0002,
-        #     river_hill_threshold=0.7,
-        #     river_mountain_threshold=0.95
-        # )
-
-        # heightmap = terrain_gen.generate_heightmap()
-        # moisture = terrain_gen.generate_moisture_map()
-        # river_mask, river_paths = terrain_gen.generate_rivers(heightmap)
-        # print(f"width: {w} ,height: {h}")
-
-        # # Rescale heightmap to 0-1 based on actual min/max (needed for small grids)
-        # min_h = min(min(row) for row in heightmap)
-        # max_h = max(max(row) for row in heightmap)
-        # for y in range(self.campaign_state.grid_height):
-        #     for x in range(self.campaign_state.grid_width):
-        #         heightmap[y][x] = (heightmap[y][x] - min_h) / (max_h - min_h)
-
-        # print(f"Heightmap min: {min(min(row) for row in heightmap):.3f}, max: {max(max(row) for row in heightmap):.3f}")
-
-        # # Render and save the terrain image
-        # img = terrain_gen.render_terrain_image(heightmap, moisture, river_mask, river_paths, canvas_w, canvas_h)
-        # static_dir = Path("static/world_images")
-        # static_dir.mkdir(parents=True, exist_ok=True)
-        # filename = str(static_dir / f"world_{self.world_id}_terrain.png")
-        # img.save(filename)
-        # self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
-
-        # # Assign terrain type to each hex by sampling the heightmap at its center
-        # for hex in self.campaign_state.hex_grid:
-        #     cx = hex["x"]
-        #     cy = hex["y"]
-        #     gx = int((cx / canvas_w) * (w - 1))
-        #     gy = int((cy / canvas_h) * (h - 1))
-        #     gx = max(0, min(gx, w - 1))
-        #     gy = max(0, min(gy, h - 1))
-        #     h_val = heightmap[gy][gx]
-        #     m_val = moisture[gy][gx]
-        #     if h_val < terrain_gen.ocean_height:
-        #         terrain = 'ocean'
-        #     elif h_val < terrain_gen.coast_height:
-        #         terrain = 'coast'
-        #     elif h_val < terrain_gen.plains_high:
-        #         terrain = 'plains'
-        #     elif h_val < terrain_gen.hills_high:
-        #         terrain = 'hills'
-        #     elif h_val < terrain_gen.mountains_high:
-        #         terrain = 'mountains'
-        #     else:
-        #         terrain = 'snowcaps'
-        #     if terrain_gen.forest_height_min <= h_val <= terrain_gen.forest_height_max and m_val > terrain_gen.forest_min_moisture:
-        #         terrain = 'forest'
-        #     if h_val < terrain_gen.lake_height:
-        #         terrain = 'lake'
-        #     hex["terrain"] = terrain
-
-        # from collections import Counter
-        # terrain_counts = Counter(hex["terrain"] for hex in self.campaign_state.hex_grid)
-        # print("Game hex terrain distribution:", terrain_counts)
+        terrain_counts = Counter(hex['terrain'] for hex in self.campaign_state.hex_grid)
+        print(f"Hex grid dimensions: {self.campaign_state.grid_width} x {self.campaign_state.grid_height}")
+        print(f"Terrain distribution: {dict(terrain_counts)}")
+        print(f"Total hexes: {len(self.campaign_state.hex_grid)}")
 
         # ------------------------------------------------------------
         # Generate potential locations based on terrain density
@@ -631,6 +557,10 @@ class WorldController:
 
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
         print(f"[WORLD] Potential locations: {len(self.campaign_state.potential_locations)} potential locations")
+
+        loc_type_counts = Counter(p['type'] for p in self.campaign_state.potential_locations.values())
+        print(f"Potential locations by type: {dict(loc_type_counts)}")
+
         # TODO: Implement region generation from campaign data (14_campaign.json) and use for encounter points, faction control, etc.
         # TODO: Generate encounter points on the world map (using encounter_points system, not dependent on regions)
         # TODO: is there anything that could benefit from having heightmap, moisture_map, and river_mask after having used them to generate the image data?
@@ -1584,12 +1514,36 @@ class WorldController:
         # TODO: Implement "buy <item>" and "sell <item>" commands (shop)
         # TODO: Implement "inventory" command to list items
         """Process a command (string or dict) and return response dict."""
+        print(f"[DEBUG] process_command called with input_data={input_data}, session_id={session_id}")
         if isinstance(input_data, str):
             command = input_data
             target_terrain = None
         else:
             command = input_data.get('command', '')
             target_terrain = input_data.get('target_terrain')
+
+        # TODO: remove this when we have quests and other means of travelling to locations
+        if command.lower() == "reveal locations":
+            count = 0
+            for pot_id, pot in self.campaign_state.potential_locations.items():
+                if not pot.get("generated"):
+                    self._generate_location_from_potential(pot_id)
+                    count += 1
+            return {"response": f"Generated {count} locations.", "map_data": self.get_map_data()}
+
+        # TODO: this should be DM only later
+        if command.lower().startswith("teleport "):
+            parts = command.split()
+            if len(parts) == 3:
+                try:
+                    col, row = int(parts[1]), int(parts[2])
+                    if self.campaign_state.get_hex(col, row):
+                        self.campaign_state.party_position = (col, row)
+                        self._reveal_hexes_around(col, row)
+                        return {"response": f"Teleported to ({col},{row}).", "map_data": self.get_map_data()}
+                except:
+                    pass
+            return {"response": "Usage: teleport <col> <row>"}
 
         # Fast travel command
         if command.lower().startswith("travel to "):

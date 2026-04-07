@@ -175,10 +175,11 @@ class TerrainGenerator:
         area = w * h
         target_count = int(area / 8000 * self.river_target_per_10000_cells * 10000)
         river_mask = [[False] * w for _ in range(h)]
-        river_paths = []  # list of lists of (x,y)
+        river_paths = []
+        used_cells = set()           # track all cells occupied by any river (or attempted)
         rng = random.Random(self.seed + 10000)
 
-        # Find start candidates (every cell in height range, not just local maxima)
+        # Find start candidates
         candidates = []
         for y in range(h):
             for x in range(w):
@@ -187,21 +188,34 @@ class TerrainGenerator:
                     candidates.append((x, y))
         rng.shuffle(candidates)
 
-        max_steps = 500
+        max_steps = 300
+        min_distance = 10   # cells, Chebyshev distance
+
         for r in range(min(target_count, len(candidates))):
             x, y = candidates[r]
+            # Check if start cell is too close to any existing river cell
+            too_close = False
+            for (ux, uy) in used_cells:
+                if max(abs(x - ux), abs(y - uy)) <= min_distance:
+                    too_close = True
+                    break
+            if too_close:
+                continue
+
+            # Generate river path
             visited = set()
             path = []
             steps = 0
+            cx, cy = x, y
             while True:
-                if not (0 <= x < w and 0 <= y < h):
+                if not (0 <= cx < w and 0 <= cy < h):
                     break
-                key = (x, y)
+                key = (cx, cy)
                 if key in visited:
                     break
                 visited.add(key)
-                path.append((x, y))
-                h_val = heightmap[y][x]
+                path.append((cx, cy))
+                h_val = heightmap[cy][cx]
                 if h_val < self.lake_height:
                     break
                 # Find lower neighbors
@@ -210,7 +224,7 @@ class TerrainGenerator:
                     for dx in (-1, 0, 1):
                         if dx == 0 and dy == 0:
                             continue
-                        nx, ny = x + dx, y + dy
+                        nx, ny = cx + dx, cy + dy
                         if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
                             nh = heightmap[ny][nx]
                             if nh < h_val:
@@ -229,20 +243,27 @@ class TerrainGenerator:
                         break
                 if chosen is None:
                     chosen = neighbors[0][:2]
-                x, y = chosen
+                cx, cy = chosen
                 steps += 1
                 if steps > max_steps:
                     break
+
+            # Mark all cells in the path (even short) as used
             for (px, py) in path:
-                river_mask[py][px] = True
-            river_paths.append(path)
-        #print(f"Target count: {target_count}")
-        #print(f"River mask cells: {sum(sum(row) for row in river_mask)}")
-        #print(f"Start candidates: {len(candidates)}")
+                used_cells.add((px, py))
+            # Only keep longer paths as rivers
+            if len(path) > 2:
+                for (px, py) in path:
+                    river_mask[py][px] = True
+                river_paths.append(path)
+        
+        print(f"Target count: {target_count}")
+        print(f"River mask cells: {sum(sum(row) for row in river_mask)}")
+        print(f"Start candidates: {len(candidates)}")
+
         return river_mask, river_paths
 
     def render_terrain_image(self, heightmap, moisture_map, river_mask, river_paths, canvas_w, canvas_h):
-        # ... (pixel-by-pixel terrain drawing as before, but using draw.point for speed? Actually pixel loop is fine)
         # Instead of setting pixels directly, we can keep the pixel loop, then draw lines over it.
         grid_w, grid_h = self.grid_w, self.grid_h
         img = Image.new('RGB', (canvas_w, canvas_h))
@@ -318,7 +339,7 @@ class TerrainGenerator:
         for path in river_paths:
             if len(path) < 2: continue
             points = [(int((x/(self.grid_w-1))*(canvas_w-1)), int((y/(self.grid_h-1))*(canvas_h-1))) for (x,y) in path]
-            draw.line(points, fill=color_map['lake'], width=2)
+            draw.line(points, fill=color_map['lake'], width=12)
         # river_img.save("rivers_only.png")
 
         return img

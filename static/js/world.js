@@ -259,6 +259,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const send = () => {
             const cmd = input.value.trim();
             if (cmd) {
+                console.error("send command")
                 sendWorldCommand(cmd);
                 input.value = '';
             }
@@ -395,7 +396,7 @@ let dragStartX, dragStartY, startOffsetX, startOffsetY;
 
 // Redraw everything
 function redraw() {
-    console.log("terrainImage in redraw:", terrainImage);
+    //console.log("terrainImage in redraw:", terrainImage);
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
 
@@ -458,15 +459,44 @@ function redraw() {
 }
 
 // Initial view centered on start location
+// function setInitialView() {
+//     if (!worldMap) return;
+//     const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
+//     if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
+//         offsetX = startLoc.x - window.innerWidth / (2 * scale);
+//         offsetY = startLoc.y - window.innerHeight / (2 * scale);
+//     } else {
+//         offsetX = (worldMap.width - window.innerWidth / scale) / 2;
+//         offsetY = (worldMap.height - window.innerHeight / scale) / 2;
+//     }
+//     redraw();
+// }
+
 function setInitialView() {
     if (!worldMap) return;
-    const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
-    if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
-        offsetX = startLoc.x - window.innerWidth / (2 * scale);
-        offsetY = startLoc.y - window.innerHeight / (2 * scale);
+    
+    // Fit the entire world in the viewport
+    const canvas = document.getElementById('terrain-canvas');
+    if (canvas) {
+        const worldWidth = worldMap.width;
+        const worldHeight = worldMap.height;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        scale = Math.min(windowWidth / worldWidth, windowHeight / worldHeight) * 0.9; // 0.9 margin
+        offsetX = (worldWidth - windowWidth / scale) / 2;
+        offsetY = (worldHeight - windowHeight / scale) / 2;
+        if (offsetX < 0) offsetX = 0;
+        if (offsetY < 0) offsetY = 0;
     } else {
-        offsetX = (worldMap.width - window.innerWidth / scale) / 2;
-        offsetY = (worldMap.height - window.innerHeight / scale) / 2;
+        // fallback to centering on start location
+        const startLoc = window.worldState?.currentLocation;
+        if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
+            offsetX = startLoc.x - window.innerWidth / (2 * scale);
+            offsetY = startLoc.y - window.innerHeight / (2 * scale);
+        } else {
+            offsetX = (worldMap.width - window.innerWidth / scale) / 2;
+            offsetY = (worldMap.height - window.innerHeight / scale) / 2;
+        }
     }
     redraw();
 }
@@ -581,72 +611,12 @@ async function travelToLocation(locationId) {
 }
 
 async function sendWorldCommand(command) {
-    // First, parse the command to see if it's a movement direction
-    let dir = command.toLowerCase().trim();
-    if (dir.startsWith('go ')) dir = dir.slice(3);
-    const directionMap = {
-        'n': 'n', 'north': 'n',
-        'ne': 'ne', 'northeast': 'ne',
-        'se': 'se', 'southeast': 'se',
-        's': 's', 'south': 's',
-        'sw': 'sw', 'southwest': 'sw',
-        'nw': 'nw', 'northwest': 'nw',
-        'e': 'east', 'east': 'east',
-        'w': 'west', 'west': 'west'
-    };
-    const direction = directionMap[dir];
-    if (!direction) {
-        // Not a movement command – send as regular command (chat, etc.)
-        try {
-            const response = await fetch('/api/command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: command})
-            });
-            const data = await response.json();
-            if (data.map_data) {
-                worldState.worldMap = data.map_data;
-                worldMap = worldState.worldMap;
-                if (data.location_data) {
-                    worldState.currentLocation = data.location_data;
-                }
-                redraw();
-            }
-            if (data.response) {
-                addWorldMessage(data.response);
-            }
-        } catch (error) {
-            console.error('Command error:', error);
-        }
-        return;
-    }
-
-    // Movement command – check passability first
-    if (!worldMap.party_position) {
-        console.warn('No party position');
-        return;
-    }
-    const {col, row} = worldMap.party_position;
-    const [tcol, trow] = getTargetHex(col, row, direction);
-    // Check bounds
-    if (tcol < 0 || tcol >= worldMap.width || trow < 0 || trow >= worldMap.height) {
-        addWorldMessage("You can't go that way (edge of the world).");
-        return;
-    }
-    // Get terrain from the stored grid
-    const terrain = worldMap.terrain_grid[trow][tcol];
-    const blockedTerrains = ['ocean', 'lake', 'river'];
-    if (blockedTerrains.includes(terrain)) {
-        addWorldMessage(`The ${terrain} blocks your path.`);
-        return;
-    }
-
-    // Send movement command with terrain
+    console.log("sendWorldCommand called with:", command);
     try {
         const response = await fetch('/api/command', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: command, target_terrain: terrain})
+            body: JSON.stringify({command: command})
         });
         const data = await response.json();
         if (data.map_data) {
