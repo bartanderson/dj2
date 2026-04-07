@@ -284,6 +284,18 @@ class TerrainGenerator:
             'lake':     (58, 128, 194)
         }
 
+        def smooth_points(points, window=3):
+            if len(points) < window:
+                return points
+            smoothed = []
+            for i in range(len(points)):
+                start = max(0, i - window//2)
+                end = min(len(points), i + window//2 + 1)
+                avg_x = sum(p[0] for p in points[start:end]) / (end - start)
+                avg_y = sum(p[1] for p in points[start:end]) / (end - start)
+                smoothed.append((int(avg_x), int(avg_y)))
+            return smoothed
+
         for py in range(canvas_h):
             for px in range(canvas_w):
                 # Map to grid coordinates
@@ -336,10 +348,26 @@ class TerrainGenerator:
                 pixels[px, py] = color_map[terrain]
 
         #print(f"DEBUG: lake_height = {self.lake_height}")
+        # for path in river_paths:
+        #     if len(path) < 2: continue
+        #     points = [(int((x/(self.grid_w-1))*(canvas_w-1)), int((y/(self.grid_h-1))*(canvas_h-1))) for (x,y) in path]
+        #     draw.line(points, fill=color_map['lake'], width=12)
         for path in river_paths:
-            if len(path) < 2: continue
+            if len(path) < 2:
+                continue
             points = [(int((x/(self.grid_w-1))*(canvas_w-1)), int((y/(self.grid_h-1))*(canvas_h-1))) for (x,y) in path]
-            draw.line(points, fill=color_map['lake'], width=12)
+            points = smooth_points(points, window=5)
+            points = smooth_points(points, window=5)
+            # # Smooth the points
+            # if len(points) > 2:
+            #     smoothed = [points[0]]
+            #     for i in range(1, len(points)-1):
+            #         avg_x = (points[i-1][0] + points[i][0] + points[i+1][0]) / 3
+            #         avg_y = (points[i-1][1] + points[i][1] + points[i+1][1]) / 3
+            #         smoothed.append((int(avg_x), int(avg_y)))
+            #     smoothed.append(points[-1])
+            #     points = smoothed
+            draw.line(points, fill=color_map['river'], width=2)
         # river_img.save("rivers_only.png")
 
         return img
