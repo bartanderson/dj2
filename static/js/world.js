@@ -9,10 +9,36 @@ let worldState = {
     parties: []
 };
 
+// Camera: world coordinate at top-left of map div
+let camera = { x: 0, y: 0, zoom: 1 };
+
 let fogOpacity = 1.0;
 let terrainImage = null;
+let worldMap = null;
+let isDragging = false;
+let dragStartX, dragStartY, startOffsetX, startOffsetY;
 window.currentPartyId = null;  // Will be set when player joins/creates party
 window.currentLocationId = null;  // Will be set from world state
+
+function getMapDivRect() {
+    return document.getElementById('world-map').getBoundingClientRect();
+}
+
+function worldToScreen(worldX, worldY) {
+    const rect = getMapDivRect();
+    const screenX = rect.left + (worldX - camera.x) * camera.zoom;
+    const screenY = rect.top + (worldY - camera.y) * camera.zoom;
+    return { screenX, screenY };
+}
+
+function screenToWorld(screenX, screenY) {
+    const rect = getMapDivRect();
+    const worldX = camera.x + (screenX - rect.left) / camera.zoom;
+    const worldY = camera.y + (screenY - rect.top) / camera.zoom;
+    return { worldX, worldY };
+}
+
+
 
 // After worldState is loaded, set currentPartyId from player's party
 if (worldState.parties && worldState.parties.length > 0) {
@@ -202,45 +228,6 @@ function addWorldMessage(text) {
     }
 }
 
-
-// async function sendWorldCommand(command) {
-//     try {
-//         const response = await fetch('/api/command', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({command: command})
-//         });
-//         const data = await response.json();
-//         if (data.error) {
-//             console.error('Command error:', data.error);
-//             return;
-//         }
-//         if (data.map_data) {
-//             worldState.worldMap = data.map_data;
-//             worldMap = worldState.worldMap;
-//             if (data.location_data) {
-//                 worldState.currentLocation = data.location_data;
-//             }
-//             redraw();
-//         }
-//         if (data.response) {
-//             console.error(data.response);
-//             addWorldMessage(data.response); // send response to chat
-//             // Append to your existing world chat panel
-//             const chatDiv = document.getElementById('world-chat-messages');
-//             if (chatDiv) {
-//                 const msgDiv = document.createElement('div');
-//                 msgDiv.textContent = data.response;
-//                 chatDiv.appendChild(msgDiv);
-//                 chatDiv.scrollTop = chatDiv.scrollHeight;
-//             }
-
-//         }
-//     } catch (error) {
-//         console.error('Command error:', error);
-//     }
-// }
-
 document.getElementById('world-chat-messages').addEventListener('submit', function(e) {
     e.preventDefault();
     const input = document.getElementById('world-chat-input');
@@ -365,80 +352,56 @@ function getTargetHex(col, row, direction) {
     return [col + dc, row + dr];
 }
 
-// function dilateMask(mask, radius = 1) {
-//     const rows = mask.length;
-//     const cols = mask[0].length;
-//     const dilated = Array(rows).fill().map(() => Array(cols).fill(false));
-//     for (let y = 0; y < rows; y++) {
-//         for (let x = 0; x < cols; x++) {
-//             if (mask[y][x]) {
-//                 for (let dy = -radius; dy <= radius; dy++) {
-//                     for (let dx = -radius; dx <= radius; dx++) {
-//                         const ny = y + dy;
-//                         const nx = x + dx;
-//                         if (ny >= 0 && ny < rows && nx >= 0 && nx < cols) {
-//                             dilated[ny][nx] = true;
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     return dilated;
-// }
-
-// ===== MINIMAL MAP =====
-let worldMap = null;
-let offsetX = 0, offsetY = 0;   // pan offset (world units)
-let scale = 1;                   // zoom factor
-let isDragging = false;
-let dragStartX, dragStartY, startOffsetX, startOffsetY;
-
-// Redraw everything
 function redraw() {
-    //console.log("terrainImage in redraw:", terrainImage);
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
 
-    if (worldMap.width <= 0 || worldMap.height <= 0) {
-        console.error('Invalid world dimensions, cannot generate terrain');
-        return;
-    }
+    const rect = getMapDivRect();
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
 
-    if (canvas.width !== worldMap.width || canvas.height !== worldMap.height) {
-        canvas.width = worldMap.width;
-        canvas.height = worldMap.height;
+    // Resize canvas to match map div size
+    if (canvas.width !== viewportWidth || canvas.height !== viewportHeight) {
+        canvas.width = viewportWidth;
+        canvas.height = viewportHeight;
     }
 
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, viewportWidth, viewportHeight);
     ctx.save();
-    ctx.translate(-offsetX, -offsetY);
-    ctx.scale(scale, scale);
 
-    // Fill background (for areas without hexes)
+    // Apply transform: world → screen
+    // screenX = (worldX - camera.x) * camera.zoom + rect.left
+    // But we want the canvas origin (0,0) to be the top-left of the map div,
+    // so we set transform to map world coordinates to canvas pixels.
+    // Canvas pixel (0,0) corresponds to world (camera.x, camera.y).
+    // So: canvasX = (worldX - camera.x) * camera.zoom
+    // canvasY = (worldY - camera.y) * camera.zoom
+    ctx.setTransform(camera.zoom, 0, 0, camera.zoom, -camera.x * camera.zoom, -camera.y * camera.zoom);
+
+    // Fill background (world coordinates)
     ctx.fillStyle = '#0a1729';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, worldMap.width, worldMap.height);
 
     // Draw terrain image inside discovered hexes (clipping)
     if (terrainImage && worldMap.discovered_hexes && worldMap.hexes) {
         const discoveredSet = new Set(worldMap.discovered_hexes.map(h => `${h.col},${h.row}`));
         const drawAll = (fogOpacity === 0);
-        worldMap.hexes.forEach(hex => {
-            if (!drawAll && !discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
+        for (const hex of worldMap.hexes) {
+            if (!drawAll && !discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) continue;
             ctx.save();
             hexagonPath(ctx, hex.x, hex.y, 30);
-            drawHexagon(ctx, hex.x, hex.y, 30,"#000000"); // needs this to draw the top and bottom
+            drawHexagon(ctx, hex.x, hex.y, 30, "#000000");
             ctx.clip();
             ctx.drawImage(terrainImage, 0, 0);
             ctx.restore();
-        });
+        }
     }
 
-    // Draw paths and locations (only discovered ones)
+    // Draw paths and locations (only discovered)
     const discoveredLocations = (worldMap.locations || []).filter(loc => loc.discovered);
     drawPaths(ctx, worldMap.connections || [], discoveredLocations);
-    drawLocations(ctx, discoveredLocations, scale);
+    drawLocations(ctx, discoveredLocations, camera.zoom);
 
     // Draw party location
     if (worldMap.party_position) {
@@ -458,60 +421,99 @@ function redraw() {
     ctx.restore();
 }
 
-// Initial view centered on start location
-// function setInitialView() {
-//     if (!worldMap) return;
-//     const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
-//     if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
-//         offsetX = startLoc.x - window.innerWidth / (2 * scale);
-//         offsetY = startLoc.y - window.innerHeight / (2 * scale);
-//     } else {
-//         offsetX = (worldMap.width - window.innerWidth / scale) / 2;
-//         offsetY = (worldMap.height - window.innerHeight / scale) / 2;
-//     }
-//     redraw();
-// }
+function getHexWorldCoords(gx, gy) {
+    // Purpose: Converts hex grid coordinates (gx, gy) to world pixel coordinates
+    // Used by: centerOnParty() and any function that needs to center on a specific hex.
+
+    const hex = worldMap.hexes.find(h => h.grid_x === gx && h.grid_y === gy);
+    return hex ? { x: hex.x, y: hex.y } : null;
+}
+
+function centerOnWorld(worldX, worldY) {
+    // Purpose: Pans the camera so that the given world point (worldX, worldY) is exactly at the center of the map div.
+    // Used by: centerOnParty() and any other centering logic.
+
+    const rect = getMapDivRect();
+    const viewportCenterX = rect.width / 2;
+    const viewportCenterY = rect.height / 2;
+    camera.x = worldX - viewportCenterX / camera.zoom;
+    camera.y = worldY - viewportCenterY / camera.zoom;
+    redraw();
+}
+
+function centerOnWindowCenter(worldX, worldY) {
+    const winCenterX = window.innerWidth / 2;
+    const winCenterY = window.innerHeight / 2;
+    camera.x = worldX - winCenterX / camera.zoom;
+    camera.y = worldY - winCenterY / camera.zoom;
+    redraw();
+}
+
+function centerOnParty() {
+    // Purpose: Finds the party’s current hex grid coordinates (from worldMap.party_position), converts them to world coordinates, and calls centerOnWorld() to center the map on the party.
+    // Used by: setInitialView() (after a hard reload) and optionally by AI commands or UI buttons.
+    if (!worldMap.party_position) {
+        console.warn('Party position not found');
+        return;
+    }
+    const { col, row } = worldMap.party_position;
+    const coords = getHexWorldCoords(col, row);
+    if (coords) {
+        centerOnWindowCenter(coords.x, coords.y);
+    } else {
+        console.warn(`Hex (${col},${row}) not found`);
+    }
+}
 
 function setInitialView() {
     if (!worldMap) return;
-    
-    // Fit the entire world in the viewport
-    const canvas = document.getElementById('terrain-canvas');
-    if (canvas) {
-        const worldWidth = worldMap.width;
-        const worldHeight = worldMap.height;
-        const windowWidth = window.innerWidth;
-        const windowHeight = window.innerHeight;
-        scale = Math.min(windowWidth / worldWidth, windowHeight / worldHeight) * 0.9; // 0.9 margin
-        offsetX = (worldWidth - windowWidth / scale) / 2;
-        offsetY = (worldHeight - windowHeight / scale) / 2;
-        if (offsetX < 0) offsetX = 0;
-        if (offsetY < 0) offsetY = 0;
+
+    const rect = getMapDivRect();
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
+    const worldWidth = worldMap.width;
+    const worldHeight = worldMap.height;
+
+    // Zoom to fit the whole world inside the viewport
+    const zoomX = viewportWidth / worldWidth;
+    const zoomY = viewportHeight / worldHeight;
+    // didn't like either of these, so scaled it up 8 times
+    //const newZoom = Math.min(zoomX, zoomY);
+    //const newZoom = viewportWidth / worldWidth
+    const newZoom = viewportWidth / worldWidth * 8;
+    camera.zoom = newZoom;
+
+    // If party exists, center on party; otherwise center on world center
+    if (worldMap.party_position && worldMap.party_position.col !== undefined) {
+        centerOnParty();
     } else {
-        // fallback to centering on start location
-        const startLoc = window.worldState?.currentLocation;
-        if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
-            offsetX = startLoc.x - window.innerWidth / (2 * scale);
-            offsetY = startLoc.y - window.innerHeight / (2 * scale);
-        } else {
-            offsetX = (worldMap.width - window.innerWidth / scale) / 2;
-            offsetY = (worldMap.height - window.innerHeight / scale) / 2;
-        }
+        const worldCenterX = worldWidth / 2;
+        const worldCenterY = worldHeight / 2;
+        camera.x = worldCenterX - (viewportWidth / 2) / newZoom;
+        camera.y = worldCenterY - (viewportHeight / 2) / newZoom;
     }
     redraw();
 }
 
-// ===== EVENT HANDLERS =====
 function onWheel(e) {
     e.preventDefault();
     const zoomFactor = 1.1;
-    const mouseWorldX = offsetX + e.clientX / scale;
-    const mouseWorldY = offsetY + e.clientY / scale;
-    if (e.deltaY < 0) scale *= zoomFactor;
-    else scale /= zoomFactor;
-    scale = Math.max(0.5, Math.min(3, scale));
-    offsetX = mouseWorldX - e.clientX / scale;
-    offsetY = mouseWorldY - e.clientY / scale;
+    const oldZoom = camera.zoom;
+    let newZoom = oldZoom;
+    if (e.deltaY < 0) newZoom *= zoomFactor;
+    else newZoom /= zoomFactor;
+    newZoom = Math.max(0.1, Math.min(3, newZoom));
+    if (newZoom === oldZoom) return;
+
+    const rect = getMapDivRect();
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
+    const worldX = camera.x + canvasX / oldZoom;
+    const worldY = camera.y + canvasY / oldZoom;
+
+    camera.zoom = newZoom;
+    camera.x = worldX - canvasX / newZoom;  // factor = 1.0
+    camera.y = worldY - canvasY / newZoom;
     redraw();
 }
 
@@ -524,14 +526,10 @@ function onDoubleClick(e) {
 }
 
 function onMouseMove(e) {
-    if (isDragging) return; // don't interfere while dragging
+    if (isDragging) return;
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const worldX = offsetX + mouseX / scale;
-    const worldY = offsetY + mouseY / scale;
+    const { worldX, worldY } = screenToWorld(e.clientX, e.clientY);
     if (window.worldState.locations) {
         const hovered = window.worldState.locations.find(loc => {
             const dist = Math.sqrt((worldX - loc.x) ** 2 + (worldY - loc.y) ** 2);
@@ -553,8 +551,8 @@ function onPointerDown(e) {
     // Store screen start and current offsets
     dragStartX = e.clientX;
     dragStartY = e.clientY;
-    startOffsetX = offsetX;
-    startOffsetY = offsetY;
+    startCameraX = camera.x;
+    startCameraY = camera.y;
     const canvas = document.getElementById('terrain-canvas');
     canvas.style.cursor = 'grabbing';
     canvas.setPointerCapture(e.pointerId);
@@ -568,8 +566,8 @@ function onPointerMove(e) {
     if (!isDragging) return;
     const dx = e.clientX - dragStartX;
     const dy = e.clientY - dragStartY;
-    offsetX = startOffsetX - dx;
-    offsetY = startOffsetY - dy; 
+    camera.x = startCameraX - dx / camera.zoom;
+    camera.y = startCameraY - dy / camera.zoom;
     redraw();
     e.preventDefault();
 }
