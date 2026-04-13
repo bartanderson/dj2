@@ -1509,8 +1509,32 @@ class WorldController:
             "message": f"You descend into {location.name}."
         }
 
+    def _update_party_position(self, new_col, new_row, reason="movement", advance_minutes=0):
+        """Update party position, reveal hexes, advance time, and return response."""
+        self.campaign_state.party_position = (new_col, new_row)
+        self._reveal_hexes_around(new_col, new_row)
+        if advance_minutes:
+            self.campaign_state.advance_time(advance_minutes)
+        # Update current_location if the new hex contains a location
+        loc = None
+        for location in self.world_map.locations.values():
+            if location.col == new_col and location.row == new_row:
+                loc = location
+                break
+        if loc:
+            self.current_location = loc
+        else:
+            self.current_location = None
+        return {
+            "response": f"You {reason} to ({new_col},{new_row}).",
+            "map_data": self.get_map_data(),
+            "location_data": self.get_current_location_data(),
+            "action": "centerOnParty",
+            "success": True
+        }
+
     def process_command(self, input_data, session_id=None):
-        # TODO: Implement "travel to <location>" command (fast travel)
+        # TODO: Implement "travel_to <location>" command (fast travel)
         # TODO: Implement "buy <item>" and "sell <item>" commands (shop)
         # TODO: Implement "inventory" command to list items
         """Process a command (string or dict) and return response dict."""
@@ -1538,9 +1562,7 @@ class WorldController:
                 try:
                     col, row = int(parts[1]), int(parts[2])
                     if self.campaign_state.get_hex(col, row):
-                        self.campaign_state.party_position = (col, row)
-                        self._reveal_hexes_around(col, row)
-                        return {"response": f"Teleported to ({col},{row}).", "map_data": self.get_map_data()}
+                        return self._update_party_position(col, row, "teleport", 0)
                 except:
                     pass
             return {"response": "Usage: teleport <col> <row>"}
@@ -1550,16 +1572,12 @@ class WorldController:
             target = command[10:].strip().lower()
             for loc in self.world_map.locations.values():
                 if loc.discovered and loc.name.lower() == target:
-                    self.campaign_state.party_position = (loc.col, loc.row)
-                    self._reveal_hexes_around(loc.col, loc.row)
-                    self.current_location = loc
-                    self.campaign_state.advance_time(24 * 60)  # 1 day travel
-                    return {
-                        "response": f"You travel to {loc.name}.",
-                        "map_data": self.get_map_data(),
-                        "location_data": self.get_current_location_data(),
-                        "success": True
-                    }
+                    # Use helper to update position
+                    return self._update_party_position(
+                        loc.col, loc.row,
+                        reason=f"travel to {loc.name}",
+                        advance_minutes=24*60
+                    )
             return {"response": f"Location '{target}' not found or not discovered.", "success": False}
 
         # Buy command
@@ -1623,19 +1641,11 @@ class WorldController:
             if dir:
                 result = self.move_hex(dir, terrain=target_terrain)
                 if result['success']:
-                    narrative = f"You move {dir}."
-                    return {
-                        "response": narrative,
-                        "map_data": self.get_map_data(),
-                        "location_data": self.get_current_location_data(),
-                        "success": True
-                    }
+                    new_col = result['new_col']
+                    new_row = result['new_row']
+                    return self._update_party_position(new_col, new_row, f"move {dir}", 10)
                 else:
-                    return {
-                        "response": result.get('message', f"Cannot move {dir}."),
-                        "map_data": self.get_map_data(),
-                        "success": False
-                    }
+                    return {"response": result.get('message', f"Cannot move {dir}."), "map_data": self.get_map_data(), "success": False}
 
         # Fallback to GameEngine (if any)
         if hasattr(self, 'game_engine') and self.game_engine:
@@ -1887,7 +1897,12 @@ class WorldController:
         target['discovered'] = True
         self._reveal_hexes_around(nc, nr)
         self.explore_hex()
-        return {"success": True, "new_hex": target}
+        return {
+            "success": True,
+            "new_hex": target,
+            "new_col": nc,
+            "new_row": nr
+        }
 
     def _is_hex_passable(self, hex):
         """Basic passability based on terrain. Later we'll check party assets."""

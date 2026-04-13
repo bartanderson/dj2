@@ -624,6 +624,9 @@ async function sendWorldCommand(command) {
                 worldState.currentLocation = data.location_data;
             }
             redraw();
+            if (data.action === 'centerOnParty') {
+                centerOnParty();
+            }
         }
         if (data.response) {
             addWorldMessage(data.response);
