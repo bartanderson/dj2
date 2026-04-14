@@ -784,6 +784,33 @@ class WorldController:
         
         self.paths = []
 
+    def get_active_party_id(self):
+        """Return the current party ID (default or from session)."""
+        # For now, use default. Later can be per player.
+        return self.default_party_id
+
+    def get_party_characters(self, party_id=None):
+        """Return list of Character objects for the party."""
+        if party_id is None:
+            party_id = self.get_active_party_id()
+        member_ids = self.party_manager.get_party_members(party_id)
+        chars = []
+        for cid in member_ids:
+            char = self.character_manager.get_character(cid)
+            if char:
+                chars.append(char)
+        return chars
+
+    def get_party_average_level(self, party_id=None):
+        chars = self.get_party_characters(party_id)
+        if not chars:
+            return 1
+        total = sum(c.level for c in chars)
+        return total // len(chars)  # integer average
+
+    def get_party_size(self, party_id=None):
+        return len(self.get_party_characters(party_id))
+
     def get_quests_for_location(self, location_id: str) -> List[Quest]:
         """Return all quests (active or completed) that involve this location."""
         result = []
@@ -1516,6 +1543,32 @@ class WorldController:
         """Update party position, reveal hexes, advance time, and return response."""
         self.campaign_state.party_position = (new_col, new_row)
         self._reveal_hexes_around(new_col, new_row)
+
+        # Encounter check
+        if random.randint(1, 6) == 1:
+            # Get region for the new hex
+            hex_data = self.campaign_state.get_hex(new_col, new_row)
+            region_id = hex_data.get('region_id') if hex_data else None
+            region = self.campaign_state.surface_regions.get(region_id) if region_id else None
+            danger_mod = region.danger_level if region else 0
+            # Adjust chance by danger? For now, just use base chance.
+            # Generate encounter context
+            context = {
+                "point_id": f"move_{new_col}_{new_row}",
+                "party_level": self.get_party_average_level(),
+                "party_size": self.get_party_size(),
+                "region": {
+                    "danger_level": danger_mod,
+                    "terrain": hex_data.get('terrain') if hex_data else "plains",
+                    "faction": region.faction_control if region else "contested"
+                },
+                "point_type": "travel"
+            }
+            from world.encounter_generator import generate_encounter
+            encounter = generate_encounter(context)
+            # Store encounter in a temporary attribute for later use in the response
+            self.pending_encounter = encounter
+
         if advance_minutes:
             self.campaign_state.advance_time(advance_minutes)
         # Update current_location if the new hex contains a location
@@ -1528,13 +1581,17 @@ class WorldController:
             self.current_location = loc
         else:
             self.current_location = None
-        return {
+        response = {
             "response": f"You {reason} to ({new_col},{new_row}).",
             "map_data": self.get_map_data(),
             "location_data": self.get_current_location_data(),
             "action": "centerOnParty",
             "success": True
         }
+        if hasattr(self, 'pending_encounter') and self.pending_encounter:
+            response["encounter"] = self.pending_encounter.to_dict()
+            del self.pending_encounter
+        return response
 
     def process_command(self, input_data, session_id=None):
         # TODO: Implement "travel_to <location>" command (fast travel)
