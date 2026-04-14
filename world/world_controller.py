@@ -283,6 +283,8 @@ class WorldController:
                 self.current_location.dungeon_type = 'cave'
                 self.current_location.dungeon_level = 1
                 print(f"[DEBUG] Added dungeon to {self.current_location.name}")
+
+            starting_location.location.shop = Shop();
         else:
             # Fallback to first location if no tavern found
             first_location_id = list(self.world_map.locations.keys())[0]
