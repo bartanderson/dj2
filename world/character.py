@@ -38,7 +38,6 @@ class Character:
                  player_id: Optional[str] = None,
                  owner_id: Optional[str] = None,
                  currency = 100,
-                 inventory = [],
                  # Attributes (0-4 scale in OG System)
                  brawn: Optional[int] = None,
                  finesse: Optional[int] = None,
@@ -63,6 +62,8 @@ class Character:
         self.race = race
         self.background = background
         self.player_id = player_id
+        self.currency = currency
+        self.inventory = []   # will be populated later
         
         # Handle class (can be string name or OGClass object)
         if isinstance(classs, str):

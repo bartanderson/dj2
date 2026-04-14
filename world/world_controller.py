@@ -65,6 +65,7 @@ from world.bestiary import Monster
 from world.name_generator import NameGenerator
 from world.terrain_generator import TerrainGenerator
 from world.terrain_image_generator import generate_terrain_image
+from world.merchant import Merchant
 
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
@@ -251,6 +252,7 @@ class WorldController:
         for location in self.world_map.locations.values():
             if location.type == "tavern" and "adventurer" in location.name.lower():
                 starting_location = location
+                starting_location.merchant = Merchant("Grom the Trader", starting_location.name)
                 break
 
         if starting_location:
@@ -284,7 +286,6 @@ class WorldController:
                 self.current_location.dungeon_level = 1
                 print(f"[DEBUG] Added dungeon to {self.current_location.name}")
 
-            starting_location.location.shop = Shop();
         else:
             # Fallback to first location if no tavern found
             first_location_id = list(self.world_map.locations.keys())[0]
