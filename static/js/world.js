@@ -167,6 +167,76 @@ function enterDungeon() {
     window.location.href = `http://localhost:5005/?party_id=${encodeURIComponent(partyId)}&location_id=${encodeURIComponent(locationId)}&world_url=${encodeURIComponent(window.location.origin)}`;
 }
 
+// ===== PARTY UI FUNCTIONS =====
+
+function showCreatePartyModal() {
+    const partyName = prompt("Enter party name:", "My Party");
+    if (!partyName) return;
+    
+    fetch('/api/party/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: partyName })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to create party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error creating party: " + err.message);
+    });
+}
+
+function showJoinPartyModal() {
+    const partyId = prompt("Enter party ID to join:");
+    if (!partyId) return;
+    console.log("partyId", partyId)
+    
+    fetch('/api/party/join', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ party_id: partyId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to join party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error joining party: " + err.message);
+    });
+}
+
+function leaveParty() {
+    if (!confirm("Are you sure you want to leave your current party?")) return;
+    
+    fetch('/api/party/leave', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to leave party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error leaving party: " + err.message);
+    });
+}
+
 function getCurrentPartyCharacters() {
     // Get the active party from world state
     const activeParty = worldState.parties.find(p => p.id === window.currentPartyId);
@@ -256,6 +326,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === 'Enter') send();
         });
     }
+    const socket = io();
+    socket.on('party_update', () => {
+        // Refresh the party list via HTMX
+        htmx.ajax('GET', '/api/party/list-html', { target: '#party-list-container', swap: 'innerHTML' });
+    });
 });
 
 // ===== MAP RENDERING HELPERS =====
@@ -608,6 +683,34 @@ async function travelToLocation(locationId) {
     }
 }
 
+// async function sendWorldCommand(command) {
+//     console.log("sendWorldCommand called with:", command);
+//     try {
+//         const response = await fetch('/api/command', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({command: command})
+//         });
+//         const data = await response.json();
+//         if (data.map_data) {
+//             worldState.worldMap = data.map_data;
+//             worldMap = worldState.worldMap;
+//             if (data.location_data) {
+//                 worldState.currentLocation = data.location_data;
+//             }
+//             redraw();
+//             if (data.action === 'centerOnParty') {
+//                 centerOnParty();
+//             }
+//         }
+//         if (data.response) {
+//             addWorldMessage(data.response);
+//         }
+//     } catch (error) {
+//         console.error('Command error:', error);
+//     }
+// }
+
 async function sendWorldCommand(command) {
     console.log("sendWorldCommand called with:", command);
     try {
@@ -627,6 +730,26 @@ async function sendWorldCommand(command) {
             if (data.action === 'centerOnParty') {
                 centerOnParty();
             }
+        }
+        // Handle encounter if present
+        if (data.encounter) {
+            addWorldMessage(`⚠️ Encounter: ${data.encounter.description}`);
+            // Ask AI DM to narrate the encounter
+            fetch('/api/dm-response', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    message: `We encountered: ${data.encounter.description}. What happens?`,
+                    encounter: data.encounter 
+                })
+            })
+            .then(r => r.json())
+            .then(dmData => {
+                if (dmData.responses) {
+                    dmData.responses.forEach(r => addWorldMessage(r.content));
+                }
+            })
+            .catch(err => console.error('DM response error:', err));
         }
         if (data.response) {
             addWorldMessage(data.response);

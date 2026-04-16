@@ -633,6 +633,10 @@ def handle_command():
         return jsonify({"error": "World controller not available"}), 500
     result = wc.process_command(command, session_id)
     return jsonify(result)
+
+def notify_party_update():
+    """Emit a party_update event to all connected clients."""
+    socketio.emit('party_update', {})
     
 def initialize_dungeon_systems():
     """Initialize complete HTTP-based dungeon system with all phase systems"""
@@ -950,17 +954,9 @@ def retry_failed_images():
 # ===== Character Endpoints =====
 @app.route('/api/party/list-html')
 def party_list_html():
-    parties = get_active_parties_helper()
-    # Fetch character names for members
-    wc = current_app.world_controller
-    if wc:
-        for party in parties:
-            member_names = []
-            for char_id in party.get('members', []):
-                char = wc.character_manager.get_character(char_id)
-                member_names.append(char.name if char else char_id)
-            party['member_names'] = member_names
-    return render_template('partials/party_list.html', parties=parties)
+    session_id = request.cookies.get('session_id')
+    html = current_app.world_controller.get_party_list_html(session_id)
+    return html
     
 @app.route('/api/player/name')
 def get_player_name():
@@ -1977,6 +1973,7 @@ def dm_response():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+        
 def legacy_dm_response():
     """Fallback to original dm-response logic"""
     try:
@@ -2435,6 +2432,83 @@ def create_player():
         secure=False, httponly=True, samesite='Lax'
     )
     return response
+
+@app.route('/api/party/create', methods=['POST'])
+def api_party_create():
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        party_id = wc.party_manager.create_party(name, [active_char_id])
+        if party_id:
+            notify_party_update()
+            return jsonify({'success': True, 'party_id': party_id})
+        else:
+            return jsonify({'success': False, 'error': 'Could not create party'}), 500
+    except Exception as e:
+        print(f"Error in create party: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/party/join', methods=['POST'])
+def api_party_join():
+    try:
+        data = request.get_json()
+        party_id = data.get('party_id')
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        success = wc.party_manager.add_to_party(active_char_id, party_id)
+        if success:
+            notify_party_update()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Could not join party (party may not exist or character already in a party?)'}), 500
+    except Exception as e:
+        print(f"Error in join party: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/party/leave', methods=['POST'])
+def api_party_leave():
+    try:
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        success = wc.party_manager.remove_from_party(active_char_id)
+        if success:
+            notify_party_update()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Could not leave party'}), 500
+    except Exception as e:
+        print(f"Error in leave party: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     initialize_app()

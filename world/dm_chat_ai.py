@@ -130,6 +130,11 @@ def get_ai_response(prompt_or_message: str, session: Any, game_context: Dict[str
     - Otherwise, it's treated as a player message and generate_response is called.
     Returns a JSON string.
     """
+    # Add encounter info to the prompt if present
+    if game_context.get("encounter"):
+        prompt_or_message += f"\n\n[ENCOUNTER] {game_context['encounter_description']}\n"
+        prompt_or_message += f"Monsters: {game_context.get('encounter_monsters', 'unknown')}\n"
+        
     # Heuristic: if the prompt contains the word "JSON" and "Respond in", treat as custom prompt
     if "Respond in JSON" in prompt_or_message or "JSON object" in prompt_or_message:
         # It's a custom prompt (e.g., from topic extraction)

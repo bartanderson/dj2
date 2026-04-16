@@ -1,4 +1,75 @@
 # game_engine.py
+
+"""
+================================================================================
+DESIGN DOCUMENTATION / TODO: Unified Command Handling
+================================================================================
+
+Goal:
+    All player actions (movement, buying, selling, teleporting, resting, etc.)
+    must be processed through the GameEngine's phase cycle (INPUT → INTERPRETATION
+    → AUTHORITY → MUTATION → CONSEQUENCE → VIEW). This ensures that encounters,
+    consequences, and state changes are handled consistently and that no action
+    bypasses the engine.
+
+GameEngine – Phase-based command processor.
+
+Current status (2025-04-15):
+- Movement commands (n, s, e, w, ne, nw, se, sw, go <dir>) are fully handled.
+- Authority phase uses world.move_hex() for validation.
+- Mutation phase applies movement and stores new hex.
+- Consequence phase generates narration.
+- Other commands (buy, sell, teleport, fast travel) are planned for next steps.
+
+Required Changes (TODO list):
+
+1. Refactor WorldController.process_command to route ALL commands through
+   self.game_engine.advance(), except perhaps admin/debug commands.
+
+2. Extend GameEngine._execute_interpretation_phase to parse:
+   - Movement directions (n, s, e, w, ne, nw, se, sw, go <dir>)
+   - Buy/sell commands (e.g., "buy shortsword", "sell dagger")
+   - Teleport commands (e.g., "teleport 10 20")
+   - Fast travel (e.g., "travel to Adventurer's Respite")
+   - Rest command
+   - Inventory, status, party commands
+   - Any other existing command.
+
+3. Extend _execute_authority_phase to validate each command type:
+   - For movement: check passability (water, mountains, etc.) and party assets.
+   - For buy/sell: verify shop presence, item existence, gold/stock.
+   - For teleport: validate coordinates within world bounds.
+   - For rest: check if location is safe (e.g., no enemies nearby).
+
+4. Extend _execute_mutation_phase to apply state changes:
+   - Update party position, reveal hexes, advance time.
+   - Modify character inventory and gold.
+   - Apply healing, condition changes, etc.
+
+5. Extend _execute_consequence_phase to:
+   - Generate narration for the action.
+   - Check for random encounters after any action (not just movement).
+   - If an encounter is triggered, generate it and store in ui_data["encounter"].
+   - Optionally, call the AI DM to narrate the encounter immediately.
+
+6. Update frontend (world.js) to handle the unified response format, which now
+   always includes "encounter" and "action" fields as needed.
+
+7. Remove all direct command handling from WorldController.process_command
+   (keep only the call to game_engine.advance and maybe a fallback for errors).
+
+8. Ensure that the engine respects the current mode (world vs. dungeon) and
+   delegates appropriately.
+
+Priority:
+    - High: Movement and encounter generation.
+    - Medium: Buy/sell and inventory.
+    - Low: Teleport and fast travel (can be handled by the engine as special
+      "move" actions).
+
+================================================================================
+"""
+
 import json
 from enum import Enum
 from typing import Dict, Any, Optional
@@ -330,45 +401,44 @@ class GameEngine:
                 
             # For player text, use AI to interpret
             if input_data.get("type") == "player_text":
-                text = input_data.get("text", "")
+                text = input_data.get("text", "").lower().strip()
                 
-                # Temporary: Use DMChatHandler's AI if available
-                if self.systems[GamePhase.INTERPRETATION]:
-                    try:
-                        # This is where we would use AI - for now, simple simulation
-                        import random
-                        intents = ["move", "interact", "attack", "cast", "talk", "inspect"]
-                        intent = random.choice(intents)
-                        
-                        return {
-                            "intent": intent,
-                            "action": f"{intent}_action",
-                            "target": "unknown",
-                            "confidence": random.uniform(0.7, 1.0),
-                            "raw_text": text
-                        }
-                    except Exception as e:
-                        context.add_warning(f"AI interpretation failed: {str(e)}", GamePhase.INTERPRETATION)
-                        
-                # Fallback: simple keyword matching
-                text_lower = text.lower()
-                if any(word in text_lower for word in ["move", "go", "travel", "walk"]):
+                # Remove common prefixes
+                if text.startswith("go "):
+                    text = text[3:]
+                
+                # Direction mapping (flat-top hex directions)
+                direction_map = {
+                    'n': 'n', 'north': 'n',
+                    'ne': 'ne', 'northeast': 'ne',
+                    'se': 'se', 'southeast': 'se',
+                    's': 's', 'south': 's',
+                    'sw': 'sw', 'southwest': 'sw',
+                    'nw': 'nw', 'northwest': 'nw'
+                }
+                
+                # Handle east/west – they are not valid flat-top directions; we'll convert later
+                if text in ['e', 'east']:
                     intent = "move"
-                elif any(word in text_lower for word in ["attack", "fight", "hit", "strike"]):
-                    intent = "attack"
-                elif any(word in text_lower for word in ["talk", "speak", "ask", "say"]):
-                    intent = "talk"
-                elif any(word in text_lower for word in ["look", "inspect", "examine"]):
-                    intent = "inspect"
+                    action = "move_east"  # will be converted in authority phase
+                elif text in ['w', 'west']:
+                    intent = "move"
+                    action = "move_west"
+                elif text in direction_map:
+                    intent = "move"
+                    action = f"move_{direction_map[text]}"
                 else:
+                    # Not a movement command – fallback to other intents (buy, sell, etc.)
+                    # For now, treat as unknown; later we'll add more parsing
                     intent = "unknown"
-                    
+                    action = "unknown"
+                
                 return {
                     "intent": intent,
-                    "action": f"{intent}_action",
-                    "target": "unknown",
-                    "confidence": 0.5,
-                    "raw_text": text
+                    "action": action,
+                    "target": text,
+                    "confidence": 1.0 if intent != "unknown" else 0.5,
+                    "raw_text": input_data.get("text", "")
                 }
                 
             # For structured commands, pass through
@@ -402,23 +472,37 @@ class GameEngine:
             if intent == "error":
                 return action
                 
-            # TEMPORARY: Simple validation
-            # In the future, this will delegate to dm_tools and other authority systems
+            # Movement actions: validated via world.move_hex()
             
             # For move action, check if destination is valid
-            if intent == "move":
-                target = action.get("target", "unknown")
-                
-                # TODO: Query world_controller/world_map for valid moves
-                # For now, assume valid
-                ruling = {
-                    "valid": True,
-                    "action": "move",
-                    "target": target,
-                    "dice_rolls": {},  # No dice needed for basic movement
-                    "permissions": ["allowed"],
-                    "constraints": []
-                }
+            if action.startswith("move_"):
+                direction = action[5:]  # extract 'n', 'ne', etc.
+                # Convert east/west to actual direction based on current row
+                if direction == "east":
+                    col, row = self.world.campaign_state.party_position
+                    direction = 'ne' if row % 2 == 0 else 'se'
+                elif direction == "west":
+                    col, row = self.world.campaign_state.party_position
+                    direction = 'nw' if row % 2 == 0 else 'sw'
+                # Validate movement via world controller
+                result = self.world.move_hex(direction)
+                if result.get("success"):
+                    ruling = {
+                        "valid": True,
+                        "action": "move",
+                        "direction": direction,
+                        "result": result,
+                        "dice_rolls": {}
+                    }
+                else:
+                    ruling = {
+                        "valid": False,
+                        "action": "move",
+                        "error": result.get("message", "Movement blocked"),
+                        "dice_rolls": {}
+                    }
+                context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
+                return ruling
                 
             # For attack action, roll dice
             elif intent == "attack":
@@ -490,6 +574,14 @@ class GameEngine:
                     "applied": False,
                     "reason": ruling.get("error", "Invalid action")
                 }
+
+            if ruling.get("action") == "move":
+                result = ruling.get("result")
+                if result and result.get("success"):
+                    context.set_phase_data(GamePhase.MUTATION, "new_hex", result.get("new_hex"))
+                    return {"applied": True, "result": result}
+                else:
+                    return {"applied": False, "reason": ruling.get("error", "Movement failed")}
                 
             action = ruling.get("action", "")
             
@@ -561,60 +653,46 @@ class GameEngine:
         # DEFAULT IMPLEMENTATION (original code)
         try:
             if not mutation_result.get("applied", False):
-                # Nothing was applied, minimal consequences
                 return {
                     "narration": "Nothing happened.",
                     "encounters": [],
                     "transitions": []
                 }
-                
-            action = mutation_result.get("action", "")
-            
-            # TEMPORARY: Generate simple narration
-            # In the future, delegate to narrative_system with AI
-            
-            if action == "move":
-                target = mutation_result.get("target", "somewhere")
-                narration = f"You travel to {target}."
-                
-            elif action == "attack":
-                if mutation_result.get("hit", False):
-                    damage = mutation_result.get("damage", 0)
-                    if mutation_result.get("target_destroyed", False):
-                        narration = f"You strike a mighty blow, destroying your target! ({damage} damage)"
-                    else:
-                        narration = f"You hit your target for {damage} damage."
-                else:
-                    narration = "Your attack misses!"
-                    
-            elif action == "talk":
-                target = mutation_result.get("target", "someone")
-                narration = f"You begin a conversation with {target}."
-                
+
+            # Check if this was a movement action (from our mutation phase)
+            move_result = mutation_result.get("result")
+            if move_result and move_result.get("success") and move_result.get("direction"):
+                direction = move_result.get("direction")
+                narration = f"You move {direction}."
             else:
-                narration = "Something happened, but it's hard to describe."
-                
-            # Check for encounters (simplified)
-            import random
+                # Fallback for other actions (attack, talk, etc.) – keep existing logic
+                action = mutation_result.get("action", "")
+                if action == "attack":
+                    if mutation_result.get("hit", False):
+                        damage = mutation_result.get("damage", 0)
+                        if mutation_result.get("target_destroyed", False):
+                            narration = f"You strike a mighty blow, destroying your target! ({damage} damage)"
+                        else:
+                            narration = f"You hit your target for {damage} damage."
+                    else:
+                        narration = "Your attack misses!"
+                elif action == "talk":
+                    target = mutation_result.get("target", "someone")
+                    narration = f"You begin a conversation with {target}."
+                else:
+                    narration = "Something happened, but it's hard to describe."
+
+            # TODO: Add encounter check here (will be implemented later)
             encounters = []
-            if random.random() < 0.1:  # 10% chance
-                encounters.append({
-                    "type": "random_encounter",
-                    "description": "A wild creature appears!",
-                    "difficulty": "easy"
-                })
-                
-            # Store in context
+
             consequences = {
                 "narration": narration,
                 "encounters": encounters,
                 "phase_transitions": []
             }
-            
             context.set_phase_data(GamePhase.CONSEQUENCE, "consequences", consequences)
-            
             return consequences
-            
+
         except Exception as e:
             context.add_error(f"Consequence phase error: {str(e)}", GamePhase.CONSEQUENCE)
             return {

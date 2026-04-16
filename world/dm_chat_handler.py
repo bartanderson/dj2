@@ -293,7 +293,7 @@ Your answer:
         # Return a list of DialogResponse objects (for consistency)
         return [{"speaker": "DM", "content": narrative, "dialog_type": "narration"}]
 
-    def process_message(self, session_id: str, message: str, character_id: Optional[str] = None) -> Dict[str, Any]:
+    def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Main entry point for player messages.
         Returns a dict with 'responses' (list of DialogResponse) and optionally 'tool_result'.
@@ -310,6 +310,9 @@ Your answer:
 
         # Build game context for AI
         game_context = self._build_game_context(session, character)
+        if encounter:
+            game_context["encounter"] = encounter
+            game_context["encounter_description"] = encounter.get("description", "")
 
         # First, try to extract a specific topic
         topic = self._extract_message_topic(message, game_context)
@@ -321,7 +324,7 @@ Your answer:
             return {"responses": responses, "tool_result": None}
 
         # Otherwise, proceed with normal AI response (character creation or game progression)
-        ai_response_json = get_ai_response(message, session, game_context)
+        ai_response_json = get_ai_response(message, session, game_context, encounter)
         try:
             ai_data = json.loads(ai_response_json)
         except json.JSONDecodeError:

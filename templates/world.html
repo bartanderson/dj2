@@ -12,6 +12,7 @@
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <script>
         htmx.config.historyCacheSize = 0;  // optional
         // Suppress logging
@@ -405,10 +406,6 @@
                          hx-trigger="load"
                          hx-swap="innerHTML">
                         Loading parties...
-                    </div>
-                    <div style="margin-top: 20px;">
-                        <button id="create-party-btn" class="btn">Create Party</button>
-                        <button id="join-party-btn" class="btn secondary">Join Party</button>
                     </div>
                 </div>
             </div>
@@ -1281,37 +1278,6 @@
             }
         }
     })();
-    document.getElementById('create-party-btn').addEventListener('click', async function() {
-        const partyName = prompt("Enter party name:", "My Party");
-        if (!partyName) return;
-
-        try {
-            // Get active character ID
-            const resp = await fetch('/api/player/active-character');
-            const data = await resp.json();
-            const characterId = data.character_id;
-            if (!characterId) {
-                alert("No active character found. Please create a character first.");
-                return;
-            }
-
-            // Create party
-            const createRes = await fetch('/api/create-party', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name: partyName, members: [characterId] })
-            });
-            const createData = await createRes.json();
-            if (createData.success) {
-                location.reload();
-            } else {
-                alert("Failed to create party: " + (createData.error || "Unknown error"));
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Error creating party: " + err.message);
-        }
-    });
     </script>
     <!-- Debug Overlay (hidden by default) -->
     <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">

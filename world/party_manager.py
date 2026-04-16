@@ -66,19 +66,15 @@ class PartyManager:
         return party_id
 
     def add_to_party(self, char_id: str, party_id: str) -> bool:
-        """Add character to a party"""
-        if char_id not in self.character_parties:
-            return False
-        
-        # Remove from current party if any
+        # If already in a party, remove first
         current_party = self.character_parties.get(char_id)
         if current_party and current_party in self.parties:
             self.parties[current_party]["members"].remove(char_id)
-        
-        # Add to new party
+            del self.character_parties[char_id]
+        # Check target party exists
         if party_id not in self.parties:
             return False
-            
+        # Add to new party
         self.parties[party_id]["members"].append(char_id)
         self.character_parties[char_id] = party_id
         return True

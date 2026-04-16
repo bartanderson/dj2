@@ -1,21 +1,100 @@
 # world_controller.py
 
 """
-# ===== PHASE 4c TODOs =====
-- Remove test dungeon hack (temporary dungeon at starting location)
-x Implement fast travel to discovered locations
-x Add shop system and inventory management
-- Generate encounter points on world map (random encounters)
-- Implement region system from 14_campaign.json (factions, quests)
-x Cache world terrain image on server for faster frontend rendering
-- Add multi-player test button (open new tab with different session)
-x Replace client-side terrain generation (terrain-generator.js) with backend data
-- Implement AI-powered name generation (already done, but ensure caching works)
-- Add services to settlements (shop, temple, quest board) based on size
-- Determine dungeon type from terrain (cave, crypt, etc.)
+================================================================================
+WorldController – Active Record pattern for world state and system coordination
+================================================================================
 
-# ===== Before PHASE 5 TODO =====
-# TODO: Refactor WorldController into smaller modules
+This controller serves as both:
+1. A coordinator between game systems (WorldMap, CampaignState, PartyManager, etc.)
+2. A data model for the active game state (campaign, party position, etc.)
+
+Current issues (to be addressed in refactoring):
+- Many commands (movement, buy/sell, teleport) bypass the GameEngine phases,
+  leading to inconsistent encounter generation and consequences.
+- The controller has grown too large and mixes responsibilities.
+
+================================================================================
+Architectural Refactoring Plan (HIGHEST PRIORITY)
+================================================================================
+
+Goal: Route all player commands through GameEngine.advance() so that every action
+goes through the full phase cycle (INPUT → INTERPRETATION → AUTHORITY → MUTATION
+→ CONSEQUENCE → VIEW). This will unify encounter generation, state changes, and
+narrative consequences.
+
+Implementation steps (to be done in order):
+
+1. Modify WorldController.process_command to send ALL commands (movement, buy,
+   sell, teleport, fast travel, rest, etc.) to self.game_engine.advance().
+   - Remove all direct command handling (direction_map, buy/sell blocks, etc.).
+   - Keep only admin/debug commands (e.g., "reveal locations") as bypass for now.
+
+2. Extend GameEngine._execute_interpretation_phase to parse:
+   - Movement directions (n, s, e, w, ne, nw, se, sw, go <dir>)
+   - Buy/sell commands (e.g., "buy shortsword", "sell dagger")
+   - Teleport commands ("teleport <col> <row>")
+   - Fast travel ("travel to <location name>")
+   - Rest, inventory, party commands.
+
+3. Extend _execute_authority_phase to validate each command type:
+   - Movement: check passability (water, mountains) and party assets.
+   - Buy/sell: verify shop presence, item existence, gold/stock.
+   - Teleport: validate coordinates.
+   - Fast travel: location discovered and reachable.
+
+4. Extend _execute_mutation_phase to apply state changes:
+   - Update party position, reveal hexes, advance time.
+   - Modify character inventory and gold.
+   - Apply healing, condition changes.
+
+5. Extend _execute_consequence_phase to:
+   - Generate narration for the action.
+   - Check for random encounters after any action (not just movement).
+   - Generate encounter using encounter_generator and store in ui_data["encounter"].
+   - Optionally trigger AI narration via the existing dm-response flow.
+
+6. Update frontend (world.js) to handle the unified response format (encounter
+   and action fields at top level).
+
+================================================================================
+PHASE 4c TODOs (in priority order, after refactoring)
+================================================================================
+
+1. **Generate encounter points on world map** – After refactoring, integrate
+   random encounters into the consequence phase. Use existing EncounterPoint
+   system and region danger levels.
+
+2. **Implement region system from 14_campaign.json** – Load factions, quests,
+   and use them to flavor encounters (e.g., faction patrols, quest-related
+   monsters).
+
+3. **Add services to settlements** – Shops (already partially done), temples,
+   quest boards, etc., based on settlement size and type.
+
+4. **Determine dungeon type from terrain** – When entering a dungeon, derive
+   type (cave, crypt, etc.) from the region's terrain.
+
+5. **Remove test dungeon hack** – The temporary dungeon at starting location.
+
+6. **Multi-player test button** – Open new tab with different session.
+
+Already completed (marked with x):
+   x Implement fast travel to discovered locations
+   x Add shop system and inventory management (basic)
+   x Cache world terrain image on server
+   x Replace client-side terrain generation with backend data
+   x AI-powered name generation (with caching)
+
+================================================================================
+Before PHASE 5 TODO
+================================================================================
+
+- Refactor WorldController into smaller modules (e.g., WorldState, WorldMovement,
+  WorldEncounter, WorldShop) to improve maintainability. This will be done after
+  the GameEngine refactoring is stable.
+
+================================================================================
 """
 
 """
@@ -784,6 +863,31 @@ class WorldController:
         
         self.paths = []
 
+    def get_party_list_html(self, session_id=None):
+        active_char = self._get_active_character(session_id)
+        if not active_char:
+            return "<p>No active character. Please create a character first.</p>"
+        party = self.party_manager.get_character_party(active_char.id)
+        if not party:
+            return """
+            <p>You are not in any party.</p>
+            <button onclick="showCreatePartyModal()" class="btn">Create Party</button>
+            <button onclick="showJoinPartyModal()" class="btn secondary">Join Party</button>
+            """
+        member_names = []
+        for member_id in party.get("members", []):
+            char = self.character_manager.get_character(member_id)
+            member_names.append(char.name if char else member_id)
+        html = f"""
+        <div class="party-card">
+            <h3>{party['name']}</h3>
+            <p>ID: {party['id']}</p>
+            <p>Members: {', '.join(member_names)}</p>
+            <button onclick="leaveParty()" class="btn secondary">Leave Party</button>
+        </div>
+        """
+        return html
+        
     def get_active_party_id(self):
         """Return the current party ID (default or from session)."""
         # For now, use default. Later can be per player.
@@ -1594,9 +1698,6 @@ class WorldController:
         return response
 
     def process_command(self, input_data, session_id=None):
-        # TODO: Implement "travel_to <location>" command (fast travel)
-        # TODO: Implement "buy <item>" and "sell <item>" commands (shop)
-        # TODO: Implement "inventory" command to list items
         """Process a command (string or dict) and return response dict."""
         print(f"[DEBUG] process_command called with input_data={input_data}, session_id={session_id}")
         if isinstance(input_data, str):
@@ -1606,7 +1707,9 @@ class WorldController:
             command = input_data.get('command', '')
             target_terrain = input_data.get('target_terrain')
 
-        # TODO: remove this when we have quests and other means of travelling to locations
+        # =================================================================
+        # ADMIN / DEBUG COMMANDS – bypass the GameEngine (temporary)
+        # =================================================================
         if command.lower() == "reveal locations":
             count = 0
             for pot_id, pot in self.campaign_state.potential_locations.items():
@@ -1615,125 +1718,39 @@ class WorldController:
                     count += 1
             return {"response": f"Generated {count} locations.", "map_data": self.get_map_data()}
 
-        # TODO: this should be DM only later
-        if command.lower().startswith("teleport "):
-            parts = command.split()
-            if len(parts) == 3:
-                try:
-                    col, row = int(parts[1]), int(parts[2])
-                    if self.campaign_state.get_hex(col, row):
-                        return self._update_party_position(col, row, "teleport", 0)
-                except:
-                    pass
-            return {"response": "Usage: teleport <col> <row>"}
-
-        # Fast travel command
-        if command.lower().startswith("travel to "):
-            target = command[10:].strip().lower()
-            for loc in self.world_map.locations.values():
-                if loc.discovered and loc.name.lower() == target:
-                    # Use helper to update position
-                    return self._update_party_position(
-                        loc.col, loc.row,
-                        reason=f"travel to {loc.name}",
-                        advance_minutes=24*60
-                    )
-            return {"response": f"Location '{target}' not found or not discovered.", "success": False}
-
-        # Buy command
-        if command.lower().startswith("buy "):
-            item_name = command[4:].strip()
-            if self.current_location and "shop" in self.current_location.services:
-                if not hasattr(self.current_location, 'shop'):
-                    from world.shop import Shop
-                    self.current_location.shop = Shop()
-                # Get active character
-                char = self._get_active_character()
-                if not char:
-                    return {"response": "No active character found.", "success": False}
-                result = self.current_location.shop.buy(item_name, char)
-                return {"response": result["message"], "success": result["success"]}
-            else:
-                return {"response": "No shop here.", "success": False}
-
-        # Sell command
-        if command.lower().startswith("sell "):
-            item_name = command[5:].strip()
-            if self.current_location and "shop" in self.current_location.services:
-                if not hasattr(self.current_location, 'shop'):
-                    from world.shop import Shop
-                    self.current_location.shop = Shop()
-                char = self._get_active_character()
-                if not char:
-                    return {"response": "No active character found.", "success": False}
-                result = self.current_location.shop.sell(item_name, char)
-                return {"response": result["message"], "success": result["success"]}
-            else:
-                return {"response": "No shop here.", "success": False}
-
-        # World movement: if command is a direction, handle it directly
-        if not self.dungeon_mode:
-            cmd = command.lower().strip()
-            direction_map = {
-                'n': 'n', 'north': 'n',
-                'ne': 'ne', 'northeast': 'ne',
-                'se': 'se', 'southeast': 'se',
-                's': 's', 'south': 's',
-                'sw': 'sw', 'southwest': 'sw',
-                'nw': 'nw', 'northwest': 'nw'
-            }
-            if cmd.startswith('go '):
-                cmd = cmd[3:].strip()
-            if cmd in ['e', 'east']:
-                col, row = self.campaign_state.party_position
-                if row % 2 == 0:
-                    dir = 'ne'
-                else:
-                    dir = 'se'
-            elif cmd in ['w', 'west']:
-                col, row = self.campaign_state.party_position
-                if row % 2 == 0:
-                    dir = 'nw'
-                else:
-                    dir = 'sw'
-            else:
-                dir = direction_map.get(cmd)
-            if dir:
-                result = self.move_hex(dir, terrain=target_terrain)
-                if result['success']:
-                    new_col = result['new_col']
-                    new_row = result['new_row']
-                    return self._update_party_position(new_col, new_row, f"move {dir}", 10)
-                else:
-                    return {"response": result.get('message', f"Cannot move {dir}."), "map_data": self.get_map_data(), "success": False}
-
-        # Fallback to GameEngine (if any)
+        # =================================================================
+        # NORMAL COMMANDS – route through GameEngine
+        # =================================================================
         if hasattr(self, 'game_engine') and self.game_engine:
             try:
-                print(f"↻ Processing command via GameEngine: '{command[:50]}...'")
+                # Pass the command to the engine
                 result = self.game_engine.advance(player_input=command)
-                ui_data = result.get("ui_data", {})
-                violations = result.get("violations", 0)
-                return {
-                    "response": ui_data.get("narration", "Command processed via GameEngine"),
-                    "map_data": ui_data.get("map", self.get_map_data()),
-                    "location_data": ui_data.get("location", self.get_current_location_data()),
-                    "phase_compliant": True,
-                    "violations": violations
+                ui_data = result.get('ui_data', {})
+
+                # Map engine output to expected frontend format
+                response = {
+                    "response": ui_data.get('narration', ''),
+                    "map_data": ui_data.get('map', self.get_map_data()),
+                    "location_data": ui_data.get('location', self.get_current_location_data()),
+                    "encounter": ui_data.get('encounter'),      # may be None
+                    "action": ui_data.get('action'),           # e.g., "centerOnParty"
+                    "success": True
                 }
+                return response
             except Exception as e:
                 print(f"✗ GameEngine processing failed: {e}")
-                # fall through
-
-        # Legacy AI processing (if nothing else)
-        print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
-        if self.dungeon_ai:
-            result = self.dungeon_ai.process_command(command)
+                import traceback
+                traceback.print_exc()
+                return {"response": f"Engine error: {str(e)}", "success": False}
         else:
-            result = self.world_ai.process_command(command)
-        # Assume action takes 10 minutes
-        self.campaign_state.advance_time(10)
-        return result
+            # Fallback to legacy AI (should not happen after refactor)
+            print(f"↻ GameEngine not available, using legacy AI for: '{command[:50]}...'")
+            if self.dungeon_ai:
+                result = self.dungeon_ai.process_command(command)
+            else:
+                result = self.world_ai.process_command(command)
+            self.campaign_state.advance_time(10)
+            return result
 
     def get_game_engine_state(self) -> dict:
         """Get GameEngine status and phase information"""
