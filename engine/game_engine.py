@@ -402,6 +402,9 @@ class GameEngine:
                 elif text in direction_map:
                     intent = "move"
                     action = f"move_{direction_map[text]}"
+                elif text in ['look', 'l']:
+                    intent = "inspect"
+                    action = "look"
                 else:
                     print(f"[INTERPRET] no match for '{text}'")
                 result = {
@@ -431,6 +434,30 @@ class GameEngine:
             intent = action.get("intent", "unknown")
             if intent == "error":
                 return action
+            if intent == "inspect":
+                col, row = self.world.campaign_state.party_position
+                hex_data = self.world.campaign_state.get_hex(col, row)
+                if hex_data:
+                    description = f"You are in {hex_data['terrain']}."
+                    if hex_data.get('pois'):
+                        poi_names = [p['name'] for p in hex_data['pois'] if p.get('discovered')]
+                        if poi_names:
+                            description += f" You see: {', '.join(poi_names)}."
+                    ruling = {
+                        "valid": True,
+                        "action": "look",
+                        "description": description,
+                        "dice_rolls": {}
+                    }
+                else:
+                    ruling = {
+                        "valid": False,
+                        "action": "look",
+                        "error": "Cannot determine location.",
+                        "dice_rolls": {}
+                    }
+                context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
+                return ruling
             if intent == "move":
                 # Extract direction from action string (e.g., "move_n" -> "n")
                 action_str = action.get("action", "")
@@ -499,6 +526,8 @@ class GameEngine:
                     "applied": False,
                     "reason": ruling.get("error", "Invalid action")
                 }
+            if ruling.get("action") == "look":
+                return {"applied": True, "result": ruling}
 
             if ruling.get("action") == "move":
                 result = ruling.get("result")
@@ -584,15 +613,29 @@ class GameEngine:
             if not mutation_result.get("applied", False):
                 print("[CONSEQUENCE] not applied")
                 return {"narration": "Nothing happened.", "encounters": [], "transitions": []}
-
+            if mutation_result.get("result", {}).get("action") == "look":
+                narration = mutation_result["result"].get("description", "You see nothing special.")
+                return {
+                    "narration": narration,
+                    "encounters": [],
+                    "transitions": []
+                }
             # Check if this was a movement action
             move_result = mutation_result.get("result")
             print(f"[CONSEQUENCE] move_result = {move_result}")
             if move_result and move_result.get("success") and move_result.get("direction"):
-                print("[CONSEQUENCE] movement branch taken")
                 direction = move_result.get("direction")
-                narration = f"You move {direction}."
-
+                new_hex = move_result.get("new_hex")
+                narration = f"You move {direction}.\n"
+                if new_hex:
+                    hex_desc = f"You are in {new_hex.get('terrain', 'unknown terrain')}."
+                    pois = new_hex.get('pois', [])
+                    discovered_pois = [p['name'] for p in pois if p.get('discovered')]
+                    if discovered_pois:
+                        hex_desc += f" You see: {', '.join(discovered_pois)}."
+                    narration += hex_desc
+                else:
+                    narration += "You arrive at a new location."
                 # --- Encounter chance (1-in-6) ---
                 import random
                 if random.randint(1, 6) == 1:
