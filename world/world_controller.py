@@ -25,49 +25,49 @@ narrative consequences.
 
 Implementation steps (to be done in order):
 
-1. Modify WorldController.process_command to send ALL commands (movement, buy,
+1. [x] Modify WorldController.process_command to send ALL commands (movement, buy,
    sell, teleport, fast travel, rest, etc.) to self.game_engine.advance().
-   - Remove all direct command handling (direction_map, buy/sell blocks, etc.).
-   - Keep only admin/debug commands (e.g., "reveal locations") as bypass for now.
+   - Removed direct command handling (direction_map, buy/sell blocks, etc.).
+   - Kept only admin/debug commands (e.g., "reveal locations") as bypass.
 
-2. Extend GameEngine._execute_interpretation_phase to parse:
-   - Movement directions (n, s, e, w, ne, nw, se, sw, go <dir>)
-   - Buy/sell commands (e.g., "buy shortsword", "sell dagger")
-   - Teleport commands ("teleport <col> <row>")
-   - Fast travel ("travel to <location name>")
-   - Rest, inventory, party commands.
+2. [ ] Extend GameEngine._execute_interpretation_phase to parse:
+   - [x] Movement directions (n, s, e, w, ne, nw, se, sw, go <dir>)
+   - [ ] Buy/sell commands (e.g., "buy shortsword", "sell dagger")
+   - [ ] Teleport commands ("teleport <col> <row>")
+   - [ ] Fast travel ("travel to <location name>")
+   - [ ] Rest, inventory, party commands.
 
-3. Extend _execute_authority_phase to validate each command type:
-   - Movement: check passability (water, mountains) and party assets.
-   - Buy/sell: verify shop presence, item existence, gold/stock.
-   - Teleport: validate coordinates.
-   - Fast travel: location discovered and reachable.
+3. [ ] Extend _execute_authority_phase to validate each command type:
+   - [x] Movement: check passability (water, mountains) and party assets.
+   - [ ] Buy/sell: verify shop presence, item existence, gold/stock.
+   - [ ] Teleport: validate coordinates.
+   - [ ] Fast travel: location discovered and reachable.
 
-4. Extend _execute_mutation_phase to apply state changes:
-   - Update party position, reveal hexes, advance time.
-   - Modify character inventory and gold.
-   - Apply healing, condition changes.
+4. [ ] Extend _execute_mutation_phase to apply state changes:
+   - [x] Update party position, reveal hexes, advance time.
+   - [ ] Modify character inventory and gold.
+   - [ ] Apply healing, condition changes.
 
-5. Extend _execute_consequence_phase to:
-   - Generate narration for the action.
-   - Check for random encounters after any action (not just movement).
-   - Generate encounter using encounter_generator and store in ui_data["encounter"].
-   - Optionally trigger AI narration via the existing dm-response flow.
+5. [x] Extend _execute_consequence_phase to:
+   - [x] Generate narration for the action.
+   - [x] Check for random encounters after any action (not just movement).
+   - [x] Generate encounter using encounter_generator and store in ui_data["encounter"].
+   - [ ] Optionally trigger AI narration via the existing dm-response flow (already handled by frontend).
 
-6. Update frontend (world.js) to handle the unified response format (encounter
-   and action fields at top level).
+6. [ ] Update frontend (world.js) to handle the unified response format (encounter
+   and action fields at top level) – already partially done; needs full integration.
 
 ================================================================================
 PHASE 4c TODOs (in priority order, after refactoring)
 ================================================================================
 
-1. **Generate encounter points on world map** – After refactoring, integrate
-   random encounters into the consequence phase. Use existing EncounterPoint
-   system and region danger levels.
+1. **Generate encounter points on world map** – Random encounters are now generated
+   on the fly using region danger and party level. Future: use pre‑placed EncounterPoint
+   instances with persistent state (cleared, evolved, etc.).
 
 2. **Implement region system from 14_campaign.json** – Load factions, quests,
    and use them to flavor encounters (e.g., faction patrols, quest-related
-   monsters).
+   monsters). Partially done (regions exist, encounter uses danger level).
 
 3. **Add services to settlements** – Shops (already partially done), temples,
    quest boards, etc., based on settlement size and type.
@@ -85,6 +85,7 @@ Already completed (marked with x):
    x Cache world terrain image on server
    x Replace client-side terrain generation with backend data
    x AI-powered name generation (with caching)
+   x Movement routed through GameEngine (steps 1 and 5 partially done)
 
 ================================================================================
 Before PHASE 5 TODO
@@ -434,6 +435,15 @@ class WorldController:
 
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
+
+    def get_region_for_hex(self, col, row):
+        hex_data = self.campaign_state.get_hex(col, row)
+        if not hex_data:
+            return None
+        region_id = hex_data.get('region_id')
+        if region_id:
+            return self.campaign_state.surface_regions.get(region_id)
+        return None
 
     def _generate_encounter_points_for_region(self, region_id: str, region_hexes: list, rng: random.Random) -> dict:
         """

@@ -284,6 +284,7 @@ class GameEngine:
         self.current_phase = GamePhase.INTERPRETATION
         self.phase_history.append(GamePhase.INTERPRETATION)
         action = self._execute_interpretation_phase(input_data, context)
+        print(f"[ADVANCE] interpretation result: {action}")
         
         # 3. AUTHORITY PHASE
         self.current_phase = GamePhase.AUTHORITY
@@ -299,6 +300,10 @@ class GameEngine:
         self.current_phase = GamePhase.CONSEQUENCE
         self.phase_history.append(GamePhase.CONSEQUENCE)
         consequences = self._execute_consequence_phase(mutation_result, context)
+        # Capture pending encounter if any
+        if hasattr(self, '_pending_encounter') and self._pending_encounter:
+            consequences['encounter'] = self._pending_encounter.to_dict()
+            del self._pending_encounter
         
         # 6. PERSISTENCE PHASE
         self.current_phase = GamePhase.PERSISTENCE
@@ -327,87 +332,57 @@ class GameEngine:
         }
         
     def _execute_input_phase(self, player_input: Any, context: GameContext) -> Dict[str, Any]:
-        """Execute Input Phase: Receive and validate raw input"""
-        # Get the input system for current mode
+        print(f"[INPUT] player_input={player_input}")
         input_system = self.systems[GamePhase.INPUT]
-        
-        # Try to use delegate if available
         if input_system and hasattr(input_system, 'execute_input_phase'):
             try:
                 return input_system.execute_input_phase(player_input, context)
             except Exception as e:
                 context.add_error(f"Input delegate error: {str(e)}", GamePhase.INPUT)
-        
-        # DEFAULT IMPLEMENTATION (original code)
+
         try:
-            # Store in context
             context.set_phase_data(GamePhase.INPUT, "raw_input", player_input)
             context.set_phase_data(GamePhase.INPUT, "timestamp", datetime.now().isoformat())
-            
-            # Basic validation
             if player_input is None:
-                # System-generated event
                 return {"type": "system_event", "data": {}}
-                
-            # For text input from player
             if isinstance(player_input, str):
-                return {
+                input_dict = {
                     "type": "player_text",
                     "text": player_input,
                     "timestamp": datetime.now().isoformat()
                 }
-                
-            # For structured commands
+                print(f"[INPUT] returning: {input_dict}")
+                return input_dict
             elif isinstance(player_input, dict):
+                print(f"[INPUT] returning dict: {player_input}")
                 return player_input
-                
             else:
                 context.add_warning(f"Unrecognized input type: {type(player_input)}", GamePhase.INPUT)
                 return {"type": "unknown", "data": player_input}
-                
         except Exception as e:
             context.add_error(f"Input phase error: {str(e)}", GamePhase.INPUT)
             return {"type": "error", "error": str(e)}
             
     def _execute_interpretation_phase(self, input_data: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
-        """Execute Interpretation Phase: Determine intent and action candidates"""
-        # Get the interpretation system for current mode
+        print(f"[INTERPRET] called with input_data={input_data}")
         interpretation_system = self.systems[GamePhase.INTERPRETATION]
-        
-        # Try to use delegate if available
         if interpretation_system and hasattr(interpretation_system, 'execute_interpretation_phase'):
             try:
                 return interpretation_system.execute_interpretation_phase(input_data, context)
             except Exception as e:
                 context.add_error(f"Interpretation delegate error: {str(e)}", GamePhase.INTERPRETATION)
-        
-        # DEFAULT IMPLEMENTATION (original code)
+
         try:
-            # Check for system events first
             if input_data.get("type") == "system_event":
-                return {
-                    "intent": "system",
-                    "action": "advance_time",
-                    "confidence": 1.0
-                }
-                
-            # Check for errors
+                return {"intent": "system", "action": "advance_time", "confidence": 1.0}
             if input_data.get("type") == "error":
-                return {
-                    "intent": "error",
-                    "action": "handle_error",
-                    "error": input_data.get("error")
-                }
-                
-            # For player text, use AI to interpret
+                return {"intent": "error", "action": "handle_error", "error": input_data.get("error")}
             if input_data.get("type") == "player_text":
                 text = input_data.get("text", "").lower().strip()
-                
-                # Remove common prefixes
+                print(f"[INTERPRET] raw text: '{text}'")
                 if text.startswith("go "):
                     text = text[3:]
-                
-                # Direction mapping (flat-top hex directions)
+                    print(f"[INTERPRET] after removing 'go ': '{text}'")
                 direction_map = {
                     'n': 'n', 'north': 'n',
                     'ne': 'ne', 'northeast': 'ne',
@@ -416,11 +391,11 @@ class GameEngine:
                     'sw': 'sw', 'southwest': 'sw',
                     'nw': 'nw', 'northwest': 'nw'
                 }
-                
-                # Handle east/west – they are not valid flat-top directions; we'll convert later
+                intent = "unknown"
+                action = "unknown"
                 if text in ['e', 'east']:
                     intent = "move"
-                    action = "move_east"  # will be converted in authority phase
+                    action = "move_east"
                 elif text in ['w', 'west']:
                     intent = "move"
                     action = "move_west"
@@ -428,64 +403,48 @@ class GameEngine:
                     intent = "move"
                     action = f"move_{direction_map[text]}"
                 else:
-                    # Not a movement command – fallback to other intents (buy, sell, etc.)
-                    # For now, treat as unknown; later we'll add more parsing
-                    intent = "unknown"
-                    action = "unknown"
-                
-                return {
+                    print(f"[INTERPRET] no match for '{text}'")
+                result = {
                     "intent": intent,
                     "action": action,
                     "target": text,
                     "confidence": 1.0 if intent != "unknown" else 0.5,
                     "raw_text": input_data.get("text", "")
                 }
-                
-            # For structured commands, pass through
+                print(f"[INTERPRET] returning: {result}")
+                return result
             return input_data
-            
         except Exception as e:
             context.add_error(f"Interpretation phase error: {str(e)}", GamePhase.INTERPRETATION)
-            return {
-                "intent": "error",
-                "action": "handle_error",
-                "error": str(e)
-            }
+            return {"intent": "error", "action": "handle_error", "error": str(e)}
             
     def _execute_authority_phase(self, action: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
-        """Execute Authority Phase: Validate actions, roll dice, check permissions"""
-        # Get the authority system for current mode
+        print(f"[AUTHORITY] action={action}")
         authority_system = self.systems[GamePhase.AUTHORITY]
-        
-        # Try to use delegate if available
         if authority_system and hasattr(authority_system, 'execute_authority_phase'):
             try:
                 return authority_system.execute_authority_phase(action, context)
             except Exception as e:
                 context.add_error(f"Authority delegate error: {str(e)}", GamePhase.AUTHORITY)
-        
-        # DEFAULT IMPLEMENTATION (original code)
+
         try:
             intent = action.get("intent", "unknown")
-            
-            # Check for errors
             if intent == "error":
                 return action
-                
-            # Movement actions: validated via world.move_hex()
-            
-            # For move action, check if destination is valid
-            if action.startswith("move_"):
-                direction = action[5:]  # extract 'n', 'ne', etc.
-                # Convert east/west to actual direction based on current row
+            if intent == "move":
+                # Extract direction from action string (e.g., "move_n" -> "n")
+                action_str = action.get("action", "")
+                direction = action_str.replace("move_", "") if action_str.startswith("move_") else action.get("target", "")
+                print(f"[AUTHORITY] movement direction={direction}")
+                # Convert east/west
                 if direction == "east":
                     col, row = self.world.campaign_state.party_position
                     direction = 'ne' if row % 2 == 0 else 'se'
                 elif direction == "west":
                     col, row = self.world.campaign_state.party_position
                     direction = 'nw' if row % 2 == 0 else 'sw'
-                # Validate movement via world controller
                 result = self.world.move_hex(direction)
+                print(f"[AUTHORITY] move_hex result={result}")
                 if result.get("success"):
                     ruling = {
                         "valid": True,
@@ -503,59 +462,25 @@ class GameEngine:
                     }
                 context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
                 return ruling
-                
-            # For attack action, roll dice
-            elif intent == "attack":
-                # TODO: Roll actual dice via dm_tools
-                # Simulate dice roll
-                import random
-                attack_roll = random.randint(1, 20)
-                damage_roll = random.randint(1, 8)
-                
-                ruling = {
-                    "valid": True,
-                    "action": "attack",
-                    "attack_roll": attack_roll,
-                    "damage": damage_roll,
-                    "hit": attack_roll >= 10,  # Simple threshold
-                    "dice_rolls": {
-                        "attack": attack_roll,
-                        "damage": damage_roll
-                    }
-                }
-                
-            # For talk action, always valid
-            elif intent == "talk":
-                ruling = {
-                    "valid": True,
-                    "action": "talk",
-                    "target": action.get("target", "unknown")
-                }
-                
-            # Default: reject unknown intents
             else:
+                # Unknown intent
                 ruling = {
                     "valid": False,
-                    "action": intent,
+                    "action": "error",
                     "error": f"Unknown intent: {intent}",
-                    "suggestion": "Try move, attack, talk, or inspect"
+                    "dice_rolls": {}
                 }
-                
-            # Store in context
-            context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
-            
-            return ruling
-            
+                context.set_phase_data(GamePhase.AUTHORITY, "ruling", ruling)
+                return ruling
         except Exception as e:
             context.add_error(f"Authority phase error: {str(e)}", GamePhase.AUTHORITY)
-            return {
-                "valid": False,
-                "error": str(e),
-                "action": "error"
-            }
+            return {"valid": False, "action": "error", "error": str(e)}
             
     def _execute_mutation_phase(self, ruling: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
         """Execute State Mutation Phase: Apply changes to game state"""
+
+        print(f"[MUTATION] ruling action={ruling.get('action')}, valid={ruling.get('valid')}")
+
         # Get the mutation system for current mode
         mutation_system = self.systems[GamePhase.MUTATION]
         
@@ -578,12 +503,16 @@ class GameEngine:
             if ruling.get("action") == "move":
                 result = ruling.get("result")
                 if result and result.get("success"):
+                    # Add direction to result for consequence phase
+                    result['direction'] = ruling.get("direction")
                     context.set_phase_data(GamePhase.MUTATION, "new_hex", result.get("new_hex"))
                     return {"applied": True, "result": result}
                 else:
                     return {"applied": False, "reason": ruling.get("error", "Movement failed")}
                 
             action = ruling.get("action", "")
+
+            print(f"[MUTATION] ruling action={ruling.get('action')}, valid={ruling.get('valid')}")
             
             # TEMPORARY: Delegate to world_controller
             # This is where we'll need to extract mutation logic
@@ -640,32 +569,60 @@ class GameEngine:
             
     def _execute_consequence_phase(self, mutation_result: Dict[str, Any], context: GameContext) -> Dict[str, Any]:
         """Execute Consequence Phase: Generate narration, trigger encounters"""
-        # Get the consequence system for current mode
+        print(f"[CONSEQUENCE] mutation_result = {mutation_result}")
+        print(f"[CONSEQUENCE] mutation_result applied={mutation_result.get('applied')}")
+        # Try delegate if available
         consequence_system = self.systems[GamePhase.CONSEQUENCE]
-        
-        # Try to use delegate if available
         if consequence_system and hasattr(consequence_system, 'execute_consequence_phase'):
             try:
                 return consequence_system.execute_consequence_phase(mutation_result, context)
             except Exception as e:
                 context.add_error(f"Consequence delegate error: {str(e)}", GamePhase.CONSEQUENCE)
-        
-        # DEFAULT IMPLEMENTATION (original code)
+
+        # DEFAULT IMPLEMENTATION
         try:
             if not mutation_result.get("applied", False):
-                return {
-                    "narration": "Nothing happened.",
-                    "encounters": [],
-                    "transitions": []
-                }
+                print("[CONSEQUENCE] not applied")
+                return {"narration": "Nothing happened.", "encounters": [], "transitions": []}
 
-            # Check if this was a movement action (from our mutation phase)
+            # Check if this was a movement action
             move_result = mutation_result.get("result")
+            print(f"[CONSEQUENCE] move_result = {move_result}")
             if move_result and move_result.get("success") and move_result.get("direction"):
+                print("[CONSEQUENCE] movement branch taken")
                 direction = move_result.get("direction")
                 narration = f"You move {direction}."
+
+                # --- Encounter chance (1-in-6) ---
+                import random
+                if random.randint(1, 6) == 1:
+                    # Get new party position from context (set in mutation phase)
+                    new_hex = context.get_phase_data(GamePhase.MUTATION, "new_hex")
+                    if new_hex:
+                        col = new_hex.get('grid_x')
+                        row = new_hex.get('grid_y')
+                        if col is not None and row is not None:
+                            # Get region for encounter context
+                            region = self.world.get_region_for_hex(col, row)
+                            danger_mod = region.danger_level if region else 0
+                            # Build context for encounter generator
+                            encounter_context = {
+                                "point_id": f"move_{col}_{row}",
+                                "party_level": self.world.get_party_average_level(),
+                                "party_size": self.world.get_party_size(),
+                                "region": {
+                                    "danger_level": danger_mod,
+                                    "terrain": new_hex.get('terrain', 'plains'),
+                                    "faction": region.faction_control if region else "contested"
+                                },
+                                "point_type": "travel"
+                            }
+                            from world.encounter_generator import generate_encounter
+                            encounter = generate_encounter(encounter_context)
+                            # Store encounter in ui_data (to be returned later)
+                            self._pending_encounter = encounter
             else:
-                # Fallback for other actions (attack, talk, etc.) – keep existing logic
+                # Fallback for other actions (attack, talk, etc.)
                 action = mutation_result.get("action", "")
                 if action == "attack":
                     if mutation_result.get("hit", False):
@@ -681,15 +638,17 @@ class GameEngine:
                     narration = f"You begin a conversation with {target}."
                 else:
                     narration = "Something happened, but it's hard to describe."
+                self._pending_encounter = None
 
-            # TODO: Add encounter check here (will be implemented later)
-            encounters = []
-
+            # Prepare consequences
             consequences = {
                 "narration": narration,
-                "encounters": encounters,
+                "encounters": [],
                 "phase_transitions": []
             }
+            if move_result and move_result.get("success"):
+                consequences['action'] = 'centerOnParty'
+
             context.set_phase_data(GamePhase.CONSEQUENCE, "consequences", consequences)
             return consequences
 
@@ -783,6 +742,12 @@ class GameEngine:
                 "violations": len(context.errors),
                 "warnings": len(context.warnings)
             }
+
+            if consequences.get('encounter'):
+                ui_data['encounter'] = consequences['encounter']
+
+            if consequences.get('action'):
+                ui_data['action'] = consequences['action']
             
             # Store in context
             context.set_phase_data(GamePhase.VIEW, "ui_data", ui_data)
