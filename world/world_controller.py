@@ -438,7 +438,7 @@ class WorldController:
 
 
         self.tool_registry.register_from_class(self) # scan for @tool decorated methods
-        
+
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
 
@@ -532,6 +532,31 @@ class WorldController:
             if rule.type == "quest" and rule.threshold in self.campaign_state.active_quests:  # simplistic
                 return True
         return False
+
+
+    @tool(
+        name="move",
+        description="Move the party in a cardinal or diagonal direction. Steps default to 1.",
+        direction="Direction: north, south, east, west, northeast, northwest, southeast, southwest",
+        steps="Number of steps (optional, default=1)"
+    )
+    def move_tool(self, direction: str, steps: int = 1) -> dict:
+        dir_map = {
+            "north": "n", "south": "s", "east": "e", "west": "w",
+            "northeast": "ne", "northwest": "nw",
+            "southeast": "se", "southwest": "sw"
+        }
+        dir_code = dir_map.get(direction.lower(), direction.lower())
+        result = self.move_hex(dir_code, steps)
+        if result.get("success"):
+            return {
+                "success": True,
+                "message": f"You move {direction}.",
+                "map_data": self.get_map_data(),
+                "action": "centerOnParty"
+            }
+        else:
+            return {"success": False, "message": result.get("message", "Cannot move.")}
 
     @tool(
         name="merchant_buy",

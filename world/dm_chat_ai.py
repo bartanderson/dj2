@@ -27,7 +27,12 @@ def _llm_json_response(prompt: str) -> Dict[str, Any]:
     """Call LLM with prompt and parse JSON response."""
     response_text = _call_llm(prompt)
     try:
-        return json.loads(response_text)
+        data = json.loads(response_text)
+        if 'tool' in data:
+            return data
+        if 'narrative' not in data:
+            data['narrative'] = "The DM considers your words."
+        return data
     except json.JSONDecodeError:
         logger.error(f"Invalid JSON from LLM: {response_text}")
         return {"narrative": "The DM considers your words thoughtfully.", "updates": {}, "needs_confirmation": False}
@@ -111,6 +116,20 @@ Examples:
 
 Always keep responses helpful and consistent with OG System rules.
 """
+
+    # Get tool specifications from the world controller
+    from world_app import current_app
+    wc = current_app.world_controller
+    if wc and hasattr(wc, 'tool_registry'):
+        tools = wc.tool_registry.get_tools_spec()
+        if tools:
+            tool_prompt = "\n\nAvailable tools:\n" + "\n".join([
+                f"- {t['name']}: {t['description']} (parameters: {', '.join(t['parameters'].keys())})"
+                for t in tools
+            ])
+            prompt += tool_prompt
+            prompt += "\n\nIf the user wants to perform an action that matches a tool, respond with a JSON object containing 'tool' and 'arguments'. Otherwise, respond with a normal narrative JSON (with 'narrative' field)."    
+
     data = _llm_json_response(prompt)
     # Ensure all required keys exist
     if "narrative" not in data:

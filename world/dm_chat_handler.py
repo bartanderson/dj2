@@ -331,35 +331,50 @@ Your answer:
             logger.error(f"AI returned invalid JSON: {ai_response_json}")
             ai_data = {"narrative": "The DM ponders your words...", "updates": {}, "needs_confirmation": False}
 
-        narrative = ai_data.get("narrative", "")
-        updates = ai_data.get("updates", {})
-        needs_confirmation = ai_data.get("needs_confirmation", False)
-
-        responses = [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
-
-        # Apply updates if no confirmation needed
-        if updates and not needs_confirmation:
-            if character:
-                success, errors = self._update_character_from_ai(character, updates)
-                if not success:
-                    responses.append(DialogResponse(speaker="DM", content=f"Validation error: {', '.join(errors)}", dialog_type="error"))
-            else:
-                # No character yet – store updates in session for later character creation
-                for k, v in updates.items():
-                    session.character_data[k] = v
-
-        # Handle confirmation if needed
-        if needs_confirmation:
-            session.pending_confirmation = updates
-            responses.append(DialogResponse(speaker="DM", content="Please confirm the changes.", dialog_type="question"))
+        if 'tool' in ai_data:
+            tool_name = ai_data['tool']
+            args = ai_data.get('arguments', {})
+            # Execute tool via world controller's tool registry
+            tool_result = self.world_controller.tool_registry.execute_tool(tool_name, args)
+            # Create a DialogResponse from the tool's message
+            responses = [DialogResponse(speaker="DM", content=tool_result.get("message", ""), dialog_type="narration")]
+            return {
+                "responses": responses,
+                "tool_result": tool_result,
+                "map_data": tool_result.get("map_data"),
+                "action": tool_result.get("action")
+            }
         else:
-            session.pending_confirmation = None
 
-        session.conversation_history.append({"role": "assistant", "content": narrative})
-        return {
-            "responses": responses,
-            "tool_result": None  # Placeholder for future
-        }
+            narrative = ai_data.get("narrative", "")
+            updates = ai_data.get("updates", {})
+            needs_confirmation = ai_data.get("needs_confirmation", False)
+
+            responses = [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
+
+            # Apply updates if no confirmation needed
+            if updates and not needs_confirmation:
+                if character:
+                    success, errors = self._update_character_from_ai(character, updates)
+                    if not success:
+                        responses.append(DialogResponse(speaker="DM", content=f"Validation error: {', '.join(errors)}", dialog_type="error"))
+                else:
+                    # No character yet – store updates in session for later character creation
+                    for k, v in updates.items():
+                        session.character_data[k] = v
+
+            # Handle confirmation if needed
+            if needs_confirmation:
+                session.pending_confirmation = updates
+                responses.append(DialogResponse(speaker="DM", content="Please confirm the changes.", dialog_type="question"))
+            else:
+                session.pending_confirmation = None
+
+            session.conversation_history.append({"role": "assistant", "content": narrative})
+            return {
+                "responses": responses,
+                "tool_result": None  # Placeholder for future
+            }
 
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""

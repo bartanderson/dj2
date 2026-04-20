@@ -2058,6 +2058,10 @@ def dm_response():
                 'character_id': None,
                 'player_id': player.id
             }
+            if result.get('map_data'):
+                response_data['map_data'] = result['map_data']
+            if result.get('action'):
+                response_data['action'] = result['action']
 
         # ---------- IN‑GAME PATH (character exists) ----------
         else:
