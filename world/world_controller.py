@@ -138,14 +138,15 @@ from .character_manager import CharacterManager
 from world.dm_chat_handler import DMChatHandler
 from world.player import Player           
 from world.consequence_engine import ConsequenceEngine
-from world.tool_system import ToolRegistry
+from world.tool_system import ToolRegistry, tool
 from world.authority_system import AuthoritySystem
 from world.encounter_models import EncounterPoint
 from world.bestiary import Monster
 from world.name_generator import NameGenerator
 from world.terrain_generator import TerrainGenerator
 from world.terrain_image_generator import generate_terrain_image
-from world.merchant import Merchant
+from world.campaign import Merchant, MerchantItem, MerchantRelationship, MerchantPersonality, MerchantConstraints, VisibilityRule, PartyMerchantState
+from world.merchant_utils import compute_price
 
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
@@ -332,7 +333,6 @@ class WorldController:
         for location in self.world_map.locations.values():
             if location.type == "tavern" and "adventurer" in location.name.lower():
                 starting_location = location
-                starting_location.merchant = Merchant("Grom the Trader", starting_location.name)
                 break
 
         if starting_location:
@@ -354,6 +354,7 @@ class WorldController:
                     default_hex['discovered'] = True
                     print("Using fallback hex (0,0) as starting hex")
 
+
             print("Found starting location")
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
@@ -366,12 +367,17 @@ class WorldController:
                 self.current_location.dungeon_level = 1
                 print(f"[DEBUG] Added dungeon to {self.current_location.name}")
 
-        else:
-            # Fallback to first location if no tavern found
-            first_location_id = list(self.world_map.locations.keys())[0]
-            self.starting_location_id = first_location_id
-            self.reveal_location(first_location_id)
-            self.travel_to_location(first_location_id)
+            merchant = self._create_sample_merchant(starting_location.name)
+            self.campaign_state.merchants[merchant.id] = merchant
+            # Store merchant reference on the location for quick access
+            starting_location.merchant_id = merchant.id
+
+        # else:
+        #     # Fallback to first location if no tavern found
+        #     first_location_id = list(self.world_map.locations.keys())[0]
+        #     self.starting_location_id = first_location_id
+        #     self.reveal_location(first_location_id)
+        #     self.travel_to_location(first_location_id)
 
         # Initialize managers
         self.quest_manager = QuestManager()
@@ -431,10 +437,208 @@ class WorldController:
         print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
 
 
-
-
+        self.tool_registry.register_from_class(self) # scan for @tool decorated methods
+        
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
+
+    def wealth_to_gold(wealth_str: str) -> int:
+        # TODO: Make this configurable (e.g., from economy settings or region)
+        mapping = {"meager": 5, "cheap": 10, "medium": 50, "expensive": 150}
+        try:
+            return int(wealth_str)
+        except (ValueError, TypeError):
+            return mapping.get(wealth_str.lower(), 10)
+
+    def _create_sample_merchant(self, location_name: str) -> Merchant:
+        from world.campaign import Merchant, MerchantPersonality, MerchantConstraints, MerchantItem, VisibilityRule
+        from world import dnd_data
+
+        equipment = dnd_data._get_equipment_data().get("equipment", {})
+        weapons = equipment.get("weapons", {})
+        gear = equipment.get("gear", {})
+
+        def wealth_to_gold(wealth_str: str) -> int:
+            mapping = {"meager": 5, "cheap": 10, "medium": 50, "expensive": 150}
+            try:
+                return int(wealth_str)
+            except (ValueError, TypeError):
+                return mapping.get(wealth_str.lower(), 10)
+
+        items = []
+
+        # Healing Potion (hardcoded, not from equipment)
+        items.append(MerchantItem(
+            item_id="healing_potion",
+            item_name="Healing Potion",
+            base_price=10,
+            steal_dc=12,
+            quantity=3,
+            tags={"consumable", "potion"}
+        ))
+
+        # Shortsword
+        if "shortsword" in weapons:
+            sw = weapons["shortsword"]
+            cost_str = sw.get("cost", "cheap")
+            items.append(MerchantItem(
+                item_id="shortsword",
+                item_name=sw["name"],
+                base_price=wealth_to_gold(cost_str),
+                steal_dc=15,
+                quantity=1,
+                tags={"weapon", "melee"}
+            ))
+
+        # Backpack
+        if "backpack" in gear:
+            bp = gear["backpack"]
+            cost_str = bp.get("cost", "meager")
+            items.append(MerchantItem(
+                item_id="backpack",
+                item_name=bp["name"],
+                base_price=wealth_to_gold(cost_str),
+                steal_dc=10,
+                quantity=5,
+                tags={"gear"}
+            ))
+
+        merchant = Merchant(
+            merchant_id="grom_trader",
+            name="Grom the Trader",
+            location=location_name,
+            personality=MerchantPersonality(greed=6, paranoia=4, honor=5, sociability=7, risk_tolerance=4),
+            constraints=MerchantConstraints(max_discount=0.4, max_markup=1.8, barter_allowed=True),
+            inventory=items,
+            global_bias=1
+        )
+        return merchant
+
+    def _is_item_visible(self, item: MerchantItem, rel: MerchantRelationship) -> bool:
+        """Check visibility rules."""
+        if not item.visibility_rules:
+            return True  # default visible
+        for rule in item.visibility_rules:
+            if rule.type == "affinity" and rel.affinity >= rule.threshold:
+                return True
+            if rule.type == "trust" and rel.trust >= rule.threshold:
+                return True
+            if rule.type == "fear" and rel.fear >= rule.threshold:
+                return True
+            if rule.type == "respect" and rel.respect >= rule.threshold:
+                return True
+            if rule.type == "flag" and rule.threshold in rel.flags:
+                return True
+            if rule.type == "quest" and rule.threshold in self.campaign_state.active_quests:  # simplistic
+                return True
+        return False
+
+    @tool(
+        name="merchant_buy",
+        description="Buy an item from a merchant. Requires merchant_id, item_id, and character_id.",
+        merchant_id="The merchant's unique identifier",
+        item_id="The item's unique identifier",
+        character_id="The character's unique identifier"
+    )
+    def merchant_buy(self, merchant_id: str, item_id: str, character_id: str) -> Dict[str, Any]:
+        merchant = self.campaign_state.get_merchant(merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found"}
+        character = self.character_manager.get_character(character_id)
+        if not character:
+            return {"success": False, "message": "Character not found"}
+        item = next((i for i in merchant.inventory if i.id == item_id), None)
+        if not item:
+            return {"success": False, "message": "Item not in inventory"}
+        rel = self.campaign_state.get_merchant_relationship(merchant_id, character_id)
+        if not self._is_item_visible(item, rel):
+            return {"success": False, "message": "Item not available to you"}
+        price = compute_price(item, merchant, rel, {})
+        if character.currency < price:
+            return {"success": False, "message": f"Not enough gold. Need {price} gp."}
+        character.currency -= price
+        from world.character import InventoryItem
+        new_item = InventoryItem(
+            name=item.name,
+            description=f"Purchased from {merchant.name}",
+            type=item.tags.pop() if item.tags else "adventuring_gear",
+            cost=price
+        )
+        character.inventory.append(new_item)
+        self.campaign_state.update_merchant_relationship(merchant_id, character_id, affinity_delta=1)
+        self.character_manager._save_character_to_db(character)
+        return {"success": True, "message": f"Bought {item.name} for {price} gp.", "item": new_item.to_dict()}
+
+    @tool(
+        name="merchant_sell",
+        description="Sell an item to a merchant. Requires merchant_id, item_id, and character_id.",
+        merchant_id="The merchant's unique identifier",
+        item_id="The item's unique identifier",
+        character_id="The character's unique identifier"
+    )
+    def merchant_sell(self, merchant_id: str, item_id: str, character_id: str) -> Dict[str, Any]:
+        merchant = self.campaign_state.get_merchant(merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found"}
+        character = self.character_manager.get_character(character_id)
+        if not character:
+            return {"success": False, "message": "Character not found"}
+        # Find item in character inventory
+        item = next((i for i in character.inventory if i.id == item_id), None)
+        if not item:
+            item = next((i for i in character.custom_items if i.id == item_id), None)
+        if not item:
+            return {"success": False, "message": "Item not in inventory"}
+        # Compute sell price (half of base or computed buy price? Use base_price // 2)
+        sell_price = item.cost // 2
+        character.currency += sell_price
+        if item in character.inventory:
+            character.inventory.remove(item)
+        else:
+            character.custom_items.remove(item)
+        self.campaign_state.update_merchant_relationship(merchant_id, character_id, trust_delta=1)
+        self.character_manager._save_character_to_db(character)
+        return {"success": True, "message": f"Sold {item.name} for {sell_price} gp."}
+
+    @tool(
+        name="merchant_haggle",
+        description="Haggle over an item with merchant. Requires merchant_id, item_id, and character_id.",
+        merchant_id="The merchant's unique identifier",
+        item_id="The item's unique identifier",
+        character_id="The character's unique identifier"
+    )
+    def merchant_haggle(self, merchant_id: str, item_id: str, offered_price: int, character_id: str) -> Dict[str, Any]:
+        # Simplified: use persuasion check against merchant personality
+        merchant = self.campaign_state.get_merchant(merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found"}
+        character = self.character_manager.get_character(character_id)
+        if not character:
+            return {"success": False, "message": "Character not found"}
+        item = next((i for i in merchant.inventory if i.id == item_id), None)
+        if not item:
+            return {"success": False, "message": "Item not in inventory"}
+        rel = self.campaign_state.get_merchant_relationship(merchant_id, character_id)
+        base_price = compute_price(item, merchant, rel, {})
+        # Simple haggle: roll Persuasion vs. merchant's greed+honor
+        persuasion_roll = random.randint(1, 20) + character.get_skill_rank('social')
+        difficulty = 10 + merchant.personality.greed - merchant.personality.honor
+        if persuasion_roll >= difficulty:
+            # Accept offered price if it's >= 70% of base
+            if offered_price >= base_price * 0.7:
+                # Execute transaction
+                character.currency -= offered_price
+                # Add item (simplified)
+                from world.character import InventoryItem
+                new_item = InventoryItem(name=item.name, description=f"Bought from {merchant.name}", cost=offered_price)
+                character.inventory.append(new_item)
+                self.campaign_state.update_merchant_relationship(merchant_id, character_id, affinity_delta=1, trust_delta=2)
+                self.character_manager._save_character_to_db(character)
+                return {"success": True, "message": f"Merchant accepts {offered_price} gp for {item.name}.", "price": offered_price}
+            else:
+                return {"success": False, "message": f"Merchant refuses. Price is {base_price} gp."}
+        else:
+            return {"success": False, "message": "Merchant is not persuaded."}
 
     def get_region_for_hex(self, col, row):
         hex_data = self.campaign_state.get_hex(col, row)

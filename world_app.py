@@ -632,6 +632,16 @@ def handle_command():
     if not wc:
         return jsonify({"error": "World controller not available"}), 500
     result = wc.process_command(command, session_id)
+
+    # If movement was successful, broadcast new position to all clients
+    if result.get('success') and 'move' in command.lower():
+        col, row = wc.campaign_state.party_position
+        socketio.emit('party_moved', {
+            'party_id': wc.default_party_id,
+            'col': col,
+            'row': row
+        }, namespace='/')
+
     return jsonify(result)
 
 def notify_party_update():
@@ -724,6 +734,119 @@ def get_game_date():
         return formatted
     except Exception as e:
         return f"Date error", 500
+
+@app.route('/api/inventory/list-html')
+def inventory_list_html():
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return "<p>Error loading inventory.</p>"
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return "<p>No active character.</p>"
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return "<p>Character not found.</p>"
+    
+    # Calculate total weight (placeholder)
+    total_weight = sum(getattr(item, 'weight', 0) for item in character.inventory)
+    max_weight = 100  # default
+    
+    # Get shop items if in a settlement with merchant
+    shop_items = []
+    if wc.current_location and hasattr(wc.current_location, 'merchant'):
+        shop_items = wc.current_location.merchant.inventory
+    
+    return render_template('partials/inventory.html',
+                          character=character,
+                          items=character.inventory,
+                          total_weight=total_weight,
+                          max_weight=max_weight,
+                          shop_items=shop_items)
+
+@app.route('/api/inventory/buy', methods=['POST'])
+def inventory_buy():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character or not wc.current_location or not hasattr(wc.current_location, 'merchant'):
+        return jsonify({"error": "No shop here"}), 400
+    result = wc.current_location.merchant.buy(item_id, character)
+    if result.get("success"):
+        # Return updated inventory fragment
+        return inventory_list_html()
+    else:
+        return jsonify({"error": result.get("message")}), 400
+
+@app.route('/api/inventory/sell', methods=['POST'])
+def inventory_sell():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character or not wc.current_location or not hasattr(wc.current_location, 'merchant'):
+        return jsonify({"error": "No shop here"}), 400
+    result = wc.current_location.merchant.sell(item_id, character)
+    if result.get("success"):
+        return inventory_list_html()
+    else:
+        return jsonify({"error": result.get("message")}), 400
+
+@app.route('/api/inventory/use', methods=['POST'])
+def inventory_use():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 400
+    # Find item in inventory
+    item = next((i for i in character.inventory if i.id == item_id), None)
+    if not item:
+        return jsonify({"error": "Item not found"}), 400
+    # Use item (simple healing for now)
+    if 'potion' in item.name.lower():
+        character.hp = min(character.hp + 10, character.max_hp)
+        character.inventory.remove(item)
+        return inventory_list_html()
+    else:
+        return jsonify({"error": "Cannot use that item"}), 400
+
+@app.route('/api/inventory/equip', methods=['POST'])
+def inventory_equip():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 400
+    character.equip_item(item_id)
+    return inventory_list_html()
 
 def get_world_controller():
     """Safely get the world controller instance"""
@@ -2096,22 +2219,26 @@ def handle_disconnect():
     print(f"Client disconnected: {session_id}")
     
     # Clean up session data
-    if hasattr(world_controller, 'session_manager'):
-        session_data = app.world_controller.session_manager.sessions.get(session_id)
-        if session_data:
-            character_id = session_data.get('character_id')
-            party_id = session_data.get('party_id')
-            
-            # Notify party members about disconnection
-            if party_id:
-                emit('player_left', {
-                    'session_id': session_id,
-                    'player_name': session_data.get('player_name'),
-                    'character_id': character_id
-                }, room=party_id)
-            
-            # Clean up session
-            app.world_controller.session_manager.cleanup_session(session_id)
+    if hasattr(app, 'world_controller') and app.world_controller:
+        wc = app.world_controller
+        if hasattr(wc, 'session_manager'):
+            session_data = wc.session_manager.sessions.get(session_id)
+            if session_data:
+                character_id = session_data.get('character_id')
+                party_id = session_data.get('party_id')
+                
+                # Notify party members about disconnection
+                if party_id:
+                    emit('player_left', {
+                        'session_id': session_id,
+                        'player_name': session_data.get('player_name'),
+                        'character_id': character_id
+                    }, room=party_id, namespace='/')
+                
+                # Clean up session
+                wc.session_manager.cleanup_session(session_id)
+    else:
+        print("World controller not available for disconnect cleanup")
 
 @socketio.on('player_register')
 def handle_player_register(data):

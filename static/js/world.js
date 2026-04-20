@@ -326,10 +326,21 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === 'Enter') send();
         });
     }
+    
     const socket = io();
+
     socket.on('party_update', () => {
         // Refresh the party list via HTMX
         htmx.ajax('GET', '/api/party/list-html', { target: '#party-list-container', swap: 'innerHTML' });
+    });
+
+    socket.on('party_moved', (data) => {
+        console.log('party_moved received', data);
+        if (data.party_id === window.currentPartyId) {
+            if (worldMap) worldMap.party_position = { col: data.col, row: data.row };
+            redraw();
+            centerOnParty();
+        }
     });
 });
 

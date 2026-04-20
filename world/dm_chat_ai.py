@@ -4,6 +4,7 @@
 import json
 import logging
 from typing import Dict, Any, Optional
+from world.context import UnifiedContext
 
 logger = logging.getLogger(__name__)
 
@@ -130,20 +131,35 @@ def get_ai_response(prompt_or_message: str, session: Any, game_context: Dict[str
     - Otherwise, it's treated as a player message and generate_response is called.
     Returns a JSON string.
     """
-    # Add encounter info to the prompt if present
-    if game_context.get("encounter"):
-        prompt_or_message += f"\n\n[ENCOUNTER] {game_context['encounter_description']}\n"
-        prompt_or_message += f"Monsters: {game_context.get('encounter_monsters', 'unknown')}\n"
-        
-    # Heuristic: if the prompt contains the word "JSON" and "Respond in", treat as custom prompt
-    if "Respond in JSON" in prompt_or_message or "JSON object" in prompt_or_message:
-        # It's a custom prompt (e.g., from topic extraction)
-        data = _llm_json_response(prompt_or_message)
+    # Convert to unified context
+    ctx = UnifiedContext.from_game_context(game_context)
+    
+    # Determine if this is a custom prompt
+    is_custom = "Respond in JSON" in prompt_or_message or "JSON object" in prompt_or_message
+    
+    if is_custom:
+        # Custom prompt: we may still want to inject context? For now, just pass through.
+        final_prompt = prompt_or_message
     else:
-        # It's a player message
-        data = generate_response(prompt_or_message, session, game_context)
+        # Build prompt from unified context
+        final_prompt = f"Player message: {prompt_or_message}\n"
+        final_prompt += f"Context: domain={ctx.domain}, location={ctx.location}, terrain={ctx.terrain}, mood={ctx.mood}\n"
+        final_prompt += f"Time: {ctx.time_of_day}, indoors={ctx.indoors}, activity={ctx.activity}\n"
+        if ctx.event:
+            final_prompt += f"Event: {ctx.event}\n"
+        if ctx.tension > 0:
+            final_prompt += f"Tension: {ctx.tension}\n"
+        # Add encounter info if present
+        if game_context.get("encounter"):
+            final_prompt += f"\n[ENCOUNTER] {game_context['encounter_description']}\n"
+            final_prompt += f"Monsters: {game_context.get('encounter_monsters', 'unknown')}\n"
+    
+    if is_custom:
+        data = _llm_json_response(final_prompt)
+    else:
+        # TODO: Eventually update generate_response to accept UnifiedContext
+        data = generate_response(final_prompt, session, game_context)
     return json.dumps(data)
-
 # ----------------------------------------------------------------------
 # Compatibility class for legacy code
 # ----------------------------------------------------------------------

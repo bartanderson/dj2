@@ -414,15 +414,11 @@
             <div id="inventory-tab" class="tab-content">
                 <div class="tab-panel">
                     <h2>Inventory</h2>
-                    <p>Your carried items and equipment:</p>
-                    <div id="inventory-items" style="margin: 15px 0;">
-                        <p>Your inventory is empty.</p>
-                    </div>
-                    <div class="inventory-stats">
-                        <div class="weight-info">
-                            <span>Carried: </span><span id="current-weight">0</span>
-                            <span> / </span><span id="max-weight">100</span>
-                        </div>
+                    <div id="inventory-items"
+                         hx-get="/api/inventory/list-html"
+                         hx-trigger="load"
+                         hx-swap="innerHTML">
+                        Loading inventory...
                     </div>
                 </div>
             </div>

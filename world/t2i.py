@@ -45,7 +45,7 @@ class TextToImage:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.torch_dtype = torch.float16 if self.device == "cuda" else torch.float32
         self.model_path = model_path
-        self.pipeline = self._load_pipeline()
+        # self.pipeline = self._load_pipeline() # TODO part of same todo for images, figure it out later
 
     def _load_pipeline(self):
         """Load the SDXL pipeline with optimizations"""
