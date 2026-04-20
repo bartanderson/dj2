@@ -483,7 +483,7 @@
             </div>
             <div class="modal-body">
                 <div id="chat-messages" style="height: 300px; overflow-y: auto; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-                    <!-- Chat messages will appear here -->
+                    
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <input type="text" id="chat-input" placeholder="Type your message..." style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; border-radius: 4px; color: white;">
@@ -721,97 +721,6 @@
         container.innerHTML = html;
     }
     
-    // ===== CHAT FUNCTIONALITY =====
-    function setupChat() {
-        const chatInput = document.getElementById('chat-input');
-        const chatMessages = document.getElementById('chat-messages');
-        const sendChatBtn = document.getElementById('send-chat');
-        
-        function addMessage(text, sender = 'player') {
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `chat-message ${sender}`;
-            msgDiv.innerHTML = `
-                <div style="font-weight: bold; color: ${sender === 'player' ? '#4ecca3' : '#ff9800'}">
-                    ${sender === 'player' ? 'You' : 'DM'}:
-                </div>
-                <div style="margin-left: 10px;">${text}</div>
-            `;
-            msgDiv.style.marginBottom = '10px';
-            msgDiv.style.padding = '8px';
-            msgDiv.style.background = 'rgba(0,0,0,0.3)';
-            msgDiv.style.borderRadius = '4px';
-            
-            chatMessages.appendChild(msgDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-        
-        async function sendChatMessage() {
-            const message = chatInput.value.trim();
-            if (!message) return;
-            
-            // Show user message immediately
-            addMessage(message, 'player');
-            chatInput.value = '';
-            
-            // Show loading indicator
-            const loadingId = 'loading-' + Date.now();
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = loadingId;
-            loadingDiv.innerHTML = '<em>DM is thinking...</em>';
-            loadingDiv.style.color = '#888';
-            loadingDiv.style.marginBottom = '8px';
-            chatMessages.appendChild(loadingDiv);
-            
-            try {
-                const response = await fetch('/api/dm-response', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
-                });
-                
-                // Remove loading indicator
-                document.getElementById(loadingId)?.remove();
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    addMessage('Error: ' + (error.error || 'Unknown error'), 'dm');
-                    return;
-                }
-                
-                const data = await response.json();
-                
-                // Add each response from the DM
-                if (data.responses && Array.isArray(data.responses)) {
-                    data.responses.forEach(r => {
-                        addMessage(r.content, r.speaker.toLowerCase() === 'dm' ? 'dm' : 'player');
-                    });
-                } else {
-                    // Fallback
-                    addMessage('The DM nods silently.', 'dm');
-                }
-                
-                // If character data was returned, you could update the character sheet here
-                if (data.character_data) {
-                    console.log('Character data received:', data.character_data);
-                    // Optionally trigger a character sheet refresh
-                }
-                
-            } catch (error) {
-                document.getElementById(loadingId)?.remove();
-                addMessage('Network error: ' + error.message, 'dm');
-                console.error('Chat error:', error);
-            }
-        }
-        
-        sendChatBtn.addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendChatMessage();
-        });
-        
-        // Add a welcome message from the server? Not needed; the server will respond when we send a message.
-        // Instead, we could fetch some initial context, but it's fine to start with nothing.
-    }
-    
     // ===== SETTINGS FUNCTIONALITY =====
     function setupSettings() {
         const saveBtn = document.getElementById('save-settings');
@@ -933,16 +842,6 @@
             if (e.target === e.currentTarget) closeModal('status-modal');
         });
         
-        // Chat modal
-        document.getElementById('chat-btn').addEventListener('click', () => {
-            openModal('chat-modal', 'chat-btn');
-        });
-        document.getElementById('close-chat').addEventListener('click', () => closeModal('chat-modal'));
-        document.getElementById('chat-modal').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) closeModal('chat-modal');
-        });
-        setupChat(); // Initialize chat functionality
-        
         // Settings modal
         document.getElementById('settings-btn').addEventListener('click', () => {
             openModal('settings-modal', 'settings-btn');
@@ -1002,8 +901,6 @@
                 openModal('travel-modal', 'travel-btn');
             } else if (panelId === 'status-panel') {
                 openModal('status-modal', 'status-btn');
-            } else if (panelId === 'chat-panel') {
-                openModal('chat-modal', 'chat-btn');
             } else if (panelId === 'inventory-panel') {
                 document.querySelector('[data-tab="inventory-tab"]').click();
             } else if (panelId === 'quests-panel') {
@@ -1038,12 +935,6 @@
             return;
         }
 
-        // // Show modal if no session cookie
-        // if (!document.cookie.includes('session_id=')) {
-        //     modal.style.display = 'block';
-        //     loadPlayers();
-        // }
-        // Show modal if no player is logged in (as indicated by server)
         if (!window.playerLoggedIn) {
             modal.style.display = 'block';
             loadPlayers();

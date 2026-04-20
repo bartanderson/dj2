@@ -46,14 +46,6 @@ function showItemOptions(itemName) {
         `<button class="inventory-option">${option}</button>`
     ).join('');
     
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML += `
-        <div class="inventory-options">
-            <p>Choose how to interact with ${itemName}:</p>
-            <div class="option-grid">${optionsHtml}</div>
-        </div>
-    `;
-    
     // Add option handlers
     document.querySelectorAll('.inventory-option').forEach(btn => {
         btn.addEventListener('click', () => {
