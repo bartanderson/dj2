@@ -2,7 +2,7 @@
 
 To start the system use 
 """python
-python run_game.py
+run_game.py
 """
 
 This is my long tern attempt to create a DM AI for playing games by myself and or with friends so that we don't have to have a dungeon master on call to play when we want.
