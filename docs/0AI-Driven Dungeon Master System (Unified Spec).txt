@@ -1,0 +1,352 @@
+AI-Driven Dungeon Master System (Unified Spec)
+
+Version: 2.0 (Pre-Combat Foundation)
+
+1. Core Principle
+
+All gameplay emerges from deterministic simulation, shaped by constrained AI judgment, and presented through multimodal systems.
+
+2. System Philosophy (Non-Negotiable)
+2.1 Separation of Powers
+Layer	Responsibility
+Simulation	What is true
+Adjudication (AI DM)	What should happen
+Execution	What actually happens
+Presentation	What player perceives
+Progression	What should happen next
+2.2 Hard Rules
+
+The AI (LLM) must NOT:
+
+roll dice
+mutate world state
+invent outcomes
+
+The AI MAY:
+
+interpret intent
+select actions/tools
+determine if a roll is needed
+suggest difficulty (bounded)
+shape pacing and tone
+control information exposure
+3. The 4 Buckets (System Domains)
+3.1 Simulation Bucket (Reality Layer)
+WorldState
+SessionManager
+(future) Combat system
+3.2 Interpretation Bucket (Input + Intent)
+STT (Faster-Whisper)
+Voice processing
+LLM intent parsing
+3.3 Adjudication Bucket (AI DM Brain)
+LLM (Adjudication Mode)
+AdjudicationEngine
+Campaign influence
+3.4 Presentation Bucket (Player Experience)
+NarrativeEngine
+TTS (Kokoro)
+Audio system (RAS)
+Visual overlays
+3.5 Progression Bucket (Campaign Control)
+CampaignState
+Event system
+Phase control
+4. The 7 Phases (Execution Order)
+1. Input
+2. Interpretation
+3. Adjudication
+4. Execution
+5. Resolution
+6. Presentation
+7. Progression
+5. Authoritative Data Flow
+User Speech
+  ↓
+STT
+  ↓
+LLM (Interpretation)
+  ↓
+LLM (Adjudication)
+  ↓
+AdjudicationEngine
+  ↓
+SessionManager
+  ↓
+WorldState
+  ↓
+ContextBuilder
+  ↓
+UnifiedContext
+  ↓
+Narrative / Audio / Visual
+  ↓
+TTS Output
+  ↓
+Campaign Progression
+6. Core Data Models
+6.1 WorldState (Single Source of Truth)
+class WorldState:
+    domain: str
+    current_location: str
+    party_position: tuple
+
+    terrain: str
+    time_of_day: str
+    indoors: bool
+
+    population_density: str
+    danger_level: float
+    party_fatigue: float
+
+    topology_changes: list
+    player_knowledge: dict
+
+    dungeon_layout: dict
+    fog_of_war: dict
+6.2 UnifiedContext (Read-Only Projection)
+class UnifiedContext:
+    domain: str
+    location: str
+    position: tuple
+
+    terrain: str
+    time_of_day: str
+    indoors: bool
+
+    activity: str
+
+    mood: str
+    tension: float
+    event: str | None
+
+    presence: str
+
+    danger: float
+    fatigue: float
+
+    knowledge: dict
+    topology_changes: list
+6.3 ContextBuilder (Mandatory)
+
+Transforms WorldState → UnifiedContext
+
+6.4 CampaignState (Global Control)
+class CampaignState:
+    tension: float          # 0–1
+    arc: str                # exploration, rising, climax
+    recent_events: list
+    narrative_flags: dict
+7. Adjudication System (AI DM Core)
+7.1 AdjudicationDecision Schema
+class AdjudicationDecision:
+    type: str  # action | check | auto | event | clarification
+
+    action: str | None
+    parameters: dict
+
+    skill: str | None
+    difficulty: int | None
+
+    outcome: str | None
+
+    difficulty_adjustment: int
+    tension_adjustment: float
+
+    reasoning: str
+7.2 Adjudication Engine
+
+Validates and converts decisions into executable actions.
+
+def process(decision):
+    if decision.type == "check":
+        return {
+            "tool": "roll_check",
+            "args": {
+                "skill": decision.skill,
+                "difficulty": clamp(decision.difficulty + decision.difficulty_adjustment)
+            }
+        }
+8. SessionManager (Execution Authority)
+Validates all actions
+Applies rules
+Updates WorldState
+Returns structured results
+9. Narrative System
+9.1 Structured First
+class NarrativeOutput:
+    type: str
+    summary: str
+    details: dict
+9.2 LLM Role
+
+ONLY:
+
+convert structured → natural language
+control tone, pacing, deception
+10. Audio System (RAS)
+
+Input:
+
+AudioContext = map(UnifiedContext)
+
+Responds to:
+
+tension
+mood
+activity
+presence
+
+Never drives state.
+
+11. Visual Overlay System
+
+Input:
+
+UnifiedContext.topology_changes
+
+Handles:
+
+doors opened
+walls broken
+fog-of-war reveal
+12. Voice System (Interruptible)
+12.1 Pipeline
+Mic → VAD → STT → Orchestrator → TTS
+12.2 Interruption Rule
+
+User speech cancels:
+
+TTS playback
+LLM generation
+
+Immediately.
+
+13. Phase Orchestrator (Global Control)
+class PhaseOrchestrator:
+
+    def run_turn(self, user_input):
+
+        text = self.input_phase(user_input)
+
+        decision = self.adjudication_phase(text)
+
+        action = adjudication_engine.process(decision)
+
+        result = session_manager.handle_action(
+            action["tool"], action["args"]
+        )
+
+        ctx = context_builder.build(world_state, session_state)
+
+        narrative = narrative_engine.describe(ctx, result)
+
+        text = llm_format(narrative)
+
+        tts.play(text)
+
+        audio.update(ctx)
+        visuals.update(ctx)
+
+        self.progression_phase(ctx, decision)
+14. Progression Phase (Campaign Engine)
+14.1 Responsibilities
+update tension
+trigger events
+guide pacing
+14.2 Event System
+EVENTS = {
+    "ambush": {...},
+    "noise": {...},
+    "npc": {...}
+}
+14.3 LLM Role
+
+Selects:
+
+event type
+intensity
+
+Engine decides:
+
+exact implementation
+15. Determinism Guarantees
+Rule	Enforced By
+No randomness in LLM	AdjudicationEngine
+No state mutation outside SessionManager	Architecture
+Single context source	ContextBuilder
+Ordered execution	PhaseOrchestrator
+16. Minimal Functional Loop
+
+You must support:
+
+Voice input
+Movement
+Door interaction
+Skill check
+Dice resolution
+Narrative output
+Audio + visual update
+Interrupt mid-speech
+17. Extension Into Combat (Preview)
+
+Combat will plug in here:
+
+Adjudication → choose attack/action
+SessionManager → resolve turn
+CampaignState → escalate tension
+UnifiedContext → reflect battlefield
+Narrative → describe action
+
+No architectural change required.
+
+18. Failure Modes (Guardrails)
+Problem	Cause	Prevention
+AI hallucination	freeform authority	tool-only + adjudication
+desync	multiple state sources	UnifiedContext
+pacing chaos	no progression control	Phase 7 enforcement
+audio lag	no cancellation	cancel token
+narrative contradiction	LLM inventing	structured outputs
+19. Final Mental Model
+WorldState = Reality
+SessionManager = Physics
+Adjudication = Judgment
+LLM = Voice of the DM
+UnifiedContext = Shared Perception
+CampaignState = Story Momentum
+20. What You Now Have
+
+With this in place, your system is:
+
+deterministic
+interruptible
+modular
+scalable
+AI-assisted but not AI-dependent
+21. What Comes Next (Correct Order)
+
+Now you are ready to implement:
+
+1. Combat System (highest priority)
+hardest constraint test
+plugs into existing phases
+2. NPC Agents
+read UnifiedContext
+act via same adjudication pipeline
+3. Encounter System
+uses CampaignState + Events
+Bottom Line
+
+Yes—this is now cohesive, enforceable, and expandable.
+
+You’ve effectively built:
+
+a deterministic simulation engine with a constrained AI acting as a real DM
+
+—not a chatbot pretending to be one.
+
+If you want, the next step should be:
+
+→ Combat System Spec using this exact architecture
+
+That’s where this design either proves itself—or breaks.
