@@ -459,7 +459,12 @@ class DungeonPersistenceSystem:
 
 
 #====+ outside of classes =====
-# ===== Dungeon Integration Endpoints =====
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    response = make_response(jsonify({"success": True}))
+    response.set_cookie('session_id', '', expires=0, path='/')
+    return response
+
 @app.route('/api/party/<party_id>', methods=['GET'])
 def get_party_data(party_id):
     wc = current_app.world_controller
@@ -2040,51 +2045,27 @@ def dm_response():
 
         active_character_id = character_id or player.active_character_id
 
-        # ---------- CHARACTER CREATION PATH (no active character) ----------
-        if not active_character_id:
-            result = app.world_controller.dm_chat_handler.process_message(
-                session_id, message, character_id=None
-            )
-            responses = [{
-                'speaker': r.speaker,
-                'content': r.content,
-                'type': r.dialog_type
-            } for r in result.get('narrative', [])]
+        # Always use the AI handler (dm_chat_handler) for all messages
+        result = app.world_controller.dm_chat_handler.process_message(
+            session_id, message, active_character_id
+        )
+        responses = [{
+            'speaker': r.speaker,
+            'content': r.content,
+            'type': r.dialog_type
+        } for r in result.get('responses', [])]
 
-            response_data = {
-                'responses': responses,
-                'tool_result': result.get('tool_result'),
-                'session_id': session_id,
-                'character_id': None,
-                'player_id': player.id
-            }
-            if result.get('map_data'):
-                response_data['map_data'] = result['map_data']
-            if result.get('action'):
-                response_data['action'] = result['action']
-
-        # ---------- IN‑GAME PATH (character exists) ----------
-        else:
-            from engine.game_engine import GamePhase, GameContext
-            context = GameContext()
-            context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
-            context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
-            context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
-
-            engine_result = app.game_engine.advance(player_input=message, context=context)
-            ui_data = engine_result.get('ui_data', {})
-            narration = ui_data.get('narration', '')
-
-            response_data = {
-                'responses': [{
-                    'speaker': 'DM',
-                    'content': narration or "The DM considers your words...",
-                    'type': 'narration'
-                }],
-                'session_id': session_id,
-                'character_id': active_character_id,
-                'player_id': player.id
-            }
+        response_data = {
+            'responses': responses,
+            'tool_result': result.get('tool_result'),
+            'session_id': session_id,
+            'character_id': active_character_id,
+            'player_id': player.id
+        }
+        if result.get('map_data'):
+            response_data['map_data'] = result['map_data']
+        if result.get('action'):
+            response_data['action'] = result['action']
 
         response = jsonify(response_data)
         if is_new_session:
@@ -2099,60 +2080,6 @@ def dm_response():
         print(f"Error in dm-response: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-        
-def legacy_dm_response():
-    """Fallback to original dm-response logic"""
-    try:
-        data = request.get_json()
-        message = data.get('message')
-        character_id = data.get('character_id')
-        
-        session_id = request.cookies.get('session_id')
-        if not session_id:
-            session_id = str(uuid.uuid4())
-        
-        player = app.world_controller.get_or_create_player(session_id)
-        
-        if character_id and character_id not in player.character_ids:
-            return jsonify({'error': 'Character does not belong to player'}), 400
-        
-        active_character_id = character_id or player.active_character_id
-        if active_character_id:
-            player.set_active_character(active_character_id)
-        
-        result = app.world_controller.dm_chat_handler.process_message(
-            session_id, 
-            message, 
-            character_id=active_character_id
-        )
-        
-        response_data = {
-            'responses': [{
-                'speaker': r.speaker,
-                'content': r.content,
-                'type': r.dialog_type
-            } for r in result['narrative']],
-            'tool_result': result['tool_result'].get('message') if result['tool_result'] else None,
-            'session_id': session_id,
-            'character_id': active_character_id,
-            'player_id': player.id
-        }
-        
-        response = jsonify(response_data)
-        response.set_cookie(
-            'session_id', 
-            session_id, 
-            max_age=60*60*24*7,
-            path='/',
-            secure=False,
-            httponly=True,
-            samesite='Lax'
-        )
-        
-        return response
-        
-    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 def recognize_player(self, session_id, player_data):

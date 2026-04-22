@@ -2,7 +2,7 @@ import hashlib
 import json
 import random
 from world.db import Database
-from world.dm_chat_ai import get_ai_response
+from world.ai_utils import get_ai_response
 
 class NameGenerator:
     def __init__(self, world_seed: int, world_theme: str):

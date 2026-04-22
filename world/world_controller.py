@@ -95,6 +95,12 @@ Before PHASE 5 TODO
   WorldEncounter, WorldShop) to improve maintainability. This will be done after
   the GameEngine refactoring is stable.
 
+- [ ] Implement ActionPlanner and ResolverLoop (completed).
+- [ ] Add intent field to all tools.
+- [ ] Extend ActionPlanner to support dynamic tool lookup via tool registry.
+- [ ] Add Adjudication phase (skill checks, dice rolls) before planning.
+- [ ] Implement reactions and interrupts.
+
 ================================================================================
 """
 
@@ -124,7 +130,7 @@ from world.narrative_system import NarrativeSystem
 from world.character_builder import CharacterBuilder
 from world.character import Character
 from world.persistence import WorldManager
-from world.dm_chat_ai import DMChatAI
+from world.chat_ai import ChatAI
 # TODO: since world and dungeon are separate, do we need to create a unified shared AI that manages either/both to address whether we actually import DungeonAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
@@ -196,25 +202,26 @@ class WorldController:
         self.world_map = WorldMap()
         self.starting_location_id = None
         
-        # Create dm_chat_ai FIRST (needed by many systems)
-        self.dm_chat_ai = DMChatAI(ai_system)
+        # Create chat_ai FIRST (needed by many systems)
+        self.chat_ai = ChatAI()
 
         # Initialize authority system with proper tool registry
         self.tool_registry = ToolRegistry()
+        self.tool_registry.register_from_class(self) # scan for @tool decorated methods
         self.authority_system = AuthoritySystem(self.tool_registry)
 
-        # Create ConsequenceEngine immediately after dm_chat_ai
+        # Create ConsequenceEngine immediately after chat_ai
         self.consequence_engine = ConsequenceEngine(
             world_controller=self,
-            dm_chat_ai=self.dm_chat_ai
+            dm_chat_ai=self.chat_ai
         )
 
         # For backward compatibility, point dungeon_master to the new engine
         self.dungeon_master = self.consequence_engine
 
-        # Now create other systems that depend on dm_chat_ai or consequence_engine
+        # Now create other systems that depend on chat_ai or consequence_engine
 
-        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.chat_ai)
         self.character_builder = CharacterBuilder(ai_system)
         
         # Register character builder tools for AI use
@@ -315,7 +322,7 @@ class WorldController:
             }
 
         # Now create narrative system (it will access self.narrative_framework)
-        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.chat_ai)
 
         # Minimal world generation (placeholder)
         if not self.campaign_state.surface_regions:
@@ -434,10 +441,7 @@ class WorldController:
         # Dungeon tracking
         self.parties_in_dungeon = {}  # party_id -> {"location_id": str, "dungeon_id": str, "entered_at": datetime}
 
-        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
-
-
-        self.tool_registry.register_from_class(self) # scan for @tool decorated methods
+        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'chat_ai')}")
 
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
@@ -535,8 +539,9 @@ class WorldController:
 
 
     @tool(
-        name="move",
+        name="move_tool",
         description="Move the party in a cardinal or diagonal direction. Steps default to 1.",
+        intent="move",
         direction="Direction: north, south, east, west, northeast, northwest, southeast, southwest",
         steps="Number of steps (optional, default=1)"
     )
@@ -561,6 +566,7 @@ class WorldController:
     @tool(
         name="merchant_buy",
         description="Buy an item from a merchant. Requires merchant_id, item_id, and character_id.",
+        intent="buy",
         merchant_id="The merchant's unique identifier",
         item_id="The item's unique identifier",
         character_id="The character's unique identifier"
@@ -597,6 +603,7 @@ class WorldController:
     @tool(
         name="merchant_sell",
         description="Sell an item to a merchant. Requires merchant_id, item_id, and character_id.",
+        intent="sell",
         merchant_id="The merchant's unique identifier",
         item_id="The item's unique identifier",
         character_id="The character's unique identifier"
@@ -628,6 +635,7 @@ class WorldController:
     @tool(
         name="merchant_haggle",
         description="Haggle over an item with merchant. Requires merchant_id, item_id, and character_id.",
+        intent="haggle",
         merchant_id="The merchant's unique identifier",
         item_id="The item's unique identifier",
         character_id="The character's unique identifier"
@@ -1437,7 +1445,7 @@ class WorldController:
     #     prompt += f"\n- Campaign theme: {self.campaign_theme}"
     #     prompt += f"\n- Recent events: {self.get_recent_events()}"
         
-    #     inventory_description = self.dm_chat_ai.generate_text(prompt)
+    #     inventory_description = self.chat_ai.generate_text(prompt)
         
     #     # Return narrative-focused inventory
     #     return {
@@ -1455,7 +1463,7 @@ class WorldController:
         prompt += f"Campaign restrictions: {self.get_inventory_rules()['restricted']}\n"
         prompt += "Format: JSON with name, description, type, significance"
         
-        item_data = self.dm_chat_ai.generate_structured_data(prompt, {
+        item_data = self.chat_ai.generate_structured_data(prompt, {
             "name": "string",
             "description": "string",
             "type": "string",

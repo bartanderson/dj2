@@ -259,6 +259,7 @@
                      hx-swap="innerHTML">
                     Loading...
                 </div>
+                <button id="logout-btn" class="btn secondary" style="margin-left: 10px; padding: 4px 8px;">Logout</button>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
                         <i class="fa-solid fa-walking"></i>
@@ -940,6 +941,10 @@
             loadPlayers();
         }
 
+        // // Always show player selection modal for debugging
+        // modal.style.display = 'block';
+        // loadPlayers();
+
         function loadPlayers() {
             fetch('/api/players')
                 .then(r => r.json())
@@ -1048,83 +1053,79 @@
         }
 
         // Handle chat form submission
-        document.getElementById('backstory-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const input = document.getElementById('backstory-input');
-            const message = input.value.trim();
-            if (!message) return;
-            input.value = '';
+        const backstoryForm = document.getElementById('backstory-form');
+        if (backstoryForm) {
+            backstoryForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const input = document.getElementById('backstory-input');
+                const message = input.value.trim();
+                if (!message) return;
+                input.value = '';
 
-            const chatDiv = document.getElementById('backstory-chat');
-            const characterId = chatDiv.dataset.characterId;
-            addMessage('You', message);
+                const chatDiv = document.getElementById('backstory-chat');
+                const characterId = chatDiv.dataset.characterId;
+                addMessage('You', message);
 
-            fetch(`/character/${characterId}/backstory-continue`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: message})
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        throw new Error(`HTTP ${response.status}: ${text}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.reload) {
-                    location.reload();
-                    return;
-                }
-                // Display each response
-                data.responses.forEach(r => addMessage(r.speaker, r.content));
-
-                // Check if we need to auto‑continue to secret generation
-                const lastResponse = data.responses[data.responses.length - 1];
-                if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
-                    // Automatically send empty message to trigger secrets
-                    fetch(`/character/${characterId}/backstory-continue`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({message: ''})
-                    })
-                    .then(r => r.json())
-                    .then(finalData => {
-                        // Display any remaining responses (e.g., secrets)
-                        if (finalData.responses) {
-                            finalData.responses.forEach(r => addMessage(r.speaker, r.content));
-                        }
-                        // The session is over – reload the page to show the backstory
+                fetch(`/character/${characterId}/backstory-continue`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            throw new Error(`HTTP ${response.status}: ${text}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.reload) {
                         location.reload();
-                    })
-                    .catch(err => {
-                        console.error('Auto-continue error:', err);
-                        // Even if the fetch fails, the session is likely over, so reload
-                        location.reload();
-                    });
-                    return;
-                }
+                        return;
+                    }
+                    data.responses.forEach(r => addMessage(r.speaker, r.content));
 
-                // If session ended, reload narrative
-                if (data.new_state === null) {
-                    fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
-                        .then(() => {
-                            htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                            document.getElementById('backstory-chat').style.display = 'none';
-                            document.getElementById('character-narrative').style.display = 'block';
+                    const lastResponse = data.responses[data.responses.length - 1];
+                    if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
+                        fetch(`/character/${characterId}/backstory-continue`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({message: ''})
+                        })
+                        .then(r => r.json())
+                        .then(finalData => {
+                            if (finalData.responses) {
+                                finalData.responses.forEach(r => addMessage(r.speaker, r.content));
+                            }
+                            location.reload();
                         })
                         .catch(err => {
-                            console.error('Build connections error:', err);
-                            addMessage('System', 'Error building connections. Check console.', 'error');
+                            console.error('Auto-continue error:', err);
+                            location.reload();
                         });
-                }
-            })
-            .catch(err => {
-                console.error('Backstory error:', err);
-                addMessage('System', 'Error: ' + err.message, 'error');
+                        return;
+                    }
+
+                    if (data.new_state === null) {
+                        fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                            .then(() => {
+                                htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                                document.getElementById('backstory-chat').style.display = 'none';
+                                document.getElementById('character-narrative').style.display = 'block';
+                            })
+                            .catch(err => {
+                                console.error('Build connections error:', err);
+                                addMessage('System', 'Error building connections. Check console.', 'error');
+                            });
+                    }
+                })
+                .catch(err => {
+                    console.error('Backstory error:', err);
+                    addMessage('System', 'Error: ' + err.message, 'error');
+                });
             });
-        });
+        }
 
         function addMessage(speaker, text) {
             const msgDiv = document.createElement('div');

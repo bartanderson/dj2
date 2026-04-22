@@ -1,0 +1,37 @@
+import json
+import logging
+from typing import Optional
+from world.ai_integration import BaseAI
+
+logger = logging.getLogger(__name__)
+
+
+class ChatAI:
+    def __init__(self, ai_system: Optional[BaseAI] = None):
+        if ai_system is not None:
+            self.ai = ai_system
+        else:
+            self.ai = BaseAI()
+
+    def json_response(self, prompt: str) -> dict:
+        try:
+            response_text = self.ai.generate_text(prompt)
+        except Exception as e:
+            logger.error(f"AI call failed: {e}")
+            raise RuntimeError("AI is not available") from e
+        try:
+            data = json.loads(response_text)
+            if 'narrative' not in data and 'tool' not in data:
+                data['narrative'] = "The DM considers your words."
+            return data
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON from LLM: {response_text}")
+            return {"narrative": "The DM considers your words thoughtfully.", "updates": {}, "needs_confirmation": False}
+
+_chat_ai = None
+
+def get_chat_ai():
+    global _chat_ai
+    if _chat_ai is None:
+        _chat_ai = ChatAI()
+    return _chat_ai

@@ -8,8 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from world import dnd_data
-from world.dm_chat_ai import get_ai_response
 from world.character import Character
+from world.intent_mapper import IntentMapper
+from world.action_system import ActionPlanner, ActionQueue
+from world.resolver import ResolverLoop
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +146,7 @@ Respond with a JSON object containing "type" and "value". Examples:
         # Use the same AI function as main responses, but with a specific prompt
         # We'll parse the JSON from the AI.
         try:
-            response_json = get_ai_response(prompt, None, game_context)  # session not needed for extraction
-            data = json.loads(response_json)
+            data = self.world_controller.chat_ai.json_response(prompt)
             if "type" in data and "value" in data:
                 return data
         except Exception as e:
@@ -174,8 +175,8 @@ Keep the tone friendly and immersive, as if you're a wise mentor.
 Your answer:
 """
         try:
-            response_json = get_ai_response(prompt, None, game_context)
-            data = json.loads(response_json)
+            # Direct call to ChatAI
+            data = self.world_controller.chat_ai.json_response(prompt)
             return data.get("narrative", "I'm not sure about that, but I'll find out.")
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
@@ -288,93 +289,108 @@ Your answer:
             prompt = f"The party tries to move {direction} but is blocked by {block_reason}. Describe what happens."
         
         # Use the AI to generate a response
-        from world.dm_chat_ai import get_ai_response
-        narrative = get_ai_response(prompt, None, context)  # adjust parameters as needed
+        narrative = self.world_controller.chat_ai.json_response(prompt, None, context)  # adjust parameters as needed
         # Return a list of DialogResponse objects (for consistency)
         return [{"speaker": "DM", "content": narrative, "dialog_type": "narration"}]
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        Main entry point for player messages.
-        Returns a dict with 'responses' (list of DialogResponse) and optionally 'tool_result'.
-        """
+        print("[DEBUG] dm_chat_handler.process_message called")
         session = self.get_or_create_session(session_id, "Player")
         session.conversation_history.append({"role": "user", "content": message})
+        
+        # TODO: Replace this simple shortcut expansion with a more robust tokenization that handles synonyms and misspellings for all intents.
+        
+        # Expand direction shortcuts (normalize input)
+        shortcuts = {
+            "n": "north", "s": "south", "e": "east", "w": "west",
+            "ne": "northeast", "nw": "northwest",
+            "se": "southeast", "sw": "southwest"
+        }
+        words = message.lower().split()
+        for i, w in enumerate(words):
+            if w in shortcuts:
+                words[i] = shortcuts[w]
+        message = " ".join(words)
 
-        # Determine if we have an active character
+        # Determine active character
         character = None
         if character_id:
             character = self.world_controller.character_manager.get_character(character_id)
         elif session.active_character_id:
             character = self.world_controller.character_manager.get_character(session.active_character_id)
 
-        # Build game context for AI
+        # Build game context
         game_context = self._build_game_context(session, character)
         if encounter:
             game_context["encounter"] = encounter
             game_context["encounter_description"] = encounter.get("description", "")
 
-        # First, try to extract a specific topic
+        # First, try to extract a specific topic (optional)
         topic = self._extract_message_topic(message, game_context)
         if topic and topic["type"] != "general":
-            # If a specific topic is found, generate an interested answer
             answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
             responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
             session.conversation_history.append({"role": "assistant", "content": answer})
             return {"responses": responses, "tool_result": None}
 
-        # Otherwise, proceed with normal AI response (character creation or game progression)
-        ai_response_json = get_ai_response(message, session, game_context, encounter)
-        try:
-            ai_data = json.loads(ai_response_json)
-        except json.JSONDecodeError:
-            logger.error(f"AI returned invalid JSON: {ai_response_json}")
-            ai_data = {"narrative": "The DM ponders your words...", "updates": {}, "needs_confirmation": False}
+        # Build the prompt for AI
+        prompt = f"""You are the AI Dungeon Master. Your job is to interpret the player's message and output a JSON object with 'intent' and 'parameters'.
 
-        if 'tool' in ai_data:
-            tool_name = ai_data['tool']
-            args = ai_data.get('arguments', {})
-            # Execute tool via world controller's tool registry
-            tool_result = self.world_controller.tool_registry.execute_tool(tool_name, args)
-            # Create a DialogResponse from the tool's message
-            responses = [DialogResponse(speaker="DM", content=tool_result.get("message", ""), dialog_type="narration")]
-            return {
-                "responses": responses,
-                "tool_result": tool_result,
-                "map_data": tool_result.get("map_data"),
-                "action": tool_result.get("action")
-            }
-        else:
+Possible intents: move, buy, sell, haggle, talk, look, rest, answer.
 
-            narrative = ai_data.get("narrative", "")
-            updates = ai_data.get("updates", {})
-            needs_confirmation = ai_data.get("needs_confirmation", False)
+Examples:
+- For movement: {{"intent": "move", "parameters": {{"direction": "north". "steps": 1}}}}
+- For buying: {{"intent": "buy", "parameters": {{"item": "healing potion"}}}}
+- For asking a rule: {{"intent": "answer", "parameters": {{"question": "What is Brawn?"}}}}
 
-            responses = [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
+Player message: "{message}"
 
-            # Apply updates if no confirmation needed
-            if updates and not needs_confirmation:
-                if character:
-                    success, errors = self._update_character_from_ai(character, updates)
-                    if not success:
-                        responses.append(DialogResponse(speaker="DM", content=f"Validation error: {', '.join(errors)}", dialog_type="error"))
-                else:
-                    # No character yet – store updates in session for later character creation
-                    for k, v in updates.items():
-                        session.character_data[k] = v
+Output only the JSON, no extra text.
+"""
 
-            # Handle confirmation if needed
-            if needs_confirmation:
-                session.pending_confirmation = updates
-                responses.append(DialogResponse(speaker="DM", content="Please confirm the changes.", dialog_type="question"))
+        # Call AI
+        print(f"[DEBUG] Prompt sent to AI:\n{prompt}")
+        ai_data = self.world_controller.chat_ai.json_response(prompt)
+        print(f"[DEBUG] AI response: {ai_data}")
+
+        # Now handle the response
+        if 'intent' in ai_data:
+            intent = ai_data['intent']
+            params = ai_data.get('parameters', {})
+
+            # Use IntentMapper to map intent to tool
+            mapper = IntentMapper(self.world_controller.tool_registry)
+            mapping = mapper.map_intent(intent, params)
+
+            if mapping and mapping.get('type') == 'tool':
+                tool_name = mapping['tool']
+                args = mapping['arguments']
+                # Create action and resolve
+                from world.action_system import Action, ActionQueue
+                from world.resolver import ResolverLoop
+                queue = ActionQueue()
+                queue.enqueue(Action(tool_name=tool_name, params=args))
+                resolver = ResolverLoop(self.world_controller.tool_registry, self.world_controller)
+                results = resolver.resolve_queue(queue)
+                if results:
+                    result = results[0]
+                    if result.get('success'):
+                        return {
+                            "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                            "map_data": result.get("map_data"),
+                            "action": result.get("action")
+                        }
+                    else:
+                        return {"responses": [DialogResponse(speaker="DM", content=result.get("error", "Action failed"), dialog_type="error")]}
+            elif mapping and mapping.get('type') == 'answer':
+                answer = self._answer_question(params.get('question', ''), game_context)
+                return {"responses": [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]}
             else:
-                session.pending_confirmation = None
-
-            session.conversation_history.append({"role": "assistant", "content": narrative})
-            return {
-                "responses": responses,
-                "tool_result": None  # Placeholder for future
-            }
+                error = mapping.get('error', "I don't understand that action.")
+                return {"responses": [DialogResponse(speaker="DM", content=error, dialog_type="error")]}
+        else:
+            narrative = ai_data.get('narrative', 'The DM nods.')
+            return {"responses": [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]}
 
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""

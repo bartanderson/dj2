@@ -87,11 +87,11 @@ class MockAISystem:
 class MockWorldController:
     def __init__(self, ai_system, session_system):
         self.ai_system = ai_system
-        self.dm_chat_ai = DMChatAI(ai_system)
+        self.dm_chat_ai = ChatAI(ai_system)
         self.session_system = session_system
         self.tool_registry = ToolRegistry()
         self.authority_system = AuthoritySystem(self.tool_registry)
-        self.consequence_engine = ConsequenceEngine(world_controller=self, dm_chat_ai=self.dm_chat_ai)
+        self.consequence_engine = ConsequenceEngine(world_controller=self, dm_chat_ai=self.chat_ai)
         # For backward compatibility
         self.dungeon_master = self.consequence_engine
         self.players = {}

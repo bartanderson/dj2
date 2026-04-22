@@ -298,39 +298,92 @@ function addWorldMessage(text) {
     }
 }
 
-document.getElementById('world-chat-messages').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const input = document.getElementById('world-chat-input');
-    const command = input.value.trim();
-    if (command) {
-        sendWorldCommand(command);
-        input.value = '';
-    }
-})
-
-// Wire up the chat input
 document.addEventListener('DOMContentLoaded', function() {
-    const input = document.getElementById('world-chat-input');
-    const sendBtn = document.getElementById('world-chat-send');
-    if (input && sendBtn) {
-        const send = () => {
-            const cmd = input.value.trim();
-            if (cmd) {
-                console.error("send command")
-                sendWorldCommand(cmd);
-                input.value = '';
-            }
-        };
-        sendBtn.addEventListener('click', send);
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') send();
+
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            location.reload();
         });
     }
     
+    // ===== World chat panel: send messages to AI DM =====
+
+    const chatInput = document.getElementById('world-chat-input');
+    const chatSend = document.getElementById('world-chat-send');
+    if (chatInput && chatSend) {
+        console.log("got here")
+        const sendToAI = async () => {
+            const message = chatInput.value.trim();
+            console.log("sendToAI message:", message);
+            if (!message) return;
+            chatInput.value = '';
+            addWorldMessage(`You: ${message}`); // display user message
+
+            // Show loading indicator
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.textContent = 'DM is thinking...';
+            loadingDiv.style.color = '#888';
+            document.getElementById('world-chat-messages').appendChild(loadingDiv);
+
+            try {
+                console.log("Fetching /api/dm-response with message:", message);
+                const response = await fetch('/api/dm-response', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                document.getElementById(loadingId)?.remove();
+
+                if (!response.ok) {
+                    addWorldMessage(`Error: ${response.status}`);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Display AI responses
+                if (data.responses && Array.isArray(data.responses)) {
+                    data.responses.forEach(r => {
+                        addWorldMessage(`${r.speaker}: ${r.content}`);
+                    });
+                } else if (data.response) {
+                    addWorldMessage(`DM: ${data.response}`);
+                }
+
+                // Update map if map_data is returned (from tool calls)
+                if (data.map_data) {
+                    worldState.worldMap = data.map_data;
+                    worldMap = worldState.worldMap;
+                    redraw();
+                    if (data.action === 'centerOnParty') centerOnParty();
+                }
+
+                // Refresh other UI components (inventory, party, etc.)
+                if (typeof refreshWorldState === 'function') {
+                    refreshWorldState();
+                }
+
+            } catch (err) {
+                document.getElementById(loadingId)?.remove();
+                addWorldMessage(`Network error: ${err.message}`);
+                console.error(err);
+            }
+        };
+
+        chatSend.addEventListener('click', sendToAI);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendToAI();
+        });
+    }
+
+    // ===== SocketIO for real‑time updates =====
     const socket = io();
 
     socket.on('party_update', () => {
-        // Refresh the party list via HTMX
         htmx.ajax('GET', '/api/party/list-html', { target: '#party-list-container', swap: 'innerHTML' });
     });
 
@@ -342,6 +395,12 @@ document.addEventListener('DOMContentLoaded', function() {
             centerOnParty();
         }
     });
+
+    // ===== Map initialization (original code) =====
+    if (typeof loadWorldDataWithRetry === 'function') {
+        loadWorldDataWithRetry();
+    }
+
 });
 
 // ===== MAP RENDERING HELPERS =====
