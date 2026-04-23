@@ -389,10 +389,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('party_moved', (data) => {
         console.log('party_moved received', data);
+        console.log('window.currentPartyId:', window.currentPartyId);
         if (data.party_id === window.currentPartyId) {
-            if (worldMap) worldMap.party_position = { col: data.col, row: data.row };
+            console.log('Updating party position to', data.col, data.row);
+            if (data.map_data) {
+                worldState.worldMap = data.map_data;
+                worldMap = worldState.worldMap;
+            } else if (worldMap) {
+                worldMap.party_position = { col: data.col, row: data.row };
+                console.log('worldMap.party_position updated:', worldMap.party_position);
+            } else {
+                console.log('worldMap not defined');
+            }
             redraw();
             centerOnParty();
+        } else {
+            console.log('Party ID mismatch');
         }
     });
 

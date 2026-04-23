@@ -80,12 +80,15 @@ PHASE 4c TODOs (in priority order, after refactoring)
 6. **Multi-player test button** – Open new tab with different session.
 
 Already completed (marked with x):
-   x Implement fast travel to discovered locations
-   x Add shop system and inventory management (basic)
-   x Cache world terrain image on server
-   x Replace client-side terrain generation with backend data
-   x AI-powered name generation (with caching)
-   x Movement routed through GameEngine (steps 1 and 5 partially done)
+  [x] Implement fast travel to discovered locations
+  [x] Add shop system and inventory management (basic)
+  [x] Cache world terrain image on server
+  [x] Replace client-side terrain generation with backend data
+  [x] AI-powered name generation (with caching)
+  [x] Movement routed through GameEngine (steps 1 and 5 partially done)
+  [x] Implement AdjudicationEngine for move, buy, sell.
+  [ ] Add more actions (talk, rest, look) to AdjudicationEngine.
+  [x] Remove old merchant_buy/sell tools (optional, keep for compatibility).
 
 ================================================================================
 Before PHASE 5 TODO
@@ -235,7 +238,7 @@ class WorldController:
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
         
-        self.default_party_id = "main_party"
+        self.default_party_id = None
         self.party_id = self.default_party_id
 
         # Initialize players
@@ -537,141 +540,20 @@ class WorldController:
                 return True
         return False
 
-
-    @tool(
-        name="move_tool",
-        description="Move the party in a cardinal or diagonal direction. Steps default to 1.",
-        intent="move",
-        direction="Direction: north, south, east, west, northeast, northwest, southeast, southwest",
-        steps="Number of steps (optional, default=1)"
-    )
-    def move_tool(self, direction: str, steps: int = 1) -> dict:
-        dir_map = {
-            "north": "n", "south": "s", "east": "e", "west": "w",
-            "northeast": "ne", "northwest": "nw",
-            "southeast": "se", "southwest": "sw"
-        }
-        dir_code = dir_map.get(direction.lower(), direction.lower())
-        result = self.move_hex(dir_code, steps)
-        if result.get("success"):
-            return {
-                "success": True,
-                "message": f"You move {direction}.",
-                "map_data": self.get_map_data(),
-                "action": "centerOnParty"
-            }
-        else:
-            return {"success": False, "message": result.get("message", "Cannot move.")}
-
-    @tool(
-        name="merchant_buy",
-        description="Buy an item from a merchant. Requires merchant_id, item_id, and character_id.",
-        intent="buy",
-        merchant_id="The merchant's unique identifier",
-        item_id="The item's unique identifier",
-        character_id="The character's unique identifier"
-    )
-    def merchant_buy(self, merchant_id: str, item_id: str, character_id: str) -> Dict[str, Any]:
-        merchant = self.campaign_state.get_merchant(merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found"}
-        character = self.character_manager.get_character(character_id)
-        if not character:
-            return {"success": False, "message": "Character not found"}
-        item = next((i for i in merchant.inventory if i.id == item_id), None)
-        if not item:
-            return {"success": False, "message": "Item not in inventory"}
-        rel = self.campaign_state.get_merchant_relationship(merchant_id, character_id)
-        if not self._is_item_visible(item, rel):
-            return {"success": False, "message": "Item not available to you"}
-        price = compute_price(item, merchant, rel, {})
-        if character.currency < price:
-            return {"success": False, "message": f"Not enough gold. Need {price} gp."}
-        character.currency -= price
-        from world.character import InventoryItem
-        new_item = InventoryItem(
-            name=item.name,
-            description=f"Purchased from {merchant.name}",
-            type=item.tags.pop() if item.tags else "adventuring_gear",
-            cost=price
-        )
-        character.inventory.append(new_item)
-        self.campaign_state.update_merchant_relationship(merchant_id, character_id, affinity_delta=1)
-        self.character_manager._save_character_to_db(character)
-        return {"success": True, "message": f"Bought {item.name} for {price} gp.", "item": new_item.to_dict()}
-
-    @tool(
-        name="merchant_sell",
-        description="Sell an item to a merchant. Requires merchant_id, item_id, and character_id.",
-        intent="sell",
-        merchant_id="The merchant's unique identifier",
-        item_id="The item's unique identifier",
-        character_id="The character's unique identifier"
-    )
-    def merchant_sell(self, merchant_id: str, item_id: str, character_id: str) -> Dict[str, Any]:
-        merchant = self.campaign_state.get_merchant(merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found"}
-        character = self.character_manager.get_character(character_id)
-        if not character:
-            return {"success": False, "message": "Character not found"}
-        # Find item in character inventory
-        item = next((i for i in character.inventory if i.id == item_id), None)
-        if not item:
-            item = next((i for i in character.custom_items if i.id == item_id), None)
-        if not item:
-            return {"success": False, "message": "Item not in inventory"}
-        # Compute sell price (half of base or computed buy price? Use base_price // 2)
-        sell_price = item.cost // 2
-        character.currency += sell_price
-        if item in character.inventory:
-            character.inventory.remove(item)
-        else:
-            character.custom_items.remove(item)
-        self.campaign_state.update_merchant_relationship(merchant_id, character_id, trust_delta=1)
-        self.character_manager._save_character_to_db(character)
-        return {"success": True, "message": f"Sold {item.name} for {sell_price} gp."}
-
-    @tool(
-        name="merchant_haggle",
-        description="Haggle over an item with merchant. Requires merchant_id, item_id, and character_id.",
-        intent="haggle",
-        merchant_id="The merchant's unique identifier",
-        item_id="The item's unique identifier",
-        character_id="The character's unique identifier"
-    )
-    def merchant_haggle(self, merchant_id: str, item_id: str, offered_price: int, character_id: str) -> Dict[str, Any]:
-        # Simplified: use persuasion check against merchant personality
-        merchant = self.campaign_state.get_merchant(merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found"}
-        character = self.character_manager.get_character(character_id)
-        if not character:
-            return {"success": False, "message": "Character not found"}
-        item = next((i for i in merchant.inventory if i.id == item_id), None)
-        if not item:
-            return {"success": False, "message": "Item not in inventory"}
-        rel = self.campaign_state.get_merchant_relationship(merchant_id, character_id)
-        base_price = compute_price(item, merchant, rel, {})
-        # Simple haggle: roll Persuasion vs. merchant's greed+honor
-        persuasion_roll = random.randint(1, 20) + character.get_skill_rank('social')
-        difficulty = 10 + merchant.personality.greed - merchant.personality.honor
-        if persuasion_roll >= difficulty:
-            # Accept offered price if it's >= 70% of base
-            if offered_price >= base_price * 0.7:
-                # Execute transaction
-                character.currency -= offered_price
-                # Add item (simplified)
-                from world.character import InventoryItem
-                new_item = InventoryItem(name=item.name, description=f"Bought from {merchant.name}", cost=offered_price)
-                character.inventory.append(new_item)
-                self.campaign_state.update_merchant_relationship(merchant_id, character_id, affinity_delta=1, trust_delta=2)
-                self.character_manager._save_character_to_db(character)
-                return {"success": True, "message": f"Merchant accepts {offered_price} gp for {item.name}.", "price": offered_price}
-            else:
-                return {"success": False, "message": f"Merchant refuses. Price is {base_price} gp."}
-        else:
-            return {"success": False, "message": "Merchant is not persuaded."}
+    def _compute_price(self, item, merchant, rel, context):
+        """Compute dynamic price based on merchant personality, relationship, and context."""
+        price = item.base_price
+        price *= (1 + merchant.personality.greed * 0.05)
+        price *= (1 - rel.affinity * 0.03)
+        price *= (1 - rel.trust * 0.02)
+        price *= (1 + rel.fear * 0.04)
+        if context.get('desperate'):
+            price *= 1.25
+        if context.get('scarcity'):
+            price *= 1.1
+        max_price = item.base_price * (1 + merchant.constraints.max_markup)
+        min_price = item.base_price * (1 - merchant.constraints.max_discount)
+        return int(max(min_price, min(price, max_price)))
 
     def get_region_for_hex(self, col, row):
         hex_data = self.campaign_state.get_hex(col, row)
@@ -1199,6 +1081,7 @@ class WorldController:
     def create_party(self, name: str, initial_members: List[str]) -> Optional[str]:
         print(f"DEBUG: WorldController.create_party called with name={name}, members={initial_members}")
         party_id = self.party_manager.create_party(name, initial_members)
+        self.default_party_id = party_id
         print(f"DEBUG: party_manager.create_party returned {party_id}")
         return party_id
 
@@ -1360,6 +1243,22 @@ class WorldController:
         if not self.current_location:
             return {}
         return self.current_location.to_dict()
+
+    def emit_party_moved(self, col, row, session_id):
+        from flask_socketio import emit
+        char = self._get_active_character(session_id)
+        if not char:
+            return
+        party = self.party_manager.get_character_party(char.id)
+        if not party:
+            return
+        map_data = self.get_map_data()   # includes discovered hexes
+        emit('party_moved', {
+            'party_id': party['id'],
+            'col': col,
+            'row': row,
+            'map_data': map_data
+        }, namespace='/', broadcast=True)
 
     def move_character(self, char_id, new_position):
         char = self.character_manager.get_character(char_id)
@@ -2016,7 +1915,7 @@ class WorldController:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    def _get_active_character(self, session_id):
+    def _get_active_character(self, session_id: str = None):
         if not session_id:
             return None
         player = self.get_player_by_session(session_id)
@@ -2033,6 +1932,10 @@ class WorldController:
         
         # Create new player
         player = Player(name=player_name or f"Player_{session_id[:8]}")
+        if player.active_character_id:
+            party = self.party_manager.get_character_party(player.active_character_id)
+            if party:
+                self.default_party_id = party['id']
         self.players[player.id] = player
         self.session_players[session_id] = player.id
         

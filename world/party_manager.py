@@ -26,7 +26,7 @@ class PartyManager:
         self.parties: Dict[str, Dict] = {}
         self.character_parties: Dict[str, str] = {}
         self.active_parties: Set[str] = set()
-        self.default_party_id = "main_party"
+        self.default_party_id = None
         self.starting_location_id = starting_location_id
         self._next_color_index = 0
         
@@ -75,6 +75,7 @@ class PartyManager:
         if party_id not in self.parties:
             return False
         # Add to new party
+        self.default_party_id = party_id
         self.parties[party_id]["members"].append(char_id)
         self.character_parties[char_id] = party_id
         return True

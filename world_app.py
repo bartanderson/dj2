@@ -2535,6 +2535,12 @@ def api_party_join():
             return jsonify({'success': False, 'error': 'No active character'}), 400
         success = wc.party_manager.add_to_party(active_char_id, party_id)
         if success:
+            # After joining, refresh the player's active character
+            player = wc.get_player_by_session(session_id)
+            if player and player.active_character_id:
+                party = wc.party_manager.get_character_party(player.active_character_id)
+                if party:
+                    wc.default_party_id = party['id']
             notify_party_update()
             return jsonify({'success': True})
         else:
