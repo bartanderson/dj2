@@ -346,23 +346,28 @@ class PartyMerchantState:
         )
 
 class Merchant:
-    """Complete merchant definition."""
     def __init__(self, merchant_id: str, name: str, location: str,
                  personality: MerchantPersonality = None,
                  constraints: MerchantConstraints = None,
                  inventory: List[MerchantItem] = None,
                  faction: Optional[str] = None,
                  schedule: Optional[Dict] = None,
-                 global_bias: int = 0):
+                 global_bias: int = 0,
+                 display_type: str = "table",
+                 display_name: str = "wooden table",
+                 display_description: str = "a sturdy wooden table with neatly arranged items"):
         self.id = merchant_id
         self.name = name
-        self.location = location        # e.g., "Adventurer's Respite", "traveling"
+        self.location = location
         self.personality = personality or MerchantPersonality()
         self.constraints = constraints or MerchantConstraints()
         self.inventory = inventory or []
         self.faction = faction
         self.schedule = schedule or {}
         self.global_bias = global_bias
+        self.display_type = display_type
+        self.display_name = display_name
+        self.display_description = display_description
 
     def to_dict(self) -> dict:
         return {
@@ -374,21 +379,30 @@ class Merchant:
             "inventory": [item.to_dict() for item in self.inventory],
             "faction": self.faction,
             "schedule": self.schedule,
-            "global_bias": self.global_bias
+            "global_bias": self.global_bias,
+            "display_type": self.display_type,
+            "display_name": self.display_name,
+            "display_description": self.display_description
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> 'Merchant':
+        personality = MerchantPersonality.from_dict(data.get("personality", {}))
+        constraints = MerchantConstraints.from_dict(data.get("constraints", {}))
+        inventory = [MerchantItem.from_dict(i) for i in data.get("inventory", [])]
         return cls(
             merchant_id=data["id"],
             name=data["name"],
             location=data["location"],
-            personality=MerchantPersonality.from_dict(data.get("personality", {})),
-            constraints=MerchantConstraints.from_dict(data.get("constraints", {})),
-            inventory=[MerchantItem.from_dict(i) for i in data.get("inventory", [])],
+            personality=personality,
+            constraints=constraints,
+            inventory=inventory,
             faction=data.get("faction"),
             schedule=data.get("schedule", {}),
-            global_bias=data.get("global_bias", 0)
+            global_bias=data.get("global_bias", 0),
+            display_type=data.get("display_type", "table"),
+            display_name=data.get("display_name", "wooden table"),
+            display_description=data.get("display_description", "a sturdy wooden table with neatly arranged items")
         )
 
 # ----------------------------------------------------------------------

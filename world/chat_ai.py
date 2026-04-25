@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Optional
 from world.ai_integration import BaseAI
+from world.event_log import get_event_log
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class ChatAI:
             response_text = self.ai.generate_text(prompt)
         except Exception as e:
             logger.error(f"AI call failed: {e}")
+            get_event_log().emit("ai.failure", {"error": str(e)}, source="chat_ai")
             raise RuntimeError("AI is not available") from e
         try:
             data = json.loads(response_text)
@@ -26,6 +28,7 @@ class ChatAI:
             return data
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON from LLM: {response_text}")
+            get_event_log().emit("ai.json_error", {"response": response_text[:200]}, source="chat_ai")
             return {"narrative": "The DM considers your words thoughtfully.", "updates": {}, "needs_confirmation": False}
 
 _chat_ai = None

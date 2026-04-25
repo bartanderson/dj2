@@ -1679,39 +1679,6 @@ def disband_party(party_id):
     return jsonify({"success": success})
 
 # ===== Core Game State Endpoints =====
-# @app.route('/api/world-state')
-# def world_state():
-#     try:
-#         # Check if world_controller is available
-#         if not hasattr(app, 'world_controller') or app.world_controller is None:
-#             return jsonify({
-#                 "worldMap": {"error": "World controller not initialized"},
-#                 "currentLocation": None,
-#                 "parties": [],
-#                 "characters": {}
-#             })
-            
-#         # Convert characters to dict representation
-#         characters_dict = {}
-#         if hasattr(app.world_controller, 'characters'):
-#             for char_id, char in app.world_controller.characters.items():
-#                 characters_dict[char_id] = char.to_dict()
-
-#         return jsonify({
-#             "worldMap": app.world_controller.get_map_data(),
-#             "currentLocation": app.world_controller.get_current_location_data(),
-#             "parties": get_active_parties_helper(), #app.world_controller.get_active_parties(),
-#             "characters": characters_dict
-#         })
-#     except Exception as e:
-#         print(f"Error in world_state: {str(e)}")
-#         return jsonify({
-#             "worldMap": {"error": "Map data unavailable"},
-#             "currentLocation": None,
-#             "parties": [],
-#             "characters": {}
-#         })
-
 @app.route('/api/world-state')
 def world_state():
     try:
@@ -2425,6 +2392,37 @@ def initialize_app():
         import traceback
         traceback.print_exc()
         return None, None
+
+# ===== Intent =========================
+@app.route('/api/intent/examples', methods=['GET', 'POST', 'DELETE'])
+def manage_intent_examples():
+    """Manage intent examples (admin use)."""
+    from world.intent_manager import IntentManager
+    im = IntentManager()
+    if request.method == 'GET':
+        examples = im.list_examples()
+        return jsonify({"examples": examples})
+    elif request.method == 'POST':
+        data = request.get_json()
+        intent = data.get('intent')
+        text = data.get('text')
+        is_positive = data.get('is_positive', True)
+        if not intent or not text:
+            return jsonify({"error": "Missing intent or text"}), 400
+        if im.add_example(intent, text, is_positive):
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to add example"}), 500
+    elif request.method == 'DELETE':
+        data = request.get_json()
+        example_id = data.get('example_id')
+        if not example_id:
+            return jsonify({"error": "Missing example_id"}), 400
+        if im.delete_example(example_id):
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Example not found"}), 404
+
 
 # ===== Player Selection Endpoints =====
 

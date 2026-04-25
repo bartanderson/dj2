@@ -12,6 +12,9 @@ from world.character import Character
 from world.intent_mapper import IntentMapper
 from world.action_system import ActionPlanner, ActionQueue
 from world.resolver import ResolverLoop
+from world.intent import IntentFrame
+from world.intent_manager import IntentManager
+from world.adjudication_engine import AdjudicationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,8 @@ class DMChatHandler:
     def __init__(self, world_controller):
         self.world_controller = world_controller
         self.sessions: Dict[str, SessionState] = {}
+        self.intent_manager = IntentManager()
+        self.adjudication_engine = AdjudicationEngine(world_controller)
 
     def create_session(self, session_id: str, player_name: str, initial_data: Dict = None) -> SessionState:
         """Create a new player session."""
@@ -298,77 +303,144 @@ Your answer:
         session = self.get_or_create_session(session_id, "Player")
         session.conversation_history.append({"role": "user", "content": message})
 
-        # Expand direction shortcuts
-        shortcuts = {
+        # ------------------------------------------------------------------
+        # 1. DETERMINISTIC MOVEMENT PRE‑PROCESSOR
+        # ------------------------------------------------------------------
+        movement_map = {
+            "north": "north", "south": "south", "east": "east", "west": "west",
+            "northeast": "northeast", "northwest": "northwest",
+            "southeast": "southeast", "southwest": "southwest",
             "n": "north", "s": "south", "e": "east", "w": "west",
-            "ne": "northeast", "nw": "northwest",
-            "se": "southeast", "sw": "southwest"
+            "ne": "northeast", "nw": "northwest", "se": "southeast", "sw": "southwest"
         }
-        words = message.lower().split()
-        for i, w in enumerate(words):
-            if w in shortcuts:
-                words[i] = shortcuts[w]
-        message = " ".join(words)
+        cmd = message.lower().strip()
+        prefixes = [
+            "go ", "head ", "walk ", "travel ", "climb ", "swim ", "sail ",
+            "roll ", "slide ", "move ", "run ", "crawl ", "creep ", "march "
+        ]
+        for prefix in prefixes:
+            if cmd.startswith(prefix):
+                cmd = cmd[len(prefix):].strip()
+                break
+        if cmd in movement_map:
+            direction = movement_map[cmd]
+            frame = IntentFrame(action=f"move {direction}", category="movement", destination=direction)
+            engine = AdjudicationEngine(self.world_controller)
+            result = engine.process(frame, session_id)
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "map_data": result.get("map_data"),
+                "action": result.get("action")
+            }
 
-        # Determine active character
+        # ------------------------------------------------------------------
+        # 2. GET ACTIVE CHARACTER & GAME CONTEXT
+        # ------------------------------------------------------------------
         character = None
         if character_id:
             character = self.world_controller.character_manager.get_character(character_id)
         elif session.active_character_id:
             character = self.world_controller.character_manager.get_character(session.active_character_id)
 
-        # Build game context
         game_context = self._build_game_context(session, character)
         if encounter:
             game_context["encounter"] = encounter
             game_context["encounter_description"] = encounter.get("description", "")
 
-        # Build the prompt for IntentFrame
-        prompt = f"""You are the AI Dungeon Master. The player says: "{message}".
+        # ------------------------------------------------------------------
+        # 3. RULES / LORE QUESTIONS (bypass everything)
+        # ------------------------------------------------------------------
+        topic = self._extract_message_topic(message, game_context)
+        if topic and topic["type"] != "general":
+            answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
+            responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
+            session.conversation_history.append({"role": "assistant", "content": answer})
+            return {"responses": responses, "tool_result": None}
 
-Output a JSON object with the following fields:
-- "action": the main action (move, buy, sell, talk, look, rest, answer)
-- "target": the target of the action (e.g., direction, item name, NPC name)
-- "context": any relevant context (e.g., {{"terrain": "hills"}})
-- "modifiers": any modifiers (e.g., {{"haggle": true}})
+        # ------------------------------------------------------------------
+        # 4. CLASSIFIER FIRST (embedding)
+        # ------------------------------------------------------------------
+        from world.intent_manager import IntentManager
+        classifier = IntentManager()
+        intent_name, confidence, emb_slots = classifier.classify(message)
 
-Examples:
-- For movement: {{"action": "move", "target": "north"}}
-- For buying: {{"action": "buy", "target": "healing potion", "modifiers": {{"haggle": true}}}}
-- For selling: {{"action": "sell", "target": "shortsword"}}
-- For asking a rule: {{"action": "answer", "target": "Brawn"}}
+        intent_to_action = {
+            "acquire_goods": "buy",
+            "dispose_goods": "sell",
+            "relocate_self": "move",
+            "survey_entity": "look",
+            "survey_environment": "look",
+            "negotiate_price": "haggle"
+        }
+        intent_to_category = {
+            "acquire_goods": "economy",
+            "dispose_goods": "economy",
+            "negotiate_price": "economy",
+            "relocate_self": "movement",
+            "survey_entity": "exploration",
+            "survey_environment": "exploration"
+        }
 
-Output only the JSON, no extra text.
-    """
+        # Build frame from classifier
+        action = intent_to_action.get(intent_name, "narrate")
+        category = intent_to_category.get(intent_name, "other")
+        frame = IntentFrame(
+            action=action,
+            category=category,
+            target=emb_slots.get("target"),
+            item=emb_slots.get("obj"),
+            destination=emb_slots.get("destination"),
+            price=emb_slots.get("currency"),
+            raw_text=message
+        )
 
-        print(f"[DEBUG] Prompt sent to AI:\n{prompt}")
-        ai_data = self.world_controller.chat_ai.json_response(prompt)
-        print(f"[DEBUG] AI response: {ai_data}")
-        print(f"[DEBUG] IntentFrame: action={ai_data['action']}, target={ai_data.get('target')}")
-        if 'action' in ai_data:
-            from world.intent import IntentFrame
-            from world.adjudication_engine import AdjudicationEngine
-            frame = IntentFrame(
-                action=ai_data['action'],
-                target=ai_data.get('target'),
-                context=ai_data.get('context', {}),
-                modifiers=ai_data.get('modifiers', {})
-            )
-            engine = AdjudicationEngine(self.world_controller)
-            result = engine.process(frame, session_id=session_id)
-            if result.get('success'):
-                return {
-                    "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
-                    "map_data": result.get("map_data"),
-                    "action": result.get("action")
-                }
-            else:
-                return {"responses": [DialogResponse(speaker="DM", content=result.get("message", "Action failed"), dialog_type="error")]}
+        # ------------------------------------------------------------------
+        # 5. AI VALIDATION (only for low confidence)
+        # ------------------------------------------------------------------
+        if confidence < 0.7 or intent_name == "clarification_needed" or category == "other":
+            correction_prompt = f"""The system (using a similarity classifier) suggests the player wants to {action} with:
+- category: {category}
+- target: {frame.target}
+- item: {frame.item}
+- destination: {frame.destination}
+- price: {frame.price}
+
+Player message: "{message}"
+
+If this is correct, output {{"ok": true}}.
+If incorrect, output a corrected JSON with the same fields (action, category, target, item, destination, price). Use null for missing.
+Output only JSON, no extra text."""
+            ai_data = self.world_controller.chat_ai.json_response(correction_prompt)
+            if ai_data.get("ok") != True:
+                frame.action = ai_data.get("action", frame.action)
+                frame.category = ai_data.get("category", frame.category)
+                frame.target = ai_data.get("target", frame.target)
+                frame.item = ai_data.get("item", frame.item)
+                frame.destination = ai_data.get("destination", frame.destination)
+                frame.price = ai_data.get("price", frame.price)
+
+        # ------------------------------------------------------------------
+        # 6. DEBUG PRINT
+        # ------------------------------------------------------------------
+        print(f"[DEBUG] Final IntentFrame: action={frame.action}, category={frame.category}, target={frame.target}, item={frame.item}, price={frame.price}")
+
+        # ------------------------------------------------------------------
+        # 7. ADJUDICATION ENGINE
+        # ------------------------------------------------------------------
+        engine = AdjudicationEngine(self.world_controller)
+        result = engine.process(frame, session_id)
+        if result.get("clarification"):
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result["message"], dialog_type="narration")],
+                "clarification": True
+            }
         else:
-            narrative = ai_data.get('narrative', 'The DM nods.')
-            return {"responses": [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]}
-
-            
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "map_data": result.get("map_data"),
+                "action": result.get("action")
+            }
+           
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""
         session = self.sessions.get(session_id)

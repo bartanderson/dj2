@@ -67,6 +67,8 @@ Priority:
     - Low: Teleport and fast travel (can be handled by the engine as special
       "move" actions).
 
+TODO, I think this may be largely taken care  of and am wondering about integrating based on phases.py and when to dod it.
+
 ================================================================================
 """
 
