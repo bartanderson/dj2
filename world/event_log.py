@@ -16,7 +16,7 @@ class EventLog:
             "source": source
         }
         self.events.append(event)
-        print(f"[EVENT] {event_type}: {truncate(data)}")
+        print(f"[EVENT] {event_type}: {truncate(data)[:200]}")
 
     def get_events(self, event_type: Optional[str] = None) -> List[Dict[str, Any]]:
         if event_type:

@@ -158,7 +158,6 @@ from world.campaign import Merchant, MerchantItem, MerchantRelationship, Merchan
 from world.merchant_utils import compute_price
 from world.event_log import get_event_log
 from world.intent import IntentFrame
-from world.intent_manager import IntentManager
 from world.adjudication_engine import AdjudicationEngine
 
 print("Loading world_controller.py (new version with exit_dungeon fix)")
@@ -387,13 +386,6 @@ class WorldController:
             # Store merchant reference on the location for quick access
             starting_location.merchant_id = merchant.id
 
-        # else:
-        #     # Fallback to first location if no tavern found
-        #     first_location_id = list(self.world_map.locations.keys())[0]
-        #     self.starting_location_id = first_location_id
-        #     self.reveal_location(first_location_id)
-        #     self.travel_to_location(first_location_id)
-
         # Initialize managers
         self.quest_manager = QuestManager()
         self.party_manager = PartyManager(self.starting_location_id)
@@ -510,24 +502,24 @@ class WorldController:
                 tags={"gear"}
             ))
 
-        # Random display
-        import random
+        # Deterministic display using existing world RNG
         display_options = [
-            {"type": "table", "adjs": ["wooden", "worn", "ornate", "cluttered"], "desc": "a sturdy wooden table with neatly arranged items"},
-            {"type": "cart", "adjs": ["wooden", "rickety", "sturdy", "painted"], "desc": "a wooden cart filled with goods"},
-            {"type": "stall", "adjs": ["cloth", "wooden", "simple", "decorated"], "desc": "a simple stall with a canvas awning"},
-            {"type": "wagon", "adjs": ["covered", "open", "large", "small"], "desc": "a covered wagon with a variety of items"},
-            {"type": "rug", "adjs": ["colorful", "tattered", "large", "small"], "desc": "a colorful rug with items spread out"},
-            {"type": "counter", "adjs": ["wooden", "stone", "marble", "simple"], "desc": "a polished wooden counter"},
-            {"type": "coat", "adjs": ["tattered", "velvet", "leather", "bulging"], "desc": "a bulging coat with many pockets"},
-            {"type": "pockets", "adjs": ["bulging", "empty", "deep", "secret"], "desc": "pockets bulging with small items"},
-            {"type": "backpack", "adjs": ["leather", "worn", "large", "small"], "desc": "a worn leather backpack"},
-            {"type": "satchel", "adjs": ["leather", "cloth", "old", "new"], "desc": "a sturdy leather satchel"}
+            {"type": "table", "adjs": ["wooden", "worn", "ornate", "cluttered"], "desc_template": "a {adj} table with items neatly arranged on it"},
+            {"type": "cart", "adjs": ["wooden", "rickety", "sturdy", "painted"], "desc_template": "a {adj} cart filled with various goods"},
+            {"type": "stall", "adjs": ["cloth", "wooden", "simple", "decorated"], "desc_template": "a {adj} stall with a canvas awning"},
+            {"type": "wagon", "adjs": ["covered", "open", "large", "small"], "desc_template": "a {adj} wagon with a variety of items inside"},
+            {"type": "rug", "adjs": ["colorful", "tattered", "large", "small"], "desc_template": "a {adj} rug with items spread out on it"},
+            {"type": "counter", "adjs": ["wooden", "stone", "marble", "simple"], "desc_template": "a {adj} counter displaying his wares"},
+            {"type": "coat", "adjs": ["tattered", "velvet", "leather", "bulging"], "desc_template": "a {adj} coat with many pockets bulging with small items"},
+            {"type": "pockets", "adjs": ["bulging", "empty", "deep", "secret"], "desc_template": "{adj} pockets bulging with small items"},
+            {"type": "backpack", "adjs": ["leather", "worn", "large", "small"], "desc_template": "a {adj} backpack sitting on the ground"},
+            {"type": "satchel", "adjs": ["leather", "cloth", "old", "new"], "desc_template": "a {adj} satchel slung over his shoulder"}
         ]
-        opt = random.choice(display_options)
-        adj = random.choice(opt["adjs"])
+
+        opt = self.rng.choice(display_options)
+        adj = self.rng.choice(opt["adjs"])
         display_name = f"{adj} {opt['type']}"
-        display_description = opt["desc"]
+        display_description = opt["desc_template"].format(adj=adj)
 
         merchant = Merchant(
             merchant_id="grom_trader",
@@ -1265,6 +1257,13 @@ class WorldController:
         if not self.current_location:
             return {}
         return self.current_location.to_dict()
+
+    def emit_inventory_update(self, character_id: str):
+        from flask import current_app
+        from world_app import socketio  # careful with circular imports; better to pass socketio instance
+        # safer: use current_app.extensions['socketio']
+        socketio = current_app.extensions['socketio']
+        socketio.emit('inventory_update', {'character_id': character_id})
 
     def emit_party_moved(self, col, row, session_id):
         from flask_socketio import emit

@@ -9,12 +9,11 @@ from datetime import datetime
 
 from world import dnd_data
 from world.character import Character
-from world.intent_mapper import IntentMapper
 from world.action_system import ActionPlanner, ActionQueue
 from world.resolver import ResolverLoop
 from world.intent import IntentFrame
-from world.intent_manager import IntentManager
 from world.adjudication_engine import AdjudicationEngine
+from world.intent_parser import IntentParser
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,6 @@ class DMChatHandler:
     def __init__(self, world_controller):
         self.world_controller = world_controller
         self.sessions: Dict[str, SessionState] = {}
-        self.intent_manager = IntentManager()
         self.adjudication_engine = AdjudicationEngine(world_controller)
 
     def create_session(self, session_id: str, player_name: str, initial_data: Dict = None) -> SessionState:
@@ -334,7 +332,7 @@ Your answer:
             }
 
         # ------------------------------------------------------------------
-        # 2. GET ACTIVE CHARACTER & GAME CONTEXT
+        # GET ACTIVE CHARACTER & GAME CONTEXT
         # ------------------------------------------------------------------
         character = None
         if character_id:
@@ -348,84 +346,37 @@ Your answer:
             game_context["encounter_description"] = encounter.get("description", "")
 
         # ------------------------------------------------------------------
-        # 3. RULES / LORE QUESTIONS (bypass everything)
+        # 3. FAST RULES / LORE DETECTOR (no LLM)
         # ------------------------------------------------------------------
-        topic = self._extract_message_topic(message, game_context)
-        if topic and topic["type"] != "general":
-            answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
-            responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
-            session.conversation_history.append({"role": "assistant", "content": answer})
-            return {"responses": responses, "tool_result": None}
+        if self._is_rules_question(message):
+            topic = self._extract_message_topic(message, game_context)
+            if topic and topic["type"] != "general":
+                answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
+                responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
+                session.conversation_history.append({"role": "assistant", "content": answer})
+                return {"responses": responses, "tool_result": None}
+            # If the fast check said it's a rules question but topic extraction failed,
+            # fall through to the gameplay parser (maybe it was a false positive – rare)
 
         # ------------------------------------------------------------------
-        # 4. CLASSIFIER FIRST (embedding)
+        # PROCEED WITH GAMEPLAY INTENT PARSER (your new IntentParser)
         # ------------------------------------------------------------------
-        from world.intent_manager import IntentManager
-        classifier = IntentManager()
-        intent_name, confidence, emb_slots = classifier.classify(message)
+        parser = IntentParser(self.world_controller.chat_ai)
+        frame = parser.parse(message, game_context, session.conversation_history)
+        print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
 
-        intent_to_action = {
-            "acquire_goods": "buy",
-            "dispose_goods": "sell",
-            "relocate_self": "move",
-            "survey_entity": "look",
-            "survey_environment": "look",
-            "negotiate_price": "haggle"
-        }
-        intent_to_category = {
-            "acquire_goods": "economy",
-            "dispose_goods": "economy",
-            "negotiate_price": "economy",
-            "relocate_self": "movement",
-            "survey_entity": "exploration",
-            "survey_environment": "exploration"
-        }
-
-        # Build frame from classifier
-        action = intent_to_action.get(intent_name, "narrate")
-        category = intent_to_category.get(intent_name, "other")
-        frame = IntentFrame(
-            action=action,
-            category=category,
-            target=emb_slots.get("target"),
-            item=emb_slots.get("obj"),
-            destination=emb_slots.get("destination"),
-            price=emb_slots.get("currency"),
-            raw_text=message
-        )
+        if frame.clarification_needed:
+            return {
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=f"I need clarification: {', '.join(frame.missing_fields)}. Can you rephrase?",
+                    dialog_type="question"
+                )],
+                "clarification": True
+            }
 
         # ------------------------------------------------------------------
-        # 5. AI VALIDATION (only for low confidence)
-        # ------------------------------------------------------------------
-        if confidence < 0.7 or intent_name == "clarification_needed" or category == "other":
-            correction_prompt = f"""The system (using a similarity classifier) suggests the player wants to {action} with:
-- category: {category}
-- target: {frame.target}
-- item: {frame.item}
-- destination: {frame.destination}
-- price: {frame.price}
-
-Player message: "{message}"
-
-If this is correct, output {{"ok": true}}.
-If incorrect, output a corrected JSON with the same fields (action, category, target, item, destination, price). Use null for missing.
-Output only JSON, no extra text."""
-            ai_data = self.world_controller.chat_ai.json_response(correction_prompt)
-            if ai_data.get("ok") != True:
-                frame.action = ai_data.get("action", frame.action)
-                frame.category = ai_data.get("category", frame.category)
-                frame.target = ai_data.get("target", frame.target)
-                frame.item = ai_data.get("item", frame.item)
-                frame.destination = ai_data.get("destination", frame.destination)
-                frame.price = ai_data.get("price", frame.price)
-
-        # ------------------------------------------------------------------
-        # 6. DEBUG PRINT
-        # ------------------------------------------------------------------
-        print(f"[DEBUG] Final IntentFrame: action={frame.action}, category={frame.category}, target={frame.target}, item={frame.item}, price={frame.price}")
-
-        # ------------------------------------------------------------------
-        # 7. ADJUDICATION ENGINE
+        # ADJUDICATION ENGINE
         # ------------------------------------------------------------------
         engine = AdjudicationEngine(self.world_controller)
         result = engine.process(frame, session_id)
@@ -458,3 +409,51 @@ Output only JSON, no extra text."""
         else:
             session.pending_confirmation = None
             return {"responses": [DialogResponse(speaker="DM", content="Confirmation cancelled.", dialog_type="narration")]}
+
+    # helper
+    def _is_rules_question(self, message: str) -> bool:
+        """
+        Fast deterministic check: is this message asking about game rules/lore?
+        Returns True if it's likely a rules question, False otherwise.
+        """
+        from world import dnd_data
+
+        msg = message.lower().strip()
+
+        # 1. Must be a question or ask for explanation
+        question_markers = ["?", "what is", "how do", "tell me about", "explain", "can i", "how does", "what are", "why would"]
+        is_question = any(msg.startswith(marker) or f" {marker}" in msg for marker in question_markers) or "?" in msg
+        if not is_question:
+            return False
+
+        # 2. Known rule topics (from your dnd_data)
+        rule_topics = (
+            dnd_data.get_race_list() +
+            dnd_data.get_class_list() +
+            dnd_data.get_skill_list() +
+            dnd_data.get_background_list() +
+            dnd_data.get_spell_list() +
+            dnd_data.get_ability_score_full_names()  # Brawn, Finesse, Wits, Will
+        )
+        rule_topics_lower = [t.lower() for t in rule_topics]
+
+        # 3. Check if any rule topic appears as a whole word in the message
+        words = msg.split()
+        for topic in rule_topics_lower:
+            if topic in msg:
+                # make sure it's not part of a larger word (e.g., "spell" inside "spellbook")
+                # simple check: space or punctuation boundaries
+                idx = msg.find(topic)
+                before = msg[idx-1] if idx > 0 else ' '
+                after = msg[idx+len(topic)] if idx+len(topic) < len(msg) else ' '
+                if not before.isalpha() and not after.isalpha():
+                    return True
+
+        # 4. Additional explicit known rule names that might be single words
+        # (optional: you can add more like "initiative", "proficiency", etc.)
+        extra_terms = ["ability score", "attribute", "race", "class", "background", "skill", "spell", "level", "feat", "trait"]
+        for term in extra_terms:
+            if term in msg:
+                return True
+
+        return False

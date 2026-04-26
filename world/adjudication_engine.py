@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 from world.intent import IntentFrame
 from flask_socketio import emit
 from world.event_log import get_event_log
+from difflib import get_close_matches
 
 DEBUG = True   # set to False to reduce console output
 
@@ -67,122 +68,328 @@ class AdjudicationEngine:
         }
 
     def _handle_buy(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        item_name = frame.target
-        if not item_name:
-            return {"success": False, "message": "No item specified."}
-
         char = self.world._get_active_character(session_id)
         if not char:
             return {"success": False, "message": "No active character."}
-
+        
         if not self.world.current_location or not self.world.current_location.merchant_id:
             return {"success": False, "message": "No merchant here."}
-
+        
         merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
         if not merchant:
-            self.event_log.emit("economy.buy.fail", {"reason": "no_merchant", "location": self.world.current_location.name}, source="adjudication")
-            return {"success": False, "message": "No merchant here."}
-
-        item = next((i for i in merchant.inventory if i.name.lower() == item_name.lower()), None)
+            return {"success": False, "message": "Merchant not found."}
+        
+        # Use frame.item first, then frame.target
+        item_name = frame.item or frame.target
+        if not item_name:
+            return {"success": False, "message": "What item do you want to buy?"}
+        
+        # Fuzzy match against merchant inventory
+        from difflib import get_close_matches
+        inventory_names = [i.name.lower() for i in merchant.inventory]
+        matches = get_close_matches(item_name.lower(), inventory_names, n=1, cutoff=0.6)
+        if not matches:
+            available = ", ".join([i.name for i in merchant.inventory[:5]])
+            return {"success": False, "message": f"I don't have '{item_name}'. I have: {available}."}
+        
+        matched_name = matches[0]
+        item = next((i for i in merchant.inventory if i.name.lower() == matched_name), None)
         if not item:
-            self.event_log.emit("economy.buy.fail", {"reason": "item_not_found", "item": item_name}, source="adjudication")
-            return {"success": False, "message": f"Item '{item_name}' not found."}
-
+            return {"success": False, "message": f"Item '{matched_name}' not found in inventory."}
+        
+        # Compute price
         rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
-        base_price = self.world._compute_price(item, merchant, rel, {})
-        final_price = base_price
-        if frame.modifiers.get("haggle"):
-            persuasion = random.randint(1, 20) + char.get_skill_rank('social')
-            difficulty = 10 + merchant.personality.greed - merchant.personality.honor
-            if persuasion >= difficulty:
-                discount = random.randint(1, 20) // 10
-                final_price = max(1, base_price - discount)
-
-        if char.currency < final_price:
-            self.event_log.emit("economy.buy.fail", {"reason": "insufficient_gold", "need": final_price, "have": char.currency}, source="adjudication")
-            return {"success": False, "message": f"Not enough gold. Need {final_price} gp."}
-
-        char.currency -= final_price
+        price = self.world._compute_price(item, merchant, rel, frame.context)
+        
+        # If no price given, ask for confirmation
+        if not frame.price:
+            return {
+                "success": False,
+                "message": f"{item.name} costs {price} gp. To buy it, say 'buy {item.name} for {price} gp'.",
+                "action": "request_price"
+            }
+        
+        # Proceed with purchase
+        if char.currency < frame.price:
+            return {"success": False, "message": f"You need {frame.price} gp but only have {char.currency}."}
+        
+        char.currency -= frame.price
         from world.character import InventoryItem
         new_item = InventoryItem(
             name=item.name,
             description=f"Bought from {merchant.name}",
             type=item.tags.pop() if item.tags else "adventuring_gear",
-            cost=final_price
+            cost=frame.price
         )
         char.inventory.append(new_item)
         self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1)
         self.world.character_manager._save_character_to_db(char)
-
+        
         from world.event_log import get_event_log
         get_event_log().emit("economy.buy", {
             "item": item.name,
+            "price": frame.price,
+            "character": char.id,
+            "merchant": merchant.id
+        }, source="adjudication_engine")
+
+        self.world.emit_inventory_update(char.id)
+
+        return {
+            "success": True,
+            "message": f"You bought {item.name} for {frame.price} gp.",
+            "action": "refresh_inventory"
+        }
+
+    def _handle_barter(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+        """Handle barter: player gives item (+optional gold) for merchant's item."""
+        char = self.world._get_active_character(session_id)
+        if not char:
+            return {"success": False, "message": "No active character."}
+        
+        if not self.world.current_location or not self.world.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here to barter with."}
+        
+        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+        
+        # Check if merchant allows barter
+        if not merchant.constraints.barter_allowed:
+            return {"success": False, "message": f"{merchant.name} doesn't barter. You can buy or sell only."}
+        
+        # Player gives item
+        give_item_name = frame.item or frame.target  # item they give
+        want_item_name = frame.target if frame.item else None  # if only one, assume give=item, want=target
+        # Better: if both item and target are set, give=item, want=target.
+        if frame.item and frame.target:
+            give_item_name = frame.item
+            want_item_name = frame.target
+        elif not want_item_name:
+            return {"success": False, "message": "Barter requires both what you give and what you want. Example: 'barter shortsword for potion'."}
+        
+        # Fuzzy match for player's give item
+        from difflib import get_close_matches
+        def get_item_from_inventory(inv, name):
+            inv_names = [i.name.lower() for i in inv]
+            matches = get_close_matches(name.lower(), inv_names, n=1, cutoff=0.6)
+            if not matches:
+                return None
+            matched = matches[0]
+            return next((i for i in inv if i.name.lower() == matched), None)
+        
+        give_item_obj = get_item_from_inventory(char.inventory, give_item_name)
+        if not give_item_obj:
+            return {"success": False, "message": f"You don't have '{give_item_name}' to barter."}
+        
+        # Fuzzy match for merchant's wanted item
+        want_item_obj = get_item_from_inventory(merchant.inventory, want_item_name)
+        if not want_item_obj:
+            available = ", ".join([i.name for i in merchant.inventory[:5]])
+            return {"success": False, "message": f"{merchant.name} doesn't have '{want_item_name}'. They have: {available}."}
+        
+        # Check visibility of merchant's item
+        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
+        if not self.world._is_item_visible(want_item_obj, rel):
+            return {"success": False, "message": f"You don't see '{want_item_obj.name}' in the {merchant.display_name}."}
+        
+        # Compute values
+        # Player's item value = what merchant would pay for it (sell price)
+        give_value = self._compute_sell_price(give_item_obj, merchant, rel)
+        # Merchant's item value = what player would pay (buy price)
+        want_value = self.world._compute_price(want_item_obj, merchant, rel, frame.context)
+        
+        # Gold adjustment from player (positive = player adds gold)
+        gold_diff = frame.price if frame.price else 0
+        
+        # Check if barter is fair
+        player_total = give_value + gold_diff
+        merchant_total = want_value
+        
+        if player_total < merchant_total:
+            shortage = merchant_total - player_total
+            return {
+                "success": False,
+                "message": f"Your {give_item_obj.name} (worth {give_value} gp) plus {gold_diff} gp = {player_total} gp. The {want_item_obj.name} costs {want_value} gp. You need {shortage} more gold.",
+                "action": "counter_offer"
+            }
+        elif player_total > merchant_total:
+            overpay = player_total - merchant_total
+            # Optionally, merchant might give change or just accept overpay as generosity (improves relationship)
+            # For simplicity, we accept overpay but note it
+            pass
+        
+        # Accept barter
+        # Remove give item from player
+        if give_item_obj in char.inventory:
+            char.inventory.remove(give_item_obj)
+        else:
+            return {"success": False, "message": "Item removal failed."}
+        
+        # Add wanted item to player (create copy)
+        from world.character import InventoryItem
+        new_item = InventoryItem(
+            name=want_item_obj.name,
+            description=f"Bartered from {merchant.name}",
+            type=want_item_obj.tags.pop() if want_item_obj.tags else "adventuring_gear",
+            cost=want_item_obj.base_price
+        )
+        char.inventory.append(new_item)
+        
+        # Adjust gold
+        if gold_diff > 0:
+            if char.currency < gold_diff:
+                # Rollback? For now, fail
+                char.inventory.append(give_item_obj)  # give back
+                char.inventory.remove(new_item)
+                return {"success": False, "message": f"You don't have {gold_diff} gp to add."}
+            char.currency -= gold_diff
+            merchant_currency = getattr(merchant, 'currency', 0)  # merchants may not track gold; we can ignore or add to a hidden pool
+        elif gold_diff < 0:
+            # Merchant adds gold (unlikely but possible)
+            char.currency += abs(gold_diff)
+        
+        # Merchant loses wanted item, gains give item (simplified – we just remove from merchant inventory, add give item)
+        # In a real system you'd update merchant inventory, but for simplicity we remove wanted item
+        merchant.inventory.remove(want_item_obj)
+        # Optionally add give_item_obj to merchant inventory (but may not persist)
+        
+        # Update relationship (positive for successful barter)
+        self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=2, trust_delta=1)
+        self.world.character_manager._save_character_to_db(char)
+        
+        # Emit event
+        from world.event_log import get_event_log
+        get_event_log().emit("economy.barter", {
+            "give_item": give_item_obj.name,
+            "receive_item": want_item_obj.name,
+            "gold_diff": gold_diff,
+            "character": char.id,
+            "merchant": merchant.id
+        }, source="adjudication_engine")
+
+        self.world.emit_inventory_update(char.id)
+        
+        return {
+            "success": True,
+            "message": f"You barter your {give_item_obj.name} for {merchant.name}'s {want_item_obj.name}. {'You add ' + str(gold_diff) + ' gp.' if gold_diff > 0 else ''}",
+            "action": "refresh_inventory"
+        }
+
+    def _compute_sell_price(self, item, merchant, rel):
+        """Helper to compute how much merchant will pay for an item (sell value)."""
+        base_price = item.cost if hasattr(item, 'cost') else 10
+        # Merchant's greed reduces price (since they want to keep money), affinity/trust increases price
+        multiplier = 1.0
+        multiplier -= (merchant.personality.greed - 5) * 0.05
+        multiplier += rel.affinity * 0.03
+        multiplier += rel.trust * 0.02
+        multiplier -= rel.fear * 0.04
+        multiplier = max(0.2, min(1.0, multiplier))
+        price = int(base_price * multiplier)
+        return max(1, price)
+
+    def _handle_sell(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+        """Sell an item to the merchant."""
+        char = self.world._get_active_character(session_id)
+        if not char:
+            return {"success": False, "message": "No active character."}
+        
+        if not self.world.current_location or not self.world.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here to sell to."}
+        
+        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+        
+        # Get item name from frame.item or frame.target
+        item_name = frame.item or frame.target
+        if not item_name:
+            return {"success": False, "message": "What item do you want to sell?"}
+        
+        # Fuzzy match against character's inventory
+        from difflib import get_close_matches
+        
+        # Get list of item names from character's inventory
+        def get_name(i):
+            return i.name.lower() if hasattr(i, 'name') else i.get('name', '').lower()
+        
+        inventory_names = [get_name(i) for i in char.inventory]
+        matches = get_close_matches(item_name.lower(), inventory_names, n=1, cutoff=0.6)
+        if not matches:
+            available = ", ".join([get_name(i) for i in char.inventory[:5]])
+            return {"success": False, "message": f"You don't have '{item_name}'. You have: {available}."}
+        
+        matched_name = matches[0]
+        # Find the actual item object
+        item_obj = next((i for i in char.inventory if get_name(i) == matched_name), None)
+        if not item_obj:
+            return {"success": False, "message": f"Item '{matched_name}' not found in your inventory."}
+        
+        # Compute sell price (typically half of base price, modified by merchant personality and relationship)
+        base_price = item_obj.cost if hasattr(item_obj, 'cost') else 10
+        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
+        
+        # Merchant's greed increases price (bad for seller), affinity/trust increase price (good for seller)
+        price_multiplier = 1.0
+        price_multiplier += (merchant.personality.greed - 5) * 0.05  # greed 0-10 → -0.25 to +0.25
+        price_multiplier += rel.affinity * 0.03   # +0.03 per affinity point
+        price_multiplier += rel.trust * 0.02      # +0.02 per trust point
+        price_multiplier -= rel.fear * 0.04       # fear lowers price
+        
+        # Clamp between 0.2 and 1.0 (merchant won't pay more than base price usually)
+        price_multiplier = max(0.2, min(1.0, price_multiplier))
+        price = int(base_price * price_multiplier)
+        price = max(1, price)  # at least 1 gp
+        
+        # If no price offered, inform the player
+        if not frame.price:
+            return {
+                "success": False,
+                "message": f"I'll give you {price} gp for your {matched_name}. To sell, say 'sell {matched_name} for {price} gp'.",
+                "action": "request_price"
+            }
+        
+        # Player offered a price – check if it's acceptable (simple: accept if offered <= computed price? Actually player wants to sell, so offered is what they ask for)
+        offered = frame.price
+        if offered > price:
+            # Player asks for more than merchant is willing to pay – can haggle or reject
+            return {
+                "success": False,
+                "message": f"I can't pay {offered} gp for that. I'll give you {price} gp. Want to sell for {price}?",
+                "action": "counter_offer"
+            }
+        # Accept the sale (offered <= price, merchant agrees)
+        # Use offered price (usually player will match exactly the computed price)
+        final_price = offered if offered <= price else price
+        
+        # Perform transaction
+        char.currency += final_price
+        # Remove item from inventory
+        if item_obj in char.inventory:
+            char.inventory.remove(item_obj)
+        else:
+            # Handle dict-style if needed
+            char.custom_items.remove(item_obj) if hasattr(char, 'custom_items') else None
+        
+        # Update merchant relationship (positive for selling, slight affinity bump)
+        self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1, trust_delta=1)
+        self.world.character_manager._save_character_to_db(char)
+        
+        # Emit event
+        from world.event_log import get_event_log
+        get_event_log().emit("economy.sell", {
+            "item": matched_name,
             "price": final_price,
             "character": char.id,
             "merchant": merchant.id
         }, source="adjudication_engine")
         
-        if frame.action == "buy":
-            if frame.currency:
-                return self._handle_haggle(frame, session_id)
-            else:
-                return self._handle_buy(frame, session_id)
+        self.world.emit_inventory_update(char.id)
 
         return {
             "success": True,
-            "message": f"You bought {item.name} for {final_price} gp.",
-            "action": "refresh_inventory"
-        }
-
-    def _handle_sell(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        item_name = frame.target
-        if not item_name:
-            return {"success": False, "message": "No item specified."}
-
-        char = self.world._get_active_character(session_id)
-        if not char:
-            return {"success": False, "message": "No active character."}
-
-        if not self.world.current_location or not self.world.current_location.merchant_id:
-            return {"success": False, "message": "No merchant here."}
-
-        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
-        if not merchant:
-            self.event_log.emit("economy.buy.fail", {"reason": "no_merchant", "location": self.world.current_location.name}, source="adjudication")
-            return {"success": False, "message": "Merchant not found."}
-
-        # Find item in inventory (handles both objects and dicts)
-        def get_name(i):
-            return i.name if hasattr(i, 'name') else i.get('name', '')
-        def get_cost(i):
-            return i.cost if hasattr(i, 'cost') else i.get('cost', 0)
-
-        item = next((i for i in char.inventory if get_name(i).lower() == item_name.lower()), None)
-        if not item:
-            self.event_log.emit("economy.buy.fail", {"reason": "item_not_found", "item": item_name}, source="adjudication")
-            return {"success": False, "message": f"Item '{item_name}' not found."}
-
-        sell_price = get_cost(item) // 2
-        char.currency += sell_price
-        if item in char.inventory:
-            char.inventory.remove(item)
-        else:
-            char.custom_items.remove(item)
-
-        self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, trust_delta=1)
-        self.world.character_manager._save_character_to_db(char)
-
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.sell", {
-            "item": item_name,
-            "price": sell_price,
-            "character": char.id,
-            "merchant": merchant.id
-        }, source="adjudication_engine")
-
-        return {
-            "success": True,
-            "message": f"You sold {item_name} for {sell_price} gp.",
+            "message": f"You sold {matched_name} for {final_price} gp.",
             "action": "refresh_inventory"
         }
 
@@ -277,29 +484,47 @@ class AdjudicationEngine:
             "action": result.get("action")
         }
 
+    def _normalize_action(self, action: str, raw_text: str) -> str:
+        action_lower = action.lower()
+        if action_lower in ("buy","purchase","offer","bid","pay","get","acquire"):
+            return "buy"
+        if action_lower in ("sell","dispose","trade","pawn","vend"):
+            return "sell"
+        if action_lower in ("haggle","negotiate","bargain","dicker"):
+            return "haggle"
+        if action_lower in ("barter","swap","exchange"):
+            return "barter"
+        # fallback to keyword scan
+        text = raw_text.lower()
+        if any(w in text for w in ("barter","swap","exchange")):
+            return "barter"
+        if any(w in text for w in ("buy","purchase","offer","bid","pay","get","acquire")):
+            return "buy"
+        if any(w in text for w in ("sell","trade","pawn","vend","dispose")):
+            return "sell"
+        if any(w in text for w in ("haggle","negotiate","bargain","dicker")):
+            return "haggle"
+        return action
+
     def _handle_economy(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
         if DEBUG:
             print(f"[DEBUG] _handle_economy: action={frame.action}, item={frame.item}, price={frame.price}")
+        
+        canonical = self._normalize_action(frame.action, frame.raw_text)
+
         action = frame.action.lower()
-        if "buy" in action:
-            if frame.price:
-                result = self.world.haggle(frame.item, frame.price) if hasattr(self.world, 'haggle') else None
-            else:
-                result = self.world.buy(frame.item) if hasattr(self.world, 'buy') else None
-        elif "sell" in action:
-            result = self.world.sell(frame.item) if hasattr(self.world, 'sell') else None
-        elif "haggle" in action:
-            result = self.world.haggle(frame.item, frame.price) if hasattr(self.world, 'haggle') else None
+        if action in ["buy", "purchase"]:
+            # Call the existing _handle_buy method (already defined)
+            return self._handle_buy(frame, session_id)
+        elif action in ["sell", "dispose"]:
+            return self._handle_sell(frame, session_id)
+        elif action in ["haggle", "negotiate"]:
+            return self._handle_haggle(frame, session_id)
+        elif canonical == "barter":
+            return self._handle_barter(frame, session_id)
         else:
             return {"success": False, "message": f"Unknown economic action: {action}"}
-        if result:
-            return {
-                "success": result.get("success", False),
-                "message": result.get("message", ""),
-                "action": result.get("action")
-            }
-        else:
-            return {"success": False, "message": "Economy feature not fully implemented yet."}
+
 
     def _handle_social(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
         if DEBUG:
