@@ -57,11 +57,12 @@ SPECIAL RULES FOR ECONOMY ACTIONS:
 
 Examples:
 Message: "buy potion" → {{"action":"buy","category":"economy","target":null,"item":"potion","destination":null,"price":null,"manner":null,"motivation":null,"modifiers":{{}}}}
-Message: "sell shortsword for 8 gp" → {{"action":"sell","category":"economy","target":null,"item":"shortsword","price":8,...}}
-Message: "barter my shortsword for your healing potion" → {{"action":"barter","category":"economy","target":"healing potion","item":"shortsword","price":null,...}}
-Message: "trade shortsword + 5 gp for potion" → {{"action":"barter","category":"economy","target":"potion","item":"shortsword","price":5,...}}
-Message: "look at Grom" → {{"action":"look","category":"exploration","target":"Grom",...}}
-Message: "go north" → {{"action":"move","category":"movement","destination":"north",...}}
+Message: "buy potion" → {{"action":"buy","category":"economy","target":null,"item":"potion","destination":null,"price":null,"manner":null,"motivation":null,"modifiers":{{}}}}
+Message: "sell shortsword for 8 gp" → {{"action":"sell","category":"economy","target":null,"item":"shortsword","price":8}}
+Message: "barter my shortsword for your healing potion" → {{"action":"barter","category":"economy","target":"healing potion","item":"shortsword","price":null}}
+Message: "trade shortsword + 5 gp for potion" → {{"action":"barter","category":"economy","target":"potion","item":"shortsword","price":5}}
+Message: "look at Grom" → {{"action":"look","category":"exploration","target":"Grom"}}
+Message: "go north" → {{"action":"move","category":"movement","destination":"north"}}
 
 Use null for missing fields.
 

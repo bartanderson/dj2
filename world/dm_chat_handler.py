@@ -15,6 +15,8 @@ from world.intent import IntentFrame
 from world.adjudication_engine import AdjudicationEngine
 from world.intent_parser import IntentParser
 
+DEBUG = True # False to turn off debug prints
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -311,20 +313,26 @@ Your answer:
             "n": "north", "s": "south", "e": "east", "w": "west",
             "ne": "northeast", "nw": "northwest", "se": "southeast", "sw": "southwest"
         }
-        cmd = message.lower().strip()
         prefixes = [
             "go ", "head ", "walk ", "travel ", "climb ", "swim ", "sail ",
             "roll ", "slide ", "move ", "run ", "crawl ", "creep ", "march "
         ]
+        cmd = message.lower().strip()
         for prefix in prefixes:
             if cmd.startswith(prefix):
                 cmd = cmd[len(prefix):].strip()
                 break
         if cmd in movement_map:
             direction = movement_map[cmd]
+            if DEBUG:
+                print(f"[DEBUG] Movement: direction='{direction}'")
             frame = IntentFrame(action=f"move {direction}", category="movement", destination=direction)
-            engine = AdjudicationEngine(self.world_controller)
-            result = engine.process(frame, session_id)
+            result = self.adjudication_engine.process(frame, session_id)
+            if DEBUG:
+                print(f"[DEBUG] engine.process returned: {result}")
+            if result is None:
+                print("[DEBUG] result is None!")
+                result = {"success": False, "message": "Movement failed.", "action": None}
             return {
                 "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
                 "map_data": result.get("map_data"),
@@ -364,6 +372,9 @@ Your answer:
         parser = IntentParser(self.world_controller.chat_ai)
         frame = parser.parse(message, game_context, session.conversation_history)
         print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
+        if frame.category is None:
+            frame.category = "other"
+
 
         if frame.clarification_needed:
             return {
@@ -378,8 +389,7 @@ Your answer:
         # ------------------------------------------------------------------
         # ADJUDICATION ENGINE
         # ------------------------------------------------------------------
-        engine = AdjudicationEngine(self.world_controller)
-        result = engine.process(frame, session_id)
+        result = self.adjudication_engine.process(frame, session_id)
         if result.get("clarification"):
             return {
                 "responses": [DialogResponse(speaker="DM", content=result["message"], dialog_type="narration")],

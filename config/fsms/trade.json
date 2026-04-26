@@ -1,0 +1,58 @@
+{
+  "name": "TradeFSM",
+  "initial_state": "awaiting",
+  "states": [
+    {"name": "awaiting"},
+    {"name": "countering"},
+    {"name": "completed", "final": true}
+  ],
+  "transitions": [
+    {
+      "event": "confirm",
+      "from": "awaiting",
+      "to": "completed",
+      "actions": ["execute_buy"],
+      "guard": null
+    },
+    {
+      "event": "confirm",
+      "from": "countering",
+      "to": "completed",
+      "actions": ["execute_buy"],
+      "guard": null
+    },
+    {
+      "event": "offer",
+      "from": "awaiting",
+      "to": "countering",
+      "guard": "price_too_low",
+      "actions": ["update_price"]
+    },
+    {
+      "event": "offer",
+      "from": "countering",
+      "to": "countering",
+      "guard": "price_too_low",
+      "actions": ["update_price"]
+    },
+    {
+      "event": "offer",
+      "from": "awaiting",
+      "to": "completed",
+      "guard": "price_acceptable",
+      "actions": ["execute_buy"]
+    },
+    {
+      "event": "offer",
+      "from": "countering",
+      "to": "completed",
+      "guard": "price_acceptable",
+      "actions": ["execute_buy"]
+    }
+  ],
+  "event_patterns": [
+    {"pattern": "yes|sure|ok|deal|accept", "event": "confirm", "extract": []},
+    {"pattern": "(\\d+)", "event": "offer", "extract": ["price"]},
+    {"pattern": "no|cancel", "event": "cancel", "extract": []}
+  ]
+}
