@@ -76,15 +76,15 @@ def _get_exploration_data() -> dict:
     """Load 08_exploration.json - state machines, procedures, tables"""
     return _load_og_json("08_exploration.json")
 
-#---9-13
+#---9-13 social, crafting, settlement, engine, index
 def _get_campaign_data() -> dict:
     """Load 14_campaign.json - world layers, factions, quests, time"""
     return _load_og_json("14_campaign.json")
-#---15-16
+#---15-16 session, content packs
 def _get_player_narrative_data() -> dict:
     """Load 17_player_narrative.json - backstory framework, connections, revelations"""
     return _load_og_json("17_player_narrative.json")
-#---18-19
+#---18-19 consequence engine, revelation system
 
 # ----------------------------------------------------------------------
 # Attribute (replaces AbilityScore)

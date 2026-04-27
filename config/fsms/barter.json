@@ -1,0 +1,35 @@
+{
+  "name": "BarterFSM",
+  "states": [
+    {
+      "name": "awaiting",
+      "initial": true,
+      "prompt": "Your {give_item} (worth {give_value} gp) for {receive_item} (worth {receive_value} gp). Need {shortage} more gp. Say 'yes' to accept, or offer extra gold."
+    },
+    {
+      "name": "countering",
+      "prompt": "Still need {shortage} more gp. Offer more or say 'cancel'."
+    },
+    {
+      "name": "completed",
+      "final": true,
+      "prompt": "Barter completed! You gave {give_item} and {paid_gold} gp, received {receive_item}."
+    }
+  ],
+  "events": {
+    "confirm": [
+      { "from": "awaiting", "to": "completed", "actions": ["execute_barter"] },
+      { "from": "countering", "to": "completed", "actions": ["execute_barter"] }
+    ],
+    "offer": [
+      { "from": "awaiting", "to": "countering", "cond": "need_more_gold", "actions": ["add_gold"] },
+      { "from": "countering", "to": "countering", "cond": "need_more_gold", "actions": ["add_gold"] },
+      { "from": "awaiting", "to": "completed", "cond": "offer_acceptable", "actions": ["execute_barter"] },
+      { "from": "countering", "to": "completed", "cond": "offer_acceptable", "actions": ["execute_barter"] }
+    ],
+    "cancel": [
+      { "from": "awaiting", "to": "completed" },
+      { "from": "countering", "to": "completed" }
+    ]
+  }
+}
