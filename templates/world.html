@@ -12,6 +12,7 @@
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
     <script>
         htmx.config.historyCacheSize = 0;  // optional
         // Suppress logging
@@ -258,6 +259,7 @@
                      hx-swap="innerHTML">
                     Loading...
                 </div>
+                <button id="logout-btn" class="btn secondary" style="margin-left: 10px; padding: 4px 8px;">Logout</button>
                 <div class="quick-actions">
                     <button class="action-btn" id="travel-btn">
                         <i class="fa-solid fa-walking"></i>
@@ -318,7 +320,6 @@
                 </button>
             </div>
             <div class="menu-section" style="margin-top: auto; border-top: 1px solid #4ecca3;">
-                    <button onclick="window.open('/terrain-test', '_blank')">Terrain Test</button>
                 <div class="menu-header">World Chat</div>
                 <div id="world-chat-messages" style="height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 10px; margin: 10px; border-radius: 4px; font-size: 12px;">
                     <div class="chat-message system">Type a command to interact with the world. Try "go north".</div>
@@ -407,10 +408,6 @@
                          hx-swap="innerHTML">
                         Loading parties...
                     </div>
-                    <div style="margin-top: 20px;">
-                        <button id="create-party-btn" class="btn">Create Party</button>
-                        <button id="join-party-btn" class="btn secondary">Join Party</button>
-                    </div>
                 </div>
             </div>
             
@@ -418,15 +415,11 @@
             <div id="inventory-tab" class="tab-content">
                 <div class="tab-panel">
                     <h2>Inventory</h2>
-                    <p>Your carried items and equipment:</p>
-                    <div id="inventory-items" style="margin: 15px 0;">
-                        <p>Your inventory is empty.</p>
-                    </div>
-                    <div class="inventory-stats">
-                        <div class="weight-info">
-                            <span>Carried: </span><span id="current-weight">0</span>
-                            <span> / </span><span id="max-weight">100</span>
-                        </div>
+                    <div id="inventory-items"
+                         hx-get="/api/inventory/list-html"
+                         hx-trigger="load"
+                         hx-swap="innerHTML">
+                        Loading inventory...
                     </div>
                 </div>
             </div>
@@ -491,7 +484,7 @@
             </div>
             <div class="modal-body">
                 <div id="chat-messages" style="height: 300px; overflow-y: auto; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-                    <!-- Chat messages will appear here -->
+                    
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <input type="text" id="chat-input" placeholder="Type your message..." style="flex: 1; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid #4ecca3; border-radius: 4px; color: white;">
@@ -540,7 +533,6 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/3.0.5/seedrandom.min.js"></script>
-    <script src="{{ url_for('static', filename='js/terrain-generator.js') }}"></script>
     <script src="{{ url_for('static', filename='js/world.js') }}"></script>
     
     <!-- Unified UI System -->
@@ -730,97 +722,6 @@
         container.innerHTML = html;
     }
     
-    // ===== CHAT FUNCTIONALITY =====
-    function setupChat() {
-        const chatInput = document.getElementById('chat-input');
-        const chatMessages = document.getElementById('chat-messages');
-        const sendChatBtn = document.getElementById('send-chat');
-        
-        function addMessage(text, sender = 'player') {
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `chat-message ${sender}`;
-            msgDiv.innerHTML = `
-                <div style="font-weight: bold; color: ${sender === 'player' ? '#4ecca3' : '#ff9800'}">
-                    ${sender === 'player' ? 'You' : 'DM'}:
-                </div>
-                <div style="margin-left: 10px;">${text}</div>
-            `;
-            msgDiv.style.marginBottom = '10px';
-            msgDiv.style.padding = '8px';
-            msgDiv.style.background = 'rgba(0,0,0,0.3)';
-            msgDiv.style.borderRadius = '4px';
-            
-            chatMessages.appendChild(msgDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-        
-        async function sendChatMessage() {
-            const message = chatInput.value.trim();
-            if (!message) return;
-            
-            // Show user message immediately
-            addMessage(message, 'player');
-            chatInput.value = '';
-            
-            // Show loading indicator
-            const loadingId = 'loading-' + Date.now();
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = loadingId;
-            loadingDiv.innerHTML = '<em>DM is thinking...</em>';
-            loadingDiv.style.color = '#888';
-            loadingDiv.style.marginBottom = '8px';
-            chatMessages.appendChild(loadingDiv);
-            
-            try {
-                const response = await fetch('/api/dm-response', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
-                });
-                
-                // Remove loading indicator
-                document.getElementById(loadingId)?.remove();
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    addMessage('Error: ' + (error.error || 'Unknown error'), 'dm');
-                    return;
-                }
-                
-                const data = await response.json();
-                
-                // Add each response from the DM
-                if (data.responses && Array.isArray(data.responses)) {
-                    data.responses.forEach(r => {
-                        addMessage(r.content, r.speaker.toLowerCase() === 'dm' ? 'dm' : 'player');
-                    });
-                } else {
-                    // Fallback
-                    addMessage('The DM nods silently.', 'dm');
-                }
-                
-                // If character data was returned, you could update the character sheet here
-                if (data.character_data) {
-                    console.log('Character data received:', data.character_data);
-                    // Optionally trigger a character sheet refresh
-                }
-                
-            } catch (error) {
-                document.getElementById(loadingId)?.remove();
-                addMessage('Network error: ' + error.message, 'dm');
-                console.error('Chat error:', error);
-            }
-        }
-        
-        sendChatBtn.addEventListener('click', sendChatMessage);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendChatMessage();
-        });
-        
-        // Add a welcome message from the server? Not needed; the server will respond when we send a message.
-        // Instead, we could fetch some initial context, but it's fine to start with nothing.
-    }
-    
     // ===== SETTINGS FUNCTIONALITY =====
     function setupSettings() {
         const saveBtn = document.getElementById('save-settings');
@@ -942,16 +843,6 @@
             if (e.target === e.currentTarget) closeModal('status-modal');
         });
         
-        // Chat modal
-        document.getElementById('chat-btn').addEventListener('click', () => {
-            openModal('chat-modal', 'chat-btn');
-        });
-        document.getElementById('close-chat').addEventListener('click', () => closeModal('chat-modal'));
-        document.getElementById('chat-modal').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) closeModal('chat-modal');
-        });
-        setupChat(); // Initialize chat functionality
-        
         // Settings modal
         document.getElementById('settings-btn').addEventListener('click', () => {
             openModal('settings-modal', 'settings-btn');
@@ -1011,8 +902,6 @@
                 openModal('travel-modal', 'travel-btn');
             } else if (panelId === 'status-panel') {
                 openModal('status-modal', 'status-btn');
-            } else if (panelId === 'chat-panel') {
-                openModal('chat-modal', 'chat-btn');
             } else if (panelId === 'inventory-panel') {
                 document.querySelector('[data-tab="inventory-tab"]').click();
             } else if (panelId === 'quests-panel') {
@@ -1047,16 +936,14 @@
             return;
         }
 
-        // // Show modal if no session cookie
-        // if (!document.cookie.includes('session_id=')) {
-        //     modal.style.display = 'block';
-        //     loadPlayers();
-        // }
-        // Show modal if no player is logged in (as indicated by server)
         if (!window.playerLoggedIn) {
             modal.style.display = 'block';
             loadPlayers();
         }
+
+        // // Always show player selection modal for debugging
+        // modal.style.display = 'block';
+        // loadPlayers();
 
         function loadPlayers() {
             fetch('/api/players')
@@ -1166,83 +1053,79 @@
         }
 
         // Handle chat form submission
-        document.getElementById('backstory-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const input = document.getElementById('backstory-input');
-            const message = input.value.trim();
-            if (!message) return;
-            input.value = '';
+        const backstoryForm = document.getElementById('backstory-form');
+        if (backstoryForm) {
+            backstoryForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const input = document.getElementById('backstory-input');
+                const message = input.value.trim();
+                if (!message) return;
+                input.value = '';
 
-            const chatDiv = document.getElementById('backstory-chat');
-            const characterId = chatDiv.dataset.characterId;
-            addMessage('You', message);
+                const chatDiv = document.getElementById('backstory-chat');
+                const characterId = chatDiv.dataset.characterId;
+                addMessage('You', message);
 
-            fetch(`/character/${characterId}/backstory-continue`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: message})
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        throw new Error(`HTTP ${response.status}: ${text}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (data.reload) {
-                    location.reload();
-                    return;
-                }
-                // Display each response
-                data.responses.forEach(r => addMessage(r.speaker, r.content));
-
-                // Check if we need to auto‑continue to secret generation
-                const lastResponse = data.responses[data.responses.length - 1];
-                if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
-                    // Automatically send empty message to trigger secrets
-                    fetch(`/character/${characterId}/backstory-continue`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({message: ''})
-                    })
-                    .then(r => r.json())
-                    .then(finalData => {
-                        // Display any remaining responses (e.g., secrets)
-                        if (finalData.responses) {
-                            finalData.responses.forEach(r => addMessage(r.speaker, r.content));
-                        }
-                        // The session is over – reload the page to show the backstory
+                fetch(`/character/${characterId}/backstory-continue`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => {
+                            throw new Error(`HTTP ${response.status}: ${text}`);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.reload) {
                         location.reload();
-                    })
-                    .catch(err => {
-                        console.error('Auto-continue error:', err);
-                        // Even if the fetch fails, the session is likely over, so reload
-                        location.reload();
-                    });
-                    return;
-                }
+                        return;
+                    }
+                    data.responses.forEach(r => addMessage(r.speaker, r.content));
 
-                // If session ended, reload narrative
-                if (data.new_state === null) {
-                    fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
-                        .then(() => {
-                            htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
-                            document.getElementById('backstory-chat').style.display = 'none';
-                            document.getElementById('character-narrative').style.display = 'block';
+                    const lastResponse = data.responses[data.responses.length - 1];
+                    if (lastResponse && lastResponse.speaker === 'DM' && lastResponse.content.includes('weave in some hidden secrets')) {
+                        fetch(`/character/${characterId}/backstory-continue`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({message: ''})
+                        })
+                        .then(r => r.json())
+                        .then(finalData => {
+                            if (finalData.responses) {
+                                finalData.responses.forEach(r => addMessage(r.speaker, r.content));
+                            }
+                            location.reload();
                         })
                         .catch(err => {
-                            console.error('Build connections error:', err);
-                            addMessage('System', 'Error building connections. Check console.', 'error');
+                            console.error('Auto-continue error:', err);
+                            location.reload();
                         });
-                }
-            })
-            .catch(err => {
-                console.error('Backstory error:', err);
-                addMessage('System', 'Error: ' + err.message, 'error');
+                        return;
+                    }
+
+                    if (data.new_state === null) {
+                        fetch(`/character/${characterId}/build-connections`, { method: 'POST' })
+                            .then(() => {
+                                htmx.ajax('GET', `/character/${characterId}/narrative`, '#character-narrative');
+                                document.getElementById('backstory-chat').style.display = 'none';
+                                document.getElementById('character-narrative').style.display = 'block';
+                            })
+                            .catch(err => {
+                                console.error('Build connections error:', err);
+                                addMessage('System', 'Error building connections. Check console.', 'error');
+                            });
+                    }
+                })
+                .catch(err => {
+                    console.error('Backstory error:', err);
+                    addMessage('System', 'Error: ' + err.message, 'error');
+                });
             });
-        });
+        }
 
         function addMessage(speaker, text) {
             const msgDiv = document.createElement('div');
@@ -1283,37 +1166,6 @@
             }
         }
     })();
-    document.getElementById('create-party-btn').addEventListener('click', async function() {
-        const partyName = prompt("Enter party name:", "My Party");
-        if (!partyName) return;
-
-        try {
-            // Get active character ID
-            const resp = await fetch('/api/player/active-character');
-            const data = await resp.json();
-            const characterId = data.character_id;
-            if (!characterId) {
-                alert("No active character found. Please create a character first.");
-                return;
-            }
-
-            // Create party
-            const createRes = await fetch('/api/create-party', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name: partyName, members: [characterId] })
-            });
-            const createData = await createRes.json();
-            if (createData.success) {
-                location.reload();
-            } else {
-                alert("Failed to create party: " + (createData.error || "Unknown error"));
-            }
-        } catch (err) {
-            console.error(err);
-            alert("Error creating party: " + err.message);
-        }
-    });
     </script>
     <!-- Debug Overlay (hidden by default) -->
     <div id="debug-overlay" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; z-index: 10000; display: none; pointer-events: none;">

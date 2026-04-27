@@ -29,4 +29,7 @@ class Player:
             self.active_character_id = character_id
             self.attributes['active_character_id'] = character_id
             return True
+        party = self.party_manager.get_character_party(character_id)
+        if party:
+            self.default_party_id = party['id']
         return False

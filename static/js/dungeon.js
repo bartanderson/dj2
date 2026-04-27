@@ -1,5 +1,9 @@
 // static/js/dungeon.js
 
+// TODO: Remove generateTerrainImage() and related calls once backend terrain is fully working
+// TODO: Add travel modal/list of discovered locations for fast travel
+// TODO: Add inventory UI panel and equipment slots
+
 console.log("dungeon.js loaded");
 
 let dungeonDebugMode = false;

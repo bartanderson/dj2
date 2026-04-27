@@ -8,8 +8,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from world import dnd_data
-from world.dm_chat_ai import get_ai_response
 from world.character import Character
+from world.action_system import ActionPlanner, ActionQueue
+from world.resolver import ResolverLoop
+from world.intent import IntentFrame
+from world.adjudication_engine import AdjudicationEngine
+from world.intent_parser import IntentParser
+
+DEBUG = True # False to turn off debug prints
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +47,7 @@ class DMChatHandler:
     def __init__(self, world_controller):
         self.world_controller = world_controller
         self.sessions: Dict[str, SessionState] = {}
+        self.adjudication_engine = AdjudicationEngine(world_controller)
 
     def create_session(self, session_id: str, player_name: str, initial_data: Dict = None) -> SessionState:
         """Create a new player session."""
@@ -144,8 +151,7 @@ Respond with a JSON object containing "type" and "value". Examples:
         # Use the same AI function as main responses, but with a specific prompt
         # We'll parse the JSON from the AI.
         try:
-            response_json = get_ai_response(prompt, None, game_context)  # session not needed for extraction
-            data = json.loads(response_json)
+            data = self.world_controller.chat_ai.json_response(prompt)
             if "type" in data and "value" in data:
                 return data
         except Exception as e:
@@ -174,8 +180,8 @@ Keep the tone friendly and immersive, as if you're a wise mentor.
 Your answer:
 """
         try:
-            response_json = get_ai_response(prompt, None, game_context)
-            data = json.loads(response_json)
+            # Direct call to ChatAI
+            data = self.world_controller.chat_ai.json_response(prompt)
             return data.get("narrative", "I'm not sure about that, but I'll find out.")
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
@@ -288,76 +294,114 @@ Your answer:
             prompt = f"The party tries to move {direction} but is blocked by {block_reason}. Describe what happens."
         
         # Use the AI to generate a response
-        from world.dm_chat_ai import get_ai_response
-        narrative = get_ai_response(prompt, None, context)  # adjust parameters as needed
+        narrative = self.world_controller.chat_ai.json_response(prompt, None, context)  # adjust parameters as needed
         # Return a list of DialogResponse objects (for consistency)
         return [{"speaker": "DM", "content": narrative, "dialog_type": "narration"}]
 
-    def process_message(self, session_id: str, message: str, character_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Main entry point for player messages.
-        Returns a dict with 'responses' (list of DialogResponse) and optionally 'tool_result'.
-        """
+    def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
+        print("[DEBUG] dm_chat_handler.process_message called")
         session = self.get_or_create_session(session_id, "Player")
         session.conversation_history.append({"role": "user", "content": message})
 
-        # Determine if we have an active character
+        # ------------------------------------------------------------------
+        # 1. DETERMINISTIC MOVEMENT PRE‑PROCESSOR
+        # ------------------------------------------------------------------
+        movement_map = {
+            "north": "north", "south": "south", "east": "east", "west": "west",
+            "northeast": "northeast", "northwest": "northwest",
+            "southeast": "southeast", "southwest": "southwest",
+            "n": "north", "s": "south", "e": "east", "w": "west",
+            "ne": "northeast", "nw": "northwest", "se": "southeast", "sw": "southwest"
+        }
+        prefixes = [
+            "go ", "head ", "walk ", "travel ", "climb ", "swim ", "sail ",
+            "roll ", "slide ", "move ", "run ", "crawl ", "creep ", "march "
+        ]
+        cmd = message.lower().strip()
+        for prefix in prefixes:
+            if cmd.startswith(prefix):
+                cmd = cmd[len(prefix):].strip()
+                break
+        if cmd in movement_map:
+            direction = movement_map[cmd]
+            if DEBUG:
+                print(f"[DEBUG] Movement: direction='{direction}'")
+            frame = IntentFrame(action=f"move {direction}", category="movement", destination=direction)
+            result = self.adjudication_engine.process(frame, session_id)
+            if DEBUG:
+                print(f"[DEBUG] engine.process returned: {result}")
+            if result is None:
+                print("[DEBUG] result is None!")
+                result = {"success": False, "message": "Movement failed.", "action": None}
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "map_data": result.get("map_data"),
+                "action": result.get("action")
+            }
+
+        # ------------------------------------------------------------------
+        # GET ACTIVE CHARACTER & GAME CONTEXT
+        # ------------------------------------------------------------------
         character = None
         if character_id:
             character = self.world_controller.character_manager.get_character(character_id)
         elif session.active_character_id:
             character = self.world_controller.character_manager.get_character(session.active_character_id)
 
-        # Build game context for AI
         game_context = self._build_game_context(session, character)
+        if encounter:
+            game_context["encounter"] = encounter
+            game_context["encounter_description"] = encounter.get("description", "")
 
-        # First, try to extract a specific topic
-        topic = self._extract_message_topic(message, game_context)
-        if topic and topic["type"] != "general":
-            # If a specific topic is found, generate an interested answer
-            answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
-            responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
-            session.conversation_history.append({"role": "assistant", "content": answer})
-            return {"responses": responses, "tool_result": None}
+        # ------------------------------------------------------------------
+        # 3. FAST RULES / LORE DETECTOR (no LLM)
+        # ------------------------------------------------------------------
+        if self._is_rules_question(message):
+            topic = self._extract_message_topic(message, game_context)
+            if topic and topic["type"] != "general":
+                answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
+                responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
+                session.conversation_history.append({"role": "assistant", "content": answer})
+                return {"responses": responses, "tool_result": None}
+            # If the fast check said it's a rules question but topic extraction failed,
+            # fall through to the gameplay parser (maybe it was a false positive – rare)
 
-        # Otherwise, proceed with normal AI response (character creation or game progression)
-        ai_response_json = get_ai_response(message, session, game_context)
-        try:
-            ai_data = json.loads(ai_response_json)
-        except json.JSONDecodeError:
-            logger.error(f"AI returned invalid JSON: {ai_response_json}")
-            ai_data = {"narrative": "The DM ponders your words...", "updates": {}, "needs_confirmation": False}
+        # ------------------------------------------------------------------
+        # PROCEED WITH GAMEPLAY INTENT PARSER (your new IntentParser)
+        # ------------------------------------------------------------------
+        parser = IntentParser(self.world_controller.chat_ai)
+        frame = parser.parse(message, game_context, session.conversation_history)
+        print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
+        if frame.category is None:
+            frame.category = "other"
 
-        narrative = ai_data.get("narrative", "")
-        updates = ai_data.get("updates", {})
-        needs_confirmation = ai_data.get("needs_confirmation", False)
 
-        responses = [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
+        if frame.clarification_needed:
+            return {
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=f"I need clarification: {', '.join(frame.missing_fields)}. Can you rephrase?",
+                    dialog_type="question"
+                )],
+                "clarification": True
+            }
 
-        # Apply updates if no confirmation needed
-        if updates and not needs_confirmation:
-            if character:
-                success, errors = self._update_character_from_ai(character, updates)
-                if not success:
-                    responses.append(DialogResponse(speaker="DM", content=f"Validation error: {', '.join(errors)}", dialog_type="error"))
-            else:
-                # No character yet – store updates in session for later character creation
-                for k, v in updates.items():
-                    session.character_data[k] = v
-
-        # Handle confirmation if needed
-        if needs_confirmation:
-            session.pending_confirmation = updates
-            responses.append(DialogResponse(speaker="DM", content="Please confirm the changes.", dialog_type="question"))
+        # ------------------------------------------------------------------
+        # ADJUDICATION ENGINE
+        # ------------------------------------------------------------------
+        result = self.adjudication_engine.process(frame, session_id)
+        if result.get("clarification"):
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result["message"], dialog_type="narration")],
+                "clarification": True
+            }
         else:
-            session.pending_confirmation = None
-
-        session.conversation_history.append({"role": "assistant", "content": narrative})
-        return {
-            "responses": responses,
-            "tool_result": None  # Placeholder for future
-        }
-
+            return {
+                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "map_data": result.get("map_data"),
+                "action": result.get("action")
+            }
+           
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""
         session = self.sessions.get(session_id)
@@ -375,3 +419,51 @@ Your answer:
         else:
             session.pending_confirmation = None
             return {"responses": [DialogResponse(speaker="DM", content="Confirmation cancelled.", dialog_type="narration")]}
+
+    # helper
+    def _is_rules_question(self, message: str) -> bool:
+        """
+        Fast deterministic check: is this message asking about game rules/lore?
+        Returns True if it's likely a rules question, False otherwise.
+        """
+        from world import dnd_data
+
+        msg = message.lower().strip()
+
+        # 1. Must be a question or ask for explanation
+        question_markers = ["?", "what is", "how do", "tell me about", "explain", "can i", "how does", "what are", "why would"]
+        is_question = any(msg.startswith(marker) or f" {marker}" in msg for marker in question_markers) or "?" in msg
+        if not is_question:
+            return False
+
+        # 2. Known rule topics (from your dnd_data)
+        rule_topics = (
+            dnd_data.get_race_list() +
+            dnd_data.get_class_list() +
+            dnd_data.get_skill_list() +
+            dnd_data.get_background_list() +
+            dnd_data.get_spell_list() +
+            dnd_data.get_ability_score_full_names()  # Brawn, Finesse, Wits, Will
+        )
+        rule_topics_lower = [t.lower() for t in rule_topics]
+
+        # 3. Check if any rule topic appears as a whole word in the message
+        words = msg.split()
+        for topic in rule_topics_lower:
+            if topic in msg:
+                # make sure it's not part of a larger word (e.g., "spell" inside "spellbook")
+                # simple check: space or punctuation boundaries
+                idx = msg.find(topic)
+                before = msg[idx-1] if idx > 0 else ' '
+                after = msg[idx+len(topic)] if idx+len(topic) < len(msg) else ' '
+                if not before.isalpha() and not after.isalpha():
+                    return True
+
+        # 4. Additional explicit known rule names that might be single words
+        # (optional: you can add more like "initiative", "proficiency", etc.)
+        extra_terms = ["ability score", "attribute", "race", "class", "background", "skill", "spell", "level", "feat", "trait"]
+        for term in extra_terms:
+            if term in msg:
+                return True
+
+        return False

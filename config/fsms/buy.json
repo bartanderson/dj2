@@ -1,0 +1,24 @@
+{
+  "name": "BuyFSM",
+  "states": [
+    { "name": "awaiting", "initial": true, "prompt": "{item_name} costs {current_price} gp. Say 'yes' or offer a price." },
+    { "name": "countering", "prompt": "Offer too low. I want {current_price} gp. Say 'yes' or offer again." },
+    { "name": "completed", "final": true, "prompt": "You bought {item_name} for {price} gp." }
+  ],
+  "events": {
+    "confirm": [
+      { "from": "awaiting", "to": "completed", "actions": ["execute_purchase"] },
+      { "from": "countering", "to": "completed", "actions": ["execute_purchase"] }
+    ],
+    "offer": [
+      { "from": "awaiting", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] },
+      { "from": "countering", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] },
+      { "from": "awaiting", "to": "completed", "cond": "price_acceptable", "actions": ["execute_purchase"] },
+      { "from": "countering", "to": "completed", "cond": "price_acceptable", "actions": ["execute_purchase"] }
+    ],
+    "cancel": [
+      { "from": "awaiting", "to": "completed" },
+      { "from": "countering", "to": "completed" }
+    ]
+  }
+}

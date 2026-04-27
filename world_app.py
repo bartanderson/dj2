@@ -1,4 +1,7 @@
 # world_app.py
+
+# TODO: Create shop class that loads items from 05_equipment.json and handles transactions
+
 # import eventlet
 # eventlet.monkey_patch() # this has to be run before importing any other modules
 import os
@@ -456,7 +459,12 @@ class DungeonPersistenceSystem:
 
 
 #====+ outside of classes =====
-# ===== Dungeon Integration Endpoints =====
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    response = make_response(jsonify({"success": True}))
+    response.set_cookie('session_id', '', expires=0, path='/')
+    return response
+
 @app.route('/api/party/<party_id>', methods=['GET'])
 def get_party_data(party_id):
     wc = current_app.world_controller
@@ -620,32 +628,30 @@ def update_location():
 
     return jsonify({'success': True})
 
-
-@app.route('/api/set-hex-terrain', methods=['POST'])
-def set_hex_terrain():
-    data = request.get_json()
-    col = data.get('col')
-    row = data.get('row')
-    terrain = data.get('terrain')
-    wc = current_app.world_controller
-    if wc is None:
-        return jsonify({'success': False, 'error': 'World controller not available'}), 500
-    hex = wc.campaign_state.get_hex(col, row)
-    if hex:
-        hex['terrain'] = terrain
-        hex['discovered'] = True
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Hex not found'}), 404
-
 @app.route('/api/command', methods=['POST'])
 def handle_command():
     data = request.get_json()
     command = data.get('command', '')
+    session_id = request.cookies.get('session_id')
     wc = current_app.world_controller
     if not wc:
         return jsonify({"error": "World controller not available"}), 500
-    result = wc.process_command(command)
+    result = wc.process_command(command, session_id)
+
+    # If movement was successful, broadcast new position to all clients
+    if result.get('success') and 'move' in command.lower():
+        col, row = wc.campaign_state.party_position
+        socketio.emit('party_moved', {
+            'party_id': wc.default_party_id,
+            'col': col,
+            'row': row
+        }, namespace='/')
+
     return jsonify(result)
+
+def notify_party_update():
+    """Emit a party_update event to all connected clients."""
+    socketio.emit('party_update', {})
     
 def initialize_dungeon_systems():
     """Initialize complete HTTP-based dungeon system with all phase systems"""
@@ -733,6 +739,119 @@ def get_game_date():
         return formatted
     except Exception as e:
         return f"Date error", 500
+
+@app.route('/api/inventory/list-html')
+def inventory_list_html():
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return "<p>Error loading inventory.</p>"
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return "<p>No active character.</p>"
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return "<p>Character not found.</p>"
+    
+    # Calculate total weight (placeholder)
+    total_weight = sum(getattr(item, 'weight', 0) for item in character.inventory)
+    max_weight = 100  # default
+    
+    # Get shop items if in a settlement with merchant
+    shop_items = []
+    if wc.current_location and hasattr(wc.current_location, 'merchant'):
+        shop_items = wc.current_location.merchant.inventory
+    
+    return render_template('partials/inventory.html',
+                          character=character,
+                          items=character.inventory,
+                          total_weight=total_weight,
+                          max_weight=max_weight,
+                          shop_items=shop_items)
+
+@app.route('/api/inventory/buy', methods=['POST'])
+def inventory_buy():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character or not wc.current_location or not hasattr(wc.current_location, 'merchant'):
+        return jsonify({"error": "No shop here"}), 400
+    result = wc.current_location.merchant.buy(item_id, character)
+    if result.get("success"):
+        # Return updated inventory fragment
+        return inventory_list_html()
+    else:
+        return jsonify({"error": result.get("message")}), 400
+
+@app.route('/api/inventory/sell', methods=['POST'])
+def inventory_sell():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character or not wc.current_location or not hasattr(wc.current_location, 'merchant'):
+        return jsonify({"error": "No shop here"}), 400
+    result = wc.current_location.merchant.sell(item_id, character)
+    if result.get("success"):
+        return inventory_list_html()
+    else:
+        return jsonify({"error": result.get("message")}), 400
+
+@app.route('/api/inventory/use', methods=['POST'])
+def inventory_use():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 400
+    # Find item in inventory
+    item = next((i for i in character.inventory if i.id == item_id), None)
+    if not item:
+        return jsonify({"error": "Item not found"}), 400
+    # Use item (simple healing for now)
+    if 'potion' in item.name.lower():
+        character.hp = min(character.hp + 10, character.max_hp)
+        character.inventory.remove(item)
+        return inventory_list_html()
+    else:
+        return jsonify({"error": "Cannot use that item"}), 400
+
+@app.route('/api/inventory/equip', methods=['POST'])
+def inventory_equip():
+    data = request.get_json()
+    item_id = data.get('item_id')
+    session_id = request.cookies.get('session_id')
+    wc = current_app.world_controller
+    if not session_id or not wc:
+        return jsonify({"error": "Not available"}), 400
+    player = wc.get_player_by_session(session_id)
+    if not player or not player.active_character_id:
+        return jsonify({"error": "No active character"}), 400
+    character = wc.character_manager.get_character(player.active_character_id)
+    if not character:
+        return jsonify({"error": "Character not found"}), 400
+    character.equip_item(item_id)
+    return inventory_list_html()
 
 def get_world_controller():
     """Safely get the world controller instance"""
@@ -963,17 +1082,9 @@ def retry_failed_images():
 # ===== Character Endpoints =====
 @app.route('/api/party/list-html')
 def party_list_html():
-    parties = get_active_parties_helper()
-    # Fetch character names for members
-    wc = current_app.world_controller
-    if wc:
-        for party in parties:
-            member_names = []
-            for char_id in party.get('members', []):
-                char = wc.character_manager.get_character(char_id)
-                member_names.append(char.name if char else char_id)
-            party['member_names'] = member_names
-    return render_template('partials/party_list.html', parties=parties)
+    session_id = request.cookies.get('session_id')
+    html = current_app.world_controller.get_party_list_html(session_id)
+    return html
     
 @app.route('/api/player/name')
 def get_player_name():
@@ -1568,39 +1679,6 @@ def disband_party(party_id):
     return jsonify({"success": success})
 
 # ===== Core Game State Endpoints =====
-# @app.route('/api/world-state')
-# def world_state():
-#     try:
-#         # Check if world_controller is available
-#         if not hasattr(app, 'world_controller') or app.world_controller is None:
-#             return jsonify({
-#                 "worldMap": {"error": "World controller not initialized"},
-#                 "currentLocation": None,
-#                 "parties": [],
-#                 "characters": {}
-#             })
-            
-#         # Convert characters to dict representation
-#         characters_dict = {}
-#         if hasattr(app.world_controller, 'characters'):
-#             for char_id, char in app.world_controller.characters.items():
-#                 characters_dict[char_id] = char.to_dict()
-
-#         return jsonify({
-#             "worldMap": app.world_controller.get_map_data(),
-#             "currentLocation": app.world_controller.get_current_location_data(),
-#             "parties": get_active_parties_helper(), #app.world_controller.get_active_parties(),
-#             "characters": characters_dict
-#         })
-#     except Exception as e:
-#         print(f"Error in world_state: {str(e)}")
-#         return jsonify({
-#             "worldMap": {"error": "Map data unavailable"},
-#             "currentLocation": None,
-#             "parties": [],
-#             "characters": {}
-#         })
-
 @app.route('/api/world-state')
 def world_state():
     try:
@@ -1934,47 +2012,27 @@ def dm_response():
 
         active_character_id = character_id or player.active_character_id
 
-        # ---------- CHARACTER CREATION PATH (no active character) ----------
-        if not active_character_id:
-            result = app.world_controller.dm_chat_handler.process_message(
-                session_id, message, character_id=None
-            )
-            responses = [{
-                'speaker': r.speaker,
-                'content': r.content,
-                'type': r.dialog_type
-            } for r in result.get('narrative', [])]
+        # Always use the AI handler (dm_chat_handler) for all messages
+        result = app.world_controller.dm_chat_handler.process_message(
+            session_id, message, active_character_id
+        )
+        responses = [{
+            'speaker': r.speaker,
+            'content': r.content,
+            'type': r.dialog_type
+        } for r in result.get('responses', [])]
 
-            response_data = {
-                'responses': responses,
-                'tool_result': result.get('tool_result'),
-                'session_id': session_id,
-                'character_id': None,
-                'player_id': player.id
-            }
-
-        # ---------- IN‑GAME PATH (character exists) ----------
-        else:
-            from engine.game_engine import GamePhase, GameContext
-            context = GameContext()
-            context.set_phase_data(GamePhase.INPUT, "session_id", session_id)
-            context.set_phase_data(GamePhase.INPUT, "character_id", active_character_id)
-            context.set_phase_data(GamePhase.INPUT, "player_id", player.id)
-
-            engine_result = app.game_engine.advance(player_input=message, context=context)
-            ui_data = engine_result.get('ui_data', {})
-            narration = ui_data.get('narration', '')
-
-            response_data = {
-                'responses': [{
-                    'speaker': 'DM',
-                    'content': narration or "The DM considers your words...",
-                    'type': 'narration'
-                }],
-                'session_id': session_id,
-                'character_id': active_character_id,
-                'player_id': player.id
-            }
+        response_data = {
+            'responses': responses,
+            'tool_result': result.get('tool_result'),
+            'session_id': session_id,
+            'character_id': active_character_id,
+            'player_id': player.id
+        }
+        if result.get('map_data'):
+            response_data['map_data'] = result['map_data']
+        if result.get('action'):
+            response_data['action'] = result['action']
 
         response = jsonify(response_data)
         if is_new_session:
@@ -1989,59 +2047,6 @@ def dm_response():
         print(f"Error in dm-response: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-def legacy_dm_response():
-    """Fallback to original dm-response logic"""
-    try:
-        data = request.get_json()
-        message = data.get('message')
-        character_id = data.get('character_id')
-        
-        session_id = request.cookies.get('session_id')
-        if not session_id:
-            session_id = str(uuid.uuid4())
-        
-        player = app.world_controller.get_or_create_player(session_id)
-        
-        if character_id and character_id not in player.character_ids:
-            return jsonify({'error': 'Character does not belong to player'}), 400
-        
-        active_character_id = character_id or player.active_character_id
-        if active_character_id:
-            player.set_active_character(active_character_id)
-        
-        result = app.world_controller.dm_chat_handler.process_message(
-            session_id, 
-            message, 
-            character_id=active_character_id
-        )
-        
-        response_data = {
-            'responses': [{
-                'speaker': r.speaker,
-                'content': r.content,
-                'type': r.dialog_type
-            } for r in result['narrative']],
-            'tool_result': result['tool_result'].get('message') if result['tool_result'] else None,
-            'session_id': session_id,
-            'character_id': active_character_id,
-            'player_id': player.id
-        }
-        
-        response = jsonify(response_data)
-        response.set_cookie(
-            'session_id', 
-            session_id, 
-            max_age=60*60*24*7,
-            path='/',
-            secure=False,
-            httponly=True,
-            samesite='Lax'
-        )
-        
-        return response
-        
-    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 def recognize_player(self, session_id, player_data):
@@ -2112,22 +2117,26 @@ def handle_disconnect():
     print(f"Client disconnected: {session_id}")
     
     # Clean up session data
-    if hasattr(world_controller, 'session_manager'):
-        session_data = app.world_controller.session_manager.sessions.get(session_id)
-        if session_data:
-            character_id = session_data.get('character_id')
-            party_id = session_data.get('party_id')
-            
-            # Notify party members about disconnection
-            if party_id:
-                emit('player_left', {
-                    'session_id': session_id,
-                    'player_name': session_data.get('player_name'),
-                    'character_id': character_id
-                }, room=party_id)
-            
-            # Clean up session
-            app.world_controller.session_manager.cleanup_session(session_id)
+    if hasattr(app, 'world_controller') and app.world_controller:
+        wc = app.world_controller
+        if hasattr(wc, 'session_manager'):
+            session_data = wc.session_manager.sessions.get(session_id)
+            if session_data:
+                character_id = session_data.get('character_id')
+                party_id = session_data.get('party_id')
+                
+                # Notify party members about disconnection
+                if party_id:
+                    emit('player_left', {
+                        'session_id': session_id,
+                        'player_name': session_data.get('player_name'),
+                        'character_id': character_id
+                    }, room=party_id, namespace='/')
+                
+                # Clean up session
+                wc.session_manager.cleanup_session(session_id)
+    else:
+        print("World controller not available for disconnect cleanup")
 
 @socketio.on('player_register')
 def handle_player_register(data):
@@ -2384,6 +2393,37 @@ def initialize_app():
         traceback.print_exc()
         return None, None
 
+# ===== Intent =========================
+@app.route('/api/intent/examples', methods=['GET', 'POST', 'DELETE'])
+def manage_intent_examples():
+    """Manage intent examples (admin use)."""
+    from world.intent_manager import IntentManager
+    im = IntentManager()
+    if request.method == 'GET':
+        examples = im.list_examples()
+        return jsonify({"examples": examples})
+    elif request.method == 'POST':
+        data = request.get_json()
+        intent = data.get('intent')
+        text = data.get('text')
+        is_positive = data.get('is_positive', True)
+        if not intent or not text:
+            return jsonify({"error": "Missing intent or text"}), 400
+        if im.add_example(intent, text, is_positive):
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to add example"}), 500
+    elif request.method == 'DELETE':
+        data = request.get_json()
+        example_id = data.get('example_id')
+        if not example_id:
+            return jsonify({"error": "Missing example_id"}), 400
+        if im.delete_example(example_id):
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Example not found"}), 404
+
+
 # ===== Player Selection Endpoints =====
 
 @app.route('/api/players', methods=['GET'])
@@ -2449,8 +2489,89 @@ def create_player():
     )
     return response
 
+@app.route('/api/party/create', methods=['POST'])
+def api_party_create():
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        party_id = wc.party_manager.create_party(name, [active_char_id])
+        if party_id:
+            notify_party_update()
+            return jsonify({'success': True, 'party_id': party_id})
+        else:
+            return jsonify({'success': False, 'error': 'Could not create party'}), 500
+    except Exception as e:
+        print(f"Error in create party: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/party/join', methods=['POST'])
+def api_party_join():
+    try:
+        data = request.get_json()
+        party_id = data.get('party_id')
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        success = wc.party_manager.add_to_party(active_char_id, party_id)
+        if success:
+            # After joining, refresh the player's active character
+            player = wc.get_player_by_session(session_id)
+            if player and player.active_character_id:
+                party = wc.party_manager.get_character_party(player.active_character_id)
+                if party:
+                    wc.default_party_id = party['id']
+            notify_party_update()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Could not join party (party may not exist or character already in a party?)'}), 500
+    except Exception as e:
+        print(f"Error in join party: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/party/leave', methods=['POST'])
+def api_party_leave():
+    try:
+        session_id = request.cookies.get('session_id')
+        if not session_id:
+            return jsonify({'success': False, 'error': 'No session'}), 400
+        wc = current_app.config.get('WORLD_CONTROLLER')
+        if not wc:
+            return jsonify({'success': False, 'error': 'World controller not available'}), 500
+        player = wc.get_or_create_player(session_id)
+        active_char_id = player.active_character_id
+        if not active_char_id:
+            return jsonify({'success': False, 'error': 'No active character'}), 400
+        success = wc.party_manager.remove_from_party(active_char_id)
+        if success:
+            notify_party_update()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Could not leave party'}), 500
+    except Exception as e:
+        print(f"Error in leave party: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
-    # Only initialize when not in reloader
-    if not os.environ.get('WERKZEUG_RUN_MAIN'):
-        initialize_app()  # It already sets app.world_controller and app.game_engine
+    initialize_app()
     socketio.run(app, debug=True, host="0.0.0.0", port=5000, use_reloader=False) 

@@ -1,0 +1,26 @@
+{
+  "name": "EncounterFSM",
+  "states": [
+    { "name": "initiating", "initial": true, "prompt": "{description}" },
+    { "name": "awaiting_choice", "prompt": "{description} What do you do? (fight/flee/parley)" },
+    { "name": "resolving_fight", "prompt": "Combat starts!" },
+    { "name": "completed", "final": true, "prompt": "Encounter ended." }
+  ],
+  "events": {
+    "next": [
+      { "from": "initiating", "to": "awaiting_choice" }
+    ],
+    "fight": [
+      { "from": "awaiting_choice", "to": "resolving_fight", "actions": ["start_combat"] }
+    ],
+    "flee": [
+      { "from": "awaiting_choice", "to": "completed", "cond": "flee_possible", "actions": ["resolve_flee"] }
+    ],
+    "parley": [
+      { "from": "awaiting_choice", "to": "completed", "cond": "parley_possible", "actions": ["resolve_parley"] }
+    ],
+    "combat_ended": [
+      { "from": "resolving_fight", "to": "completed" }
+    ]
+  }
+}

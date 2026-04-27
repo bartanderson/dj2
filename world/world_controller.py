@@ -1,4 +1,112 @@
 # world_controller.py
+
+"""
+================================================================================
+WorldController – Active Record pattern for world state and system coordination
+================================================================================
+
+This controller serves as both:
+1. A coordinator between game systems (WorldMap, CampaignState, PartyManager, etc.)
+2. A data model for the active game state (campaign, party position, etc.)
+
+Current issues (to be addressed in refactoring):
+- Many commands (movement, buy/sell, teleport) bypass the GameEngine phases,
+  leading to inconsistent encounter generation and consequences.
+- The controller has grown too large and mixes responsibilities.
+
+================================================================================
+Architectural Refactoring Plan (HIGHEST PRIORITY)
+================================================================================
+
+Goal: Route all player commands through GameEngine.advance() so that every action
+goes through the full phase cycle (INPUT → INTERPRETATION → AUTHORITY → MUTATION
+→ CONSEQUENCE → VIEW). This will unify encounter generation, state changes, and
+narrative consequences.
+
+Implementation steps (to be done in order):
+
+1. [x] Modify WorldController.process_command to send ALL commands (movement, buy,
+   sell, teleport, fast travel, rest, etc.) to self.game_engine.advance().
+   - Removed direct command handling (direction_map, buy/sell blocks, etc.).
+   - Kept only admin/debug commands (e.g., "reveal locations") as bypass.
+
+2. [ ] Extend GameEngine._execute_interpretation_phase to parse:
+   - [x] Movement directions (n, s, e, w, ne, nw, se, sw, go <dir>)
+   - [ ] Buy/sell commands (e.g., "buy shortsword", "sell dagger")
+   - [ ] Teleport commands ("teleport <col> <row>")
+   - [ ] Fast travel ("travel to <location name>")
+   - [ ] Rest, inventory, party commands.
+
+3. [ ] Extend _execute_authority_phase to validate each command type:
+   - [x] Movement: check passability (water, mountains) and party assets.
+   - [ ] Buy/sell: verify shop presence, item existence, gold/stock.
+   - [ ] Teleport: validate coordinates.
+   - [ ] Fast travel: location discovered and reachable.
+
+4. [ ] Extend _execute_mutation_phase to apply state changes:
+   - [x] Update party position, reveal hexes, advance time.
+   - [ ] Modify character inventory and gold.
+   - [ ] Apply healing, condition changes.
+
+5. [x] Extend _execute_consequence_phase to:
+   - [x] Generate narration for the action.
+   - [x] Check for random encounters after any action (not just movement).
+   - [x] Generate encounter using encounter_generator and store in ui_data["encounter"].
+   - [ ] Optionally trigger AI narration via the existing dm-response flow (already handled by frontend).
+
+6. [ ] Update frontend (world.js) to handle the unified response format (encounter
+   and action fields at top level) – already partially done; needs full integration.
+
+================================================================================
+PHASE 4c TODOs (in priority order, after refactoring)
+================================================================================
+
+1. **Generate encounter points on world map** – Random encounters are now generated
+   on the fly using region danger and party level. Future: use pre‑placed EncounterPoint
+   instances with persistent state (cleared, evolved, etc.).
+
+2. **Implement region system from 14_campaign.json** – Load factions, quests,
+   and use them to flavor encounters (e.g., faction patrols, quest-related
+   monsters). Partially done (regions exist, encounter uses danger level).
+
+3. **Add services to settlements** – Shops (already partially done), temples,
+   quest boards, etc., based on settlement size and type.
+
+4. **Determine dungeon type from terrain** – When entering a dungeon, derive
+   type (cave, crypt, etc.) from the region's terrain.
+
+5. **Remove test dungeon hack** – The temporary dungeon at starting location.
+
+6. **Multi-player test button** – Open new tab with different session.
+
+Already completed (marked with x):
+  [x] Implement fast travel to discovered locations
+  [x] Add shop system and inventory management (basic)
+  [x] Cache world terrain image on server
+  [x] Replace client-side terrain generation with backend data
+  [x] AI-powered name generation (with caching)
+  [x] Movement routed through GameEngine (steps 1 and 5 partially done)
+  [x] Implement AdjudicationEngine for move, buy, sell.
+  [ ] Add more actions (talk, rest, look) to AdjudicationEngine.
+  [x] Remove old merchant_buy/sell tools (optional, keep for compatibility).
+
+================================================================================
+Before PHASE 5 TODO
+================================================================================
+
+- Refactor WorldController into smaller modules (e.g., WorldState, WorldMovement,
+  WorldEncounter, WorldShop) to improve maintainability. This will be done after
+  the GameEngine refactoring is stable.
+
+- [ ] Implement ActionPlanner and ResolverLoop (completed).
+- [ ] Add intent field to all tools.
+- [ ] Extend ActionPlanner to support dynamic tool lookup via tool registry.
+- [ ] Add Adjudication phase (skill checks, dice rolls) before planning.
+- [ ] Implement reactions and interrupts.
+
+================================================================================
+"""
+
 """
 WorldController Module
 =====================
@@ -11,10 +119,10 @@ import math
 import random
 import uuid
 import numpy as np
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any
 from collections import Counter
-
 from world import dnd_data
 from world.db import Database
 from world.utils import convex_hull, cross
@@ -25,7 +133,8 @@ from world.narrative_system import NarrativeSystem
 from world.character_builder import CharacterBuilder
 from world.character import Character
 from world.persistence import WorldManager
-from world.dm_chat_ai import DMChatAI
+from world.chat_ai import ChatAI
+# TODO: since world and dungeon are separate, do we need to create a unified shared AI that manages either/both to address whether we actually import DungeonAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
 from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
@@ -38,10 +147,19 @@ from .character_manager import CharacterManager
 from world.dm_chat_handler import DMChatHandler
 from world.player import Player           
 from world.consequence_engine import ConsequenceEngine
-from world.tool_system import ToolRegistry
+from world.tool_system import ToolRegistry, tool
 from world.authority_system import AuthoritySystem
 from world.encounter_models import EncounterPoint
 from world.bestiary import Monster
+from world.name_generator import NameGenerator
+from world.terrain_generator import TerrainGenerator
+from world.terrain_image_generator import generate_terrain_image
+from world.campaign import Merchant, MerchantItem, MerchantRelationship, MerchantPersonality, MerchantConstraints, VisibilityRule, PartyMerchantState
+from world.merchant_utils import compute_price
+from world.event_log import get_event_log
+from world.intent import IntentFrame
+from world.adjudication_engine import AdjudicationEngine
+
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
 import warnings
@@ -82,32 +200,35 @@ class WorldController:
     def __init__(self, world_id: str, ai_system: Any, seed: int = 42):
         # Initialize core components
         self.seed = seed
+        self.world_id = world_id
         self.rng = random.Random(self.seed)
         self.np_rng = np.random.default_rng(self.seed)
         self.path_generator = PathGenerator(seed)
         self.map_utils = MapUtils(seed)
         self.world_map = WorldMap()
         self.starting_location_id = None
+        self.event_log = get_event_log()
         
-        # Create dm_chat_ai FIRST (needed by many systems)
-        self.dm_chat_ai = DMChatAI(ai_system)
+        # Create chat_ai FIRST (needed by many systems)
+        self.chat_ai = ChatAI()
 
         # Initialize authority system with proper tool registry
         self.tool_registry = ToolRegistry()
+        self.tool_registry.register_from_class(self) # scan for @tool decorated methods
         self.authority_system = AuthoritySystem(self.tool_registry)
 
-        # Create ConsequenceEngine immediately after dm_chat_ai
+        # Create ConsequenceEngine immediately after chat_ai
         self.consequence_engine = ConsequenceEngine(
             world_controller=self,
-            dm_chat_ai=self.dm_chat_ai
+            dm_chat_ai=self.chat_ai
         )
 
         # For backward compatibility, point dungeon_master to the new engine
         self.dungeon_master = self.consequence_engine
 
-        # Now create other systems that depend on dm_chat_ai or consequence_engine
+        # Now create other systems that depend on chat_ai or consequence_engine
 
-        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.chat_ai)
         self.character_builder = CharacterBuilder(ai_system)
         
         # Register character builder tools for AI use
@@ -121,7 +242,7 @@ class WorldController:
         self.session_log: List[str] = []
         self.current_location: Optional[Location] = None
         
-        self.default_party_id = "main_party"
+        self.default_party_id = None
         self.party_id = self.default_party_id
 
         # Initialize players
@@ -167,6 +288,9 @@ class WorldController:
         # Store quest archetypes for later generation
         self.quest_archetypes = campaign_data.get("quest_system", {}).get("quest_archetypes", {})
 
+        # Name generator
+        self.name_gen = NameGenerator(self.seed, self.campaign_data.get("theme", "generic"))
+
         # Load player narrative framework
         narrative_json = dnd_data._get_player_narrative_data()
         print("[WorldController] narrative_json keys:", narrative_json.keys() if narrative_json else "None")
@@ -205,7 +329,7 @@ class WorldController:
             }
 
         # Now create narrative system (it will access self.narrative_framework)
-        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.dm_chat_ai)
+        self.narrative_system = NarrativeSystem(self, ai_system, dm_chat_ai=self.chat_ai)
 
         # Minimal world generation (placeholder)
         if not self.campaign_state.surface_regions:
@@ -244,21 +368,23 @@ class WorldController:
                     default_hex['discovered'] = True
                     print("Using fallback hex (0,0) as starting hex")
 
+
             print("Found starting location")
             self.starting_location_id = starting_location.id
             self.reveal_location(starting_location.id)
             self.travel_to_location(starting_location.id)
+
             # For testing only - add dungeon to starting location
+            # TODO: Remove temporary dungeon assignment once proper dungeon locations are generated
             if self.current_location:
                 self.current_location.dungeon_type = 'cave'
                 self.current_location.dungeon_level = 1
                 print(f"[DEBUG] Added dungeon to {self.current_location.name}")
-        else:
-            # Fallback to first location if no tavern found
-            first_location_id = list(self.world_map.locations.keys())[0]
-            self.starting_location_id = first_location_id
-            self.reveal_location(first_location_id)
-            self.travel_to_location(first_location_id)
+
+            merchant = self._create_sample_merchant(starting_location.name)
+            self.campaign_state.merchants[merchant.id] = merchant
+            # Store merchant reference on the location for quick access
+            starting_location.merchant_id = merchant.id
 
         # Initialize managers
         self.quest_manager = QuestManager()
@@ -315,13 +441,142 @@ class WorldController:
         # Dungeon tracking
         self.parties_in_dungeon = {}  # party_id -> {"location_id": str, "dungeon_id": str, "entered_at": datetime}
 
-        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'dm_chat_ai')}")
-
-
-
+        print(f"[OK] ConsequenceEngine initialized: {hasattr(self.dungeon_master, 'chat_ai')}")
 
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
+
+    def wealth_to_gold(wealth_str: str) -> int:
+        # TODO: Make this configurable (e.g., from economy settings or region)
+        mapping = {"meager": 5, "cheap": 10, "medium": 50, "expensive": 150}
+        try:
+            return int(wealth_str)
+        except (ValueError, TypeError):
+            return mapping.get(wealth_str.lower(), 10)
+
+    def _create_sample_merchant(self, location_name: str) -> Merchant:
+        from world.campaign import Merchant, MerchantPersonality, MerchantConstraints, MerchantItem
+        from world import dnd_data
+
+        equipment = dnd_data._get_equipment_data().get("equipment", {})
+        weapons = equipment.get("weapons", {})
+        gear = equipment.get("gear", {})
+
+        def wealth_to_gold(wealth_str: str) -> int:
+            mapping = {"meager": 5, "cheap": 10, "medium": 50, "expensive": 150}
+            try:
+                return int(wealth_str)
+            except (ValueError, TypeError):
+                return mapping.get(wealth_str.lower(), 10)
+
+        items = []
+        # Add a healing potion
+        items.append(MerchantItem(
+            item_id="healing_potion",
+            item_name="Healing Potion",
+            base_price=10,
+            steal_dc=12,
+            quantity=3,
+            tags={"consumable", "potion"}
+        ))
+        # Add shortsword if exists
+        if "shortsword" in weapons:
+            sw = weapons["shortsword"]
+            items.append(MerchantItem(
+                item_id="shortsword",
+                item_name=sw["name"],
+                base_price=wealth_to_gold(sw.get("cost", "cheap")),
+                steal_dc=15,
+                quantity=1,
+                tags={"weapon", "melee"}
+            ))
+        # Add backpack
+        if "backpack" in gear:
+            bp = gear["backpack"]
+            items.append(MerchantItem(
+                item_id="backpack",
+                item_name=bp["name"],
+                base_price=wealth_to_gold(bp.get("cost", "meager")),
+                steal_dc=10,
+                quantity=5,
+                tags={"gear"}
+            ))
+
+        # Deterministic display using existing world RNG
+        display_options = [
+            {"type": "table", "adjs": ["wooden", "worn", "ornate", "cluttered"], "desc_template": "a {adj} table with items neatly arranged on it"},
+            {"type": "cart", "adjs": ["wooden", "rickety", "sturdy", "painted"], "desc_template": "a {adj} cart filled with various goods"},
+            {"type": "stall", "adjs": ["cloth", "wooden", "simple", "decorated"], "desc_template": "a {adj} stall with a canvas awning"},
+            {"type": "wagon", "adjs": ["covered", "open", "large", "small"], "desc_template": "a {adj} wagon with a variety of items inside"},
+            {"type": "rug", "adjs": ["colorful", "tattered", "large", "small"], "desc_template": "a {adj} rug with items spread out on it"},
+            {"type": "counter", "adjs": ["wooden", "stone", "marble", "simple"], "desc_template": "a {adj} counter displaying his wares"},
+            {"type": "coat", "adjs": ["tattered", "velvet", "leather", "bulging"], "desc_template": "a {adj} coat with many pockets bulging with small items"},
+            {"type": "pockets", "adjs": ["bulging", "empty", "deep", "secret"], "desc_template": "{adj} pockets bulging with small items"},
+            {"type": "backpack", "adjs": ["leather", "worn", "large", "small"], "desc_template": "a {adj} backpack sitting on the ground"},
+            {"type": "satchel", "adjs": ["leather", "cloth", "old", "new"], "desc_template": "a {adj} satchel slung over his shoulder"}
+        ]
+
+        opt = self.rng.choice(display_options)
+        adj = self.rng.choice(opt["adjs"])
+        display_name = f"{adj} {opt['type']}"
+        display_description = opt["desc_template"].format(adj=adj)
+
+        merchant = Merchant(
+            merchant_id="grom_trader",
+            name="Grom the Trader",
+            location=location_name,
+            personality=MerchantPersonality(greed=6, paranoia=4, honor=5, sociability=7, risk_tolerance=4),
+            constraints=MerchantConstraints(max_discount=0.4, max_markup=1.8, barter_allowed=True),
+            inventory=items,
+            global_bias=1,
+            display_type=opt["type"],
+            display_name=display_name,
+            display_description=display_description
+        )
+        return merchant
+
+    def _is_item_visible(self, item: MerchantItem, rel: MerchantRelationship) -> bool:
+        """Check visibility rules."""
+        if not item.visibility_rules:
+            return True  # default visible
+        for rule in item.visibility_rules:
+            if rule.type == "affinity" and rel.affinity >= rule.threshold:
+                return True
+            if rule.type == "trust" and rel.trust >= rule.threshold:
+                return True
+            if rule.type == "fear" and rel.fear >= rule.threshold:
+                return True
+            if rule.type == "respect" and rel.respect >= rule.threshold:
+                return True
+            if rule.type == "flag" and rule.threshold in rel.flags:
+                return True
+            if rule.type == "quest" and rule.threshold in self.campaign_state.active_quests:  # simplistic
+                return True
+        return False
+
+    def _compute_price(self, item, merchant, rel, context):
+        """Compute dynamic price based on merchant personality, relationship, and context."""
+        price = item.base_price
+        price *= (1 + merchant.personality.greed * 0.05)
+        price *= (1 - rel.affinity * 0.03)
+        price *= (1 - rel.trust * 0.02)
+        price *= (1 + rel.fear * 0.04)
+        if context.get('desperate'):
+            price *= 1.25
+        if context.get('scarcity'):
+            price *= 1.1
+        max_price = item.base_price * (1 + merchant.constraints.max_markup)
+        min_price = item.base_price * (1 - merchant.constraints.max_discount)
+        return int(max(min_price, min(price, max_price)))
+
+    def get_region_for_hex(self, col, row):
+        hex_data = self.campaign_state.get_hex(col, row)
+        if not hex_data:
+            return None
+        region_id = hex_data.get('region_id')
+        if region_id:
+            return self.campaign_state.surface_regions.get(region_id)
+        return None
 
     def _generate_encounter_points_for_region(self, region_id: str, region_hexes: list, rng: random.Random) -> dict:
         """
@@ -363,9 +618,9 @@ class WorldController:
 
     def generate_world_structure(self):
         import random
-        import math
+        import json
 
-        # Get grid size from campaign data
+        # Get grid size from campaign data, it defaults to 80x80
         world_gen = self.campaign_data.get("world_generation", {})
         surface = world_gen.get("world_layers", {}).get("surface", {})
         hex_grid_params = surface.get("hex_grid", {})
@@ -382,7 +637,7 @@ class WorldController:
         seed = int(self.campaign_state.world_seed) if self.campaign_state.world_seed else 42
         rng = random.Random(seed)
 
-        # Build empty hex grid
+        # Build empty hex grid (placeholder terrain)
         hexes = []
         for y in range(h):
             for x in range(w):
@@ -393,13 +648,13 @@ class WorldController:
                     "y": y_pos,
                     "grid_x": x,
                     "grid_y": y,
-                    "terrain": 'plains',        # placeholder
+                    "terrain": 'plains',
                     "region_id": None,
                     "discovered": False
                 })
         self.campaign_state.hex_grid = hexes
 
-        # Set party position based on starting location
+        # Set party position based on starting location (will be refined later)
         start_loc = self.world_map.get_location(self.starting_location_id)
         if start_loc:
             for h in hexes:
@@ -412,25 +667,129 @@ class WorldController:
             self.campaign_state.party_position = (0,0)
             hexes[0]['discovered'] = True
 
-        # Optionally generate potential locations (settlements, dungeons) – you can keep this or remove
-        self.campaign_state.surface_regions = {}
+        # ------------------------------------------------------------
+        # Generate terrain image using high‑resolution heightmap
+        # ------------------------------------------------------------
+
+        static_dir = Path("static/world_images")
+        static_dir.mkdir(parents=True, exist_ok=True)
+
+        # Parameters (tuned to match test_terrain.py)
+        terrain_params = {
+            'ocean_height': -1.0,
+            'coast_height': -1.0,
+            'lake_height': 0.05,
+            'plains_high': 0.35,
+            'hills_high': 0.8,
+            'mountains_high': 0.9,
+            'snowcaps_low': 0.97,
+            'forest_min_moisture': 0.5,
+            'forest_height_min': 0.5,
+            'forest_height_max': 0.65,
+            'river_target_per_10000_cells': 0.0002,
+            'river_hill_threshold': 0.7,
+            'river_mountain_threshold': 0.95
+        }
+
+        canvas_w = int(self.campaign_state.grid_width * self.campaign_state.hex_size * 0.75)
+        canvas_h = int(self.campaign_state.grid_height * self.campaign_state.hex_size)
+        hm_w = 1000
+        hm_h = 800
+
+        img, heightmap, moisture, river_mask = generate_terrain_image(
+            seed=self.seed,
+            output_path=str(static_dir / f"world_{self.world_id}_terrain.png"),
+            width=hm_w,
+            height=hm_h,
+            canvas_width=canvas_w,
+            canvas_height=canvas_h,
+            params=terrain_params
+        )
+        self.campaign_state.terrain_image_url = f"/static/world_images/world_{self.world_id}_terrain.png"
+
+        # Now assign terrain to each hex by sampling the high‑res heightmap
+
+        # Map hex centers to heightmap indices
+        for hex in self.campaign_state.hex_grid:
+            # hex center (x, y) in world pixel coordinates
+            cx = hex['x']
+            cy = hex['y']
+            # Map to heightmap grid (0..hm_w-1, 0..hm_h-1)
+            gx = int((cx / canvas_w) * (hm_w - 1))
+            gy = int((cy / canvas_h) * (hm_h - 1))
+            gx = max(0, min(gx, hm_w - 1))
+            gy = max(0, min(gy, hm_h - 1))
+            h_val = heightmap[gy][gx]
+            m_val = moisture[gy][gx]
+
+            # Classify terrain (same logic as in render_terrain_image)
+            if h_val < terrain_params['ocean_height']:
+                terrain = 'ocean'
+            elif h_val < terrain_params['coast_height']:
+                terrain = 'coast'
+            elif h_val < terrain_params['plains_high']:
+                terrain = 'plains'
+            elif h_val < terrain_params['hills_high']:
+                terrain = 'hills'
+            elif h_val < terrain_params['mountains_high']:
+                terrain = 'mountains'
+            else:
+                terrain = 'snowcaps'
+            if terrain_params['forest_height_min'] <= h_val <= terrain_params['forest_height_max'] and m_val > terrain_params['forest_min_moisture']:
+                terrain = 'forest'
+            if h_val < terrain_params['lake_height']:
+                terrain = 'lake'
+            hex['terrain'] = terrain
+
+        # Debug prints
+
+        terrain_counts = Counter(hex['terrain'] for hex in self.campaign_state.hex_grid)
+        print(f"Hex grid dimensions: {self.campaign_state.grid_width} x {self.campaign_state.grid_height}")
+        print(f"Terrain distribution: {dict(terrain_counts)}")
+        print(f"Total hexes: {len(self.campaign_state.hex_grid)}")
+
+        # ------------------------------------------------------------
+        # Generate potential locations based on terrain density
+        # ------------------------------------------------------------
         self.campaign_state.potential_locations = {}
+        terrain_density = {
+            'plains': 0.05,
+            'forest': 0.07,
+            'hills': 0.08,
+            'mountains': 0.10,
+            'snowcaps': 0.03,
+            'lake': 0.0,      # no locations on lakes
+            'ocean': 0.0,
+            'coast': 0.0
+        }
 
+        for hex in self.campaign_state.hex_grid:
+            terrain = hex["terrain"]
+            density = terrain_density.get(terrain, 0.03)
+            if self.rng.random() < density:
+                pot_id = f"loc_{hex['grid_x']}_{hex['grid_y']}"
+                loc_type = self.rng.choice(["settlement", "dungeon", "poi"])
+                self.campaign_state.potential_locations[pot_id] = {
+                    "region_id": None,
+                    "col": hex["grid_x"],
+                    "row": hex["grid_y"],
+                    "type": loc_type,
+                    "generated": False
+                }
 
-        # Note this is outside of the for loop above
-        # Generate encounter points for each region
-        # We need a deterministic RNG for the whole world; use self.rng (already seeded)
-        for region_id, region in self.campaign_state.surface_regions.items():
-            # Collect hexes belonging to this region
-            region_hexes = [h for h in self.campaign_state.hex_grid if h.get("region_id") == region_id]
-            if region_hexes:
-                points = self._generate_encounter_points_for_region(region_id, region_hexes, self.rng)
-                region.encounter_points.update(points)
+        # Surface regions remain empty for now (we are not using regions yet)
+        self.campaign_state.surface_regions = {}
 
         print(f"[WORLD] Hex grid generated: {len(self.campaign_state.hex_grid)} hexes")
-        print(f"[WORLD] Surface regions: {len(self.campaign_state.surface_regions)} regions")
         print(f"[WORLD] Potential locations: {len(self.campaign_state.potential_locations)} potential locations")
-        print(f"[ENCOUNTER] Generated {sum(len(r.encounter_points) for r in self.campaign_state.surface_regions.values())} encounter points.")
+
+        loc_type_counts = Counter(p['type'] for p in self.campaign_state.potential_locations.values())
+        print(f"Potential locations by type: {dict(loc_type_counts)}")
+
+        # TODO: Implement region generation from campaign data (14_campaign.json) and use for encounter points, faction control, etc.
+        # TODO: Generate encounter points on the world map (using encounter_points system, not dependent on regions)
+        # TODO: is there anything that could benefit from having heightmap, moisture_map, and river_mask after having used them to generate the image data?
+
 
     def test_generate_random_encounter(self):
         """Test: pick a random untouched encounter point and generate an encounter."""
@@ -495,6 +854,9 @@ class WorldController:
         return mapping.get(terrain, 1)  # default 1 for unknown terrains
     
     def generate_location_from_potential(self, pot_id: str) -> Optional[Location]:
+        # TODO: Add services (shop, temple, quest board) based on settlement size and region
+        # TODO: Determine dungeon type from terrain (cave, crypt, ruins, etc.)
+        # TODO: Generate POI descriptions using AI
         pot = self.campaign_state.potential_locations.get(pot_id)
         if not pot:
             return None
@@ -644,6 +1006,58 @@ class WorldController:
         
         self.paths = []
 
+    def get_party_list_html(self, session_id=None):
+        active_char = self._get_active_character(session_id)
+        if not active_char:
+            return "<p>No active character. Please create a character first.</p>"
+        party = self.party_manager.get_character_party(active_char.id)
+        if not party:
+            return """
+            <p>You are not in any party.</p>
+            <button onclick="showCreatePartyModal()" class="btn">Create Party</button>
+            <button onclick="showJoinPartyModal()" class="btn secondary">Join Party</button>
+            """
+        member_names = []
+        for member_id in party.get("members", []):
+            char = self.character_manager.get_character(member_id)
+            member_names.append(char.name if char else member_id)
+        html = f"""
+        <div class="party-card">
+            <h3>{party['name']}</h3>
+            <p>ID: {party['id']}</p>
+            <p>Members: {', '.join(member_names)}</p>
+            <button onclick="leaveParty()" class="btn secondary">Leave Party</button>
+        </div>
+        """
+        return html
+        
+    def get_active_party_id(self):
+        """Return the current party ID (default or from session)."""
+        # For now, use default. Later can be per player.
+        return self.default_party_id
+
+    def get_party_characters(self, party_id=None):
+        """Return list of Character objects for the party."""
+        if party_id is None:
+            party_id = self.get_active_party_id()
+        member_ids = self.party_manager.get_party_members(party_id)
+        chars = []
+        for cid in member_ids:
+            char = self.character_manager.get_character(cid)
+            if char:
+                chars.append(char)
+        return chars
+
+    def get_party_average_level(self, party_id=None):
+        chars = self.get_party_characters(party_id)
+        if not chars:
+            return 1
+        total = sum(c.level for c in chars)
+        return total // len(chars)  # integer average
+
+    def get_party_size(self, party_id=None):
+        return len(self.get_party_characters(party_id))
+
     def get_quests_for_location(self, location_id: str) -> List[Quest]:
         """Return all quests (active or completed) that involve this location."""
         result = []
@@ -681,6 +1095,7 @@ class WorldController:
     def create_party(self, name: str, initial_members: List[str]) -> Optional[str]:
         print(f"DEBUG: WorldController.create_party called with name={name}, members={initial_members}")
         party_id = self.party_manager.create_party(name, initial_members)
+        self.default_party_id = party_id
         print(f"DEBUG: party_manager.create_party returned {party_id}")
         return party_id
 
@@ -835,12 +1250,37 @@ class WorldController:
                 map_data["party_color"] = "#FFD700"
 
         map_data["hexes"] = self.campaign_state.hex_grid
+        map_data["terrain_image_url"] = self.campaign_state.terrain_image_url        
         return map_data
 
     def get_current_location_data(self) -> dict:
         if not self.current_location:
             return {}
         return self.current_location.to_dict()
+
+    def emit_inventory_update(self, character_id: str):
+        from flask import current_app
+        from world_app import socketio  # careful with circular imports; better to pass socketio instance
+        # safer: use current_app.extensions['socketio']
+        socketio = current_app.extensions['socketio']
+        socketio.emit('inventory_update', {'character_id': character_id})
+
+    def emit_party_moved(self, col, row, session_id):
+        from flask_socketio import emit
+        char = self._get_active_character(session_id)
+        if not char:
+            return
+        party = self.party_manager.get_character_party(char.id)
+        if not party:
+            self.event_log.emit("character.missing", {"session_id": session_id}, source="world_controller")
+            return
+        map_data = self.get_map_data()   # includes discovered hexes
+        emit('party_moved', {
+            'party_id': party['id'],
+            'col': col,
+            'row': row,
+            'map_data': map_data
+        }, namespace='/', broadcast=True)
 
     def move_character(self, char_id, new_position):
         char = self.character_manager.get_character(char_id)
@@ -926,7 +1366,7 @@ class WorldController:
     #     prompt += f"\n- Campaign theme: {self.campaign_theme}"
     #     prompt += f"\n- Recent events: {self.get_recent_events()}"
         
-    #     inventory_description = self.dm_chat_ai.generate_text(prompt)
+    #     inventory_description = self.chat_ai.generate_text(prompt)
         
     #     # Return narrative-focused inventory
     #     return {
@@ -944,7 +1384,7 @@ class WorldController:
         prompt += f"Campaign restrictions: {self.get_inventory_rules()['restricted']}\n"
         prompt += "Format: JSON with name, description, type, significance"
         
-        item_data = self.dm_chat_ai.generate_structured_data(prompt, {
+        item_data = self.chat_ai.generate_structured_data(prompt, {
             "name": "string",
             "description": "string",
             "type": "string",
@@ -1371,8 +1811,63 @@ class WorldController:
             "message": f"You descend into {location.name}."
         }
 
-    def process_command(self, input_data):
+    def _update_party_position(self, new_col, new_row, reason="movement", advance_minutes=0):
+        """Update party position, reveal hexes, advance time, and return response."""
+        self.campaign_state.party_position = (new_col, new_row)
+        self._reveal_hexes_around(new_col, new_row)
+
+        # Encounter check
+        if random.randint(1, 6) == 1:
+            # Get region for the new hex
+            hex_data = self.campaign_state.get_hex(new_col, new_row)
+            region_id = hex_data.get('region_id') if hex_data else None
+            region = self.campaign_state.surface_regions.get(region_id) if region_id else None
+            danger_mod = region.danger_level if region else 0
+            # Adjust chance by danger? For now, just use base chance.
+            # Generate encounter context
+            context = {
+                "point_id": f"move_{new_col}_{new_row}",
+                "party_level": self.get_party_average_level(),
+                "party_size": self.get_party_size(),
+                "region": {
+                    "danger_level": danger_mod,
+                    "terrain": hex_data.get('terrain') if hex_data else "plains",
+                    "faction": region.faction_control if region else "contested"
+                },
+                "point_type": "travel"
+            }
+            from world.encounter_generator import generate_encounter
+            encounter = generate_encounter(context)
+            # Store encounter in a temporary attribute for later use in the response
+            self.pending_encounter = encounter
+
+        if advance_minutes:
+            self.campaign_state.advance_time(advance_minutes)
+        # Update current_location if the new hex contains a location
+        loc = None
+        for location in self.world_map.locations.values():
+            if location.col == new_col and location.row == new_row:
+                loc = location
+                break
+        if loc:
+            self.current_location = loc
+        else:
+            self.current_location = None
+        response = {
+            "response": f"You {reason} to ({new_col},{new_row}).",
+            "map_data": self.get_map_data(),
+            "location_data": self.get_current_location_data(),
+            "action": "centerOnParty",
+            "success": True
+        }
+        if hasattr(self, 'pending_encounter') and self.pending_encounter:
+            response["encounter"] = self.pending_encounter.to_dict()
+            del self.pending_encounter
+        return response
+
+    def process_command(self, input_data, session_id=None):
         """Process a command (string or dict) and return response dict."""
+        print(f"[DEBUG] process_command called with input_data={input_data}, session_id={session_id}")
         if isinstance(input_data, str):
             command = input_data
             target_terrain = None
@@ -1380,77 +1875,50 @@ class WorldController:
             command = input_data.get('command', '')
             target_terrain = input_data.get('target_terrain')
 
-        # World movement: if command is a direction, handle it directly
-        if not self.dungeon_mode:
-            cmd = command.lower().strip()
-            direction_map = {
-                'n': 'n', 'north': 'n',
-                'ne': 'ne', 'northeast': 'ne',
-                'se': 'se', 'southeast': 'se',
-                's': 's', 'south': 's',
-                'sw': 'sw', 'southwest': 'sw',
-                'nw': 'nw', 'northwest': 'nw'
-            }
-            if cmd.startswith('go '):
-                cmd = cmd[3:].strip()
-            if cmd in ['e', 'east']:
-                col, row = self.campaign_state.party_position
-                if row % 2 == 0:
-                    dir = 'ne'
-                else:
-                    dir = 'se'
-            elif cmd in ['w', 'west']:
-                col, row = self.campaign_state.party_position
-                if row % 2 == 0:
-                    dir = 'nw'
-                else:
-                    dir = 'sw'
-            else:
-                dir = direction_map.get(cmd)
-            if dir:
-                result = self.move_hex(dir, terrain=target_terrain)
-                if result['success']:
-                    narrative = f"You move {dir}."
-                    return {
-                        "response": narrative,
-                        "map_data": self.get_map_data(),
-                        "location_data": self.get_current_location_data(),
-                        "success": True
-                    }
-                else:
-                    return {
-                        "response": result.get('message', f"Cannot move {dir}."),
-                        "map_data": self.get_map_data(),
-                        "success": False
-                    }
+        # =================================================================
+        # ADMIN / DEBUG COMMANDS – bypass the GameEngine (temporary)
+        # =================================================================
+        if command.lower() == "reveal locations":
+            count = 0
+            for pot_id, pot in self.campaign_state.potential_locations.items():
+                if not pot.get("generated"):
+                    self._generate_location_from_potential(pot_id)
+                    count += 1
+            return {"response": f"Generated {count} locations.", "map_data": self.get_map_data()}
 
-        # Fallback to GameEngine (if any)
+        # =================================================================
+        # NORMAL COMMANDS – route through GameEngine
+        # =================================================================
         if hasattr(self, 'game_engine') and self.game_engine:
             try:
-                print(f"↻ Processing command via GameEngine: '{command[:50]}...'")
+                # Pass the command to the engine
                 result = self.game_engine.advance(player_input=command)
-                ui_data = result.get("ui_data", {})
-                violations = result.get("violations", 0)
-                return {
-                    "response": ui_data.get("narration", "Command processed via GameEngine"),
-                    "map_data": ui_data.get("map", self.get_map_data()),
-                    "location_data": ui_data.get("location", self.get_current_location_data()),
-                    "phase_compliant": True,
-                    "violations": violations
+                ui_data = result.get('ui_data', {})
+
+                # Map engine output to expected frontend format
+                response = {
+                    "response": ui_data.get('narration', ''),
+                    "map_data": ui_data.get('map', self.get_map_data()),
+                    "location_data": ui_data.get('location', self.get_current_location_data()),
+                    "encounter": ui_data.get('encounter'),      # may be None
+                    "action": ui_data.get('action'),           # e.g., "centerOnParty"
+                    "success": True
                 }
+                return response
             except Exception as e:
                 print(f"✗ GameEngine processing failed: {e}")
-                # fall through
-
-        # Legacy AI processing (if nothing else)
-        print(f"↻ Processing command via legacy AI: '{command[:50]}...'")
-        if self.dungeon_ai:
-            result = self.dungeon_ai.process_command(command)
+                import traceback
+                traceback.print_exc()
+                return {"response": f"Engine error: {str(e)}", "success": False}
         else:
-            result = self.world_ai.process_command(command)
-        # Assume action takes 10 minutes
-        self.campaign_state.advance_time(10)
-        return result
+            # Fallback to legacy AI (should not happen after refactor)
+            print(f"↻ GameEngine not available, using legacy AI for: '{command[:50]}...'")
+            if self.dungeon_ai:
+                result = self.dungeon_ai.process_command(command)
+            else:
+                result = self.world_ai.process_command(command)
+            self.campaign_state.advance_time(10)
+            return result
 
     def get_game_engine_state(self) -> dict:
         """Get GameEngine status and phase information"""
@@ -1469,6 +1937,15 @@ class WorldController:
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
+    def _get_active_character(self, session_id: str = None):
+        if not session_id:
+            return None
+        player = self.get_player_by_session(session_id)
+        if not player or not player.active_character_id:
+            get_event_log().emit("character.missing", {"session_id": session_id}, source="world_controller")
+            return None
+        return self.character_manager.get_character(player.active_character_id)
+
     def get_or_create_player(self, session_id, player_name=None):
         """Get existing player or create a new one for the session"""
         
@@ -1478,6 +1955,10 @@ class WorldController:
         
         # Create new player
         player = Player(name=player_name or f"Player_{session_id[:8]}")
+        if player.active_character_id:
+            party = self.party_manager.get_character_party(player.active_character_id)
+            if party:
+                self.default_party_id = party['id']
         self.players[player.id] = player
         self.session_players[session_id] = player.id
         
@@ -1662,11 +2143,17 @@ class WorldController:
             }
 
         # Move
+        get_event_log().emit("movement.party", {"from": (col, row), "to": (nc, nr)}, source="world_controller")
         self.campaign_state.party_position = (nc, nr)
         target['discovered'] = True
         self._reveal_hexes_around(nc, nr)
         self.explore_hex()
-        return {"success": True, "new_hex": target}
+        return {
+            "success": True,
+            "new_hex": target,
+            "new_col": nc,
+            "new_row": nr
+        }
 
     def _is_hex_passable(self, hex):
         """Basic passability based on terrain. Later we'll check party assets."""
@@ -1711,3 +2198,149 @@ class WorldController:
         for p in new_pois:
             p['discovered'] = True
         return {"success": True, "new_pois": new_pois}
+
+    @tool(
+        name="move_tool",
+        description="Move the party in a cardinal or diagonal direction. Steps default to 1.",
+        intent="move",
+        direction="Direction: north, south, east, west, northeast, northwest, southeast, southwest",
+        steps="Number of steps (optional, default=1)"
+    )
+    def move_tool(self, direction: str, steps: int = 1) -> dict:
+        dir_map = {
+            "north": "n", "south": "s", "east": "e", "west": "w",
+            "northeast": "ne", "northwest": "nw",
+            "southeast": "se", "southwest": "sw"
+        }
+        dir_code = dir_map.get(direction.lower(), direction.lower())
+        result = self.world.move_hex(dir_code, steps)
+        if result.get("success"):
+            return {
+                "success": True,
+                "message": f"You move {direction}.",
+                "map_data": self.world.get_map_data(),
+                "action": "centerOnParty"
+            }
+        else:
+            return {"success": False, "message": result.get("message", "Cannot move.")}
+
+    @tool(
+        name="merchant_buy",
+        description="Buy an item from the merchant at your current location.",
+        intent="buy",
+        item_name="The name of the item you want to buy (e.g., 'healing potion')"
+    )
+    def merchant_buy(self, item_name: str) -> dict:
+        char = self._get_active_character()
+        if not char:
+            return {"success": False, "message": "No active character."}
+        if not self.current_location or not self.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here."}
+        merchant = self.campaign_state.get_merchant(self.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+        item = next((i for i in merchant.inventory if i.name.lower() == item_name.lower()), None)
+        if not item:
+            return {"success": False, "message": f"Item '{item_name}' not found."}
+        rel = self.campaign_state.get_merchant_relationship(merchant.id, char.id)
+        price = self._compute_price(item, merchant, rel, {})
+        if char.currency < price:
+            return {"success": False, "message": f"Not enough gold. Need {price} gp."}
+        char.currency -= price
+        new_item = InventoryItem(
+            name=item.name,
+            description=f"Bought from {merchant.name}",
+            type=item.tags.pop() if item.tags else "adventuring_gear",
+            cost=price
+        )
+        char.inventory.append(new_item)
+        self.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1)
+        self.character_manager._save_character_to_db(char)
+        return {
+            "success": True,
+            "message": f"You bought {item.name} for {price} gp.",
+            "action": "refresh_inventory"
+        }
+
+    @tool(
+        name="merchant_sell",
+        description="Sell an item to the merchant at your current location.",
+        intent="sell",
+        item_name="The name of the item you want to sell (e.g., 'shortsword')"
+    )
+    def merchant_sell(self, item_name: str) -> dict:
+        char = self.world._get_active_character()
+        if not char:
+            return {"success": False, "message": "No active character."}
+        if not self.world.current_location or not self.world.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here."}
+        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+        def get_name(i):
+            return i.name if hasattr(i, 'name') else i.get('name', '')
+        def get_cost(i):
+            return i.cost if hasattr(i, 'cost') else i.get('cost', 0)
+        item = next((i for i in char.inventory if get_name(i).lower() == item_name.lower()), None)
+        if not item:
+            item = next((i for i in char.custom_items if get_name(i).lower() == item_name.lower()), None)
+        if not item:
+            return {"success": False, "message": f"You don't have {item_name}."}
+        sell_price = get_cost(item) // 2
+        char.currency += sell_price
+        if item in char.inventory:
+            char.inventory.remove(item)
+        else:
+            char.custom_items.remove(item)
+        self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, trust_delta=1)
+        self.world.character_manager._save_character_to_db(char)
+        return {
+            "success": True,
+            "message": f"You sold {item_name} for {sell_price} gp.",
+            "action": "refresh_inventory"
+        }
+
+    @tool(
+        name="merchant_haggle",
+        description="Haggle over the price of an item with the merchant.",
+        intent="haggle",
+        item_name="The name of the item",
+        offered_price="The price you offer (in gold)"
+    )
+    def merchant_haggle(self, item_name: str, offered_price: int) -> dict:
+        char = self.world._get_active_character()
+        if not char:
+            return {"success": False, "message": "No active character."}
+        if not self.world.current_location or not self.world.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here."}
+        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+        item = next((i for i in merchant.inventory if i.name.lower() == item_name.lower()), None)
+        if not item:
+            return {"success": False, "message": f"Item '{item_name}' not found."}
+        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
+        base_price = self.world._compute_price(item, merchant, rel, {})
+        persuasion = random.randint(1, 20) + char.get_skill_rank('social')
+        difficulty = 10 + merchant.personality.greed - merchant.personality.honor
+        if persuasion >= difficulty and offered_price >= base_price * 0.7:
+            final_price = offered_price
+            if char.currency < final_price:
+                return {"success": False, "message": f"Not enough gold. Need {final_price} gp."}
+            char.currency -= final_price
+            new_item = InventoryItem(
+                name=item.name,
+                description=f"Bought from {merchant.name} after haggling",
+                type=item.tags.pop() if item.tags else "adventuring_gear",
+                cost=final_price
+            )
+            char.inventory.append(new_item)
+            self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1, trust_delta=1)
+            self.world.character_manager._save_character_to_db(char)
+            return {
+                "success": True,
+                "message": f"Merchant accepts {final_price} gp for {item.name}.",
+                "action": "refresh_inventory"
+            }
+        else:
+            return {"success": False, "message": f"Merchant refuses. The price is {base_price} gp."}

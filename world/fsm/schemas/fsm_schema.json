@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id", "initial", "states"],
+  "properties": {
+    "id": {"type": "string"},
+    "initial": {"type": "string"},
+    "context": {"type": "object"},
+    "states": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "target": {"type": "string"},
+                "cond": {"type": "string"},
+                "actions": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "meta": {"type": "object"},
+          "initial": {"type": "string"}
+        }
+      }
+    }
+  }
+}

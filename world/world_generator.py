@@ -45,7 +45,8 @@ class WorldGenerator:
         
         # Initialize image generator if needed
         if params.get("generate_images", True):
-            self._initialize_image_generator()
+            #TODO generate images based on need and on environment/description, maybe we don't use hirez images but the other system that loads cartoonish overlays or something
+            pass #self._initialize_image_generator() # turning this off till I get ready to actually use images
         
         # Generate campaign foundation
         foundation = self.builder.generate("campaign_foundation", theme=theme)

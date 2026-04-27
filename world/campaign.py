@@ -148,6 +148,262 @@ class Quest:
             completed=data.get("completed", False)
         )
 
+# ----------------------------------------------------------------------
+# Merchant System (Phase 1)
+# ----------------------------------------------------------------------
+from typing import Optional, Set, List, Dict, Any, Union, Literal
+from datetime import datetime
+import uuid
+
+class MerchantPersonality:
+    """Drives merchant behavior and pricing."""
+    def __init__(self, greed: int = 5, paranoia: int = 3, honor: int = 5,
+                 sociability: int = 5, risk_tolerance: int = 5):
+        self.greed = greed          # 0-10
+        self.paranoia = paranoia    # 0-10
+        self.honor = honor          # 0-10
+        self.sociability = sociability
+        self.risk_tolerance = risk_tolerance
+
+    def to_dict(self) -> dict:
+        return {
+            "greed": self.greed,
+            "paranoia": self.paranoia,
+            "honor": self.honor,
+            "sociability": self.sociability,
+            "risk_tolerance": self.risk_tolerance
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MerchantPersonality':
+        return cls(
+            greed=data.get("greed", 5),
+            paranoia=data.get("paranoia", 3),
+            honor=data.get("honor", 5),
+            sociability=data.get("sociability", 5),
+            risk_tolerance=data.get("risk_tolerance", 5)
+        )
+
+class MerchantConstraints:
+    """Hard limits on merchant behavior."""
+    def __init__(self, max_discount: float = 0.5, max_markup: float = 2.0,
+                 refuses_if_hostile: bool = True, guards_present: bool = False,
+                 barter_allowed: bool = True, credit_allowed: bool = False):
+        self.max_discount = max_discount
+        self.max_markup = max_markup
+        self.refuses_if_hostile = refuses_if_hostile
+        self.guards_present = guards_present
+        self.barter_allowed = barter_allowed
+        self.credit_allowed = credit_allowed
+
+    def to_dict(self) -> dict:
+        return {
+            "max_discount": self.max_discount,
+            "max_markup": self.max_markup,
+            "refuses_if_hostile": self.refuses_if_hostile,
+            "guards_present": self.guards_present,
+            "barter_allowed": self.barter_allowed,
+            "credit_allowed": self.credit_allowed
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MerchantConstraints':
+        return cls(
+            max_discount=data.get("max_discount", 0.5),
+            max_markup=data.get("max_markup", 2.0),
+            refuses_if_hostile=data.get("refuses_if_hostile", True),
+            guards_present=data.get("guards_present", False),
+            barter_allowed=data.get("barter_allowed", True),
+            credit_allowed=data.get("credit_allowed", False)
+        )
+
+class VisibilityRule:
+    """Rule for when an item becomes visible to a character."""
+    def __init__(self, rule_type: Literal["affinity","trust","fear","respect","flag","quest"],
+                 threshold: Union[int, str], hint: Optional[str] = None):
+        self.type = rule_type
+        self.threshold = threshold
+        self.hint = hint
+
+    def to_dict(self) -> dict:
+        return {
+            "type": self.type,
+            "threshold": self.threshold,
+            "hint": self.hint
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'VisibilityRule':
+        return cls(
+            rule_type=data["type"],
+            threshold=data["threshold"],
+            hint=data.get("hint")
+        )
+
+class MerchantItem:
+    """An item that a merchant may sell."""
+    def __init__(self, item_id: str, item_name: str, base_price: int,
+                 steal_dc: int = 15, barter_value: int = None,
+                 quantity: Optional[int] = None, tags: Set[str] = None,
+                 visibility_rules: List[VisibilityRule] = None):
+        self.id = item_id
+        self.name = item_name
+        self.base_price = int(base_price)
+        self.steal_dc = steal_dc
+        self.barter_value = barter_value if barter_value is not None else self.base_price // 2 # integer division
+        self.quantity = quantity      # None = unlimited/elastic
+        self.tags = tags or set()
+        self.visibility_rules = visibility_rules or []
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "base_price": self.base_price,
+            "steal_dc": self.steal_dc,
+            "barter_value": self.barter_value,
+            "quantity": self.quantity,
+            "tags": list(self.tags),
+            "visibility_rules": [r.to_dict() for r in self.visibility_rules]
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MerchantItem':
+        return cls(
+            item_id=data["id"],
+            item_name=data["name"],
+            base_price=data["base_price"],
+            steal_dc=data.get("steal_dc", 15),
+            barter_value=data.get("barter_value"),
+            quantity=data.get("quantity"),
+            tags=set(data.get("tags", [])),
+            visibility_rules=[VisibilityRule.from_dict(r) for r in data.get("visibility_rules", [])]
+        )
+
+class MerchantRelationship:
+    """Per‑character relationship with a merchant."""
+    def __init__(self, merchant_id: str, character_id: str,
+                 affinity: int = 0, trust: int = 0, fear: int = 0, respect: int = 0,
+                 flags: Set[str] = None, last_interaction: datetime = None):
+        self.merchant_id = merchant_id
+        self.character_id = character_id
+        self.affinity = affinity      # -10..10
+        self.trust = trust            # -10..10
+        self.fear = fear              # -10..10
+        self.respect = respect        # -10..10
+        self.flags = flags or set()
+        self.last_interaction = last_interaction or datetime.now()
+
+    def to_dict(self) -> dict:
+        return {
+            "merchant_id": self.merchant_id,
+            "character_id": self.character_id,
+            "affinity": self.affinity,
+            "trust": self.trust,
+            "fear": self.fear,
+            "respect": self.respect,
+            "flags": list(self.flags),
+            "last_interaction": self.last_interaction.isoformat()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'MerchantRelationship':
+        return cls(
+            merchant_id=data["merchant_id"],
+            character_id=data["character_id"],
+            affinity=data.get("affinity", 0),
+            trust=data.get("trust", 0),
+            fear=data.get("fear", 0),
+            respect=data.get("respect", 0),
+            flags=set(data.get("flags", [])),
+            last_interaction=datetime.fromisoformat(data["last_interaction"]) if "last_interaction" in data else None
+        )
+
+class PartyMerchantState:
+    """Optional party‑level overlay (ambient tension, shared flags)."""
+    def __init__(self, merchant_id: str, shared_flags: Set[str] = None,
+                 heat_level: int = 0, last_visit: datetime = None):
+        self.merchant_id = merchant_id
+        self.shared_flags = shared_flags or set()
+        self.heat_level = heat_level
+        self.last_visit = last_visit or datetime.now()
+
+    def to_dict(self) -> dict:
+        return {
+            "merchant_id": self.merchant_id,
+            "shared_flags": list(self.shared_flags),
+            "heat_level": self.heat_level,
+            "last_visit": self.last_visit.isoformat()
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'PartyMerchantState':
+        return cls(
+            merchant_id=data["merchant_id"],
+            shared_flags=set(data.get("shared_flags", [])),
+            heat_level=data.get("heat_level", 0),
+            last_visit=datetime.fromisoformat(data["last_visit"]) if "last_visit" in data else None
+        )
+
+class Merchant:
+    def __init__(self, merchant_id: str, name: str, location: str,
+                 personality: MerchantPersonality = None,
+                 constraints: MerchantConstraints = None,
+                 inventory: List[MerchantItem] = None,
+                 faction: Optional[str] = None,
+                 schedule: Optional[Dict] = None,
+                 global_bias: int = 0,
+                 display_type: str = "table",
+                 display_name: str = "wooden table",
+                 display_description: str = "a sturdy wooden table with neatly arranged items"):
+        self.id = merchant_id
+        self.name = name
+        self.location = location
+        self.personality = personality or MerchantPersonality()
+        self.constraints = constraints or MerchantConstraints()
+        self.inventory = inventory or []
+        self.faction = faction
+        self.schedule = schedule or {}
+        self.global_bias = global_bias
+        self.display_type = display_type
+        self.display_name = display_name
+        self.display_description = display_description
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "location": self.location,
+            "personality": self.personality.to_dict(),
+            "constraints": self.constraints.to_dict(),
+            "inventory": [item.to_dict() for item in self.inventory],
+            "faction": self.faction,
+            "schedule": self.schedule,
+            "global_bias": self.global_bias,
+            "display_type": self.display_type,
+            "display_name": self.display_name,
+            "display_description": self.display_description
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Merchant':
+        personality = MerchantPersonality.from_dict(data.get("personality", {}))
+        constraints = MerchantConstraints.from_dict(data.get("constraints", {}))
+        inventory = [MerchantItem.from_dict(i) for i in data.get("inventory", [])]
+        return cls(
+            merchant_id=data["id"],
+            name=data["name"],
+            location=data["location"],
+            personality=personality,
+            constraints=constraints,
+            inventory=inventory,
+            faction=data.get("faction"),
+            schedule=data.get("schedule", {}),
+            global_bias=data.get("global_bias", 0),
+            display_type=data.get("display_type", "table"),
+            display_name=data.get("display_name", "wooden table"),
+            display_description=data.get("display_description", "a sturdy wooden table with neatly arranged items")
+        )
 
 # ----------------------------------------------------------------------
 # CampaignState
@@ -208,6 +464,11 @@ class CampaignState:
         self.grid_width = 0
         self.grid_height = 0
         self.hex_size = 0
+
+        # Merchant system storage
+        self.merchants: Dict[str, Merchant] = {}
+        self.merchant_relationships: Dict[str, MerchantRelationship] = {}  # key: f"{merchant_id}:{character_id}"
+        self.party_merchant_states: Dict[str, PartyMerchantState] = {}  # key: merchant_id
 
     def to_dict(self) -> dict:
         return {
@@ -365,3 +626,32 @@ class CampaignState:
             return f"{rng.choice(prefixes)} {rng.choice(suffixes)}"
         else:
             return f"{rng.choice(prefixes)} {poi_type.capitalize()}"
+
+    def get_merchant(self, merchant_id: str) -> Optional[Merchant]:
+        return self.merchants.get(merchant_id)
+
+    def get_merchant_relationship(self, merchant_id: str, character_id: str) -> MerchantRelationship:
+        key = f"{merchant_id}:{character_id}"
+        if key not in self.merchant_relationships:
+            self.merchant_relationships[key] = MerchantRelationship(merchant_id, character_id)
+        return self.merchant_relationships[key]
+
+    def get_party_merchant_state(self, merchant_id: str) -> PartyMerchantState:
+        if merchant_id not in self.party_merchant_states:
+            self.party_merchant_states[merchant_id] = PartyMerchantState(merchant_id)
+        return self.party_merchant_states[merchant_id]
+
+    def update_merchant_relationship(self, merchant_id: str, character_id: str,
+                                     affinity_delta: int = 0, trust_delta: int = 0,
+                                     fear_delta: int = 0, respect_delta: int = 0,
+                                     add_flags: Set[str] = None, remove_flags: Set[str] = None):
+        rel = self.get_merchant_relationship(merchant_id, character_id)
+        rel.affinity = max(-10, min(10, rel.affinity + affinity_delta))
+        rel.trust = max(-10, min(10, rel.trust + trust_delta))
+        rel.fear = max(-10, min(10, rel.fear + fear_delta))
+        rel.respect = max(-10, min(10, rel.respect + respect_delta))
+        if add_flags:
+            rel.flags.update(add_flags)
+        if remove_flags:
+            rel.flags.difference_update(remove_flags)
+        rel.last_interaction = datetime.now()

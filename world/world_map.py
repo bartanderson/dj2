@@ -13,6 +13,8 @@ from typing import Dict, List, Optional
 
 # For now, WorldMap is fine as a temporary placeholder – it loads static locations from the database and allows basic travel. Once we build the new generation system, we will update WorldMap to work alongside CampaignState (or replace it entirely). The current changes are just to keep things running while we incrementally migrate.
 
+# Not to mention the subhex feature on it's way. This may cause considerable perturbation and or additions.
+
 class Location:
     def __init__(self, id: str, name: str, type: str, description: str,
                  col: int = 0, row: int = 0,   # new grid coordinates
@@ -21,7 +23,8 @@ class Location:
                  image_url: Optional[str] = None,
                  features: Optional[List[str]] = None,
                  services: Optional[List[str]] = None,
-                 discovered: bool = False):
+                 discovered: bool = False,
+                 merchant_id: Optional[str] = None):
         self.id = id
         self.name = name
         self.type = type
@@ -44,6 +47,7 @@ class Location:
         self.services = services or []
         self.image_url = image_url
         self.quests: List[str] = []
+        self.merchant_id = merchant_id
         self.discovered = discovered
 
     def to_dict(self) -> dict:
@@ -62,8 +66,29 @@ class Location:
             "services": self.services,
             "image_url": self.image_url,
             "discovered": self.discovered,
+            "merchant_id": self.merchant_id,
             "quests": self.quests
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Location':
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            type=data["type"],
+            description=data["description"],
+            x=data.get("x", 0),
+            y=data.get("y", 0),
+            col=data.get("col", 0),
+            row=data.get("row", 0),
+            dungeon_type=data.get("dungeon_type"),
+            dungeon_level=data.get("dungeon_level", 1),
+            image_url=data.get("image_url"),
+            features=data.get("features", []),
+            services=data.get("services", []),
+            discovered=data.get("discovered", False),
+            merchant_id=data.get("merchant_id")
+        )
 
 class WorldMap:
     TERRAIN_COLORS = {

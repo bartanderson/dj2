@@ -8,10 +8,37 @@ let worldState = {
     characters: {},
     parties: []
 };
-let terrainImage = null; // will hold the terrain as an Image or offscreen canvas
+
+// Camera: world coordinate at top-left of map div
+let camera = { x: 0, y: 0, zoom: 1 };
+
 let fogOpacity = 1.0;
+let terrainImage = null;
+let worldMap = null;
+let isDragging = false;
+let dragStartX, dragStartY, startOffsetX, startOffsetY;
 window.currentPartyId = null;  // Will be set when player joins/creates party
 window.currentLocationId = null;  // Will be set from world state
+
+function getMapDivRect() {
+    return document.getElementById('world-map').getBoundingClientRect();
+}
+
+function worldToScreen(worldX, worldY) {
+    const rect = getMapDivRect();
+    const screenX = rect.left + (worldX - camera.x) * camera.zoom;
+    const screenY = rect.top + (worldY - camera.y) * camera.zoom;
+    return { screenX, screenY };
+}
+
+function screenToWorld(screenX, screenY) {
+    const rect = getMapDivRect();
+    const worldX = camera.x + (screenX - rect.left) / camera.zoom;
+    const worldY = camera.y + (screenY - rect.top) / camera.zoom;
+    return { worldX, worldY };
+}
+
+
 
 // After worldState is loaded, set currentPartyId from player's party
 if (worldState.parties && worldState.parties.length > 0) {
@@ -140,6 +167,76 @@ function enterDungeon() {
     window.location.href = `http://localhost:5005/?party_id=${encodeURIComponent(partyId)}&location_id=${encodeURIComponent(locationId)}&world_url=${encodeURIComponent(window.location.origin)}`;
 }
 
+// ===== PARTY UI FUNCTIONS =====
+
+function showCreatePartyModal() {
+    const partyName = prompt("Enter party name:", "My Party");
+    if (!partyName) return;
+    
+    fetch('/api/party/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: partyName })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to create party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error creating party: " + err.message);
+    });
+}
+
+function showJoinPartyModal() {
+    const partyId = prompt("Enter party ID to join:");
+    if (!partyId) return;
+    console.log("partyId", partyId)
+    
+    fetch('/api/party/join', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ party_id: partyId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to join party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error joining party: " + err.message);
+    });
+}
+
+function leaveParty() {
+    if (!confirm("Are you sure you want to leave your current party?")) return;
+    
+    fetch('/api/party/leave', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert("Failed to leave party: " + (data.error || "Unknown error"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Error leaving party: " + err.message);
+    });
+}
+
 function getCurrentPartyCharacters() {
     // Get the active party from world state
     const activeParty = worldState.parties.find(p => p.id === window.currentPartyId);
@@ -201,72 +298,121 @@ function addWorldMessage(text) {
     }
 }
 
-
-// async function sendWorldCommand(command) {
-//     try {
-//         const response = await fetch('/api/command', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({command: command})
-//         });
-//         const data = await response.json();
-//         if (data.error) {
-//             console.error('Command error:', data.error);
-//             return;
-//         }
-//         if (data.map_data) {
-//             worldState.worldMap = data.map_data;
-//             worldMap = worldState.worldMap;
-//             if (data.location_data) {
-//                 worldState.currentLocation = data.location_data;
-//             }
-//             redraw();
-//         }
-//         if (data.response) {
-//             console.error(data.response);
-//             addWorldMessage(data.response); // send response to chat
-//             // Append to your existing world chat panel
-//             const chatDiv = document.getElementById('world-chat-messages');
-//             if (chatDiv) {
-//                 const msgDiv = document.createElement('div');
-//                 msgDiv.textContent = data.response;
-//                 chatDiv.appendChild(msgDiv);
-//                 chatDiv.scrollTop = chatDiv.scrollHeight;
-//             }
-
-//         }
-//     } catch (error) {
-//         console.error('Command error:', error);
-//     }
-// }
-
-document.getElementById('world-chat-messages').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const input = document.getElementById('world-chat-input');
-    const command = input.value.trim();
-    if (command) {
-        sendWorldCommand(command);
-        input.value = '';
-    }
-})
-
-// Wire up the chat input
 document.addEventListener('DOMContentLoaded', function() {
-    const input = document.getElementById('world-chat-input');
-    const sendBtn = document.getElementById('world-chat-send');
-    if (input && sendBtn) {
-        const send = () => {
-            const cmd = input.value.trim();
-            if (cmd) {
-                sendWorldCommand(cmd);
-                input.value = '';
-            }
-        };
-        sendBtn.addEventListener('click', send);
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') send();
+
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            location.reload();
         });
     }
+    
+    // ===== World chat panel: send messages to AI DM =====
+
+    const chatInput = document.getElementById('world-chat-input');
+    const chatSend = document.getElementById('world-chat-send');
+    if (chatInput && chatSend) {
+        console.log("got here")
+        const sendToAI = async () => {
+            const message = chatInput.value.trim();
+            console.log("sendToAI message:", message);
+            if (!message) return;
+            chatInput.value = '';
+            addWorldMessage(`You: ${message}`); // display user message
+
+            // Show loading indicator
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.textContent = 'DM is thinking...';
+            loadingDiv.style.color = '#888';
+            document.getElementById('world-chat-messages').appendChild(loadingDiv);
+
+            try {
+                console.log("Fetching /api/dm-response with message:", message);
+                const response = await fetch('/api/dm-response', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                document.getElementById(loadingId)?.remove();
+
+                if (!response.ok) {
+                    addWorldMessage(`Error: ${response.status}`);
+                    return;
+                }
+
+                const data = await response.json();
+
+                // Display AI responses
+                if (data.responses && Array.isArray(data.responses)) {
+                    data.responses.forEach(r => {
+                        addWorldMessage(`${r.speaker}: ${r.content}`);
+                    });
+                } else if (data.response) {
+                    addWorldMessage(`DM: ${data.response}`);
+                }
+
+                // Update map if map_data is returned (from tool calls)
+                if (data.map_data) {
+                    worldState.worldMap = data.map_data;
+                    worldMap = worldState.worldMap;
+                    redraw();
+                    if (data.action === 'centerOnParty') centerOnParty();
+                }
+
+                // Refresh other UI components (inventory, party, etc.)
+                if (typeof refreshWorldState === 'function') {
+                    refreshWorldState();
+                }
+
+            } catch (err) {
+                document.getElementById(loadingId)?.remove();
+                addWorldMessage(`Network error: ${err.message}`);
+                console.error(err);
+            }
+        };
+
+        chatSend.addEventListener('click', sendToAI);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendToAI();
+        });
+    }
+
+    // ===== SocketIO for real‑time updates =====
+    const socket = io();
+
+    socket.on('party_update', () => {
+        htmx.ajax('GET', '/api/party/list-html', { target: '#party-list-container', swap: 'innerHTML' });
+    });
+
+    socket.on('party_moved', (data) => {
+        console.log('party_moved received', data);
+        console.log('window.currentPartyId:', window.currentPartyId);
+        if (data.party_id === window.currentPartyId) {
+            console.log('Updating party position to', data.col, data.row);
+            if (data.map_data) {
+                worldState.worldMap = data.map_data;
+                worldMap = worldState.worldMap;
+            } else if (worldMap) {
+                worldMap.party_position = { col: data.col, row: data.row };
+                console.log('worldMap.party_position updated:', worldMap.party_position);
+            } else {
+                console.log('worldMap not defined');
+            }
+            redraw();
+            centerOnParty();
+        } else {
+            console.log('Party ID mismatch');
+        }
+    });
+
+    // ===== Map initialization (original code) =====
+    if (typeof loadWorldDataWithRetry === 'function') {
+        loadWorldDataWithRetry();
+    }
+
 });
 
 // ===== MAP RENDERING HELPERS =====
@@ -311,8 +457,8 @@ function drawLocations(ctx, locations, scale) {
 
 function drawHexagon(ctx, cx, cy, size, color) {
     // Flat‑top hexagons; adjust size if needed
-    size = size * 1.17
-    let hexScale = 0.83; // local scaling – does not affect global zoom
+    size = size * 1.165
+    let hexScale = 0.86; // local scaling – does not affect global zoom
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
         let angle = i * Math.PI / 3; // 0°,60°,120°,...
@@ -323,14 +469,14 @@ function drawHexagon(ctx, cx, cy, size, color) {
     }
     ctx.closePath();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = .1;
     ctx.stroke();
 }
 
 function hexagonPath(ctx, cx, cy, size) {
     // flat‑top hexagon keep in sync with drawHexagon as far as values goes
-    size = size * 1.17;
-    let hexScale = 0.83;
+    size = size * 1.165;
+    let hexScale = 0.86;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
         let angle = i * Math.PI / 3; // 0°,60°,120°,...
@@ -341,6 +487,7 @@ function hexagonPath(ctx, cx, cy, size) {
     }
     ctx.closePath();
 }
+
 
 function getTargetHex(col, row, direction) {
     // Map movement direction to hex coordinates (flat‑top)
@@ -362,575 +509,58 @@ function getTargetHex(col, row, direction) {
     return [col + dc, row + dr];
 }
 
-async function setHexTerrain(col, row, terrain) {
-    try {
-        await fetch('/api/set-hex-terrain', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({col, row, terrain})
-        });
-    } catch (e) {
-        console.warn('Failed to set hex terrain:', e);
-    }
-}
-
-function dilateMask(mask, radius = 1) {
-    const rows = mask.length;
-    const cols = mask[0].length;
-    const dilated = Array(rows).fill().map(() => Array(cols).fill(false));
-    for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-            if (mask[y][x]) {
-                for (let dy = -radius; dy <= radius; dy++) {
-                    for (let dx = -radius; dx <= radius; dx++) {
-                        const ny = y + dy;
-                        const nx = x + dx;
-                        if (ny >= 0 && ny < rows && nx >= 0 && nx < cols) {
-                            dilated[ny][nx] = true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return dilated;
-}
-
-const FOREST_COLOR = '#2c5e2e';
-
-function generateTerrainImage() {
-    if (!worldMap) return;
-
-    const width = worldMap.width;
-    const height = worldMap.height;
-    const hexes = worldMap.hexes;
-    const area = width * height;
-
-    if (typeof TerrainGenerator === 'undefined') {
-        console.warn('TerrainGenerator not available');
-        return;
-    }
-
-    const seed = worldMap.seed || 42;
-    const terrainGen = new TerrainGenerator(seed, width, height);
-    const heightmap = terrainGen.generateHeightmap(); // no edge‑lowering
-
-    // Moisture map (used for lakes)
-    const moistureMap = generateMoistureMap(seed, width, height);
-
-    // Terrain thresholds
-    const thresholds = {
-        low: 0.3,       // below this: lakes
-        plains: 0.54,   // 0.3–0.54 is plains (but we override low to lake)
-        forest: 0.65,   // 0.54–0.65 is forest
-        hills: 0.73,    // 0.65–0.73 is hills
-        mountains: 0.85, // 0.73–0.85 is mountains
-        // above 0.85 is snowcaps
-    };
-
-    // ---- Step 1: Render base terrain to a temporary canvas ----
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-    const tempId = 'temp-terrain-' + Date.now();
-    tempCanvas.id = tempId;
-    document.body.appendChild(tempCanvas);
-    terrainGen.renderTerrain(terrainGen.generateTerrain(heightmap), tempId);
-
-    // ---- Step 2: Build land mask and location set (used for lakes) ----
-    const landMask = Array(height).fill().map(() => Array(width).fill(false));
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            if (heightmap[y][x] >= thresholds.coast) {
-                landMask[y][x] = true;
-            }
-        }
-    }
-
-    const locHexSet = new Set();
-    const locations = worldMap.locations || [];
-    for (let loc of locations) {
-        if (loc.col !== undefined && loc.row !== undefined) {
-            locHexSet.add(`${loc.col},${loc.row}`);
-        } else {
-            // Fallback: find hex by pixel
-            const locX = loc.x;
-            const locY = loc.y;
-            for (let hex of hexes) {
-                if (Math.abs(hex.x - locX) < 30 && Math.abs(hex.y - locY) < 30) {
-                    locHexSet.add(`${hex.grid_x},${hex.grid_y}`);
-                    break;
-                }
-            }
-        }
-    }
-
-    // ---- Step 3: removed lakes replaced oceans more or less
-
-    // ---- Step 4: River generation (meandering, thin) ----
-    const targetRiverCount = Math.floor(area / 8000); // fewer rivers
-    let riverMask = Array(height).fill().map(() => Array(width).fill(false));
-    const rngRiver = new Math.seedrandom(seed + 10000);
-
-    // Start candidates: hills/mountains (but not snowcaps)
-    let startCandidates = [];
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const h = heightmap[y][x];
-            if (h >= thresholds.hills && h <= thresholds.mountains) {
-                let isLocalMax = true;
-                for (let dy = -1; dy <= 1 && isLocalMax; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const nx = x + dx, ny = y + dy;
-                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                            if (heightmap[ny][nx] > h) {
-                                isLocalMax = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (isLocalMax) startCandidates.push([x, y]);
-            }
-        }
-    }
-    if (startCandidates.length === 0) {
-        // fallback: use all high-elevation cells
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                if (heightmap[y][x] >= thresholds.hills && heightmap[y][x] <= thresholds.mountains) {
-                    startCandidates.push([x, y]);
-                }
-            }
-        }
-    }
-    // Shuffle
-    for (let i = startCandidates.length - 1; i > 0; i--) {
-        const j = Math.floor(rngRiver() * (i + 1));
-        [startCandidates[i], startCandidates[j]] = [startCandidates[j], startCandidates[i]];
-    }
-
-    for (let r = 0; r < targetRiverCount && r < startCandidates.length; r++) {
-        let [x, y] = startCandidates[r];
-        const visited = new Set();
-        const path = [];
-        let steps = 0;
-        while (true) {
-            if (y < 0 || y >= height || x < 0 || x >= width) break;
-            const key = `${x},${y}`;
-            if (visited.has(key)) break;
-            visited.add(key);
-            path.push([x, y]);
-
-            const h = heightmap[y][x];
-            if (h < thresholds.low ) break;
-
-            // Collect lower neighbors
-            const neighbors = [];
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    if (nx >= 0 && nx < width && ny >= 0 && ny < height && !visited.has(`${nx},${ny}`)) {
-                        const nh = heightmap[ny][nx];
-                        if (nh < h) {
-                            neighbors.push({ x: nx, y: ny, height: nh });
-                        }
-                    }
-                }
-            }
-            if (neighbors.length === 0) break;
-
-            // Weighted random selection
-            let totalWeight = 0;
-            const weights = neighbors.map(n => (h - n.height) + 0.1);
-            weights.forEach(w => totalWeight += w);
-            let rand = rngRiver() * totalWeight;
-            let chosen = null;
-            for (let i = 0; i < neighbors.length; i++) {
-                if (rand < weights[i]) {
-                    chosen = neighbors[i];
-                    break;
-                }
-                rand -= weights[i];
-            }
-            if (!chosen) chosen = neighbors[0];
-            [x, y] = [chosen.x, chosen.y];
-            steps++;
-            if (steps > 300) break;
-        }
-        for (let [px, py] of path) {
-            if (py >= 0 && py < height && px >= 0 && px < width) {
-                riverMask[py][px] = true;
-            }
-        }
-    }
-    // Draw rivers (thin, 1 pixel wide)
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            if (riverMask[y][x]) {
-                tempCtx.fillStyle = '#4a90e2';
-                tempCtx.fillRect(x, y, 1, 1);
-            }
-        }
-    }
-
-    // ---- Paint forest on canvas (based on height and moisture) ----
-    const forestMinMoisture = 0.6;
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const h = heightmap[y][x];
-            const m = moistureMap[y][x];
-            if (h >= thresholds.plains && h <= thresholds.forest && m > forestMinMoisture) {
-                if (!riverMask[y][x]) {
-                    tempCtx.fillStyle = FOREST_COLOR;
-                    tempCtx.fillRect(x, y, 1, 1);
-                }
-            }
-        }
-    }
-
-    // ---- Step 5: Create final image (offscreen) ----
-    const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
-    const offCtx = offscreen.getContext('2d');
-    offCtx.drawImage(tempCanvas, 0, 0);
-    document.body.removeChild(tempCanvas);
-    terrainImage = offscreen;
-
-    // ---- Step 6: Build terrain grid by sampling the final image ----
-    const terrainNamesGrid = [];
-    const terrainColorsGrid = [];
-    const imageData = offCtx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-
-    const colorToTerrain = {
-        '#a2c4c9': 'coast',
-        '#689f38': 'plains',
-        '#8d9946': 'hills',
-        '#8d99ae': 'mountains',
-        '#ffffff': 'snowcaps',
-        '#4a90e2': 'river',
-        '#3a80c2': 'lake',
-        [FOREST_COLOR]: 'forest'
-    };
-
-    function rgbToHex(r, g, b) {
-        return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-    }
-
-    function getTerrainFromColor(r, g, b) {
-        const hex = rgbToHex(r, g, b).toLowerCase();
-        if (colorToTerrain[hex]) return colorToTerrain[hex];
-        // fallback: find closest color
-        let best = null;
-        let bestDist = Infinity;
-        for (const [color, terrain] of Object.entries(colorToTerrain)) {
-            const cr = parseInt(color.slice(1,3), 16);
-            const cg = parseInt(color.slice(3,5), 16);
-            const cb = parseInt(color.slice(5,7), 16);
-            const dist = (cr - r) ** 2 + (cg - g) ** 2 + (cb - b) ** 2;
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = terrain;
-            }
-        }
-        return best || 'plains';
-    }
-
-    // Sample each hex center
-    for (let i = 0; i < hexes.length; i++) {
-        const hex = hexes[i];
-        const x = Math.round(hex.x);
-        const y = Math.round(hex.y);
-        if (x >= 0 && x < width && y >= 0 && y < height) {
-            const idx = (y * width + x) * 4;
-            const r = data[idx];
-            const g = data[idx+1];
-            const b = data[idx+2];
-            const terrain = getTerrainFromColor(r, g, b);
-            const col = hex.grid_x;
-            const row = hex.grid_y;
-            if (!terrainNamesGrid[row]) terrainNamesGrid[row] = [];
-            terrainNamesGrid[row][col] = terrain;
-            if (!terrainColorsGrid[row]) terrainColorsGrid[row] = [];
-            terrainColorsGrid[row][col] = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
-        }
-    }
-
-    // ---- Step 7: River and lake overrides (with coverage) ----
-    function hexContainsMask(hex, mask, width, height) {
-        const minX = Math.max(0, Math.floor(hex.x - 30));
-        const maxX = Math.min(width - 1, Math.ceil(hex.x + 30));
-        const minY = Math.max(0, Math.floor(hex.y - 30));
-        const maxY = Math.min(height - 1, Math.ceil(hex.y + 30));
-        for (let yy = minY; yy <= maxY; yy++) {
-            for (let xx = minX; xx <= maxX; xx++) {
-                if (mask[yy][xx]) return true;
-            }
-        }
-        return false;
-    }
-
-    // River override (skip snowcaps)
-    for (let row = 0; row < terrainNamesGrid.length; row++) {
-        for (let col = 0; col < terrainNamesGrid[row].length; col++) {
-            const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
-            if (hex && hexContainsMask(hex, riverMask, width, height)) {
-                if (terrainNamesGrid[row][col] !== 'snowcaps') {
-                    terrainNamesGrid[row][col] = 'river';
-                    terrainColorsGrid[row][col] = '#4a90e2';
-                }
-            }
-        }
-    }
-
-    // ---- Mark low‑lying hexes as lakes ----
-    const waterHeight = 0.3;
-    for (let row = 0; row < terrainNamesGrid.length; row++) {
-        for (let col = 0; col < terrainNamesGrid[row].length; col++) {
-            const hex = hexes.find(h => h.grid_x === col && h.grid_y === row);
-            if (!hex) continue;
-            const x = Math.round(hex.x);
-            const y = Math.round(hex.y);
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                const h = heightmap[y][x];
-                if (h < waterHeight) {
-                    terrainNamesGrid[row][col] = 'lake';
-                    terrainColorsGrid[row][col] = '#3a80c2';
-                }
-            }
-        }
-    }
-
-    // ---- Step 8: Ensure starting location is on land ----
-    function getNeighborHex(col, row, dir) {
-        const dirMap = {
-            'n': [0, -1], 'ne': [1, -1], 'se': [1, 0],
-            's': [0, 1], 'sw': [-1, 1], 'nw': [-1, 0]
-        };
-        const [dc, dr] = dirMap[dir];
-        return [col + dc, row + dr];
-    }
-
-    if (worldMap.starting_location_id) {
-        const startLoc = worldMap.locations.find(l => l.id === worldMap.starting_location_id);
-        if (startLoc) {
-            let startHex = null;
-            if (startLoc.col !== undefined && startLoc.row !== undefined) {
-                startHex = hexes.find(h => h.grid_x === startLoc.col && h.grid_y === startLoc.row);
-            } else {
-                for (let hex of hexes) {
-                    if (Math.abs(hex.x - startLoc.x) < 30 && Math.abs(hex.y - startLoc.y) < 30) {
-                        startHex = hex;
-                        break;
-                    }
-                }
-            }
-            if (startHex) {
-                const terrain = terrainNamesGrid[startHex.grid_y]?.[startHex.grid_x];
-                if (terrain === 'coast' || terrain === 'lake' || terrain === 'river') {
-                    const queue = [startHex];
-                    const visited = new Set();
-                    visited.add(`${startHex.grid_x},${startHex.grid_y}`);
-                    let landHex = null;
-                    while (queue.length > 0 && !landHex) {
-                        const current = queue.shift();
-                        const curTerrain = terrainNamesGrid[current.grid_y]?.[current.grid_x];
-                        if (curTerrain && !['coast','lake','river'].includes(curTerrain)) {
-                            landHex = current;
-                            break;
-                        }
-                        const dirs = ['n','ne','se','s','sw','nw'];
-                        for (let d of dirs) {
-                            const [nc, nr] = getNeighborHex(current.grid_x, current.grid_y, d);
-                            const nKey = `${nc},${nr}`;
-                            if (visited.has(nKey)) continue;
-                            const nHex = hexes.find(h => h.grid_x === nc && h.grid_y === nr);
-                            if (nHex) {
-                                visited.add(nKey);
-                                queue.push(nHex);
-                            }
-                        }
-                    }
-                    if (landHex) {
-                        startLoc.col = landHex.grid_x;
-                        startLoc.row = landHex.grid_y;
-                        startLoc.x = landHex.x;
-                        startLoc.y = landHex.y;
-                        worldMap.party_position = { col: landHex.grid_x, row: landHex.grid_y };
-                        console.log(`Moved starting location from (${startHex.grid_x},${startHex.grid_y}) to (${landHex.grid_x},${landHex.grid_y})`);
-                        fetch('/api/update-location', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                id: startLoc.id,
-                                col: landHex.grid_x,
-                                row: landHex.grid_y,
-                                x: landHex.x,
-                                y: landHex.y
-                            })
-                        }).catch(e => console.warn('Failed to update location on backend:', e));
-                    } else {
-                        console.warn('No land hex found near starting location!');
-                    }
-                }
-            } else {
-                console.warn('Starting location not found in any hex');
-            }
-        }
-    }
-
-    // ---- Step 9: Store final grids ----
-    worldMap.terrain_grid = terrainNamesGrid;
-    worldMap.terrain_colors_grid = terrainColorsGrid;
-
-    // Debug: final terrain counts
-    const finalCounts = {};
-    for (let row = 0; row < terrainNamesGrid.length; row++) {
-        if (!terrainNamesGrid[row]) continue;
-        for (let col = 0; col < terrainNamesGrid[row].length; col++) {
-            const t = terrainNamesGrid[row][col];
-            finalCounts[t] = (finalCounts[t] || 0) + 1;
-        }
-    }
-    console.log("Final terrain counts:", finalCounts);
-}
-
-// ----- Moisture map (using a separate Perlin noise) -----
-function generateMoistureMap(seed, width, height) {
-    const moistureGen = new TerrainGenerator(seed + 1000, width, height);
-    const moistureHeightmap = moistureGen.generateHeightmap();
-    // Normalize to [0,1] already done in generateHeightmap
-    return moistureHeightmap;
-}
-
-
-// ===== MINIMAL MAP =====
-let worldMap = null;
-let offsetX = 0, offsetY = 0;   // pan offset (world units)
-let scale = 1;                   // zoom factor
-let isDragging = false;
-let dragStartX, dragStartY, startOffsetX, startOffsetY;
-
-// Redraw everything
 function redraw() {
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
 
-    if (worldMap.width <= 0 || worldMap.height <= 0) {
-        console.error('Invalid world dimensions, cannot generate terrain');
-        return;
-    }
+    const rect = getMapDivRect();
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
 
-    // Set canvas buffer to world dimensions (only once)
-    if (canvas.width !== worldMap.width || canvas.height !== worldMap.height) {
-        canvas.width = worldMap.width;
-        canvas.height = worldMap.height;
+    // Resize canvas to match map div size
+    if (canvas.width !== viewportWidth || canvas.height !== viewportHeight) {
+        canvas.width = viewportWidth;
+        canvas.height = viewportHeight;
     }
 
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, viewportWidth, viewportHeight);
     ctx.save();
-    ctx.translate(-offsetX, -offsetY);
-    ctx.scale(scale, scale);
 
-    // 1. Draw terrain image (full world)
-    if (terrainImage) {
-        ctx.drawImage(terrainImage, 0, 0);
-    } else {
-        ctx.fillStyle = '#0a1729';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    // Apply transform: world → screen
+    // screenX = (worldX - camera.x) * camera.zoom + rect.left
+    // But we want the canvas origin (0,0) to be the top-left of the map div,
+    // so we set transform to map world coordinates to canvas pixels.
+    // Canvas pixel (0,0) corresponds to world (camera.x, camera.y).
+    // So: canvasX = (worldX - camera.x) * camera.zoom
+    // canvasY = (worldY - camera.y) * camera.zoom
+    ctx.setTransform(camera.zoom, 0, 0, camera.zoom, -camera.x * camera.zoom, -camera.y * camera.zoom);
 
-    // Debug: draw sampling dots with classification letter
-    if (worldMap.terrain_colors_grid && worldMap.terrain_grid && worldMap.hexes) {
-        worldMap.hexes.forEach(hex => {
-            const col = hex.grid_x;
-            const row = hex.grid_y;
-            if (row >= 0 && row < worldMap.terrain_colors_grid.length &&
-                col >= 0 && col < worldMap.terrain_colors_grid[row].length &&
-                row < worldMap.terrain_grid.length &&
-                col < worldMap.terrain_grid[row].length) {
-                const color = worldMap.terrain_colors_grid[row][col];
-                const terrain = worldMap.terrain_grid[row][col];
-                const letter = terrain ? terrain.charAt(0).toUpperCase() : '?';
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.arc(hex.x, hex.y, 5, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                // Draw letter
-                ctx.fillStyle = 'white';
-                ctx.shadowColor = 'black';
-                ctx.shadowBlur = 2;
-                ctx.font = 'bold 10px monospace';
-                ctx.fillText(letter, hex.x - 3, hex.y + 4);
-                ctx.shadowBlur = 0;
-            }
-        });
-    }
-    // Debug: draw sampling dots (in world coordinates)
-    // if (worldMap.terrain_colors_grid && worldMap.hexes) {
-    //     worldMap.hexes.forEach(hex => {
-    //         const col = hex.grid_x;
-    //         const row = hex.grid_y;
-    //         if (row >= 0 && row < worldMap.terrain_colors_grid.length &&
-    //             col >= 0 && col < worldMap.terrain_colors_grid[row].length) {
-    //             const color = worldMap.terrain_colors_grid[row][col];
-    //             ctx.fillStyle = color;
-    //             ctx.beginPath();
-    //             ctx.arc(hex.x, hex.y, 5, 0, 2 * Math.PI);
-    //             ctx.fill();
-    //             ctx.strokeStyle = 'black';
-    //             ctx.lineWidth = 1;
-    //             ctx.stroke();
-    //         }
-    //     });
-    // }
+    // Fill background (world coordinates)
+    ctx.fillStyle = '#0a1729';
+    ctx.fillRect(0, 0, worldMap.width, worldMap.height);
 
-    // 2. Dark overlay (fog) over everything
-    ctx.fillStyle = `rgba(0, 0, 0, ${fogOpacity})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // 3. For discovered hexes, redraw terrain image inside the hex (reveals it)
+    // Draw terrain image inside discovered hexes (clipping)
     if (terrainImage && worldMap.discovered_hexes && worldMap.hexes) {
         const discoveredSet = new Set(worldMap.discovered_hexes.map(h => `${h.col},${h.row}`));
-        // console.log('discovered set size:', discoveredSet.size);
-        // console.log('hex count:', worldMap.hexes.length);
-        worldMap.hexes.forEach(hex => {
-            if (!discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
+        const drawAll = (fogOpacity === 0);
+        for (const hex of worldMap.hexes) {
+            if (!drawAll && !discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) continue;
             ctx.save();
             hexagonPath(ctx, hex.x, hex.y, 30);
+            drawHexagon(ctx, hex.x, hex.y, 30, "#000000");
             ctx.clip();
             ctx.drawImage(terrainImage, 0, 0);
             ctx.restore();
-        });
+        }
     }
 
-    // 4. Draw hex outlines for discovered hexes (optional)
-    if (worldMap.hexes) {
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-        ctx.lineWidth = 1;
-        const discoveredSet = new Set(worldMap.discovered_hexes?.map(h => `${h.col},${h.row}`) || []);
-        worldMap.hexes.forEach(hex => {
-            if (!discoveredSet.has(`${hex.grid_x},${hex.grid_y}`)) return;
-            drawHexagon(ctx, hex.x, hex.y, 30, ctx.strokeStyle);
-        });
-    }
-
-    // 5. Draw paths and locations (only discovered ones)
+    // Draw paths and locations (only discovered)
     const discoveredLocations = (worldMap.locations || []).filter(loc => loc.discovered);
     drawPaths(ctx, worldMap.connections || [], discoveredLocations);
-    drawLocations(ctx, discoveredLocations, scale);
+    drawLocations(ctx, discoveredLocations, camera.zoom);
 
-    // 6. Draw party location
+    // Draw party location
     if (worldMap.party_position) {
         const partyHex = worldMap.hexes.find(h => h.grid_x === worldMap.party_position.col && h.grid_y === worldMap.party_position.row);
         if (partyHex) {
@@ -948,31 +578,99 @@ function redraw() {
     ctx.restore();
 }
 
-// Initial view centered on start location
+function getHexWorldCoords(gx, gy) {
+    // Purpose: Converts hex grid coordinates (gx, gy) to world pixel coordinates
+    // Used by: centerOnParty() and any function that needs to center on a specific hex.
+
+    const hex = worldMap.hexes.find(h => h.grid_x === gx && h.grid_y === gy);
+    return hex ? { x: hex.x, y: hex.y } : null;
+}
+
+function centerOnWorld(worldX, worldY) {
+    // Purpose: Pans the camera so that the given world point (worldX, worldY) is exactly at the center of the map div.
+    // Used by: centerOnParty() and any other centering logic.
+
+    const rect = getMapDivRect();
+    const viewportCenterX = rect.width / 2;
+    const viewportCenterY = rect.height / 2;
+    camera.x = worldX - viewportCenterX / camera.zoom;
+    camera.y = worldY - viewportCenterY / camera.zoom;
+    redraw();
+}
+
+function centerOnWindowCenter(worldX, worldY) {
+    const winCenterX = window.innerWidth / 2;
+    const winCenterY = window.innerHeight / 2;
+    camera.x = worldX - winCenterX / camera.zoom;
+    camera.y = worldY - winCenterY / camera.zoom;
+    redraw();
+}
+
+function centerOnParty() {
+    // Purpose: Finds the party’s current hex grid coordinates (from worldMap.party_position), converts them to world coordinates, and calls centerOnWorld() to center the map on the party.
+    // Used by: setInitialView() (after a hard reload) and optionally by AI commands or UI buttons.
+    if (!worldMap.party_position) {
+        console.warn('Party position not found');
+        return;
+    }
+    const { col, row } = worldMap.party_position;
+    const coords = getHexWorldCoords(col, row);
+    if (coords) {
+        centerOnWindowCenter(coords.x, coords.y);
+    } else {
+        console.warn(`Hex (${col},${row}) not found`);
+    }
+}
+
 function setInitialView() {
     if (!worldMap) return;
-    const startLoc = window.worldState?.currentLocation; // use the full object, not worldMap.currentLocation
-    if (startLoc && typeof startLoc.x === 'number' && typeof startLoc.y === 'number') {
-        offsetX = startLoc.x - window.innerWidth / (2 * scale);
-        offsetY = startLoc.y - window.innerHeight / (2 * scale);
+
+    const rect = getMapDivRect();
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
+    const worldWidth = worldMap.width;
+    const worldHeight = worldMap.height;
+
+    // Zoom to fit the whole world inside the viewport
+    const zoomX = viewportWidth / worldWidth;
+    const zoomY = viewportHeight / worldHeight;
+    // didn't like either of these, so scaled it up 8 times
+    //const newZoom = Math.min(zoomX, zoomY);
+    //const newZoom = viewportWidth / worldWidth
+    const newZoom = viewportWidth / worldWidth * 8;
+    camera.zoom = newZoom;
+
+    // If party exists, center on party; otherwise center on world center
+    if (worldMap.party_position && worldMap.party_position.col !== undefined) {
+        centerOnParty();
     } else {
-        offsetX = (worldMap.width - window.innerWidth / scale) / 2;
-        offsetY = (worldMap.height - window.innerHeight / scale) / 2;
+        const worldCenterX = worldWidth / 2;
+        const worldCenterY = worldHeight / 2;
+        camera.x = worldCenterX - (viewportWidth / 2) / newZoom;
+        camera.y = worldCenterY - (viewportHeight / 2) / newZoom;
     }
     redraw();
 }
 
-// ===== EVENT HANDLERS =====
 function onWheel(e) {
     e.preventDefault();
     const zoomFactor = 1.1;
-    const mouseWorldX = offsetX + e.clientX / scale;
-    const mouseWorldY = offsetY + e.clientY / scale;
-    if (e.deltaY < 0) scale *= zoomFactor;
-    else scale /= zoomFactor;
-    scale = Math.max(0.5, Math.min(3, scale));
-    offsetX = mouseWorldX - e.clientX / scale;
-    offsetY = mouseWorldY - e.clientY / scale;
+    const oldZoom = camera.zoom;
+    let newZoom = oldZoom;
+    if (e.deltaY < 0) newZoom *= zoomFactor;
+    else newZoom /= zoomFactor;
+    newZoom = Math.max(0.1, Math.min(3, newZoom));
+    if (newZoom === oldZoom) return;
+
+    const rect = getMapDivRect();
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
+    const worldX = camera.x + canvasX / oldZoom;
+    const worldY = camera.y + canvasY / oldZoom;
+
+    camera.zoom = newZoom;
+    camera.x = worldX - canvasX / newZoom;  // factor = 1.0
+    camera.y = worldY - canvasY / newZoom;
     redraw();
 }
 
@@ -985,14 +683,10 @@ function onDoubleClick(e) {
 }
 
 function onMouseMove(e) {
-    if (isDragging) return; // don't interfere while dragging
+    if (isDragging) return;
     const canvas = document.getElementById('terrain-canvas');
     if (!canvas || !worldMap) return;
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const worldX = offsetX + mouseX / scale;
-    const worldY = offsetY + mouseY / scale;
+    const { worldX, worldY } = screenToWorld(e.clientX, e.clientY);
     if (window.worldState.locations) {
         const hovered = window.worldState.locations.find(loc => {
             const dist = Math.sqrt((worldX - loc.x) ** 2 + (worldY - loc.y) ** 2);
@@ -1014,8 +708,8 @@ function onPointerDown(e) {
     // Store screen start and current offsets
     dragStartX = e.clientX;
     dragStartY = e.clientY;
-    startOffsetX = offsetX;
-    startOffsetY = offsetY;
+    startCameraX = camera.x;
+    startCameraY = camera.y;
     const canvas = document.getElementById('terrain-canvas');
     canvas.style.cursor = 'grabbing';
     canvas.setPointerCapture(e.pointerId);
@@ -1029,8 +723,8 @@ function onPointerMove(e) {
     if (!isDragging) return;
     const dx = e.clientX - dragStartX;
     const dy = e.clientY - dragStartY;
-    offsetX = startOffsetX - dx;
-    offsetY = startOffsetY - dy; 
+    camera.x = startCameraX - dx / camera.zoom;
+    camera.y = startCameraY - dy / camera.zoom;
     redraw();
     e.preventDefault();
 }
@@ -1071,84 +765,73 @@ async function travelToLocation(locationId) {
     }
 }
 
+// async function sendWorldCommand(command) {
+//     console.log("sendWorldCommand called with:", command);
+//     try {
+//         const response = await fetch('/api/command', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({command: command})
+//         });
+//         const data = await response.json();
+//         if (data.map_data) {
+//             worldState.worldMap = data.map_data;
+//             worldMap = worldState.worldMap;
+//             if (data.location_data) {
+//                 worldState.currentLocation = data.location_data;
+//             }
+//             redraw();
+//             if (data.action === 'centerOnParty') {
+//                 centerOnParty();
+//             }
+//         }
+//         if (data.response) {
+//             addWorldMessage(data.response);
+//         }
+//     } catch (error) {
+//         console.error('Command error:', error);
+//     }
+// }
+
 async function sendWorldCommand(command) {
-    // First, parse the command to see if it's a movement direction
-    let dir = command.toLowerCase().trim();
-    if (dir.startsWith('go ')) dir = dir.slice(3);
-    const directionMap = {
-        'n': 'n', 'north': 'n',
-        'ne': 'ne', 'northeast': 'ne',
-        'se': 'se', 'southeast': 'se',
-        's': 's', 'south': 's',
-        'sw': 'sw', 'southwest': 'sw',
-        'nw': 'nw', 'northwest': 'nw',
-        'e': 'east', 'east': 'east',
-        'w': 'west', 'west': 'west'
-    };
-    const direction = directionMap[dir];
-    if (!direction) {
-        // Not a movement command – send as regular command (chat, etc.)
-        try {
-            const response = await fetch('/api/command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({command: command})
-            });
-            const data = await response.json();
-            if (data.map_data) {
-                worldState.worldMap = data.map_data;
-                worldMap = worldState.worldMap;
-                generateTerrainImage();  // refresh terrain grid (though it won't change)
-                if (data.location_data) {
-                    worldState.currentLocation = data.location_data;
-                }
-                redraw();
-            }
-            if (data.response) {
-                addWorldMessage(data.response);
-            }
-        } catch (error) {
-            console.error('Command error:', error);
-        }
-        return;
-    }
-
-    // Movement command – check passability first
-    if (!worldMap.party_position) {
-        console.warn('No party position');
-        return;
-    }
-    const {col, row} = worldMap.party_position;
-    const [tcol, trow] = getTargetHex(col, row, direction);
-    // Check bounds
-    if (tcol < 0 || tcol >= worldMap.width || trow < 0 || trow >= worldMap.height) {
-        addWorldMessage("You can't go that way (edge of the world).");
-        return;
-    }
-    // Get terrain from the stored grid
-    const terrain = worldMap.terrain_grid[trow][tcol];
-    const blockedTerrains = ['ocean', 'lake', 'river'];
-    if (blockedTerrains.includes(terrain)) {
-        addWorldMessage(`The ${terrain} blocks your path.`);
-        return;
-    }
-
-    // Send movement command with terrain
+    console.log("sendWorldCommand called with:", command);
     try {
         const response = await fetch('/api/command', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: command, target_terrain: terrain})
+            body: JSON.stringify({command: command})
         });
         const data = await response.json();
         if (data.map_data) {
             worldState.worldMap = data.map_data;
             worldMap = worldState.worldMap;
-            generateTerrainImage();  // refresh terrain grid (though it won't change)
             if (data.location_data) {
                 worldState.currentLocation = data.location_data;
             }
             redraw();
+            if (data.action === 'centerOnParty') {
+                centerOnParty();
+            }
+        }
+        // Handle encounter if present
+        if (data.encounter) {
+            addWorldMessage(`⚠️ Encounter: ${data.encounter.description}`);
+            // Ask AI DM to narrate the encounter
+            fetch('/api/dm-response', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    message: `We encountered: ${data.encounter.description}. What happens?`,
+                    encounter: data.encounter 
+                })
+            })
+            .then(r => r.json())
+            .then(dmData => {
+                if (dmData.responses) {
+                    dmData.responses.forEach(r => addWorldMessage(r.content));
+                }
+            })
+            .catch(err => console.error('DM response error:', err));
         }
         if (data.response) {
             addWorldMessage(data.response);
@@ -1204,15 +887,26 @@ async function loadWorldData() {
         console.log("loadWorldData: worldState.characters after assignment =", worldState.characters);
         window.worldState = worldState;
         worldMap = worldState.worldMap;
-        setInitialView();
-        generateTerrainImage()
-        await loadActiveCharacter();
-        // After terrain grid is generated, set starting hex terrain in backend
-        if (worldMap.party_position && worldMap.terrain_grid) {
-            const {col, row} = worldMap.party_position;
-            const terrain = worldMap.terrain_grid[row][col];
-            setHexTerrain(col, row, terrain);
+
+        console.log("terrain_image_url from backend:", worldMap.terrain_image_url);
+        if (worldMap.terrain_image_url) {
+            const img = new Image();
+            img.onload = () => {
+                terrainImage = img;
+                console.log("Terrain image loaded successfully");
+                redraw();
+            };
+            img.onerror = (err) => {
+                console.error("Failed to load terrain image:", worldMap.terrain_image_url, err);
+            };
+            img.src = worldMap.terrain_image_url;
+        } else {
+            console.warn("No terrain_image_url in worldMap");
         }
+
+        setInitialView();
+        await loadActiveCharacter();
+
     } catch (error) {
         console.error('Error loading world data:', error);
         if (typeof showNotification === 'function') {
@@ -1336,6 +1030,7 @@ document.addEventListener('DOMContentLoaded', function() {
         fogCheckbox.addEventListener('change', function(e) {
             // Set fogOpacity to 0 if checked, 1 if unchecked (or vice versa)
             fogOpacity = e.target.checked ? 0 : 1;
+            console.error("just before redraw...............................")
             redraw();
         });
     }
@@ -1351,9 +1046,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.travelToLocation = travelToLocation;
     window.redraw = redraw;
-    window.loadWorldDataWithRetry = loadWorldDataWithRetry;
+    // window.loadWorldDataWithRetry = loadWorldDataWithRetry;
 
-    loadWorldDataWithRetry();
+    // loadWorldDataWithRetry();
 });
 
 // ===== GLOBAL EXPORTS =====

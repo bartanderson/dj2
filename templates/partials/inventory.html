@@ -1,0 +1,23 @@
+<div class="inventory-panel">
+    <h3>Inventory</h3>
+    <div class="inventory-stats">
+        <p>Gold: <span id="player-gold">{{ character.currency }}</span> gp</p>
+        <p>Weight: <span id="current-weight">{{ total_weight|round(1) }}</span> / {{ max_weight }} lbs</p>
+    </div>
+    <div class="inventory-items">
+        {% if items %}
+            <ul style="list-style: none; padding: 0;">
+            {% for item in items %}
+                <li style="border-bottom: 1px solid #444; padding: 8px 0;">
+                    <strong>{{ item.name }}</strong> 
+                    {% if item.equipped %}<span style="color: #4ecca3;">(equipped)</span>{% endif %}
+                    <br>
+                    <small>{{ item.description }}</small>
+                </li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>Your inventory is empty.</p>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,34 @@
+digraph EncounterMachine {
+label=EncounterMachine;
+fontname=Arial;
+fontsize="10pt";
+rankdir=LR;
+compound=true;
+subgraph encountermachine_anchor_initial {
+label="";
+peripheries=0;
+margin=0;
+encountermachine_anchor [label="", shape=point, style=filled, fontsize="1pt", fixedsize=true, width=0.2, height=0.2, fillcolor=black];
+}
+subgraph cluster_encountermachine_anchor_atomic {
+label="";
+peripheries=0;
+cluster=true;
+initiating [label=Initiating, shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=1, fillcolor=white];
+awaiting_choice [label="Awaiting choice", shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=1, penwidth=2, fillcolor=turquoise];
+resolving_fight [label="Resolving fight\nentry / on_enter_resolving_fight", shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=1, fillcolor=white];
+resolving_flee [label="Resolving flee\nentry / on_enter_resolving_flee", shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=1, fillcolor=white];
+resolving_parley [label="Resolving parley\nentry / on_enter_resolving_parley", shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=1, fillcolor=white];
+completed [label=Completed, shape=rectangle, style="rounded, filled", fontname=Arial, fontsize="10pt", peripheries=2, fillcolor=white];
+}
+encountermachine_anchor -> initiating [label="", color=blue, fontname=Arial, fontsize="9pt"];
+initiating -> awaiting_choice [label=start, color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+awaiting_choice -> resolving_fight [label="choose_fight", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+awaiting_choice -> resolving_flee [label="choose_flee", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+awaiting_choice -> resolving_parley [label="choose_parley", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+resolving_fight -> completed [label="fight_resolved", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+resolving_flee -> completed [label="flee_success", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+resolving_flee -> awaiting_choice [label="flee_failure\n[flee_failed]", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+resolving_parley -> awaiting_choice [label="parley_success\n[parley_succeeded]", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+resolving_parley -> resolving_fight [label="parley_failure", color=blue, fontname=Arial, fontsize="9pt", minlen=1];
+}

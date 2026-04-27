@@ -15,7 +15,7 @@
       "world_layers": {
         "surface": {
           "hex_grid": {
-            "size": "80x80",
+            "size": "40x40",
             "scale": "6 miles per hex",
             "terrain_types": ["plains", "forest", "mountain", "swamp", "desert", "coast", "urban"]
           },

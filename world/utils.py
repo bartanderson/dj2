@@ -1,4 +1,17 @@
 # world\utils.py
+import json
+
+def truncate(obj, max_len=200):
+    """Return a string representation of obj, truncated to max_len."""
+    try:
+        s = json.dumps(obj)
+    except:
+        s = str(obj)
+    if len(s) > max_len:
+        s = s[:max_len] + "..."
+    return s
+
+# convex_hull and cross are for use in dungeon rendering
 def convex_hull(points):
     """Compute convex hull of a set of points"""
     if len(points) <= 3:

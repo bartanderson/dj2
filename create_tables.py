@@ -164,6 +164,36 @@ def create_tables():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS name_cache (
+            id SERIAL PRIMARY KEY,
+            world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+            region_id VARCHAR(64) NOT NULL,
+            place_type VARCHAR(32) NOT NULL,
+            context_hash VARCHAR(64) NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE(world_id, region_id, place_type, context_hash)
+        )
+        """,
+        """
+        CREATE TABLE intents (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(50) UNIQUE NOT NULL,
+            description TEXT
+        )
+        """,
+        """
+        CREATE TABLE intent_examples (
+            id SERIAL PRIMARY KEY,
+            intent_id INTEGER NOT NULL REFERENCES intents(id) ON DELETE CASCADE,
+            example_text TEXT NOT NULL,
+            embedding VECTOR(384) NOT NULL,
+            is_positive BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
         """
     ]
     
@@ -180,7 +210,8 @@ def create_tables():
         "CREATE INDEX IF NOT EXISTS idx_narrative_player ON narrative_context(player_id)",
         "CREATE INDEX IF NOT EXISTS idx_narrative_timestamp ON narrative_context(timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_narrative_embedding ON narrative_context USING ivfflat (embedding)",
-        "CREATE INDEX IF NOT EXISTS idx_characters_player_id ON characters(player_id)"
+        "CREATE INDEX IF NOT EXISTS idx_characters_player_id ON characters(player_id)",
+        "CREATE INDEX IF NOT EXISTS idx_intent_examples_embedding ON intent_examples USING ivfflat (embedding vector_cosine_ops);"
     ]
     
     try:

@@ -22,6 +22,7 @@ class InventoryItem:
     type: str = "adventuring_gear"
     equipped: bool = False
     slot: Optional[str] = None  # "armor", "weapon", "shield", etc.
+    cost: int = 0               # gold value
 
 class Character:
     """
@@ -36,6 +37,7 @@ class Character:
                  background: str = "unknown",
                  player_id: Optional[str] = None,
                  owner_id: Optional[str] = None,
+                 currency = 100,
                  # Attributes (0-4 scale in OG System)
                  brawn: Optional[int] = None,
                  finesse: Optional[int] = None,
@@ -60,6 +62,8 @@ class Character:
         self.race = race
         self.background = background
         self.player_id = player_id
+        self.currency = currency
+        self.inventory = []   # will be populated later
         
         # Handle class (can be string name or OGClass object)
         if isinstance(classs, str):
@@ -276,9 +280,9 @@ class Character:
         """Leave current party"""
         self.party_id = None
     
-    def add_custom_item(self, name: str, description: str, item_type: str = "adventuring_gear"):
+    def add_custom_item(self, name: str, description: str, item_type: str = "adventuring_gear", cost: int = 0):
         """Add a personalized item from AI suggestions"""
-        item = InventoryItem(name=name, description=description, type=item_type)
+        item = InventoryItem(name=name, description=description, type=item_type, cost=cost)
         self.custom_items.append(item)
     
     def get_full_inventory(self) -> List[InventoryItem]:
@@ -337,6 +341,9 @@ class Character:
             "race": self.race,
             "class": self.classs.name if hasattr(self.classs, 'name') else str(self.classs),
             "level": self.level,
+            "currency": self.currency,
+            "custom_items": [{"name": i.name, "description": i.description, "type": i.type, "cost": i.cost} for i in self.custom_items],
+            "inventory": self.inventory,
             "background": self.background,
             "player_id": getattr(self, 'player_id', None),
             "owner_id": getattr(self, 'owner_id', None),
@@ -379,6 +386,8 @@ class Character:
             race=data.get("race", "Human"),
             classs=data.get("class", "Warrior"),
             level=data.get("level", 1),
+            currency = data.get("currency", 100),
+            inventory = data.get("inventory", []),
             background=data.get("background", "unknown"),
             owner_id=owner_id or data.get("owner_id", "unknown"),
             brawn=data.get("brawn", 1),
@@ -411,12 +420,21 @@ class Character:
         })
         char.full_background_story = data.get("full_background_story", "")
         
+        char.currency = data.get("currency", 100)
+
         # Restore custom items
+        char.custom_items = []
         for item_data in data.get("custom_items", []):
             char.add_custom_item(
                 item_data.get("name", "Unknown"),
-                item_data.get("description", "")
+                item_data.get("description", ""),
+                item_data.get("type", "adventuring_gear"),
+                item_data.get("cost", 0)
             )
+
+        char.inventory = []
+        for item_data in data.get("inventory", []):
+            char.inventory.append(InventoryItem(**item_data))
         
         # Restore party/session data
         char.party_id = data.get("party_id")
