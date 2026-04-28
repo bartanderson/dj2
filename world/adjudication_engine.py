@@ -1,100 +1,229 @@
 import random
 from typing import Dict, Any, Optional
+from dataclasses import dataclass
+
 from world.intent import IntentFrame
-from flask_socketio import emit
 from world.event_log import get_event_log
 from world.entity_resolver import EntityResolver
 from world.input_parser import parse_player_input
 from world.fsm.generic_fsm import GenericFSM
-from world.input_parser import parse_player_input
+from world.fsm import builtins
+from difflib import get_close_matches
 
+DEBUG = True
 
-DEBUG = True   # set to False to reduce console output
+# ----------------------------------------------------------------------
+# Transaction Configuration (for generic handler)
+# ----------------------------------------------------------------------
+@dataclass
+class TransactionConfig:
+    name: str
+    json_path: str
+    get_item_from_merchant: bool
+    price_func: callable
+    guard_registry: dict
+    action_registry: dict
+    context_updates: dict = None
+    is_barter: bool = False
+
 
 class AdjudicationEngine:
     def __init__(self, world_controller):
         self.world = world_controller
         self.event_log = get_event_log()
-        # Conversation state store for multi‑turn (e.g., haggling)
-        self.conversations: Dict[str, Dict] = {}  # conversation_id -> state
-        self.active_trades = {}
+        self.conversations: Dict[str, Dict] = {}
         self.active_fsms = {}
         self.entity_resolver = EntityResolver()
 
-        self.fsm_guard_registry = {
-            'price_too_low': self._guard_price_too_low,
-            'price_acceptable': self._guard_price_acceptable,
-            'offer_too_high': self._guard_offer_too_high,
-            'offer_acceptable': self._guard_offer_acceptable,
-            'need_more_gold': self._guard_need_more_gold,
-            'offer_acceptable': self._guard_barter_acceptable,
-            'flee_possible': self._guard_flee_possible,
-            'parley_possible': self._guard_parley_possible,
-            'offer_acceptable': self._guard_barter_acceptable,
-        }
-        self.fsm_action_registry = {
-            'store_offer': self._action_store_offer,
-            'execute_purchase': self._action_execute_purchase,
-            'execute_sell': self._action_execute_sell,
-            'execute_barter': self._action_execute_barter,
-            'start_combat': self._action_start_combat,
-            'resolve_flee': self._action_resolve_flee,
-            'resolve_parley': self._action_resolve_parley,
-            'add_gold': self._action_add_gold,
-        }
+        # Transaction configurations (buy, sell, barter)
+        self.buy_config = TransactionConfig(
+            name='buy',
+            json_path='config/fsms/buy.json',
+            get_item_from_merchant=True,
+            price_func=lambda item, merchant, rel, ctx: self.world._compute_price(item, merchant, rel, ctx),
+            guard_registry={'price_too_low': builtins.price_lt, 'price_acceptable': builtins.price_ge},
+            action_registry={'store_offer': builtins.store_offer, 'execute_purchase': builtins.execute_purchase},
+        )
+        self.sell_config = TransactionConfig(
+            name='sell',
+            json_path='config/fsms/sell.json',
+            get_item_from_merchant=False,
+            price_func=lambda item, merchant, rel, ctx: self._compute_sell_price(item, merchant, rel),
+            guard_registry={'offer_too_high': builtins.offer_gt, 'offer_acceptable': builtins.offer_le},
+            action_registry={'store_offer': builtins.store_offer, 'execute_sell': builtins.execute_sell},
+        )
+        self.barter_config = TransactionConfig(
+            name='barter',
+            json_path='config/fsms/barter.json',
+            get_item_from_merchant=False,
+            price_func=lambda item, merchant, rel, ctx: self._compute_sell_price(item, merchant, rel),
+            guard_registry={'need_more_gold': builtins.need_more_gold, 'offer_acceptable': builtins.shortage_met},
+            action_registry={'add_gold': builtins.add_gold, 'execute_barter': builtins.execute_barter},
+            is_barter=True,
+        )
 
+    # ------------------------------------------------------------------
+    # Helper: start a generic FSM and store it
+    # ------------------------------------------------------------------
+    def _start_fsm(self, session_id: str, json_path: str, context: dict,
+                   guard_registry: dict, action_registry: dict) -> dict:
+        """Create a GenericFSM, store it, and return the initial prompt."""
+        context['_guard_registry'] = guard_registry
+        context['_action_registry'] = action_registry
+        fsm = GenericFSM(json_path, context)
+        self.active_fsms[session_id] = fsm
+        return {"success": False, "message": fsm.get_prompt()}
+
+    # ------------------------------------------------------------------
+    # Generic transaction handler (buy, sell, barter)
+    # ------------------------------------------------------------------
+    def _handle_transaction(self, frame: IntentFrame, session_id: str, config: TransactionConfig) -> dict:
+        char = self.world._get_active_character(session_id)
+        if not char:
+            return {"success": False, "message": "No active character."}
+        if not self.world.current_location or not self.world.current_location.merchant_id:
+            return {"success": False, "message": "No merchant here."}
+        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+        if not merchant:
+            return {"success": False, "message": "Merchant not found."}
+
+        # --- BARTER ---
+        if config.is_barter:
+            give_name = frame.item or frame.target
+            want_name = frame.target if frame.item else None
+            if frame.item and frame.target:
+                give_name = frame.item
+                want_name = frame.target
+            if not want_name:
+                return {"success": False, "message": "Barter requires both what you give and what you want."}
+
+            # resolve give item (player inventory)
+            inv_names = [i.name.lower() for i in char.inventory]
+            matches = get_close_matches(give_name.lower(), inv_names, n=1, cutoff=0.6)
+            if not matches:
+                available = ", ".join([i.name for i in char.inventory[:5]])
+                return {"success": False, "message": f"You don't have '{give_name}'. You have: {available}."}
+            give_item = next(i for i in char.inventory if i.name.lower() == matches[0])
+
+            # resolve want item (merchant inventory)
+            self.entity_resolver.load_merchant_items(merchant)
+            want_item = self.entity_resolver.resolve_item(want_name)
+            if not want_item:
+                available = ", ".join([i.name for i in merchant.inventory[:5]])
+                return {"success": False, "message": f"{merchant.name} doesn't have '{want_name}'. They have: {available}."}
+
+            rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
+            if not self.world._is_item_visible(want_item, rel):
+                return {"success": False, "message": f"You don't see '{want_item.name}' in the {merchant.display_name}."}
+
+            give_value = self._compute_sell_price(give_item, merchant, rel)
+            want_value = self.world._compute_price(want_item, merchant, rel, frame.context)
+            shortage = want_value - give_value
+
+            if shortage <= 0:
+                self._execute_barter(char, merchant, give_item, want_item, 0)
+                return {"success": True, "message": f"You bartered your {give_item.name} for {want_item.name}.", "action": "refresh_inventory"}
+
+            context = {
+                'give_item': give_item.name,
+                'receive_item': want_item.name,
+                'give_value': give_value,
+                'receive_value': want_value,
+                'shortage': shortage,
+                'character': char,
+                'merchant': merchant,
+                'give_item_obj': give_item,
+                'receive_item_obj': want_item,
+                'engine': self,
+            }
+            if config.context_updates:
+                context.update(config.context_updates)
+            return self._start_fsm(session_id, config.json_path, context,
+                                   config.guard_registry, config.action_registry)
+
+        # --- BUY / SELL (non-barter) ---
+        item_name = frame.item or frame.target
+        if not item_name:
+            return {"success": False, "message": f"What item do you want to {config.name}?"}
+
+        if config.get_item_from_merchant:
+            self.entity_resolver.load_merchant_items(merchant)
+            item = self.entity_resolver.resolve_item(item_name)
+            if not item:
+                available = ", ".join([i.name for i in merchant.inventory[:5]])
+                return {"success": False, "message": f"I don't have '{item_name}'. I have: {available}."}
+        else:
+            inv_names = [i.name.lower() for i in char.inventory]
+            matches = get_close_matches(item_name.lower(), inv_names, n=1, cutoff=0.6)
+            if not matches:
+                available = ", ".join([i.name for i in char.inventory[:5]])
+                return {"success": False, "message": f"You don't have '{item_name}'. You have: {available}."}
+            item = next(i for i in char.inventory if i.name.lower() == matches[0])
+
+        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
+        price = config.price_func(item, merchant, rel, frame.context) if callable(config.price_func) else config.price_func
+
+        context = {
+            'item_name': item.name,
+            ('current_price' if config.name == 'buy' else 'merchant_price'): price,
+            'character': char,
+            'merchant': merchant,
+            'item': item,
+            'engine': self,
+        }
+        if config.context_updates:
+            context.update(config.context_updates)
+
+        return self._start_fsm(session_id, config.json_path, context,
+                               config.guard_registry, config.action_registry)
+
+    # ------------------------------------------------------------------
+    # Process method (handles active FSMs and normal routing)
+    # ------------------------------------------------------------------
     def process(self, frame: IntentFrame, session_id: Optional[str] = None) -> Dict[str, Any]:
         if DEBUG:
             print(f"[DEBUG] AdjudicationEngine.process: action={frame.action}, category={frame.category}, target={frame.target}, item={frame.item}, price={frame.price}")
 
-        # --- Active FSM handling (generic) ---
-        if session_id:
-            print(f"[DEBUG] process: session {session_id}, active_fsms keys: {list(self.active_fsms.keys())}")
+        # Active FSM handling (generic)
         if session_id and session_id in self.active_fsms:
             fsm = self.active_fsms[session_id]
             canonical_event, event_data = parse_player_input(frame.raw_text)
-            transition_name = fsm.event_map.get(canonical_event)
-            if transition_name:
+            # Use event_map if the FSM provides one (for GenericFSM, we have to simulate)
+            # Since GenericFSM does not have event_map, we rely on send_event.
+            # We'll unify by using send_event directly.
+            event_name = None
+            if canonical_event == 'CONFIRM':
+                event_name = 'confirm'
+            elif canonical_event == 'NUMBER':
+                event_name = 'offer'
+            elif canonical_event == 'CANCEL':
+                event_name = 'cancel'
+            elif canonical_event == 'FIGHT':
+                event_name = 'fight'
+            elif canonical_event == 'FLEE':
+                event_name = 'flee'
+            elif canonical_event == 'PARLEY':
+                event_name = 'parley'
+            elif canonical_event == 'RAW':
+                # If raw text is exactly the event name, use it (for custom events)
+                event_name = event_data.get('text')
+            if event_name:
                 try:
-                    # Call the transition method with any extracted data
-                    method = getattr(fsm, transition_name)
-                    if event_data:
-                        method(**event_data)
-                    else:
-                        method()
-                    # After event, check if terminal
-                    if fsm.completed.is_active:   # 'completed' is the final state object
+                    # Send the event via send_event (which calls the state machine's method)
+                    fsm.send_event(event_name, event_data if canonical_event == 'NUMBER' else None)
+                    if fsm.is_completed:
                         del self.active_fsms[session_id]
-                        # Determine if this was a successful purchase or just ending
-                        message = "Completed."  # You can refine by asking the FSM for a response
-                        return {"success": True, "message": message, "action": "refresh_inventory"}
+                        return {"success": True, "message": fsm.get_prompt(), "action": "refresh_inventory"}
                     else:
-                        # Not yet terminal – maybe you want to return a generic message
-                        # For now, just return a neutral response (FSM can provide its own)
                         return {"success": False, "message": fsm.get_prompt()}
                 except Exception as e:
                     del self.active_fsms[session_id]
                     return {"success": False, "message": f"FSM error: {e}"}
             else:
-                # Unhandled event – cancel FSM
                 del self.active_fsms[session_id]
                 return {"success": False, "message": "Interaction cancelled."}
 
-        if session_id in self.active_fsms:
-            fsm = self.active_fsms[session_id]
-            event, data = parse_player_input(frame.raw_text)
-            if event:
-                fsm.send_event(event, data)
-                if fsm.is_completed:
-                    del self.active_fsms[session_id]
-                    return {"success": True, "message": fsm.get_prompt(), "action": "refresh_inventory"}
-                else:
-                    return {"success": False, "message": fsm.get_prompt()}
-            else:
-                del self.active_fsms[session_id]
-                return {"success": False, "message": "Interaction cancelled."}
-
-        # --- Normal category routing (unchanged) ---
+        # Normal category routing
         if DEBUG:
             print(f"category value: '{frame.category}'")
         if frame.category == "movement":
@@ -108,13 +237,59 @@ class AdjudicationEngine:
         else:
             self.event_log.emit("category.missing", {"category": frame.category, "action": frame.action}, source="adjudication")
             return {"success": False, "message": f"Unhandled category: {frame.category}", "action": None}
-            
+
+    # ------------------------------------------------------------------
+    # Economy router – uses generic transaction handlers
+    # ------------------------------------------------------------------
+    def _handle_economy(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+        if DEBUG:
+            print(f"[DEBUG] _handle_economy: action={frame.action}, item={frame.item}, price={frame.price}")
+        canonical = self._normalize_action(frame.action, frame.raw_text)
+        if canonical == "buy":
+            return self._handle_transaction(frame, session_id, self.buy_config)
+        elif canonical == "sell":
+            return self._handle_transaction(frame, session_id, self.sell_config)
+        elif canonical == "barter":
+            return self._handle_transaction(frame, session_id, self.barter_config)
+        elif canonical == "haggle":
+            return self._handle_haggle(frame, session_id)
+        else:
+            return {"success": False, "message": f"Unknown economic action: {canonical}"}
+
+    # ------------------------------------------------------------------
+    # Normalise action (synonyms mapping)
+    # ------------------------------------------------------------------
+    def _normalize_action(self, action: str, raw_text: str) -> str:
+        action_lower = action.lower()
+        if action_lower in ("buy","purchase","offer","bid","pay","get","acquire"):
+            return "buy"
+        if action_lower in ("sell","dispose","trade","pawn","vend"):
+            return "sell"
+        if action_lower in ("haggle","negotiate","bargain","dicker"):
+            return "haggle"
+        if action_lower in ("barter","swap","exchange"):
+            return "barter"
+        text = raw_text.lower()
+        if any(w in text for w in ("barter","swap","exchange")):
+            return "barter"
+        if any(w in text for w in ("buy","purchase","offer","bid","pay","get","acquire")):
+            return "buy"
+        if any(w in text for w in ("sell","trade","pawn","vend","dispose")):
+            return "sell"
+        if any(w in text for w in ("haggle","negotiate","bargain","dicker")):
+            return "haggle"
+        return action
+
+    # ------------------------------------------------------------------
+    # Movement handler
+    # ------------------------------------------------------------------
     def _handle_move(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
         if DEBUG:
             print("[DEBUG] _handle_move called")
         direction = frame.destination or frame.target
         if not direction:
             return {"success": False, "message": "No direction specified.", "action": None}
+
         dir_map = {
             "north": "n", "south": "s", "east": "e", "west": "w",
             "northeast": "ne", "northwest": "nw",
@@ -123,7 +298,6 @@ class AdjudicationEngine:
         short_dir = dir_map.get(direction.lower(), direction)
         result = self.world.move_hex(short_dir)
 
-        # Safety: ensure result is a dict
         if result is None:
             result = {"success": False, "message": "Movement failed (no result).", "action": None}
         elif not isinstance(result, dict):
@@ -135,193 +309,50 @@ class AdjudicationEngine:
                 result["map_data"] = self.world.get_map_data()
         return result
 
-    def _handle_talk(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+    # ------------------------------------------------------------------
+    # Social stub
+    # ------------------------------------------------------------------
+    def _handle_social(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+        if DEBUG:
+            print(f"[DEBUG] _handle_social: action={frame.action}, target={frame.target}, motivation={frame.motivation}")
+        char = self.world._get_active_character(session_id)
+        if not char:
+            return {"success": False, "message": "No active character."}
         target = frame.target or "someone"
-        # For now, simple response. Later, can trigger AI conversation.
         return {
             "success": True,
-            "message": f"You talk to {target}. They respond in a friendly manner.",
+            "message": f"You try to {frame.action}. {target} seems {random.choice(['unconvinced', 'interested', 'suspicious'])}.",
             "action": None
         }
 
+    # ------------------------------------------------------------------
+    # Exploration handler (look, examine, etc.)
+    # ------------------------------------------------------------------
+    def _handle_exploration(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
+        if DEBUG:
+            print(f"[DEBUG] _handle_exploration: action={frame.action}, destination={frame.destination or frame.target}")
 
-    def _handle_buy(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        char = self.world._get_active_character(session_id)
-        if not char:
-            return {"success": False, "message": "No active character."}
-        if not self.world.current_location or not self.world.current_location.merchant_id:
-            return {"success": False, "message": "No merchant here."}
-        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found."}
+        action_lower = frame.action.lower()
+        if action_lower in ("look", "examine", "inspect", "search"):
+            return self._handle_look(frame, session_id)
+        if action_lower == "move" and frame.destination:
+            return self._handle_move(frame, session_id)
+        return {"success": False, "message": f"I don't know how to '{frame.action}' in exploration.", "action": None}
 
-        item_name = frame.item or frame.target
-        if not item_name:
-            return {"success": False, "message": "What item do you want to buy?"}
-
-        # Load merchant items into resolver
-        self.entity_resolver.load_merchant_items(merchant)
-        item = self.entity_resolver.resolve_item(item_name)
-        if not item:
-            available = ", ".join([i.name for i in merchant.inventory[:5]])
-            return {"success": False, "message": f"I don't have '{item_name}'. I have: {available}."}
-
-        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
-        price = self.world._compute_price(item, merchant, rel, frame.context)
-
-        context = {
-            'item_name': item.name,
-            'current_price': price,
-            'character': char,
-            'merchant': merchant,
-            'item': item,
-            'engine': self,
-            '_guard_registry': self.fsm_guard_registry,
-            '_action_registry': self.fsm_action_registry,
-        }
-        fsm = GenericFSM('config/fsms/buy.json', context)
-        self.active_fsms[session_id] = fsm
-        return {"success": False, "message": fsm.get_prompt()}
-
-    def _handle_sell(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        char = self.world._get_active_character(session_id)
-        if not char:
-            return {"success": False, "message": "No active character."}
-        if not self.world.current_location or not self.world.current_location.merchant_id:
-            return {"success": False, "message": "No merchant here."}
-        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found."}
-
-        item_name = frame.item or frame.target
-        if not item_name:
-            return {"success": False, "message": "What item do you want to sell?"}
-
-        # Use entity resolver to find item in character's inventory
-        self.entity_resolver.load_character_inventory(char)  # we need to implement this
-        item = self.entity_resolver.resolve_item(item_name)
-        if not item:
-            available = ", ".join([i.name for i in char.inventory[:5]])
-            return {"success": False, "message": f"You don't have '{item_name}'. You have: {available}."}
-
-        # Compute merchant's offer price
-        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
-        # Use existing price computation (similar to _compute_sell_price)
-        price = self._compute_sell_price(item, merchant, rel)
-
-        context = {
-            'item_name': item.name,
-            'current_price': price,
-            'character': char,
-            'merchant': merchant,
-            'item': item,
-            'engine': self,
-            '_guard_registry': self.fsm_guard_registry,
-            '_action_registry': self.fsm_action_registry,
-        }
-        fsm = GenericFSM('config/fsms/sell.json', context)
-        self.active_fsms[session_id] = fsm
-        return {"success": False, "message": fsm.get_prompt()}
-
-    def _handle_barter(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        char = self.world._get_active_character(session_id)
-        if not char:
-            return {"success": False, "message": "No active character."}
-        if not self.world.current_location or not self.world.current_location.merchant_id:
-            return {"success": False, "message": "No merchant here."}
-        merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
-        if not merchant:
-            return {"success": False, "message": "Merchant not found."}
-        if not merchant.constraints.barter_allowed:
-            return {"success": False, "message": f"{merchant.name} doesn't barter."}
-
-        # Extract item names from frame
-        give_name = frame.item or frame.target
-        want_name = frame.target if frame.item else None
-        if frame.item and frame.target:
-            give_name = frame.item
-            want_name = frame.target
-        if not want_name:
-            return {"success": False, "message": "Barter requires both what you give and what you want."}
-
-        from difflib import get_close_matches
-        def get_item_inv(inv, name):
-            names = [i.name.lower() for i in inv]
-            matches = get_close_matches(name.lower(), names, n=1, cutoff=0.6)
-            if not matches:
-                return None
-            matched = matches[0]
-            return next(i for i in inv if i.name.lower() == matched)
-
-        # Find the actual items
-        give_item = get_item_inv(char.inventory, give_name)
-        if not give_item:
-            return {"success": False, "message": f"You don't have '{give_name}' to barter."}
-        want_item = get_item_inv(merchant.inventory, want_name)
-        if not want_item:
-            available = ", ".join([i.name for i in merchant.inventory[:5]])
-            return {"success": False, "message": f"{merchant.name} doesn't have '{want_name}'. They have: {available}."}
-
-        # Visibility check
-        rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
-        if not self.world._is_item_visible(want_item, rel):
-            return {"success": False, "message": f"You don't see '{want_item.name}' in the {merchant.display_name}."}
-
-        # Value calculation
-        give_value = self._compute_sell_price(give_item, merchant, rel)
-        want_value = self.world._compute_price(want_item, merchant, rel, frame.context)
-        shortage = want_value - give_value
-
-        # If player already gives enough value, complete directly
-        if shortage <= 0:
-            self._complete_barter(char, merchant, give_item, want_item, 0)
-            return {"success": True, "message": f"You bartered your {give_item.name} for {merchant.name}'s {want_item.name}.", "action": "refresh_inventory"}
-
-        # Otherwise start an FSM to negotiate extra gold
-        context = {
-            'give_item': give_item.name,
-            'receive_item': want_item.name,
-            'give_value': give_value,
-            'receive_value': want_value,
-            'shortage': shortage,
-            'character': char,
-            'merchant': merchant,
-            'give_item_obj': give_item,
-            'receive_item_obj': want_item,
-            'engine': self,
-            '_guard_registry': self.fsm_guard_registry,
-            '_action_registry': self.fsm_action_registry,
-        }
-        from world.fsm.generic_fsm import GenericFSM
-        fsm = GenericFSM('config/fsms/barter.json', context)
-        self.active_fsms[session_id] = fsm
-        return {"success": False, "message": fsm.get_prompt()}
-
-    def _compute_sell_price(self, item, merchant, rel):
-        """Helper to compute how much merchant will pay for an item (sell value)."""
-        base_price = item.cost if hasattr(item, 'cost') else 10
-        # Merchant's greed reduces price (since they want to keep money), affinity/trust increases price
-        multiplier = 1.0
-        multiplier -= (merchant.personality.greed - 5) * 0.05
-        multiplier += rel.affinity * 0.03
-        multiplier += rel.trust * 0.02
-        multiplier -= rel.fear * 0.04
-        multiplier = max(0.2, min(1.0, multiplier))
-        price = int(base_price * multiplier)
-        return max(1, price)
-
-
+    # ------------------------------------------------------------------
+    # Look handler (including merchant display)
+    # ------------------------------------------------------------------
     def _handle_look(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
         char = self.world._get_active_character(session_id)
         if not char:
             return {"success": False, "message": "No active character.", "action": None}
-        
+
         target = frame.target or frame.item
         location = self.world.current_location
         merchant = None
         if location and location.merchant_id:
             merchant = self.world.campaign_state.get_merchant(location.merchant_id)
-        
+
         # No target – describe area
         if not target:
             parts = []
@@ -329,7 +360,7 @@ class AdjudicationEngine:
                 parts.append(f"You are at {location.name}.")
             else:
                 parts.append("You are in the wilderness.")
-            
+
             col, row = self.world.campaign_state.party_position
             hex_data = self.world.campaign_state.get_hex(col, row)
             if hex_data:
@@ -342,7 +373,7 @@ class AdjudicationEngine:
             if merchant:
                 parts.append(f"{merchant.name} the merchant is here, standing near {merchant.display_name}.")
             return {"success": True, "message": " ".join(parts), "action": None}
-        
+
         # Target is merchant's display
         if merchant and target.lower() == merchant.display_name.lower():
             rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
@@ -355,20 +386,17 @@ class AdjudicationEngine:
             else:
                 msg = f"{merchant.name}'s {merchant.display_name} appears empty, or you don't see anything of interest."
             return {"success": True, "message": msg, "action": None}
-        
+
         # Target is merchant (NPC)
         if merchant and (target.lower() == merchant.name.lower() or target.lower() == "merchant"):
             return {"success": True, "message": f"{merchant.name} the merchant stands by his {merchant.display_name}.", "action": None}
-        
-        # Target is a location (if you have a world map)
-        if hasattr(self.world, 'world_map') and self.world.world_map:
-            for loc in self.world.world_map.locations.values():
-                if getattr(loc, 'discovered', False) and loc.name.lower() == target.lower():
-                    return {"success": True, "message": f"{loc.name}: {loc.description}", "action": None}
-        
+
         # Generic fallback
         return {"success": True, "message": f"You look at {target} but see nothing special.", "action": None}
 
+    # ------------------------------------------------------------------
+    # Haggle (stub)
+    # ------------------------------------------------------------------
     def _handle_haggle(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
         char = self.world._get_active_character(session_id)
         if not char:
@@ -381,10 +409,9 @@ class AdjudicationEngine:
         item_name = frame.target
         if not item_name:
             return {"success": False, "message": "No item specified."}
-        offered_price = frame.currency
+        offered_price = frame.price
         if not offered_price:
             return {"success": False, "message": "No price offered."}
-        # Use the merchant_haggle tool
         result = self.world.merchant_haggle(item_name, offered_price)
         return {
             "success": result.get("success", False),
@@ -392,136 +419,23 @@ class AdjudicationEngine:
             "action": result.get("action")
         }
 
-    def _normalize_action(self, action: str, raw_text: str) -> str:
-        action_lower = action.lower()
-        if action_lower in ("buy","purchase","offer","bid","pay","get","acquire"):
-            return "buy"
-        if action_lower in ("sell","dispose","trade","pawn","vend"):
-            return "sell"
-        if action_lower in ("haggle","negotiate","bargain","dicker"):
-            return "haggle"
-        if action_lower in ("barter","swap","exchange"):
-            return "barter"
-        # fallback to keyword scan
-        text = raw_text.lower()
-        if any(w in text for w in ("barter","swap","exchange")):
-            return "barter"
-        if any(w in text for w in ("buy","purchase","offer","bid","pay","get","acquire")):
-            return "buy"
-        if any(w in text for w in ("sell","trade","pawn","vend","dispose")):
-            return "sell"
-        if any(w in text for w in ("haggle","negotiate","bargain","dicker")):
-            return "haggle"
-        return action
+    # ------------------------------------------------------------------
+    # Price helpers
+    # ------------------------------------------------------------------
+    def _compute_sell_price(self, item, merchant, rel):
+        base_price = item.cost if hasattr(item, 'cost') else 10
+        multiplier = 1.0
+        multiplier -= (merchant.personality.greed - 5) * 0.05
+        multiplier += rel.affinity * 0.03
+        multiplier += rel.trust * 0.02
+        multiplier -= rel.fear * 0.04
+        multiplier = max(0.2, min(1.0, multiplier))
+        return max(1, int(base_price * multiplier))
 
-    def _handle_economy(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        if DEBUG:
-            print(f"[DEBUG] _handle_economy: action={frame.action}, item={frame.item}, price={frame.price}")
-        
-        canonical = self._normalize_action(frame.action, frame.raw_text)
-
-        action = frame.action.lower()
-        if action in ["buy", "purchase"]:
-            # Call the existing _handle_buy method (already defined)
-            return self._handle_buy(frame, session_id)
-        elif action in ["sell", "dispose"]:
-            return self._handle_sell(frame, session_id)
-        elif action in ["haggle", "negotiate"]:
-            return self._handle_haggle(frame, session_id)
-        elif canonical == "barter":
-            return self._handle_barter(frame, session_id)
-        else:
-            return {"success": False, "message": f"Unknown economic action: {action}"}
-
-
-    def _handle_social(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        if DEBUG:
-            print(f"[DEBUG] _handle_social: action={frame.action}, target={frame.target}, motivation={frame.motivation}")
-        char = self.world._get_active_character(session_id)
-        if not char:
-            return {"success": False, "message": "No active character."}
-        target = frame.target or "someone"
-        # Stub – will later include persuasion/intimidation skill checks and AI narrative
-        return {
-            "success": True,
-            "message": f"You try to {frame.action}. {target} seems {random.choice(['unconvinced', 'interested', 'suspicious'])}.",
-            "action": None
-        }
-
-    def _handle_exploration(self, frame: IntentFrame, session_id: Optional[str]) -> Dict[str, Any]:
-        if DEBUG:
-            print(f"[DEBUG] _handle_exploration: action={frame.action}, destination={frame.destination or frame.target}")
-        
-        action_lower = frame.action.lower()
-        # Handle look / examine
-        if action_lower in ("look", "examine", "inspect", "search"):
-            return self._handle_look(frame, session_id)
-        
-        # Handle movement within exploration (e.g., "go to the fountain")
-        if action_lower == "move" and frame.destination:
-            # Treat as movement (but you may have a separate movement handler)
-            # For simplicity, pass to movement handler
-            return self._handle_move(frame, session_id)
-        
-        # Other exploration actions (e.g., "search for traps", "listen")
-        # You can add more specific handlers here
-        return {"success": False, "message": f"I don't know how to '{frame.action}' in exploration.", "action": None}
-
-    # Guards (return True/False)
-    def _fsm_guard_price_too_low(self, event_data=None):
-        offered = event_data.get('offer', 0) if event_data else 0
-        current = self.context.get('current_price', 0)
-        return offered < current
-
-    def _fsm_guard_price_acceptable(self, event_data=None):
-        offered = event_data.get('offer', 0) if event_data else 0
-        current = self.context.get('current_price', 0)
-        return offered >= current
-
-    # Actions (update context or execute purchase)
-    def _fsm_action_update_price(self, event_data=None):
-        if event_data and 'offer' in event_data:
-            self.context['offer'] = event_data['offer']
-        return self.context
-
-    def _fsm_action_execute_buy(self, event_data=None):
-        # Get data from context
-        char = self.context['character']
-        merchant = self.context['merchant']
-        item = self.context['item']
-        price = event_data.get('offer', 0) if event_data else 0
-        if not price:
-            price = self.context.get('current_price', 0)
-        engine = self.context['engine']   # <-- get the AdjudicationEngine instance
-
-        if char.currency < price:
-            return self.context
-
-        char.currency -= price
-        from world.character import InventoryItem
-        new_item = InventoryItem(
-            name=item.name,
-            description=f"Bought from {merchant.name}",
-            type=item.tags.pop() if item.tags else "adventuring_gear",
-            cost=price
-        )
-        char.inventory.append(new_item)
-
-        # Use engine to update relationship and save
-        engine.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1)
-        engine.world.character_manager._save_character_to_db(char)
-
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.buy", {
-            "item": item.name,
-            "price": price,
-            "character": char.id,
-            "merchant": merchant.id
-        }, source="adjudication_engine")
-        return self.context
-
+    # ------------------------------------------------------------------
+    # Transaction execution helpers (used by builtins)
+    # ------------------------------------------------------------------
     def _execute_purchase(self, character, merchant, item, price):
-        """Executes the actual purchase (gold deduction, inventory, relationships, events)."""
         if character.currency < price:
             return False
         character.currency -= price
@@ -535,8 +449,7 @@ class AdjudicationEngine:
         character.inventory.append(new_item)
         self.world.campaign_state.update_merchant_relationship(merchant.id, character.id, affinity_delta=1)
         self.world.character_manager._save_character_to_db(character)
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.buy", {
+        self.event_log.emit("economy.buy", {
             "item": item.name,
             "price": price,
             "character": character.id,
@@ -545,91 +458,22 @@ class AdjudicationEngine:
         return True
 
     def _execute_sell(self, character, merchant, item, price):
-        if character.currency < price:  # actually character gains gold, so no check needed
-            pass
         character.currency += price
-        # Remove item from inventory
         if item in character.inventory:
             character.inventory.remove(item)
-        else:
-            # handle if item stored differently
-            pass
-        # Update relationship (optional)
         self.world.campaign_state.update_merchant_relationship(merchant.id, character.id, trust_delta=1)
         self.world.character_manager._save_character_to_db(character)
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.sell", {
+        self.event_log.emit("economy.sell", {
             "item": item.name,
             "price": price,
             "character": character.id,
             "merchant": merchant.id
         }, source="adjudication_engine")
 
-    def _guard_price_too_low(self, event_data):
-        # Called with self = state machine instance
-        offered = event_data.get('value', 0)
-        current = self.context.get('current_price', 0)
-        return offered < current
-
-    def _guard_price_acceptable(self, event_data):
-        offered = event_data.get('value', 0)
-        current = self.context.get('current_price', 0)
-        return offered >= current
-
-    def _action_store_offer(self, event_data):
-        self.context['price'] = event_data.get('value', 0)
-        return self.context
-
-    def _action_execute_purchase(self, event_data):
-        engine = self.context['engine']
-        engine._execute_purchase(
-            self.context['character'],
-            self.context['merchant'],
-            self.context['item'],
-            self.context.get('price', self.context['current_price'])
-        )
-        return self.context
-
-    def _guard_need_more_gold(self, event_data):
-        # Called with self = state machine instance
-        offered_extra = event_data.get('value', 0)
-        shortage = self.context.get('shortage', 0)
-        return offered_extra < shortage
-
-    def _guard_barter_acceptable(self, event_data):
-        offered_extra = event_data.get('value', 0)
-        shortage = self.context.get('shortage', 0)
-        return offered_extra >= shortage
-
-    def _action_add_gold(self, event_data):
-        extra = event_data.get('value', 0)
-        self.context['offered_extra'] = extra
-        # update shortage
-        current_shortage = self.context.get('shortage', 0)
-        new_shortage = current_shortage - extra
-        if new_shortage <= 0:
-            # Accept automatically – but we rely on guards to transition to completed
-            pass
-        self.context['shortage'] = new_shortage
-        return self.context
-
-    def _action_execute_barter(self, event_data):
-        engine = self.context['engine']
-        engine._execute_barter(
-            self.context['character'],
-            self.context['merchant'],
-            self.context['give_item'],
-            self.context['receive_item'],
-            self.context.get('offered_extra', 0)
-        )
-        return self.context
-
     def _execute_barter(self, character, merchant, give_item, receive_item, extra_gold):
-        # Give item: remove from character
         character.inventory.remove(give_item)
-        # Give extra gold
-        character.currency -= extra_gold
-        # Receive item
+        if extra_gold > 0:
+            character.currency -= extra_gold
         from world.character import InventoryItem
         new_item = InventoryItem(
             name=receive_item.name,
@@ -638,12 +482,9 @@ class AdjudicationEngine:
             cost=receive_item.base_price
         )
         character.inventory.append(new_item)
-        # Update relationships
         self.world.campaign_state.update_merchant_relationship(merchant.id, character.id, affinity_delta=2)
         self.world.character_manager._save_character_to_db(character)
-        # Emit event
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.barter", {
+        self.event_log.emit("economy.barter", {
             "give_item": give_item.name,
             "receive_item": receive_item.name,
             "extra_gold": extra_gold,
@@ -651,99 +492,26 @@ class AdjudicationEngine:
             "merchant": merchant.id
         }, source="adjudication_engine")
 
-    def _complete_barter(self, char, merchant, give_item, receive_item, extra_gold):
-        """Execute the barter transaction (used by both direct and FSM paths)."""
-        char.inventory.remove(give_item)
-        from world.character import InventoryItem
-        new_item = InventoryItem(
-            name=receive_item.name,
-            description=f"Bartered from {merchant.name}",
-            type=receive_item.tags.pop() if receive_item.tags else "adventuring_gear",
-            cost=receive_item.base_price
-        )
-        char.inventory.append(new_item)
-        if extra_gold > 0:
-            if char.currency < extra_gold:
-                # This should not happen if guards are correct; but fallback
-                char.inventory.append(give_item)
-                char.inventory.remove(new_item)
-                return
-            char.currency -= extra_gold
-        merchant.inventory.remove(receive_item)
-        # Optionally add give_item to merchant inventory – not required for now
-        self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=2, trust_delta=1)
-        self.world.character_manager._save_character_to_db(char)
-        from world.event_log import get_event_log
-        get_event_log().emit("economy.barter", {
-            "give_item": give_item.name,
-            "receive_item": receive_item.name,
-            "gold_diff": extra_gold,
-            "character": char.id,
-            "merchant": merchant.id
-        }, source="adjudication_engine")
-
-    def _guard_flee_possible(self, event_data):
-        # Called with self = state machine instance
-        # For now, use a simple check based on context; later call a skill resolver.
-        return self.context.get('flee_success', False)
-
-    def _guard_parley_possible(self, event_data):
-        return self.context.get('parley_success', False)
-
-    def _action_start_combat(self, event_data):
-        # This is a placeholder; later you will create a combat FSM.
-        # For now, just emit event and mark encounter as completed.
-        from world.event_log import get_event_log
-        get_event_log().emit("encounter.combat_started", {"encounter": self.context['encounter_data']}, source="encounter_fsm")
-        # After combat, you would typically call a method to end the encounter.
-        # We'll auto‑complete for now.
-        self.context['engine']._end_encounter(self.context['session_id'])
-        return self.context
-
-    def _action_resolve_flee(self, event_data):
-        from world.event_log import get_event_log
-        get_event_log().emit("encounter.flee.success", {"encounter": self.context['encounter_data']}, source="encounter_fsm")
-        # The transition `flee_success` will move to completed; we don't need extra action.
-        return self.context
-
-    def _action_resolve_parley(self, event_data):
-        from world.event_log import get_event_log
-        get_event_log().emit("encounter.parley.success", {"encounter": self.context['encounter_data']}, source="encounter_fsm")
-        return self.context
-
-    def _end_encounter(self, session_id):
-        if session_id in self.active_fsms:
-            del self.active_fsms[session_id]
-
+    # ------------------------------------------------------------------
+    # Encounter support
+    # ------------------------------------------------------------------
     def start_encounter(self, session_id: str, encounter_data: dict) -> Dict[str, Any]:
-        """Create an Encounter FSM and store it for the session."""
-        # Compute flee/parley success using actual game rules (placeholder)
-        # Here you would call a resolver that uses character skills, difficulty, etc.
-        # For now, we set them to plausible values based on encounter data.
-        flee_success = self._determine_flee_chance(encounter_data)   # implement below
-        parley_success = self._determine_parley_chance(encounter_data)
-
+        guard_reg = {
+            'flee_possible': builtins.flee_possible,
+            'parley_possible': builtins.parley_possible,
+        }
+        action_reg = {
+            'start_combat': builtins.start_combat,
+            'resolve_flee': builtins.resolve_flee,
+            'resolve_parley': builtins.resolve_parley,
+        }
         context = {
             'description': encounter_data.get('description', 'Something happens!'),
             'encounter_data': encounter_data,
-            'flee_success': flee_success,
-            'parley_success': parley_success,
-            'session_id': session_id,
-            '_guard_registry': self.fsm_guard_registry,
-            '_action_registry': self.fsm_action_registry,
             'engine': self,
+            'session_id': session_id,
         }
-        from world.fsm.generic_fsm import GenericFSM
         fsm = GenericFSM('config/fsms/encounter.json', context)
-        fsm.send_event('next')   # move from initiating to awaiting_choice
+        fsm.send_event('next')
         self.active_fsms[session_id] = fsm
         return {"success": False, "message": fsm.get_prompt()}
-
-    def _determine_flee_chance(self, encounter_data) -> bool:
-        # Use character stats, encounter difficulty, maybe a dice roll.
-        # For now, always succeed for testing.
-        return True
-
-    def _determine_parley_chance(self, encounter_data) -> bool:
-        # For now, always fail (so combat triggers).
-        return False

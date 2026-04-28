@@ -1,58 +1,53 @@
 {
   "name": "TradeFSM",
-  "initial_state": "awaiting",
   "states": [
-    {"name": "awaiting"},
-    {"name": "countering"},
-    {"name": "completed", "final": true}
+    {"name": "awaiting", "initial": true, "prompt": "{item_name} costs {current_price} gp. Say 'yes' or offer a price."},
+    {"name": "countering", "prompt": "Offer too low. I want {current_price} gp. Say 'yes' or offer again."},
+    {"name": "completed", "final": true, "prompt": "You bought {item_name} for {price} gp."}
   ],
-  "transitions": [
-    {
-      "event": "confirm",
-      "from": "awaiting",
-      "to": "completed",
-      "actions": ["execute_buy"],
-      "guard": null
+  "events": {
+    "confirm": {
+      "transitions": [
+        {"from": "awaiting", "to": "completed", "actions": ["execute_buy"]},
+        {"from": "countering", "to": "completed", "actions": ["execute_buy"]}
+      ]
     },
-    {
-      "event": "confirm",
-      "from": "countering",
-      "to": "completed",
-      "actions": ["execute_buy"],
-      "guard": null
+    "offer": {
+      "event_args": {"value": 0},
+      "transitions": [
+        {"from": "awaiting", "to": "countering", "cond": "price_too_low", "actions": ["update_price"]},
+        {"from": "countering", "to": "countering", "cond": "price_too_low", "actions": ["update_price"]},
+        {"from": "awaiting", "to": "completed", "cond": "price_acceptable", "actions": ["execute_buy"]},
+        {"from": "countering", "to": "completed", "cond": "price_acceptable", "actions": ["execute_buy"]}
+      ]
     },
-    {
-      "event": "offer",
-      "from": "awaiting",
-      "to": "countering",
-      "guard": "price_too_low",
-      "actions": ["update_price"]
-    },
-    {
-      "event": "offer",
-      "from": "countering",
-      "to": "countering",
-      "guard": "price_too_low",
-      "actions": ["update_price"]
-    },
-    {
-      "event": "offer",
-      "from": "awaiting",
-      "to": "completed",
-      "guard": "price_acceptable",
-      "actions": ["execute_buy"]
-    },
-    {
-      "event": "offer",
-      "from": "countering",
-      "to": "completed",
-      "guard": "price_acceptable",
-      "actions": ["execute_buy"]
+    "cancel": {
+      "transitions": [
+        {"from": "awaiting", "to": "completed"},
+        {"from": "countering", "to": "completed"}
+      ]
     }
-  ],
-  "event_patterns": [
-    {"pattern": "yes|sure|ok|deal|accept", "event": "confirm", "extract": []},
-    {"pattern": "(\\d+)", "event": "offer", "extract": ["price"]},
-    {"pattern": "no|cancel", "event": "cancel", "extract": []}
-  ]
+  },
+  "guards": {
+    "price_too_low": {
+      "parameters": {"value": "int"},
+      "description": "True if offered value < current_price"
+    },
+    "price_acceptable": {
+      "parameters": {"value": "int"},
+      "description": "True if offered value >= current_price"
+    }
+  },
+  "actions": {
+    "update_price": {
+      "parameters": {"value": "int"},
+      "context_updates": ["price"],
+      "description": "Store offered price in context['price']"
+    },
+    "execute_buy": {
+      "parameters": {},
+      "context_uses": ["engine", "character", "merchant", "item"],
+      "description": "Execute purchase transaction"
+    }
+  }
 }

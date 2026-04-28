@@ -6,19 +6,23 @@
     { "name": "completed", "final": true, "prompt": "You bought {item_name} for {price} gp." }
   ],
   "events": {
-    "confirm": [
-      { "from": "awaiting", "to": "completed", "actions": ["execute_purchase"] },
-      { "from": "countering", "to": "completed", "actions": ["execute_purchase"] }
-    ],
-    "offer": [
-      { "from": "awaiting", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] },
-      { "from": "countering", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] },
-      { "from": "awaiting", "to": "completed", "cond": "price_acceptable", "actions": ["execute_purchase"] },
-      { "from": "countering", "to": "completed", "cond": "price_acceptable", "actions": ["execute_purchase"] }
-    ],
-    "cancel": [
-      { "from": "awaiting", "to": "completed" },
-      { "from": "countering", "to": "completed" }
-    ]
+    "confirm": {
+      "transitions": [
+        { "from": "awaiting", "to": "completed", "actions": ["execute_purchase"] },
+        { "from": "countering", "to": "completed", "actions": ["execute_purchase"] }
+      ]
+    },
+    "offer": {
+      "transitions": [
+        { "from": "awaiting", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] },
+        { "from": "countering", "to": "countering", "cond": "price_too_low", "actions": ["store_offer"] }
+      ]
+    },
+    "cancel": {
+      "transitions": [
+        { "from": "awaiting", "to": "completed" },
+        { "from": "countering", "to": "completed" }
+      ]
+    }
   }
 }

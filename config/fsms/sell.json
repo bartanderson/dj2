@@ -1,21 +1,29 @@
-{
-  "name": "SellFSM",
-  "states": [
-    { "name": "awaiting", "initial": true, "prompt": "I'll give you {merchant_price} gp for your {item_name}. Say 'yes' to sell, or offer a price." },
-    { "name": "countering", "prompt": "Offer too high. I'll pay {merchant_price} gp. Say 'yes' or offer again." },
-    { "name": "completed", "final": true, "prompt": "You sold {item_name} for {price} gp." }
-  ],
-  "events": {
-    "confirm": [
-      { "from": "countering", "to": "completed", "actions": ["execute_sell"] }
-    ],
-    "offer": [
-      { "from": "awaiting", "to": "countering", "actions": ["store_offer"] },
-      { "from": "countering", "to": "countering", "actions": ["store_offer"] }
-    ],
-    "cancel": [
-      { "from": "awaiting", "to": "completed" },
-      { "from": "countering", "to": "completed" }
-    ]
-  }
-}
+ {
+   "name": "SellFSM",
+   "states": [
+     { "name": "awaiting", "initial": true, "prompt": "I'll give you {merchant_price} gp for your {item_name}. Say 'yes' to sell, or offer a price." },
+     { "name": "countering", "prompt": "Offer too high. I'll pay {merchant_price} gp. Say 'yes' or offer again." },
+     { "name": "completed", "final": true, "prompt": "You sold {item_name} for {price} gp." }
+   ],
+   "events": {
+     "confirm": {
+       "transitions": [
+         { "from": "awaiting", "to": "completed", "actions": ["execute_sell"] },
+         { "from": "countering", "to": "completed", "actions": ["execute_sell"] }
+       ]
+     },
+     "offer": {
+       "transitions": [
+
+         { "from": "awaiting", "to": "countering", "actions": ["store_offer"] },
+         { "from": "countering", "to": "countering", "actions": ["store_offer"] }
+       ]
+     },
+     "cancel": {
+       "transitions": [
+         { "from": "awaiting", "to": "completed" },
+         { "from": "countering", "to": "completed" }
+       ]
+     }
+   }
+ }
