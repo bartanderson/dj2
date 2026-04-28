@@ -9,7 +9,6 @@ class GenericFSM:
             self.definition = json.load(f)
         self.context = initial_context
         self._machine = self._build_machine()
-        # No need to call start(); machine initializes on instantiation
 
     def _build_machine(self):
         # Create State objects
@@ -23,7 +22,11 @@ class GenericFSM:
         # Build transitions per event – expects event_def to be dict with 'transitions' list
         events = {}
         for event_name, event_def in self.definition['events'].items():
-            trans_list = event_def['transitions']
+            # Support both old (list) and new (dict with 'transitions') formats
+            if isinstance(event_def, dict) and 'transitions' in event_def:
+                trans_list = event_def['transitions']
+            else:
+                trans_list = event_def  # old format
             trans_objects = []
             for t in trans_list:
                 source = states[t['from']]
@@ -57,7 +60,7 @@ class GenericFSM:
         for name, func in self.context.get('_action_registry', {}).items():
             setattr(machine_cls, name, func)
 
-        # Instantiate the class (the methods are now present)
+        # Now instantiate the class (the methods are present)
         instance = machine_cls()
         instance.context = self.context
         return instance
@@ -71,11 +74,7 @@ class GenericFSM:
         return self
 
     def get_prompt(self) -> str:
-        # Get the current state id using configuration (avoid deprecated current_state)
-        state_set = self._machine.configuration
-        if not state_set:
-            return ""
-        state_id = next(iter(state_set)).id
+        state_id = self._machine.current_state.id
         for s in self.definition['states']:
             if s['name'] == state_id:
                 template = s.get('prompt', '')
@@ -87,12 +86,8 @@ class GenericFSM:
 
     @property
     def is_completed(self) -> bool:
-        # Check if the machine is in a final state
-        return any(state.final for state in self._machine.configuration)
+        return self._machine.current_state.final
 
     @property
     def state(self) -> str:
-        state_set = self._machine.configuration
-        if not state_set:
-            return ""
-        return next(iter(state_set)).id
+        return self._machine.current_state.id
