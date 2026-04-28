@@ -108,6 +108,18 @@ def execute_barter(instance, event_data):
     return instance.context
 
 # Encounter actions (simple stubs)
+def flee_possible(instance, event_data):
+    engine = instance.context.get('engine')
+    if engine and hasattr(engine, '_check_flee'):
+        return engine._check_flee(instance.context.get('encounter_data'))
+    return False
+
+def parley_possible(instance, event_data):
+    engine = instance.context.get('engine')
+    if engine and hasattr(engine, '_check_parley'):
+        return engine._check_parley(instance.context.get('encounter_data'))
+    return False
+
 def start_combat(instance, event_data):
     engine = instance.context.get('engine')
     if engine and hasattr(engine, '_start_combat'):

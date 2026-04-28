@@ -26,12 +26,14 @@ class GenericFSM:
             trans_list = event_def['transitions']
             trans_objects = []
             for t in trans_list:
-                source = states[t['from']]
-                target = states[t['to']]
-                cond = t.get('cond')
-                actions = t.get('actions', [])
-                transition = source.to(target, event=event_name, cond=cond, on=actions)
-                trans_objects.append(transition)
+                from_states = t['from'] if isinstance(t['from'], list) else [t['from']]
+                for src in from_states:
+                    source = states[src]
+                    target = states[t['to']]
+                    cond = t.get('cond')
+                    actions = t.get('actions', [])
+                    transition = source.to(target, event=event_name, cond=cond, on=actions)
+                    trans_objects.append(transition)
             if not trans_objects:
                 continue
             combined = trans_objects[0]

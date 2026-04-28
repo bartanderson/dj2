@@ -510,6 +510,8 @@ class AdjudicationEngine:
             'encounter_data': encounter_data,
             'engine': self,
             'session_id': session_id,
+            '_guard_registry': guard_reg,   # <-- ADD THIS
+            '_action_registry': action_reg, # <-- ADD THIS
         }
         fsm = GenericFSM('config/fsms/encounter.json', context)
         fsm.send_event('next')
