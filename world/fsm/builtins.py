@@ -33,6 +33,7 @@ def price_lt(instance, event_data):
 def price_ge(instance, event_data):
     offered = _get_event_value(event_data)
     current = instance.context.get('current_price', 0)
+    print(f"[DEBUG price_ge] offered={offered}, current={current}")
     return offered >= current
 
 def offer_gt(instance, event_data):
