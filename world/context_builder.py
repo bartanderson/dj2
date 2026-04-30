@@ -2,7 +2,7 @@
 import logging
 from typing import Dict, List, Optional, Set
 
-from world.event_log import Event, get_event_log
+from world.event_log import Event, get_event_log, EventLog
 from world.escalation_engine import EscalationEngine
 
 logger = logging.getLogger(__name__)
@@ -13,9 +13,9 @@ SALIENT_LIMIT = 20       # number of salient events to collect
 
 
 class ContextBuilder:
-    def __init__(self, world_controller, escalation_engine: EscalationEngine):
+    def __init__(self, world_controller, event_log: EventLog, escalation_engine: EscalationEngine):
         self.world = world_controller
-        self.event_log = get_event_log()
+        self.event_log = event_log
         self.escalation = escalation_engine
 
     def build(self, session_id: str) -> dict:

@@ -390,6 +390,9 @@ Your answer:
         # ADJUDICATION ENGINE
         # ------------------------------------------------------------------
         result = self.adjudication_engine.process(frame, session_id)
+        unified_context = self.adjudication_engine.context_builder.build(session_id)
+        result["unified_context"] = unified_context
+        print(f"Unified context salient events: {unified_context['salient_events']}")
         if result.get("clarification"):
             return {
                 "responses": [DialogResponse(speaker="DM", content=result["message"], dialog_type="narration")],

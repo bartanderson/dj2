@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from world.intent import IntentFrame
 from world.event_log import get_event_log
+from world.escalation_engine import EscalationEngine
+from world.context_builder import ContextBuilder
 from world.entity_resolver import EntityResolver
 from world.input_parser import parse_player_input
 from world.fsm.generic_fsm import GenericFSM
@@ -34,7 +36,13 @@ class AdjudicationEngine:
         self.conversations: Dict[str, Dict] = {}
         self.active_fsms = {}
         self.entity_resolver = EntityResolver()
-
+        self.event_log = get_event_log()
+        self.escalation = EscalationEngine(self.event_log, world_controller)
+        self.escalation.load_rules("config/escalation_rules.yaml")   # create this file
+        self.escalation.register_action("log_buy", self._log_buy_action)
+        self._escalation_subscription = self.event_log.on_any(self.escalation.process_event)
+        self.event_log.on_any(self.escalation.process_event)
+        self.context_builder = ContextBuilder(world_controller, self.event_log, self.escalation)
         # Transaction configurations (buy, sell, barter)
         self.buy_config = TransactionConfig(
             name='buy',
@@ -61,6 +69,10 @@ class AdjudicationEngine:
             action_registry={'add_gold': builtins.add_gold, 'execute_barter': builtins.execute_barter},
             is_barter=True,
         )
+        self.escalation.register_action("log_buy", self._log_buy_action)
+
+    def _log_buy_action(self, event, params):
+        print(f"Buy event logged: {event.data.item}")
 
     # ------------------------------------------------------------------
     # Helper: start a generic FSM and store it
@@ -449,12 +461,19 @@ class AdjudicationEngine:
         character.inventory.append(new_item)
         self.world.campaign_state.update_merchant_relationship(merchant.id, character.id, affinity_delta=1)
         self.world.character_manager._save_character_to_db(character)
-        self.event_log.emit("economy.buy", {
-            "item": item.name,
-            "price": price,
-            "character": character.id,
-            "merchant": merchant.id
-        }, source="adjudication_engine")
+        self.event_log.emit(
+            "economy.buy",
+            {
+                "item": item.name,
+                "price": price,
+                "character": character.id,
+                "merchant": merchant.id,
+                "entity_id": character.id,      # for salience
+                "target_id": merchant.id
+            },
+            source_system="adjudication_engine",
+            actor_id=character.id
+        )
         return True
 
     def _execute_sell(self, character, merchant, item, price):

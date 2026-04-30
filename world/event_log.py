@@ -96,9 +96,10 @@ class EventLog:
         """Register a callback for a specific event type."""
         self._listeners[event_type].append(callback)
 
-    def on_any(self, callback: Callable[[Event], None]) -> None:
-        """Register a callback for all events."""
+    def on_any(self, callback: Callable[[Event], None]) -> Callable:
+        """Register a callback for all events, returning the callback as a handle."""
         self._wildcard.append(callback)
+        return callback
 
     def get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Event]:
         """Return the most recent events (up to limit), optionally filtered by type."""

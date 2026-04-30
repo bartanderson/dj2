@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 import yaml
 from simpleeval import simple_eval
 
-from world.event_log import Event, AttrDict, get_event_log
+from world.event_log import Event, AttrDict, get_event_log, EventLog
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,8 @@ class DotDict(dict):
 
 
 class EscalationEngine:
-    def __init__(self, world_controller):
+    def __init__(self, event_log: EventLog, world_controller):
+        self.event_log = event_log
         self.world = world_controller
         self.rules = []
         self.action_registry = {}

@@ -1,0 +1,7 @@
+rules:
+  - name: "test_buy_reaction"
+    event_pattern: "economy.buy"
+    conditions: []
+    actions:
+      - name: "log_buy"
+        params: {}
