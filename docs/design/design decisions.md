@@ -1,0 +1,137 @@
+Design Decision Log
+This document records architectural decisions that are not obvious from the code alone and that affect future development. Each entry includes the decision, rationale, and date.
+
+1. EventLog Injection Over Global Singleton (2026-04-30)
+Decision:
+EscalationEngine receives an explicit EventLog instance via its constructor, instead of calling get_event_log() internally. AdjudicationEngine creates the singleton once and passes it down.
+
+Rationale:
+
+Eliminates hidden global state, making dependencies explicit.
+
+Enables deterministic testing (isolated event logs per test).
+
+Prevents split‑brain issues where different components might use different log instances.
+
+Impact:
+
+All tests that instantiate EscalidationEngine must now pass an EventLog (usually obtained via get_event_log()).
+
+The global reset_event_log() function is used only for test isolation.
+
+2. Depth Propagation Rule (2026-04-30)
+Decision:
+
+Only events emitted by EscalationEngine.emit_event() increase depth (parent_event.depth + 1).
+
+Events emitted by AdjudicationEngine (or any other system) use depth = 0 (new causal root).
+
+process_event discards events with depth >= MAX_DEPTH (default 10).
+
+Rationale:
+
+Escalation is the only component that can cause infinite loops; depth is a guard against cascades.
+
+Adjudication represents authoritative state changes and should start fresh causal chains.
+
+Keeps reasoning simple: “depth > 0 means this event originated from an escalation rule.”
+
+Impact:
+
+Integration tests verify [0, 1, 0] event depth sequences.
+
+Future combat or dialogue FSMs must not manually increase depth unless they are escalating.
+
+3. Visibility Contract: WorldController.get_entities_in_location() (2026-04-30)
+Decision:
+WorldController must implement:
+
+python
+def get_entities_in_location(self, location) -> set[str]:
+    """Return a set of entity IDs present in the given location."""
+ContextBuilder uses this method to obtain the set of candidate entities for visibility. It does not receive full entity objects at this stage.
+
+Rationale:
+
+Separation of concerns: location membership is a spatial query, not perception.
+
+Performance: sets of IDs are cheap to copy and manipulate.
+
+Future changes (lighting, stealth) will require per‑entity attributes, which can be retrieved via a separate get_entity(entity_id) method when needed.
+
+Impact:
+
+WorldController must provide this method (currently stubbed in mocks).
+
+ContextBuilder does not directly store entity objects; it uses IDs and later looks up details for the final visible_entities output.
+
+4. Lighting and Darkvision (v1 Threshold) (2026-04-30)
+Decision:
+
+Each location has a lighting attribute (float 0.0 … 1.0).
+
+lighting >= 0.3 → considered “lit”.
+
+lighting < 0.3 → considered “dark”.
+
+Characters have a boolean has_darkvision.
+
+Visibility rule:
+
+If lighting >= 0.3 or has_darkvision → all entities in the location are visible.
+
+Otherwise (dark, no darkvision) → only the character themselves is visible.
+
+Rationale:
+
+Provides a simple, deterministic perception model that depends on environment and character traits.
+
+Avoids premature complexity (distance, cone of vision, etc.) until stealth is added.
+
+Impact:
+
+`ContextBuilder._compute_visibility` now implements this conditional logic.
+
+Unit tests for lighting scenarios (lit, dark, dark+darkvision) are required.
+
+5. Entity Reference Convention for Event Salience (2026-04-30)
+Decision:
+Events that need to be considered “salient” by the ContextBuilder must include one or more of the following fields in their data dictionary:
+
+entity_id – primary subject (e.g., killed creature, buying character)
+
+target_id – secondary object (e.g., target of attack, item bought)
+
+involved_entities – list of IDs when many are affected (e.g., area effect)
+
+Rationale:
+
+Allows ContextBuilder to determine if an event involves a currently visible entity without hard‑coding every possible event type.
+
+Creates a uniform, extensible way to filter events for AI context.
+
+Impact:
+
+All event emissions in AdjudicationEngine (purchase, combat, etc.) must add these fields as appropriate.
+
+Future FSM actions (dialogue, quests) must follow the same convention.
+
+6. Removal of Global get_event_log() from EscalationEngine (2026-04-30)
+Decision:
+EscalationEngine no longer calls get_event_log() internally. It only uses the event_log instance passed to its constructor.
+
+Rationale:
+
+Enforces dependency injection and prevents accidental use of the wrong log instance.
+
+Makes the component fully testable in isolation.
+
+Impact:
+
+All references to get_event_log() inside escalation_engine.py have been replaced with self.event_log.
+
+The static helper EscalationEngine.emit_event was converted to an instance method that uses the injected log.
+
+Next Steps
+Any future departure from these decisions must be justified and added to this log. Before implementing stealth, combat targeting, or additional perception features, review the relevant entries to ensure consistency.
+

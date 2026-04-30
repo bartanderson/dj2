@@ -10,10 +10,12 @@ def mock_world():
     char = Mock()
     char.id = "player1"
     char.name = "TestChar"
+    char.has_darkvision = False
     world._get_active_character = Mock(return_value=char)
     location = Mock()
     location.name = "Test Location"
     location.terrain = "forest"
+    location.lighting = 1.0
     world.current_location = location
     world.get_entities_in_location = Mock(return_value={"entity1", "entity2", "player1"})
     return world
@@ -105,9 +107,10 @@ def test_visibility_empty_location(escalation_engine):
     log = get_event_log()
     world = Mock()
     location = Mock()
+    location.lighting = 1.0
     world.current_location = location
     world.get_entities_in_location = Mock(return_value=[])
-    char = Mock(id="player1")
+    char = Mock(id="player1", has_darkvision=False)
     world._get_active_character = Mock(return_value=char)
     builder = ContextBuilder(world, log, escalation_engine)
     visible, hidden, partial = builder._compute_visibility(char)
@@ -120,7 +123,7 @@ def test_visibility_no_location(escalation_engine):
     log = get_event_log()
     world = Mock()
     world.current_location = None
-    char = Mock(id="player1")
+    char = Mock(id="player1", has_darkvision=False)
     world._get_active_character = Mock(return_value=char)
     builder = ContextBuilder(world, log, escalation_engine)
     visible, hidden, partial = builder._compute_visibility(char)
