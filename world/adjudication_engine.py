@@ -36,8 +36,7 @@ class AdjudicationEngine:
         self.conversations: Dict[str, Dict] = {}
         self.active_fsms = {}
         self.entity_resolver = EntityResolver()
-        self.event_log = get_event_log()
-        self.escalation = EscalationEngine(self.event_log, world_controller)
+        self.escalation = EscalationEngine(self.event_log, self.world)
         self.escalation.load_rules("config/escalation_rules.yaml")   # create this file
         self.escalation.register_action("log_buy", self._log_buy_action)
         self._escalation_subscription = self.event_log.on_any(self.escalation.process_event)

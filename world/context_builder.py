@@ -67,17 +67,26 @@ class ContextBuilder:
     # Helper methods (private – implement as needed)
     # ------------------------------------------------------------------
     def _compute_visibility(self, character) -> tuple:
-        """Return three sets: visible_ids, hidden_ids, partially_known_ids."""
-        # Placeholder – in v1, assume all entities in same location are visible.
-        # Later, incorporate lighting, stealth, darkvision, etc.
-        location = getattr(self.world, 'current_location', None)
-        if not location:
+        """
+        Same-location visibility (Phase 2, Step 1).
+
+        Returns:
+            (visible_ids, hidden_ids, partially_known_ids)
+        """
+        current_location = getattr(self.world, 'current_location', None)
+        if not current_location:
             return set(), set(), set()
-        # Get all entity IDs in current location (simplified)
-        # This depends on how your world controller tracks entities
-        all_ids = set()
-        # For now, return empty sets – will be filled when integrated with real world.
-        return set(), set(), set()
+
+        if not hasattr(self.world, 'get_entities_in_location'):
+            raise NotImplementedError("WorldController must implement get_entities_in_location")
+
+        all_entities = self.world.get_entities_in_location(current_location)
+
+        # v1: everything in location is visible
+        visible = set(all_entities)
+        hidden = set()
+        partially = set()
+        return visible, hidden, partially
 
     def _entity_to_dict(self, entity_id: str) -> dict:
         """Return a dict representation of an entity (id, type, name, etc.)."""
