@@ -1,4 +1,3 @@
-# world/escalation_engine.py
 import fnmatch
 import re
 import logging
@@ -9,7 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 import yaml
 from simpleeval import simple_eval
 
-from world.event_log import Event, AttrDict, get_event_log, EventLog
+from world.event_log import Event, AttrDict
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class DotDict(dict):
 
 
 class EscalationEngine:
-    def __init__(self, event_log: EventLog, world_controller):
+    def __init__(self, event_log, world_controller):
         self.event_log = event_log
         self.world = world_controller
         self.rules = []
@@ -99,10 +98,9 @@ class EscalationEngine:
     # Evaluation Helpers
     # ------------------------------------------------------------------
     def _event_to_eval_dict(self, event: Event) -> DotDict:
-        """Convert Event to a DotDict for simpleeval dot‑access."""
         return DotDict({
             "type": event.type,
-            "data": event.data,          # event.data is AttrDict, which already supports dot‑access
+            "data": event.data,
             "source_system": event.source_system,
             "actor_id": event.actor_id,
             "depth": event.depth,
@@ -116,7 +114,7 @@ class EscalationEngine:
             'world': world,
         }
         try:
-            result = simple_eval(expr, functions={}, names=context)   # operators allowed by default
+            result = simple_eval(expr, functions={}, names=context)
             return bool(result)
         except Exception as e:
             logger.warning(f"Condition evaluation failed: {expr} – {e}")
@@ -161,13 +159,12 @@ class EscalationEngine:
                                if e.get('expires_at') is None or e['expires_at'] > now.isoformat()]
 
     # ------------------------------------------------------------------
-    # Helper Event Emission
+    # Helper Event Emission (instance method, uses injected event_log)
     # ------------------------------------------------------------------
-    @staticmethod
-    def emit_event(parent_event: Event, event_type: str, data: dict,
+    def emit_event(self, parent_event: Event, event_type: str, data: dict,
                    source_system: str = "escalation_engine",
                    actor_id: Optional[str] = None) -> None:
-        get_event_log().emit(
+        self.event_log.emit(
             event_type,
             data,
             source_system,

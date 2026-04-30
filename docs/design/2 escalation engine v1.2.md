@@ -122,7 +122,7 @@ world (a read‑only facade with methods like get_faction_standing, get_current_
 
 Returns True/False. If evaluation fails (invalid expression, missing key), logs warning and returns False.
 
-5. Integration with Event Log
+5.1 Integration with Event Log
 In AdjudicationEngine.__init__:
 
 ```python
@@ -140,6 +140,16 @@ depth = event.depth + 1
 
 and call self.event_log.emit(...).
 ```
+
+5.2 Depth Propagation Rule (v1)
+
+- **Only events emitted by `EscalationEngine.emit_event` have increased depth** (parent.depth + 1).
+- **AdjudicationEngine always emits events with depth = 0** (new root events).
+- This ensures:
+  - Loop prevention is confined to escalation (the only component that could chain).
+  - Adjudication remains the authoritative state mutator; its events start fresh causal chains.
+  - Easy debugging: depth > 0 = event originated from an escalation rule.
+
 6. Performance Constraints
 Rule matching (precompiled regex): <1ms per rule.
 
