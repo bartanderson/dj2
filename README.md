@@ -10,7 +10,7 @@ Every interactive system (economy, encounter, combat, dialogue, quest) is a stan
 
 That may sound simplistic but it was a long hard road to get here. Below are the beginnings of my heroes journey.
 
-This is my long tern attempt to create a DM AI for playing games by myself and or with friends so that we don't have to have a dungeon master on call to play when we want.
+This is my long term attempt to create a DM AI for playing games by myself and or with friends so that we don't have to have a dungeon master on call to play when we want.
 The idea is to create characters in a world/campaign that the DM creates and have it evolve with our decisions and there will be resulutions with consequences new quests and whatver comes next.
 When its time for a new world the DM will create it and we will travel there. We may even travel back and forth. Who knows. I started with the dungeon generation that I took from donjon.
 I tried a couple different versions but finally took the original perl script and translated it painstakingly to I believe js first and then finally python as that was where I wanted to be with my AI engine.
