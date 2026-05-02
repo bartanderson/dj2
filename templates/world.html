@@ -941,10 +941,6 @@
             loadPlayers();
         }
 
-        // // Always show player selection modal for debugging
-        // modal.style.display = 'block';
-        // loadPlayers();
-
         function loadPlayers() {
             fetch('/api/players')
                 .then(r => r.json())
@@ -973,7 +969,10 @@
                             fetch('/api/select-player', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({player_id: playerId})
+                                body: JSON.stringify({
+                                    player_id: playerId,
+                                    session_id: localStorage.getItem('session_id')
+                                })
                             })
                             .then(r => r.json())
                             .then(data => {

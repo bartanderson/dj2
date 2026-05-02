@@ -3,7 +3,7 @@
   "states": [
     { "name": "awaiting", "initial": true, "prompt": "{item_name} costs {current_price} gp. Say 'yes' or offer a price." },
     { "name": "countering", "prompt": "Offer too low. I want {current_price} gp. Say 'yes' or offer again." },
-    { "name": "completed", "final": true, "prompt": "You bought {item_name} for {price} gp." }
+    { "name": "completed", "final": true, "prompt": "You bought {item_name} for {current_price} gp." }
   ],
   "events": {
     "confirm": {

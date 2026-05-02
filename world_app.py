@@ -5,6 +5,7 @@
 # import eventlet
 # eventlet.monkey_patch() # this has to be run before importing any other modules
 import os
+import secrets
 from flask import Flask, jsonify, current_app, render_template, send_from_directory, session, request, make_response
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import sys
@@ -32,6 +33,7 @@ project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("DUNGEON_WORLD_SECRET_KEY", "dev-only-insecure-key")
 from routes.api import api_bp
 app.register_blueprint(api_bp, url_prefix='/api')
 
@@ -57,7 +59,7 @@ avatar_dir = Path("static/character_avatars")
 t2i = None
 
 # Initialize SocketIO
-socketio = SocketIO(app, 
+socketio = SocketIO(app, manage_session=False,
                    cors_allowed_origins="*", 
                    async_mode='threading',
                    logger=True,
@@ -462,7 +464,6 @@ class DungeonPersistenceSystem:
 @app.route('/api/logout', methods=['POST'])
 def logout():
     response = make_response(jsonify({"success": True}))
-    response.set_cookie('session_id', '', expires=0, path='/')
     return response
 
 @app.route('/api/party/<party_id>', methods=['GET'])
@@ -632,7 +633,7 @@ def update_location():
 def handle_command():
     data = request.get_json()
     command = data.get('command', '')
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not wc:
         return jsonify({"error": "World controller not available"}), 500
@@ -742,7 +743,7 @@ def get_game_date():
 
 @app.route('/api/inventory/list-html')
 def inventory_list_html():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not session_id or not wc:
         return "<p>Error loading inventory.</p>"
@@ -773,7 +774,7 @@ def inventory_list_html():
 def inventory_buy():
     data = request.get_json()
     item_id = data.get('item_id')
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not session_id or not wc:
         return jsonify({"error": "Not available"}), 400
@@ -794,7 +795,7 @@ def inventory_buy():
 def inventory_sell():
     data = request.get_json()
     item_id = data.get('item_id')
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not session_id or not wc:
         return jsonify({"error": "Not available"}), 400
@@ -814,7 +815,7 @@ def inventory_sell():
 def inventory_use():
     data = request.get_json()
     item_id = data.get('item_id')
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not session_id or not wc:
         return jsonify({"error": "Not available"}), 400
@@ -840,7 +841,7 @@ def inventory_use():
 def inventory_equip():
     data = request.get_json()
     item_id = data.get('item_id')
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     wc = current_app.world_controller
     if not session_id or not wc:
         return jsonify({"error": "Not available"}), 400
@@ -1029,7 +1030,7 @@ def get_context(player_id):
 # serve world.html
 @app.route('/', endpoint='index')
 def index():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     active_character_id = None
     player_logged_in = False
     if session_id:
@@ -1082,13 +1083,13 @@ def retry_failed_images():
 # ===== Character Endpoints =====
 @app.route('/api/party/list-html')
 def party_list_html():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     html = current_app.world_controller.get_party_list_html(session_id)
     return html
     
 @app.route('/api/player/name')
 def get_player_name():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     if not session_id:
         return "Guest"
     player = current_app.world_controller.get_player_by_session(session_id)
@@ -1098,7 +1099,7 @@ def get_player_name():
     
 @app.route('/api/player/characters', methods=['GET'])
 def get_player_characters():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     if not session_id:
         return jsonify({'characters': []})
     player = current_app.world_controller.get_player_by_session(session_id)
@@ -1113,18 +1114,27 @@ def get_player_characters():
 
 @app.route('/api/player/active-character', methods=['GET'])
 def get_active_character():
-    session_id = request.cookies.get('session_id')
-    if not session_id:
-        return jsonify({'character_id': None})
-    player = current_app.world_controller.get_player_by_session(session_id)
-    if not player:
-        return jsonify({'character_id': None})
-    return jsonify({'character_id': player.active_character_id})
+    try:
+        session_id = session.get("session_id")
+
+        if not session_id:
+            return jsonify({'character_id': None})
+
+        player = current_app.world_controller.get_player_by_session(session_id)
+
+        if not player:
+            return jsonify({'character_id': None})
+
+        return jsonify({'character_id': player.active_character_id})
+
+    except Exception as e:
+        print("ERROR in /api/player/active-character:", e)
+        return jsonify({'character_id': None}), 200
 
 @app.route('/api/player/active-character', methods=['POST'])
 def set_active_character():
     try:
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get("session_id")
         data = request.get_json()
         character_id = data.get('character_id')
         
@@ -1166,7 +1176,7 @@ def get_starting_equipment(class_name):
 def create_character():
     try:
         data = request.get_json()
-        session_id = request.cookies.get('session_id') or str(uuid.uuid4())
+        session_id = request.cookies.get("session_id") or str(uuid.uuid4())
         
         # Get or create player for this session
         player = app.world_controller.get_or_create_player(session_id)
@@ -1805,7 +1815,7 @@ def random_all():
     
 @app.route('/character-creation/submit', methods=['POST'])
 def submit_character():
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     if not session_id:
         return jsonify({"error": "No session"}), 401   # frontend will show player modal
 
@@ -1814,7 +1824,7 @@ def submit_character():
         return jsonify({"error": "No player selected"}), 401
         
     data = request.form
-    session_id = request.cookies.get('session_id')
+    session_id = request.cookies.get("session_id")
     if not session_id:
         session_id = str(uuid.uuid4())
         is_new_session = True
@@ -1854,12 +1864,6 @@ def submit_character():
                 location.reload();
             </script>
         """)
-        if is_new_session:
-            response.set_cookie(
-                'session_id', session_id,
-                max_age=60*60*24*7, path='/',
-                secure=False, httponly=True, samesite='Lax'
-            )
         return response
     else:
         print(f"Character creation failed: {result.get('errors')}")
@@ -1999,7 +2003,7 @@ def dm_response():
         data = request.get_json()
         message = data.get('message')
         character_id = data.get('character_id')
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get("session_id")
         is_new_session = False
         if not session_id:
             session_id = str(uuid.uuid4())
@@ -2013,6 +2017,7 @@ def dm_response():
         active_character_id = character_id or player.active_character_id
 
         # Always use the AI handler (dm_chat_handler) for all messages
+        print(f"[DEBUG] world_app passing session_id: {session_id}")
         result = app.world_controller.dm_chat_handler.process_message(
             session_id, message, active_character_id
         )
@@ -2035,12 +2040,6 @@ def dm_response():
             response_data['action'] = result['action']
 
         response = jsonify(response_data)
-        if is_new_session:
-            response.set_cookie(
-                'session_id', session_id,
-                max_age=60*60*24*7, path='/',
-                secure=False, httponly=True, samesite='Lax'
-            )
         return response
 
     except Exception as e:
@@ -2106,14 +2105,28 @@ def guide_character_creation():
 
 # Add these WebSocket event handlers after your existing routes
 @socketio.on('connect')
-def handle_connect():
-    session_id = request.sid
+def handle_connect(auth=None):
+    if not session.get("session_id"):
+        import uuid
+        import uuid
+        session["session_id"] = str(uuid.uuid4())
+
+    session_id = session["session_id"]
+
     print(f"Client connected: {session_id}")
-    emit('connected', {'session_id': session_id, 'timestamp': datetime.now().isoformat()})
+
+    emit('connected', {
+        'session_id': session_id,
+        'timestamp': datetime.now().isoformat()
+    })
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    session_id = request.sid
+def handle_disconnect(reason=None):
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("disconnect: no session_id found")
+        return
+
     print(f"Client disconnected: {session_id}")
     
     # Clean up session data
@@ -2140,7 +2153,11 @@ def handle_disconnect():
 
 @socketio.on('player_register')
 def handle_player_register(data):
-    session_id = request.sid
+    print(f"[DEBUG] player_register session_id: {session.get('session_id')}")
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("No session_id in socket event")
+        return
     player_name = data.get('player_name', 'Unknown Player')
     device_info = data.get('device_info', {})
     
@@ -2172,7 +2189,10 @@ def handle_player_register(data):
 
 @socketio.on('assign_character')
 def handle_assign_character(data):
-    session_id = request.sid
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("No session_id in socket event")
+        return
     character_id = data.get('character_id')
     
     if character_id not in app.world_controller.characters:
@@ -2224,7 +2244,10 @@ def handle_assign_character(data):
 
 @socketio.on('character_move')
 def handle_character_move(data):
-    session_id = request.sid
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("No session_id in socket event")
+        return
     character_id = data.get('character_id')
     new_position = data.get('position')
     
@@ -2247,7 +2270,10 @@ def handle_character_move(data):
 
 @socketio.on('join_party')
 def handle_join_party(data):
-    session_id = request.sid
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("No session_id in socket event")
+        return
     party_id = data.get('party_id')
     
     if session_id not in app.world_controller.session_manager.sessions:
@@ -2304,7 +2330,10 @@ def handle_join_party(data):
 
 @socketio.on('request_world_state')
 def handle_request_world_state():
-    session_id = request.sid
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        print("No session_id in socket event")
+        return
     emit('world_state', {
         'characters': {cid: char.to_dict() for cid, char in app.world_controller.characters.items()},
         'parties': get_active_parties_helper(), #app.world_controller.get_active_parties(),
@@ -2442,27 +2471,37 @@ def list_players():
 @app.route('/api/select-player', methods=['POST'])
 def select_player():
     """Set session cookie for an existing player."""
+    print("WORLD CONTROLLER ID:", id(current_app.world_controller))
+    print("SESSION MAP BEFORE:", current_app.world_controller.session_players)
+    print("AFTER SELECT:", current_app.world_controller.session_players)
     data = request.get_json()
     player_id = data.get('player_id')
+
     if not player_id:
         return jsonify({"error": "No player_id provided"}), 400
 
-    # Load player from database (or from cache)
     player = current_app.world_controller.get_player_by_id(player_id)
     if not player:
         return jsonify({"error": "Player not found"}), 404
 
-    # Create a new session ID
-    session_id = str(uuid.uuid4())
+    session_id = (
+        request.cookies.get("session_id")
+        or session.get("session_id")
+        or request.args.get("session_id")
+    )
+
+    if not session_id:
+        return jsonify({"error": "No session"}), 400
+
+    print("SELECT PLAYER SESSION:", session_id)
+
     current_app.world_controller.session_players[session_id] = player.id
 
-    response = jsonify({"success": True, "player": player.to_dict()})
-    response.set_cookie(
-        'session_id', session_id,
-        max_age=60*60*24*7, path='/',
-        secure=False, httponly=True, samesite='Lax'
-    )
-    return response
+    player.set_active_character(player.active_character_id)
+
+    print("ASSIGN:", session_id, player.id)
+
+    return jsonify({"success": True, "player": player.to_dict()})
 
 
 @app.route('/api/create-player', methods=['POST'])
@@ -2482,11 +2521,6 @@ def create_player():
     current_app.world_controller.session_players[session_id] = player.id
 
     response = jsonify({"success": True, "player": player.to_dict()})
-    response.set_cookie(
-        'session_id', session_id,
-        max_age=60*60*24*7, path='/',
-        secure=False, httponly=True, samesite='Lax'
-    )
     return response
 
 @app.route('/api/party/create', methods=['POST'])
@@ -2494,7 +2528,7 @@ def api_party_create():
     try:
         data = request.get_json()
         name = data.get('name')
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
         wc = current_app.config.get('WORLD_CONTROLLER')
@@ -2521,7 +2555,7 @@ def api_party_join():
     try:
         data = request.get_json()
         party_id = data.get('party_id')
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
         wc = current_app.config.get('WORLD_CONTROLLER')
@@ -2552,7 +2586,7 @@ def api_party_join():
 @app.route('/api/party/leave', methods=['POST'])
 def api_party_leave():
     try:
-        session_id = request.cookies.get('session_id')
+        session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
         wc = current_app.config.get('WORLD_CONTROLLER')

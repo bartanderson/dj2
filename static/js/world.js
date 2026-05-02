@@ -12,6 +12,13 @@ let worldState = {
 // Camera: world coordinate at top-left of map div
 let camera = { x: 0, y: 0, zoom: 1 };
 
+function withSession(url) {
+    const sid = localStorage.getItem('session_id');
+    if (!sid) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}session_id=${encodeURIComponent(sid)}`;
+}
+
 let fogOpacity = 1.0;
 let terrainImage = null;
 let worldMap = null;
@@ -197,11 +204,11 @@ function showJoinPartyModal() {
     if (!partyId) return;
     console.log("partyId", partyId)
     
-    fetch('/api/party/join', {
+    fetch(withSession('/api/party/join', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ party_id: partyId })
-    })
+    }))
     .then(r => r.json())
     .then(data => {
         if (data.success) {
@@ -219,10 +226,10 @@ function showJoinPartyModal() {
 function leaveParty() {
     if (!confirm("Are you sure you want to leave your current party?")) return;
     
-    fetch('/api/party/leave', {
+    fetch(withSession('/api/party/leave', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'}
-    })
+    }))
     .then(r => r.json())
     .then(data => {
         if (data.success) {
@@ -331,11 +338,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
                 console.log("Fetching /api/dm-response with message:", message);
-                const response = await fetch('/api/dm-response', {
+                const response = await fetch(withSession('/api/dm-response', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: message })
-                });
+                }));
                 document.getElementById(loadingId)?.remove();
 
                 if (!response.ok) {
@@ -381,7 +388,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ===== SocketIO for real‑time updates =====
-    const socket = io();
+    const sessionId = localStorage.getItem('session_id');
+
+    const socket = io({
+        query: {
+            session_id: sessionId
+        }
+    });
+
+    socket.on('connected', (data) => {
+        localStorage.setItem('session_id', data.session_id);
+    });
 
     socket.on('party_update', () => {
         htmx.ajax('GET', '/api/party/list-html', { target: '#party-list-container', swap: 'innerHTML' });
@@ -765,42 +782,14 @@ async function travelToLocation(locationId) {
     }
 }
 
-// async function sendWorldCommand(command) {
-//     console.log("sendWorldCommand called with:", command);
-//     try {
-//         const response = await fetch('/api/command', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({command: command})
-//         });
-//         const data = await response.json();
-//         if (data.map_data) {
-//             worldState.worldMap = data.map_data;
-//             worldMap = worldState.worldMap;
-//             if (data.location_data) {
-//                 worldState.currentLocation = data.location_data;
-//             }
-//             redraw();
-//             if (data.action === 'centerOnParty') {
-//                 centerOnParty();
-//             }
-//         }
-//         if (data.response) {
-//             addWorldMessage(data.response);
-//         }
-//     } catch (error) {
-//         console.error('Command error:', error);
-//     }
-// }
-
 async function sendWorldCommand(command) {
     console.log("sendWorldCommand called with:", command);
     try {
-        const response = await fetch('/api/command', {
+        const response = await fetch(withSession('/api/command', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({command: command})
-        });
+        }));
         const data = await response.json();
         if (data.map_data) {
             worldState.worldMap = data.map_data;
@@ -817,14 +806,14 @@ async function sendWorldCommand(command) {
         if (data.encounter) {
             addWorldMessage(`⚠️ Encounter: ${data.encounter.description}`);
             // Ask AI DM to narrate the encounter
-            fetch('/api/dm-response', {
+            fetch(withSession('/api/dm-response', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ 
                     message: `We encountered: ${data.encounter.description}. What happens?`,
                     encounter: data.encounter 
                 })
-            })
+            }))
             .then(r => r.json())
             .then(dmData => {
                 if (dmData.responses) {
@@ -844,7 +833,7 @@ async function sendWorldCommand(command) {
 // ===== WORLD DATA LOADING =====
 async function loadWorldData() {
     try {
-        const response = await fetch('/api/world-state');
+        const response = await fetch(withSession('/api/world-state'));
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         if (!data.worldMap || data.worldMap.error) {
@@ -965,7 +954,7 @@ async function refreshWorldState() {
         return;
     }
     try {
-        const response = await fetch('/api/world-state');
+        const response = await fetch(withSession('/api/world-state'));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         worldState.worldMap = data.worldMap;

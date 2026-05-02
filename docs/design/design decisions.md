@@ -135,3 +135,21 @@ The static helper EscalationEngine.emit_event was converted to an instance metho
 Next Steps
 Any future departure from these decisions must be justified and added to this log. Before implementing stealth, combat targeting, or additional perception features, review the relevant entries to ensure consistency.
 
+
+## Session & Identity Management (2026-05-02)
+
+**Context:** Bugs occurred where some endpoints worked while others failed due to inconsistent session resolution (e.g., party creation using URL session vs cookie session).
+
+**Decisions:**
+
+1. **Single source of session truth** – Only the HTTP cookie `session_id` determines identity. No query parameters, no request body injection, no fallback chains in production paths.
+
+2. **Server‑side session map as authoritative runtime state** – `world_controller.session_players[session_id] → player_id → active_character` is the sole binding. Mutated only by authenticated flows (e.g., `/api/select-player`), never inferred from payload.
+
+3. **UI must never construct identity state** – Frontend sends only `player_id`, `party_name`, and commands. It does **not** send `session_id` or binding info.
+
+4. **Endpoint consistency** – All world mutation endpoints assume identity is already resolved before handler logic runs, using a central resolver (e.g., `session_id = request.cookies.get("session_id")`), not scattered per‑endpoint.
+
+5. **Debugging principle** – When multiple systems “sometimes work” depending on entry point, the cause is duplicated identity resolution paths. The fix is to remove parallel identity systems, not patch symptoms.
+
+**Current risk:** `session_players` is in‑memory only; server restart or multi‑worker deployment will lose identity. This is acceptable for v1 but must be flagged.

@@ -66,27 +66,29 @@ class ContextBuilder:
     # ------------------------------------------------------------------
     # Helper methods (private – implement as needed)
     # ------------------------------------------------------------------
-    def _compute_visibility(self, character) -> tuple:
+    def _compute_visibility(self, entity) -> tuple:   # no type hint
         current_location = getattr(self.world, 'current_location', None)
         if not current_location:
             return set(), set(), set()
-
-        if not hasattr(self.world, 'get_entities_in_location'):
-            raise NotImplementedError("WorldController must implement get_entities_in_location")
-
-        all_entities = set(self.world.get_entities_in_location(current_location))
+        
+        # Build set of entity IDs in this location: observer and merchant
+        all_entity_ids = {entity.id}
+        if hasattr(self.world, 'current_location') and self.world.current_location and self.world.current_location.merchant_id:
+            merchant = self.world.campaign_state.get_merchant(self.world.current_location.merchant_id)
+            if merchant:
+                all_entity_ids.add(merchant.id)
+        
         lighting = getattr(current_location, 'lighting', 1.0)
-        has_darkvision = getattr(character, 'has_darkvision', False)
-
+        has_darkvision = getattr(entity, 'has_darkvision', False)
+        
         if lighting >= 0.3 or has_darkvision:
-            visible = all_entities
+            visible = all_entity_ids
             hidden = set()
         else:
-            visible = {character.id}
-            hidden = all_entities - visible
-
-        partially_known = set()
-        return visible, hidden, partially_known
+            visible = {entity.id}
+            hidden = all_entity_ids - visible
+        
+        return visible, hidden, set()
 
     def _entity_to_dict(self, entity_id: str) -> dict:
         """Return a dict representation of an entity (id, type, name, etc.)."""

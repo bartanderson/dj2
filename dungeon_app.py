@@ -1,3 +1,4 @@
+import os
 from flask import render_template, Flask, send_file, request, jsonify, session, g
 from core.dungeon import DungeonSystem
 from dungeon_neo.test_campaign import TestCampaign
@@ -12,7 +13,7 @@ import requests
 DUNGEON_CACHE = {}
 
 app = Flask(__name__)
-app.secret_key = 'dungeon_secret_key'
+app.secret_key = os.environ.get("DUNGEON_WORLD_SECRET_KEY", "dev-only-insecure-key")
 app.campaign = TestCampaign()
 
 # In-memory dungeon storage

@@ -81,6 +81,7 @@ class GenericFSM:
         for s in self.definition['states']:
             if s['name'] == state_id:
                 template = s.get('prompt', '')
+                print(f"[DEBUG] get_prompt: state={state_id}, template={template}, context={self.context}")  # add this
                 try:
                     return template.format(**self.context)
                 except KeyError:

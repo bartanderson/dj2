@@ -1329,6 +1329,7 @@ class WorldController:
         return None
 
     def get_player_by_session(self, session_id):
+        print(f"[DEBUG] session_players keys: {list(self.session_players.keys())}")
         print(f"get_player_by_session called with session_id: {session_id}")
         player_id = self.session_players.get(session_id)
         print(f"  in-memory player_id: {player_id}")
@@ -1942,7 +1943,7 @@ class WorldController:
             return None
         player = self.get_player_by_session(session_id)
         if not player or not player.active_character_id:
-            get_event_log().emit("character.missing", {"session_id": session_id}, source="world_controller")
+            get_event_log().emit("character.missing", {"session_id": session_id}, source_system="world_controller")
             return None
         return self.character_manager.get_character(player.active_character_id)
 
@@ -2143,7 +2144,7 @@ class WorldController:
             }
 
         # Move
-        get_event_log().emit("movement.party", {"from": (col, row), "to": (nc, nr)}, source="world_controller")
+        get_event_log().emit("movement.party", {"from": (col, row), "to": (nc, nr)}, source_system="world_controller")
         self.campaign_state.party_position = (nc, nr)
         target['discovered'] = True
         self._reveal_hexes_around(nc, nr)

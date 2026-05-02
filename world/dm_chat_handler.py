@@ -250,6 +250,46 @@ Your answer:
                 errors.append(f"Unknown field: {field}")
         return len(errors) == 0, errors
 
+    def _format_context(self, ctx: dict) -> str:
+        visible = ctx.get("visible_entities", [])
+        env = ctx.get("environment", {})
+        events = ctx.get("salient_events", [])
+        effects = ctx.get("escalation_context", [])
+
+        # Extract entity names for display
+        if visible:
+            names = [e.get('name', e.get('id', 'Unknown')) for e in visible]
+            visible_str = ", ".join(names)
+        else:
+            visible_str = "None"
+
+        env_str = (
+            f"{env.get('location', 'Unknown')}, "
+            f"{env.get('terrain', 'unknown')}, "
+            f"lighting {env.get('lighting', 'unknown')}, "
+            f"{env.get('weather', 'unknown')}"
+        )
+
+        # Format salient events (each is a dict)
+        event_strs = []
+        for e in events[:5]:
+            etype = e.get("type", "unknown")
+            data = e.get("data", {})
+            if etype == "economy.buy":
+                event_strs.append(f"Bought {data.get('item')} for {data.get('price')} gp")
+            else:
+                event_strs.append(etype)
+        events_str = ", ".join(event_strs) if event_strs else "None"
+
+        effects_str = ", ".join([e.get("type", "unknown") for e in effects]) if effects else "None"
+
+        return (
+            f"Visible entities: {visible_str}\n"
+            f"Environment: {env_str}\n"
+            f"Recent events: {events_str}\n"
+            f"Escalation effects: {effects_str}"
+        )
+
     def handle_movement(self, direction: str, success: bool, new_hex=None, block_reason=None):
         """Generate a narrative for a movement attempt."""
         # Build context as usual (includes current hex, available moves, etc.)
@@ -300,6 +340,8 @@ Your answer:
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
         print("[DEBUG] dm_chat_handler.process_message called")
+        if session_id not in self.sessions:
+            print(f"[WARNING] Unknown session_id: {session_id}")
         session = self.get_or_create_session(session_id, "Player")
         session.conversation_history.append({"role": "user", "content": message})
 
@@ -322,19 +364,29 @@ Your answer:
             if cmd.startswith(prefix):
                 cmd = cmd[len(prefix):].strip()
                 break
+
         if cmd in movement_map:
             direction = movement_map[cmd]
             if DEBUG:
                 print(f"[DEBUG] Movement: direction='{direction}'")
+
             frame = IntentFrame(action=f"move {direction}", category="movement", destination=direction)
             result = self.adjudication_engine.process(frame, session_id)
+
             if DEBUG:
                 print(f"[DEBUG] engine.process returned: {result}")
+
             if result is None:
                 print("[DEBUG] result is None!")
                 result = {"success": False, "message": "Movement failed.", "action": None}
+
+            # IMPORTANT: DO NOT CALL AI HERE
             return {
-                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=result.get("message", ""),
+                    dialog_type="narration"
+                )],
                 "map_data": result.get("map_data"),
                 "action": result.get("action")
             }
@@ -390,8 +442,13 @@ Your answer:
         # ADJUDICATION ENGINE
         # ------------------------------------------------------------------
         result = self.adjudication_engine.process(frame, session_id)
-        unified_context = self.adjudication_engine.context_builder.build(session_id)
-        result["unified_context"] = unified_context
+
+        actor_id = character.id if character else None
+        unified_context = self.adjudication_engine.context_builder.build(actor_id)
+
+        context_str = self._format_context(unified_context)
+
+        result["unified_context"] = context_str
         print(f"Unified context salient events: {unified_context['salient_events']}")
         if result.get("clarification"):
             return {
@@ -399,8 +456,49 @@ Your answer:
                 "clarification": True
             }
         else:
+            base_message = result.get("message", "")
+
+        # If we already have a solid system message, return it directly
+        if base_message:
             return {
-                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=base_message,
+                    dialog_type="narration"
+                )],
+                "map_data": result.get("map_data"),
+                "action": result.get("action")
+            }
+
+            dm_prompt = f"""
+You are the Dungeon Master.
+
+Current situation:
+{context_str}
+
+Base description:
+{base_message}
+
+Rewrite this into immersive narration.
+
+Rules:
+- Do not contradict the base description
+- Do not introduce new objects or facts
+- You may reference recent events if relevant
+
+Return ONLY valid JSON:
+{{"narrative": "..."}}
+"""
+
+            ai_response = self.world_controller.chat_ai.json_response(dm_prompt)
+
+            final_text = ai_response.get("narrative", base_message)
+            return {
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=final_text,
+                    dialog_type="narration"
+                )],
                 "map_data": result.get("map_data"),
                 "action": result.get("action")
             }
