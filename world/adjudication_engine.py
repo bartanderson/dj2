@@ -11,6 +11,7 @@ from world.input_parser import parse_player_input
 from world.fsm.generic_fsm import GenericFSM
 from world.fsm import builtins
 from difflib import get_close_matches
+from world.encounter_generator import generate_encounter
 
 DEBUG = True
 
@@ -315,7 +316,17 @@ class AdjudicationEngine:
             result = {"success": False, "message": "Invalid movement result.", "action": None}
         else:
             if result.get("success"):
+                char = self.world._get_active_character(session_id)
                 self.world.emit_party_moved(result.get('new_col'), result.get('new_row'), session_id)
+                self.event_log.emit(
+                    "movement.entity.completed",
+                    {
+                        "point_id": getattr(self.world.current_location, "id", "unknown"),
+                        "session_id": session_id
+                    },
+                    source="movement",
+                    actor_id=char.id
+                )
                 result["action"] = "centerOnParty"
                 result["map_data"] = self.world.get_map_data()
         return result
@@ -514,6 +525,8 @@ class AdjudicationEngine:
     # Encounter support
     # ------------------------------------------------------------------
     def start_encounter(self, session_id: str, encounter_data: dict) -> Dict[str, Any]:
+        if session_id in self.active_fsms:
+            return {"success": False, "message": "Already in an encounter."}
         guard_reg = {
             'flee_possible': builtins.flee_possible,
             'parley_possible': builtins.parley_possible,
@@ -523,15 +536,56 @@ class AdjudicationEngine:
             'resolve_flee': builtins.resolve_flee,
             'resolve_parley': builtins.resolve_parley,
         }
+        char = self.world._get_active_character(session_id)
         context = {
             'description': encounter_data.get('description', 'Something happens!'),
             'encounter_data': encounter_data,
+            'monsters': encounter_data.get('monsters', []),
             'engine': self,
             'session_id': session_id,
-            '_guard_registry': guard_reg,   # <-- ADD THIS
-            '_action_registry': action_reg, # <-- ADD THIS
+            '_guard_registry': guard_reg,
+            '_action_registry': action_reg,
         }
         fsm = GenericFSM('config/fsms/encounter.json', context)
         fsm.send_event('next')
         self.active_fsms[session_id] = fsm
         return {"success": False, "message": fsm.get_prompt()}
+
+    def _action_trigger_encounter(self, event, params):
+        print("TRIGGER ENCOUNTER EVENT:", event.data)
+        session_id = event.data.get("session_id")
+        if not session_id:
+            logger.error("trigger_encounter: missing session_id")
+            return
+        point_id = event.data.get("point_id", "unknown")
+        import random
+        if random.random() > 0.3:
+            return
+        self.start_encounter_from_context(session_id, point_id)
+
+    def start_encounter_from_context(self, session_id: str, point_id: str, point_type: str = "default") -> dict:
+        char = self.world._get_active_character(session_id)
+        if not char:
+            return {"success": False, "message": "No active character."}
+        context = {
+            "point_id": point_id,
+            "party_level": char.level,
+            "party_size": 1,
+            "region": getattr(self.world.current_location, 'region_data', {}),
+            "point_type": point_type,
+        }
+        encounter = generate_encounter(context)
+        encounter_data = {
+            "description": encounter.description,
+            "monsters": [{"id": m.monster_id, "hp": m.current_hp} for m in encounter.monsters],
+            "loot_table": encounter.loot_table,
+            "difficulty_cr": encounter.difficulty_cr,
+            "session_id": session_id
+        }
+        self.event_log.emit(
+            "encounter.generated",
+            encounter_data,
+            source="encounter_generator",
+            actor_id=char.id
+        )
+        return self.start_encounter(session_id, encounter_data)

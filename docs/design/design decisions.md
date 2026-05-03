@@ -153,3 +153,17 @@ Any future departure from these decisions must be justified and added to this lo
 5. **Debugging principle** – When multiple systems “sometimes work” depending on entry point, the cause is duplicated identity resolution paths. The fix is to remove parallel identity systems, not patch symptoms.
 
 **Current risk:** `session_players` is in‑memory only; server restart or multi‑worker deployment will lose identity. This is acceptable for v1 but must be flagged.
+
+Decision: Adjudication Output Is Lossless Through Presentation Layer
+Statement
+
+All outputs produced by the deterministic adjudication layer must pass through the presentation/narration layer without modification or omission.
+
+Required fields (minimum)
+map_data
+action
+salient_events
+Rules
+The AI layer may augment text only
+The AI layer may not alter, filter, or reinterpret structured outputs
+Transport objects must remain bit-for-bit intact

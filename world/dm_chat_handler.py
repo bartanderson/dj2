@@ -62,6 +62,20 @@ class DMChatHandler:
         self.sessions[session_id] = session
         return session
 
+    def should_invoke_ai(self, result: dict) -> bool:
+        """Determines whether AI narration should run."""
+        if not result:
+            return False
+        if result.get("error"):
+            return False
+        if result.get("clarification"):
+            return False
+        if result.get("action") in {"centerOnParty", "move"}:
+            return False
+        if not result.get("message", "").strip():
+            return False
+        return True
+
     def get_or_create_session(self, session_id: str, player_name: str = "Player") -> SessionState:
         """Retrieve existing session or create a new one."""
         if session_id in self.sessions:
@@ -256,32 +270,56 @@ Your answer:
         events = ctx.get("salient_events", [])
         effects = ctx.get("escalation_context", [])
 
-        # Extract entity names for display
+        # Lighting description
+        lighting_val = env.get("lighting", 1.0)
+        if lighting_val >= 0.8:
+            lighting_desc = "well lit"
+        elif lighting_val >= 0.3:
+            lighting_desc = "dim"
+        else:
+            lighting_desc = "dark"
+
+        # Entities with type annotation
         if visible:
-            names = [e.get('name', e.get('id', 'Unknown')) for e in visible]
+            names = []
+            for e in visible:
+                name = e.get('name', e.get('id', 'Unknown'))
+                etype = e.get('type', '')
+                desc = f"{name} ({etype})" if etype else name
+                names.append(desc)
             visible_str = ", ".join(names)
         else:
             visible_str = "None"
 
+        # Structured environment
         env_str = (
-            f"{env.get('location', 'Unknown')}, "
-            f"{env.get('terrain', 'unknown')}, "
-            f"lighting {env.get('lighting', 'unknown')}, "
-            f"{env.get('weather', 'unknown')}"
+            f"Location: {env.get('location', 'Unknown')}, "
+            f"Terrain: {env.get('terrain', 'unknown')}, "
+            f"Lighting: {lighting_desc}, "
+            f"Weather: {env.get('weather', 'unknown')}"
         )
 
-        # Format salient events (each is a dict)
+        # Generic event formatting (no domain‑specific hardcoding)
         event_strs = []
         for e in events[:5]:
             etype = e.get("type", "unknown")
             data = e.get("data", {})
-            if etype == "economy.buy":
-                event_strs.append(f"Bought {data.get('item')} for {data.get('price')} gp")
+            if data:
+                event_strs.append(f"{etype} ({data})")
             else:
                 event_strs.append(etype)
         events_str = ", ".join(event_strs) if event_strs else "None"
 
-        effects_str = ", ".join([e.get("type", "unknown") for e in effects]) if effects else "None"
+        # Escalation effects with data
+        effects_strs = []
+        for e in effects:
+            etype = e.get("type", "unknown")
+            data = e.get("data", {})
+            if data:
+                effects_strs.append(f"{etype} ({data})")
+            else:
+                effects_strs.append(etype)
+        effects_str = ", ".join(effects_strs) if effects_strs else "None"
 
         return (
             f"Visible entities: {visible_str}\n"
@@ -443,65 +481,46 @@ Your answer:
         # ------------------------------------------------------------------
         result = self.adjudication_engine.process(frame, session_id)
 
-        actor_id = character.id if character else None
-        unified_context = self.adjudication_engine.context_builder.build(actor_id)
+        base_message = result.get("message", "")
 
+        # Build unified context for AI path (and to extract salient_events if needed)
+        unified_context = self.adjudication_engine.context_builder.build(session_id)
+        salient_events = unified_context.get("salient_events", [])
         context_str = self._format_context(unified_context)
 
-        result["unified_context"] = context_str
-        print(f"Unified context salient events: {unified_context['salient_events']}")
-        if result.get("clarification"):
+        # --- Skip AI path (deterministic only) ---
+        if not self.should_invoke_ai(result):
             return {
-                "responses": [DialogResponse(speaker="DM", content=result["message"], dialog_type="narration")],
-                "clarification": True
-            }
-        else:
-            base_message = result.get("message", "")
-
-        # If we already have a solid system message, return it directly
-        if base_message:
-            return {
-                "responses": [DialogResponse(
-                    speaker="DM",
-                    content=base_message,
-                    dialog_type="narration"
-                )],
+                "responses": [DialogResponse(speaker="DM", content=base_message, dialog_type="narration")],
                 "map_data": result.get("map_data"),
-                "action": result.get("action")
+                "action": result.get("action"),
+                "salient_events": salient_events
             }
 
-            dm_prompt = f"""
+        # --- AI narration path (enriched) ---
+        dm_prompt = f"""
 You are the Dungeon Master.
 
 Current situation:
 {context_str}
 
-Base description:
+Base action result:
 {base_message}
-
-Rewrite this into immersive narration.
-
-Rules:
-- Do not contradict the base description
-- Do not introduce new objects or facts
-- You may reference recent events if relevant
 
 Return ONLY valid JSON:
 {{"narrative": "..."}}
 """
+        ai_response = self.world_controller.chat_ai.json_response(dm_prompt)
+        final_text = base_message
+        if isinstance(ai_response, dict) and "narrative" in ai_response:
+            final_text = ai_response["narrative"]
 
-            ai_response = self.world_controller.chat_ai.json_response(dm_prompt)
-
-            final_text = ai_response.get("narrative", base_message)
-            return {
-                "responses": [DialogResponse(
-                    speaker="DM",
-                    content=final_text,
-                    dialog_type="narration"
-                )],
-                "map_data": result.get("map_data"),
-                "action": result.get("action")
-            }
+        return {
+            "responses": [DialogResponse(speaker="DM", content=final_text, dialog_type="narration")],
+            "map_data": result.get("map_data"),
+            "action": result.get("action"),
+            "salient_events": salient_events
+        }
            
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""

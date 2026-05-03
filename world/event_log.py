@@ -79,6 +79,10 @@ class EventLog:
     def emit(self, event_type: str, data: dict, source_system: str,
              actor_id: Optional[str] = None, depth: int = 0) -> None:
         """Create an Event, store it, and notify matching listeners."""
+        
+        if "session_id" not in data:
+            print(f"[WARN] {event_type} missing session_id:", data)
+
         event = Event(event_type, data, source_system, actor_id, depth)
         self._events.append(event)
         if len(self._events) > self._max_size:
