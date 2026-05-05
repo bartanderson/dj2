@@ -24,7 +24,7 @@
     },
     "parley": {
       "transitions": [
-        {"from": "awaiting_choice", "to": "completed", "cond": "parley_possible", "actions": ["resolve_parley"]}
+        {"from": "awaiting_choice", "to": "completed", "actions": ["resolve_parley"]}
       ]
     },
     "combat_ended": {

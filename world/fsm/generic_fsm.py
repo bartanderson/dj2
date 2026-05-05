@@ -11,6 +11,25 @@ class GenericFSM:
         self._machine = self._build_machine()
         # No need to call start(); machine initializes on instantiation
 
+    def handle_input(self, message: str, session_id: str) -> dict:
+        cmd = message.lower().strip()
+
+        if cmd in ["fight", "attack"]:
+            self.send_event("fight")
+            return {"message": self.get_prompt()}
+
+        elif cmd in ["flee", "run", "escape"]:
+            self.send_event("flee")
+            return {"message": self.get_prompt()}
+
+        elif cmd in ["parley", "talk", "negotiate"]:
+            self.send_event("parley")
+            return {"message": self.get_prompt()}
+
+        return {
+            "message": "Invalid choice. Choose: fight, flee, or parley."
+        }
+
     def _build_machine(self):
         # Create State objects
         states = {}

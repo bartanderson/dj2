@@ -12,7 +12,7 @@ class SessionState:
         self.session_id = session_id
         self.player_id = player_id
         self.conversation_topics: Deque[str] = deque(maxlen=5)  # Recent topics
-        self.chat_history: List[Dict[str, str]] = []  # Format: {"speaker": "DM/Player", "content": str}
+        self.chat_history: List[DialogResponse] = []
         self.character_data: Dict[str, Any] = {}      # Character creation progress
         self.awaiting_confirmation = False
         self.creation_state = "not_started"           # not_started, gathering_info, class_suggested, class_confirmed, completed
@@ -54,11 +54,11 @@ class SessionSystem:
         """Add a message to chat history"""
         session = self.get_session(session_id)
         if session:
-            session.chat_history.append({
-                "speaker": speaker,
-                "content": content,
-                "timestamp": self._get_timestamp()
-            })
+            session.chat_history.append(DialogResponse(
+                speaker= speaker,
+                content= content,
+                dialog_type="log"
+            ))
 
     def add_topic(self, session_id: str, topic: str):
         """Add topic to conversation topics"""

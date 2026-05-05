@@ -281,7 +281,7 @@ class DJ2ContextExtractor:
         char_gens = [c for c in world_caps if "character" in c.name or "char" in c.name]
         for cap in char_gens:
             self.interfaces.append(InterfacePoint(
-                source=f"world/{cap.name}",
+                source_system=f"world/{cap.name}",
                 target="og_system/entities/character",
                 mechanism="data_replacement",
                 context="Character stat generation",
@@ -296,7 +296,7 @@ class DJ2ContextExtractor:
                 content = html_file.read_text(encoding="utf-8", errors="ignore")
                 if "character" in content.lower():
                     self.interfaces.append(InterfacePoint(
-                        source=f"templates/{html_file.name}",
+                        source_system=f"templates/{html_file.name}",
                         target="world/character_generator",
                         mechanism="template_data_binding",
                         context="Character sheet rendering",

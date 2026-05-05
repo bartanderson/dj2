@@ -6,6 +6,7 @@ import uuid
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+import time
 
 from world import dnd_data
 from world.character import Character
@@ -25,6 +26,15 @@ class DialogResponse:
     speaker: str  # 'DM' or 'Player'
     content: str
     dialog_type: str  # 'narration', 'question', 'suggestion', etc.
+    timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self):
+        return {
+            "speaker": self.speaker,
+            "content": self.content,
+            "dialog_type":self.dialog_type,
+            "timestamp":self.timestamp
+        }
 
 @dataclass
 class SessionState:
@@ -49,18 +59,27 @@ class DMChatHandler:
         self.sessions: Dict[str, SessionState] = {}
         self.adjudication_engine = AdjudicationEngine(world_controller)
 
-    def create_session(self, session_id: str, player_name: str, initial_data: Dict = None) -> SessionState:
-        """Create a new player session."""
-        session = SessionState(
-            session_id=session_id,
-            player_name=player_name,
-            created_at=datetime.now(),
-            last_active=datetime.now(),
-            character_data=initial_data or {},
-            conversation_history=[]
-        )
-        self.sessions[session_id] = session
-        return session
+    def create_session(self, session_id, player_name, device_info=None):
+        player = self.world_controller.get_or_create_player(player_name, device_info)
+        print("[DEBUG] WC player result:", player)
+        if player is None:
+            print("[ERROR] Player creation failed in WC")
+            return None
+        session_data = {
+            "player_id": player.id,
+            "player_name": player_name,
+            "device_info": device_info,
+            "character_id": None,
+            "party_id": None,
+        }
+
+        self.sessions[session_id] = session_data
+
+        # only do this if session_manager is the REAL source of truth
+        if hasattr(self, "session_manager"):
+            self.session_manager.sessions[session_id] = session_data
+
+        return session_data
 
     def should_invoke_ai(self, result: dict) -> bool:
         """Determines whether AI narration should run."""
@@ -82,7 +101,7 @@ class DMChatHandler:
             session = self.sessions[session_id]
             session.last_active = datetime.now()
             return session
-        return self.create_session(session_id, player_name)
+        return self.create_session(session_id, player_name, None)
 
     def _build_game_context(self, session: SessionState, character: Optional[Character] = None) -> Dict[str, Any]:
         """
@@ -374,13 +393,37 @@ Your answer:
         # Use the AI to generate a response
         narrative = self.world_controller.chat_ai.json_response(prompt, None, context)  # adjust parameters as needed
         # Return a list of DialogResponse objects (for consistency)
-        return [{"speaker": "DM", "content": narrative, "dialog_type": "narration"}]
+        return [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
         print("[DEBUG] dm_chat_handler.process_message called")
-        if session_id not in self.sessions:
-            print(f"[WARNING] Unknown session_id: {session_id}")
+
+        player = self.world_controller.get_player_by_session(session_id)
+
+        if not player:
+            print(f"[WARNING] Unknown session_id (no player): {session_id}")
+
         session = self.get_or_create_session(session_id, "Player")
+
+        fsm = self.adjudication_engine.active_fsms.get(session_id)
+
+        if fsm:
+            if DEBUG:
+                print("[DEBUG] FSM ACTIVE - routing input to FSM")
+
+            fsm_result = fsm.handle_input(message, session_id)
+
+            return {
+                "responses": [DialogResponse(
+                    speaker="DM",
+                    content=fsm_result.get("message", ""),
+                    dialog_type="narration"
+                )],
+                "map_data": fsm_result.get("map_data"),
+                "action": fsm_result.get("action")
+            }
+
+        
         session.conversation_history.append({"role": "user", "content": message})
 
         # ------------------------------------------------------------------
@@ -514,6 +557,21 @@ Return ONLY valid JSON:
         final_text = base_message
         if isinstance(ai_response, dict) and "narrative" in ai_response:
             final_text = ai_response["narrative"]
+
+        responses = result.get("responses", [])
+
+        normalized = []
+        for r in responses:
+            if isinstance(r, dict):
+                normalized.append(DialogResponse(
+                    speaker=r.get("speaker", "DM"),
+                    content=r.get("content", ""),
+                    dialog_type=r.get("dialog_type", "narration")
+                ))
+            else:
+                normalized.append(r)
+
+        result["responses"] = normalized
 
         return {
             "responses": [DialogResponse(speaker="DM", content=final_text, dialog_type="narration")],

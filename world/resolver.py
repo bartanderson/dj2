@@ -18,7 +18,7 @@ class ResolverLoop:
             if action.status == "pending":
                 tool = self.tool_registry.get_tool(action.tool_name)
                 if not tool:
-                    self.event_log.emit("tool.missing", {"tool_name": action.tool_name}, source="resolver")
+                    self.event_log.emit("tool.missing", {"tool_name": action.tool_name}, source_system="resolver")
                     action.status = "failed"
                     action.result = {"error": f"Tool '{action.tool_name}' not found"}
                 else:
@@ -28,13 +28,13 @@ class ResolverLoop:
                         action.status = "completed" if result.get("success") else "failed"
                         action.result = result
                     except Exception as e:
-                        self.event_log.emit("action.error", {"tool": action.tool_name, "error": str(e), "trace": traceback.format_exc()}, source="resolver")
+                        self.event_log.emit("action.error", {"tool": action.tool_name, "error": str(e), "trace": traceback.format_exc()}, source_system="resolver")
                         action.status = "failed"
                         action.result = {"error": str(e)}
                         get_event_log().emit("action.error", {
                             "tool": action.tool_name,
                             "error": str(e),
                             "trace": traceback.format_exc()
-                        }, source="resolver")
+                        }, source_system="resolver")
                 results.append(action.result)
         return results

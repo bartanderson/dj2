@@ -338,11 +338,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
                 console.log("Fetching /api/dm-response with message:", message);
-                const response = await fetch(withSession('/api/dm-response', {
+                const response = await fetch(withSession('/api/dm-response'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: message })
-                }));
+                });
                 document.getElementById(loadingId)?.remove();
 
                 if (!response.ok) {
@@ -392,12 +392,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const socket = io({
         query: {
-            session_id: sessionId
+            session_id: sessionId || ""
         }
     });
 
     socket.on('connected', (data) => {
         localStorage.setItem('session_id', data.session_id);
+        document.cookie = `session_id=${data.session_id}; path=/`;
     });
 
     socket.on('party_update', () => {
@@ -806,14 +807,14 @@ async function sendWorldCommand(command) {
         if (data.encounter) {
             addWorldMessage(`⚠️ Encounter: ${data.encounter.description}`);
             // Ask AI DM to narrate the encounter
-            fetch(withSession('/api/dm-response', {
+            fetch(withSession('/api/dm-response'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ 
                     message: `We encountered: ${data.encounter.description}. What happens?`,
                     encounter: data.encounter 
                 })
-            }))
+            })
             .then(r => r.json())
             .then(dmData => {
                 if (dmData.responses) {

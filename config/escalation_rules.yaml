@@ -5,3 +5,10 @@ rules:
     actions:
       - name: "log_buy"
         params: {}
+
+  - name: "trigger_encounter_on_move"
+    event_pattern: "movement.entity.completed"
+    conditions: []
+    actions:
+      - name: "trigger_encounter"
+        params: {}

@@ -44,7 +44,7 @@ def generate_encounter(context: dict) -> Encounter:
     point_type = context.get("point_type", "default")
     difficulty_mod = region.get("danger_level", 0)
 
-    # 1. Determine target CR
+    # 1. Determine target CR stands for challenge rating defined here
     target_cr = party_level + difficulty_mod
     if target_cr < 1:
         target_cr = 1

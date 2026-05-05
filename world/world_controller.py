@@ -137,7 +137,7 @@ from world.chat_ai import ChatAI
 # TODO: since world and dungeon are separate, do we need to create a unified shared AI that manages either/both to address whether we actually import DungeonAI
 from world.ai_integration import WorldAI, DungeonAI # <---- soon we have to work on dungeon too
 from world.world_session import SessionManager
-from world.ai_dungeon_master import AIDungeonMaster, Dialog # AIDungeonMaster also imported in narrative_system.py
+from world.ai_dungeon_master import AIDungeonMaster # AIDungeonMaster also imported in narrative_system.py
 from engine.game_engine import GameEngine, GamePhase
 from .paths import PathGenerator
 from .map_utils import MapUtils
@@ -208,6 +208,7 @@ class WorldController:
         self.world_map = WorldMap()
         self.starting_location_id = None
         self.event_log = get_event_log()
+        self.sid_to_session: Dict[str, str] = {}   # sid -> session_id
         
         # Create chat_ai FIRST (needed by many systems)
         self.chat_ai = ChatAI()
@@ -247,7 +248,6 @@ class WorldController:
 
         # Initialize players
         self.players: Dict[str, Player] = {}
-        self.session_players: Dict[str, str] = {}  # session_id -> player_id
         
         
 
@@ -351,7 +351,10 @@ class WorldController:
 
         if starting_location:
             # Assign hex to the starting location using pixel coordinates
-            hex = self._find_hex_at_pixel(starting_location.x, starting_location.y)
+            hex = self._find_hex_at_pixel(
+                starting_location.x,
+                starting_location.y
+            )
             if hex:
                 starting_location.col = hex['grid_x']
                 starting_location.row = hex['grid_y']
@@ -445,6 +448,38 @@ class WorldController:
 
         print(f"[TEST] Loaded {len(self.campaign_state.factions)} factions: {list(self.campaign_state.factions.keys())}")
         print(f"[TEST] Loaded {len(self.campaign_state.quests)} quests from database")
+
+    def get_player_by_session(self, session_id):
+        print("GET_PLAYER_BY_SESSION CALLED:", session_id)
+
+        session = self.session_manager.sessions.get(session_id)
+        print("SESSION:", session)
+
+        if not session:
+            return None
+
+        player_id = session.get("player_id")
+        print("PLAYER_ID:", player_id)
+
+        if not player_id:
+            return None
+
+        # 1. Try memory
+        if player_id in self.players:
+            print("FOUND IN CACHE")
+            return self.players[player_id]
+
+        # 2. Load from DB
+        print("LOADING FROM DB")
+        player = self.get_player_by_id(player_id)
+
+        if player:
+            print("LOADED PLAYER:", player.id)
+            self.players[player_id] = player
+            return player
+
+        print("FAILED TO LOAD PLAYER")
+        return None
 
     def wealth_to_gold(wealth_str: str) -> int:
         # TODO: Make this configurable (e.g., from economy settings or region)
@@ -1272,7 +1307,7 @@ class WorldController:
             return
         party = self.party_manager.get_character_party(char.id)
         if not party:
-            self.event_log.emit("character.missing", {"session_id": session_id}, source="world_controller")
+            self.event_log.emit("character.missing", {"session_id": session_id}, source_system="world_controller")
             return
         map_data = self.get_map_data()   # includes discovered hexes
         emit('party_moved', {
@@ -1326,32 +1361,6 @@ class WorldController:
                     return player
         finally:
             Database.return_connection(conn)
-        return None
-
-    def get_player_by_session(self, session_id):
-        print(f"[DEBUG] session_players keys: {list(self.session_players.keys())}")
-        print(f"get_player_by_session called with session_id: {session_id}")
-        player_id = self.session_players.get(session_id)
-        print(f"  in-memory player_id: {player_id}")
-        if player_id:
-            player = self.players.get(player_id)
-            print(f"  in-memory player: {player}")
-            return player
-        from world.db import Database
-        conn = Database.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT player_id FROM player_sessions WHERE session_id = %s", (session_id,))
-                row = cur.fetchone()
-                if row:
-                    player_id = row[0]
-                    print(f"  DB player_id: {player_id}")
-                    player = self.get_player_by_id(player_id)
-                    print(f"  DB player: {player}")
-                    return player
-        finally:
-            Database.return_connection(conn)
-        print("  no player found")
         return None
 
     # TODO: see if this is needed after inventory (og_system) is created
@@ -1948,39 +1957,34 @@ class WorldController:
         return self.character_manager.get_character(player.active_character_id)
 
     def get_or_create_player(self, session_id, player_name=None):
-        """Get existing player or create a new one for the session"""
-        
-        if session_id in self.session_players:
-            player_id = self.session_players[session_id]
-            return self.players[player_id]
-        
-        # Create new player
+        session = self.session_manager.sessions.get(session_id)
+        if not session:
+            return None
+
+        player_id = session.get("player_id")
+        if not player_id:
+            return None
+
+        # 1. CACHE
+        player = self.players.get(player_id)
+        if player:
+            return player
+
+        # 2. DATABASE LOAD (THIS IS WHAT YOU ARE MISSING)
+        player = self._load_player_from_db(player_id)
+        print("PLAYER LOAD:", player.id, player.active_character_id)
+        if player:
+            self.players[player.id] = player
+            return player
+
+        # 3. FALLBACK CREATE (rare, but safe)
         player = Player(name=player_name or f"Player_{session_id[:8]}")
-        if player.active_character_id:
-            party = self.party_manager.get_character_party(player.active_character_id)
-            if party:
-                self.default_party_id = party['id']
         self.players[player.id] = player
-        self.session_players[session_id] = player.id
-        
-        # First, save the player to the database
-        player_saved = self._save_player_to_db(player)
-        
-        if not player_saved:
-            # Remove from memory if save failed
-            del self.players[player.id]
-            del self.session_players[session_id]
-            raise Exception(f"Failed to save player {player.id} to database")
-        
-        
-        # Then, save the session to the database
-        session_saved = self._save_session_to_db(session_id, player.id)
-        
-        if not session_saved:
-            print(f"DEBUG: Failed to save session {session_id} to database")
-            # We might want to handle this differently, but for now just log it
-            print(f"DEBUG: Session save failed, but player {player.id} was saved")
-        
+        self.session_manager.sessions[session_id]["player_id"] = player.id
+
+        self._save_player_to_db(player)
+        self._save_session_to_db(session_id, player.id)
+
         return player
 
     def _save_player_to_db(self, player):
@@ -2115,7 +2119,7 @@ class WorldController:
                 available.append((dir_name, target))
         return available
 
-    def move_hex(self, direction, terrain=None):
+    def move_hex(self, direction, session_id, terrain=None):
         """Move party one hex in the given direction, optionally setting hex terrain."""
         col, row = self.campaign_state.party_position
         dir_map = {
@@ -2144,7 +2148,7 @@ class WorldController:
             }
 
         # Move
-        get_event_log().emit("movement.party", {"from": (col, row), "to": (nc, nr)}, source_system="world_controller")
+        get_event_log().emit("movement.entity.completed", {"from": (col, row), "to": (nc, nr), "session_id": session_id}, source_system="world_controller")
         self.campaign_state.party_position = (nc, nr)
         target['discovered'] = True
         self._reveal_hexes_around(nc, nr)

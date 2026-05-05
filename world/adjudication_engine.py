@@ -40,8 +40,8 @@ class AdjudicationEngine:
         self.escalation = EscalationEngine(self.event_log, self.world)
         self.escalation.load_rules("config/escalation_rules.yaml")   # create this file
         self.escalation.register_action("log_buy", self._log_buy_action)
+        self.escalation.register_action("trigger_encounter", self._action_trigger_encounter)
         self._escalation_subscription = self.event_log.on_any(self.escalation.process_event)
-        self.event_log.on_any(self.escalation.process_event)
         self.context_builder = ContextBuilder(world_controller, self.event_log, self.escalation)
         # Transaction configurations (buy, sell, barter)
         self.buy_config = TransactionConfig(
@@ -247,7 +247,7 @@ class AdjudicationEngine:
         elif frame.category == "exploration":
             return self._handle_exploration(frame, session_id)
         else:
-            self.event_log.emit("category.missing", {"category": frame.category, "action": frame.action}, source="adjudication")
+            self.event_log.emit("category.missing", {"category": frame.category, "action": frame.action}, source_system="adjudication")
             return {"success": False, "message": f"Unhandled category: {frame.category}", "action": None}
 
     # ------------------------------------------------------------------
@@ -308,7 +308,7 @@ class AdjudicationEngine:
             "southeast": "se", "southwest": "sw"
         }
         short_dir = dir_map.get(direction.lower(), direction)
-        result = self.world.move_hex(short_dir)
+        result = self.world.move_hex(short_dir, session_id)
 
         if result is None:
             result = {"success": False, "message": "Movement failed (no result).", "action": None}
@@ -324,7 +324,7 @@ class AdjudicationEngine:
                         "point_id": getattr(self.world.current_location, "id", "unknown"),
                         "session_id": session_id
                     },
-                    source="movement",
+                    source_system="movement",
                     actor_id=char.id
                 )
                 result["action"] = "centerOnParty"
@@ -497,7 +497,7 @@ class AdjudicationEngine:
             "price": price,
             "character": character.id,
             "merchant": merchant.id
-        }, source="adjudication_engine")
+        }, source_system="adjudication_engine")
 
     def _execute_barter(self, character, merchant, give_item, receive_item, extra_gold):
         character.inventory.remove(give_item)
@@ -519,7 +519,7 @@ class AdjudicationEngine:
             "extra_gold": extra_gold,
             "character": character.id,
             "merchant": merchant.id
-        }, source="adjudication_engine")
+        }, source_system="adjudication_engine")
 
     # ------------------------------------------------------------------
     # Encounter support
@@ -538,11 +538,12 @@ class AdjudicationEngine:
         }
         char = self.world._get_active_character(session_id)
         context = {
-            'description': encounter_data.get('description', 'Something happens!'),
-            'encounter_data': encounter_data,
+            'description': encounter_data.get('description', ''),
+            'encounter_data': encounter_data,   # store the full data
             'monsters': encounter_data.get('monsters', []),
             'engine': self,
             'session_id': session_id,
+            'character': char,
             '_guard_registry': guard_reg,
             '_action_registry': action_reg,
         }
@@ -559,7 +560,7 @@ class AdjudicationEngine:
             return
         point_id = event.data.get("point_id", "unknown")
         import random
-        if random.random() > 0.3:
+        if self.world.rng.random() > 0.3:
             return
         self.start_encounter_from_context(session_id, point_id)
 
@@ -579,13 +580,13 @@ class AdjudicationEngine:
             "description": encounter.description,
             "monsters": [{"id": m.monster_id, "hp": m.current_hp} for m in encounter.monsters],
             "loot_table": encounter.loot_table,
-            "difficulty_cr": encounter.difficulty_cr,
+            "difficulty": encounter.difficulty,
             "session_id": session_id
         }
         self.event_log.emit(
             "encounter.generated",
             encounter_data,
-            source="encounter_generator",
+            source_system="encounter_generator",
             actor_id=char.id
         )
         return self.start_encounter(session_id, encounter_data)

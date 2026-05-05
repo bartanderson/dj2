@@ -1,5 +1,6 @@
 # world\utils.py
 import json
+from world.dm_chat_handler import DialogResponse
 
 def truncate(obj, max_len=200):
     """Return a string representation of obj, truncated to max_len."""
@@ -39,3 +40,39 @@ def convex_hull(points):
 def cross(o, a, b):
     """Cross product for vectors OA and OB"""
     return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+from typing import Any, List
+
+def normalize_responses(raw: Any) -> List[DialogResponse]:
+    if raw is None:
+        return []
+
+    # already correct format
+    if isinstance(raw, list) and all(isinstance(r, DialogResponse) for r in raw):
+        return raw
+
+    normalized = []
+
+    for r in raw if isinstance(raw, list) else [raw]:
+
+        # Case 1: DialogResponse object
+        if isinstance(r, DialogResponse):
+            normalized.append(r)
+
+        # Case 2: dict (legacy escape hatch)
+        elif isinstance(r, dict):
+            normalized.append(DialogResponse(
+                speaker=r.get("speaker", "DM"),
+                content=r.get("content", ""),
+                dialog_type=r.get("dialog_type") or r.get("type", "narration")
+            ))
+
+        else:
+            # unknown type fallback (prevents crashes)
+            normalized.append(DialogResponse(
+                speaker="DM",
+                content=str(r),
+                dialog_type="narration"
+            ))
+
+    return normalized

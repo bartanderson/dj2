@@ -164,13 +164,13 @@ class Monster:
         if base_idx < 0:
             base_idx = 0
 
-        new_idx = base_idx + steps
+        new_idx = int(base_idx + steps)
         if new_idx < 0:
             new_idx = 0
 
         # Map index back to die string
         if new_idx < 5:
-            new_die = [4,6,8,10,12][new_idx]
+            new_die = [4,6,8,10,12][int(new_idx)]
             new_num = num_dice
         else:
             # beyond d12, increase number of dice

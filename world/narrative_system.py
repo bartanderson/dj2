@@ -8,7 +8,7 @@ import random
 from typing import Dict, List, Optional, Any
 
 from world import dnd_data
-from world.ai_dungeon_master import AIDungeonMaster, Dialog, GameState
+from world.ai_dungeon_master import AIDungeonMaster, GameState
 from world.character import Character
 from world.player import Player
 
@@ -796,11 +796,13 @@ class NarrativeSystem:
         """Process player input, update pacing, check revelations, and return DM response."""
         if not self.dm:
             return {
-                "responses": [{
-                    "speaker": "DM",
-                    "content": "Narrative system is not fully initialized",
-                    "type": "system"
-                }],
+                "responses": [
+                    DialogResponse(
+                        speaker="DM",
+                        content="Narrative system is not fully initialized",
+                        dialog_type="system"
+                    )
+                ],
                 "dialog_history": []
             }
 
@@ -829,12 +831,12 @@ class NarrativeSystem:
 
         # Get DM response
         dialogs = self.dm.process_player_input(player_id, message)
-        responses = [{"speaker": d.speaker, "content": d.content, "type": d.dialog_type} for d in dialogs]
+        responses = list(dialogs)
 
         # Gentle nudge if needed
         guidance = self.guide.get_gentle_nudge({'action': message, 'motivation': motivation, 'pacing': self.pacing.current_phase})
         if guidance:
-            responses.append({"speaker": "DM", "content": guidance, "type": "narration"})
+            responses.append(DialogResponse(speaker="DM", content=guidance, dialog_type= "narration"))
 
         # Check revelations
         if character:

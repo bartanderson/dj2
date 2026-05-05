@@ -3561,7 +3561,7 @@ def move_entity(entity, position):
             "entity_id": entity.id,
             "new_position": position
         },
-        source=entity.id
+        source_system=entity.id
     )
 ```
 

@@ -33,7 +33,10 @@ class SessionManager:
     def assign_character(self, session_id: str, character_id: str) -> bool:
         if session_id not in self.sessions:
             return False
-        
+ 
+        if session_id not in self.sessions:
+            return False
+
         # Release any previous assignment
         old_char_id = self.sessions[session_id].get('character_id')
         if old_char_id and old_char_id in self.character_assignments:

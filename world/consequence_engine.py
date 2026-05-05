@@ -5,7 +5,8 @@ Phase: Consequence (narration)
 """
 
 from typing import List, Dict, Any, Optional
-from world.ai_dungeon_master import Dialog, ConsequenceTracker, ResponseGenerator
+from world.ai_dungeon_master import ConsequenceTracker, ResponseGenerator
+from world.dm_chat_handler import DialogResponse
 
 class ConsequenceEngine:
     def __init__(self, world_controller=None, dm_chat_ai=None):
@@ -15,7 +16,7 @@ class ConsequenceEngine:
         self.response_generator = ResponseGenerator()
         self.dialog_history = []
 
-    def generate_creation_narrative(self, action: Dict, context: Dict) -> List[Dialog]:
+    def generate_creation_narrative(self, action: Dict, context: Dict) -> List[DialogResponse]:
         """
         Generate a narrative response for a character‑creation action.
         action should contain at least "action" and "parameters".
@@ -25,7 +26,7 @@ class ConsequenceEngine:
 
         if action_type == "ask_question":
             question = params.get("question", "Tell me more about your character.")
-            return [Dialog("DM", question, "narration")]
+            return [DialogResponse(speaker="DM", content=question, dialog_type="narration")]
 
         elif action_type == "suggest_class":
             suggestion = params.get("suggestion", {})
@@ -33,24 +34,24 @@ class ConsequenceEngine:
             explanation = suggestion.get("explanation", "")
             # You can make this more dynamic by using AI later
             text = f"Based on what you've told me, I think {primary} would be a great fit. {explanation} Does that sound right?"
-            return [Dialog("DM", text, "narration")]
+            return [DialogResponse(speaker="DM", content=text, dialog_type="narration")]
 
         elif action_type == "confirm_class":
-            return [Dialog("DM", "Great! Class confirmed. Let's continue.", "narration")]
+            return [DialogResponse(speaker="DM", content="Great! Class confirmed. Let's continue.", dialog_type="narration")]
 
         elif action_type == "create_character":
             char_data = params.get("character_data", {})
             name = char_data.get("name", "Your character")
-            return [Dialog("DM", f"Wonderful! {name} is now ready to begin their adventure.", "narration")]
+            return [DialogResponse(speaker="DM", content=f"Wonderful! {name} is now ready to begin their adventure.",dialog_type= "narration")]
 
         elif action_type == "error":
             message = params.get("message", "Something went wrong.")
-            return [Dialog("DM", message, "system")]
+            return [DialogResponse(speaker="DM", content=message, dialog_type="system")]
 
         else:
-            return [Dialog("DM", "Let's continue with your character.", "narration")]
+            return [DialogResponse(speaker="DM", content="Let's continue with your character.", dialog_type="narration")]
 
-    def generate_response_for_action(self, validated_action: Dict[str, Any], context: Dict) -> List[Dialog]:
+    def generate_response_for_action(self, validated_action: Dict[str, Any], context: Dict) -> List[DialogResponse]:
         """
         Generate narrative responses based on a validated action.
         validated_action should contain at least "action_type", "action_data", "success".
@@ -65,7 +66,7 @@ class ConsequenceEngine:
         else:
             narrative = self._generate_failure_narrative(action_type, action_data, validated_action.get("message", ""))
 
-        dialog = Dialog("DM", narrative, "narration")
+        dialog = DialogResponse(speaker="DM", content=narrative, dialog_type="narration")
         self.dialog_history.append(dialog)
 
         # Track consequences if needed
@@ -84,6 +85,6 @@ class ConsequenceEngine:
     def _generate_failure_narrative(self, action_type: str, action_data: Dict, error_msg: str) -> str:
         return f"Your attempt fails: {error_msg}"
 
-    def generate_character_speech(self, player_id: str, message: str) -> List[Dialog]:
+    def generate_character_speech(self, player_id: str, message: str) -> List[DialogResponse]:
         """Handle in-character speech – simply echo and maybe generate NPC response."""
-        return [Dialog("Player", message, "character")]
+        return [DialogResponse(speaker="Player", content=message, dialog_type="character")]

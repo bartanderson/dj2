@@ -11,6 +11,7 @@ import uuid
 from world.db import Database
 import psycopg2
 from psycopg2.extras import Json
+from world.dm_chat_handler import DialogResponse
 
 class ActionType(Enum):
     SOCIAL = "social"
@@ -50,28 +51,6 @@ class GameState:
     active_npcs: List[str] = field(default_factory=list)
     pending_consequences: List[Dict] = field(default_factory=list)
     session_choices: List[Dict] = field(default_factory=list)
-
-class Dialog:
-    def __init__(self, speaker: str, content: str, dialog_type: str = "narration"):
-        self.speaker = speaker
-        self.content = content
-        self.dialog_type = dialog_type  # narration, character, npc, system
-        self.timestamp = time.time()
-        
-    def __str__(self):
-        if self.dialog_type == "narration":
-            return f"DM: {self.content}"
-        elif self.dialog_type == "system":
-            return f"[System] {self.content}"
-        else:
-            return f"{self.speaker}: {self.content}"
-
-    def to_dict(self):
-        return {
-            "speaker": self.speaker,
-            "content": self.content,
-            "type": self.dialog_type
-        }
 
 class PlayerAction: # legacy and will be refactored.
     def __init__(self, player_id: str, character_name: str, action_description: str, 
@@ -244,14 +223,14 @@ class AIDungeonMaster:
             if conn:
                 conn.close()
 
-    def process_player_input(self, player_id: str, message: str, character_context: Dict = None) -> List[Dialog]:
+    def process_player_input(self, player_id: str, message: str, character_context: Dict = None) -> List[DialogResponse]:
         """
         Process player input by first classifying intent via DMChatAI.
         For character creation intents, delegate to DMChatHandler.
         For other intents, produce narrative responses (Consequence phase).
         """
         if not self.dm_chat_ai:
-            return [Dialog("DM", "I'm not ready to converse yet.", "system")]
+            return [DialogResponse(speaker="DM", content="I'm not ready to converse yet.", dialog_type="system")]
 
         # Build context for intent classification
         context = {
@@ -278,7 +257,7 @@ class AIDungeonMaster:
                 # Convert handler's narrative Dialog objects into our Dialog list
                 return handler_result.get("narrative", [])
             else:
-                return [Dialog("DM", "Character creation is not available right now.", "system")]
+                return [DialogResponse(speaker="DM", content="Character creation is not available right now.", dialog_type="system")]
 
         # For other intents, generate narrative responses (the original consequence logic)
         # We'll keep the existing consequence generation (the 7 forces), but we should
@@ -290,13 +269,13 @@ class AIDungeonMaster:
         self.dialog_history.extend(narrative)
         return narrative
 
-    def _generate_narrative_response(self, intent: str, message: str, character_context: dict) -> List[Dialog]:
+    def _generate_narrative_response(self, intent: str, message: str, character_context: dict) -> List[DialogResponse]:
         """Simplified narrative generation – to be expanded later."""
         # Placeholder – eventually this will use the response generator and track consequences.
-        return [Dialog("DM", f"(You said: {message}) The world responds...", "narration")]
+        return [DialogResponse(speaker="DM", content=f"(You said: {message}) The world responds...", dialog_type="narration")]
     
     # Remains in ConsequenceEngine    
-    def get_dialog_history(self) -> List[Dialog]:
+    def get_dialog_history(self) -> List[DialogResponse]:
         """Get the full dialog history"""
         return self.dialog_history
     
