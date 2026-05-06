@@ -464,12 +464,13 @@ class WorldController:
         if not player_id:
             return None
 
-        # 1. Try memory
-        if player_id in self.players:
+        # 1. Memory
+        player = self.players.get(player_id)
+        if player:
             print("FOUND IN CACHE")
-            return self.players[player_id]
+            return player
 
-        # 2. Load from DB
+        # 2. DB fallback (THIS WAS YOUR GAP)
         print("LOADING FROM DB")
         player = self.get_player_by_id(player_id)
 
@@ -478,6 +479,7 @@ class WorldController:
             self.players[player_id] = player
             return player
 
+        # 3. HARD FIX: session is invalid only if DB also fails
         print("FAILED TO LOAD PLAYER")
         return None
 

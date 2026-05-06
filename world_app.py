@@ -39,6 +39,21 @@ app.register_blueprint(api_bp, url_prefix='/api')
 # begin filtering timestamp
 import logging
 
+print("[PROCESS ID]", os.getpid())
+
+
+def get_world_controller():
+    from flask import current_app
+
+    wc = getattr(current_app, "world_controller", None)
+
+    if wc is None:
+        # initialize ON DEMAND once
+        wc, _ = setup_world_system()
+        current_app.world_controller = wc
+
+    return wc
+
 class AccessLogFilter(logging.Filter):
     def filter(self, record):
         # Return False to exclude access log lines, True to keep others
@@ -532,7 +547,7 @@ def debug_characters():
 def debug_test_encounter():
     import traceback
     try:
-        wc = current_app.config.get('WORLD_CONTROLLER')
+        wc = current_app.world_controller
         if not wc:
             return jsonify({"error": "World controller not available"}), 500
         encounter = wc.test_generate_random_encounter()
@@ -703,7 +718,7 @@ def initialize_dungeon_systems():
 @app.route('/api/test2', methods=['GET'])
 def test_endpoint2():
     try:
-        world_controller = get_world_controller()
+        world_controller = current_app.world_controller
         if world_controller is None:
             return jsonify({'status': 'error', 'message': 'World controller not initialized'})
         
@@ -854,14 +869,6 @@ def inventory_equip():
         return jsonify({"error": "Character not found"}), 400
     character.equip_item(item_id)
     return inventory_list_html()
-
-def get_world_controller():
-    """Safely get the world controller instance"""
-    if hasattr(app, 'world_controller') and app.world_controller is not None:
-        return app.world_controller
-    else:
-        print("World controller not available")
-        return None
         
 def get_active_parties_helper():
     """Return list of active parties from the party manager."""
@@ -896,6 +903,8 @@ def dm_chat():
         
         # Get chat handler from world controller
         chat_handler = current_app.world_controller.dm_chat_handler
+        print("[SESSION DEBUG][APP] session_manager id:", id(app.world_controller.session_manager))
+        print("[SESSION DEBUG][APP] sessions dict id:", id(app.world_controller.session_manager.sessions))
         responses = chat_handler.process_message(player_id, message)
         
         return jsonify({
@@ -962,17 +971,27 @@ def setup_world_system():
             world_data = world_manager.load_from_db(world_id)
         
         # 5. Initialize world controller
+
         world_controller = WorldController(
             world_id=world_id,
             ai_system=base_ai,
             seed=42
         )
-        app.config['WORLD_CONTROLLER'] = world_controller
+
+        from flask import current_app
+        try:
+            app.world_controller = world_controller
+        except RuntimeError:
+            pass
+
         print("[OK] World controller initialized")
+        print("[BOOT] APP OBJECT (setup):", id(app))
+        print("[BOOT] WC ATTACHED TO APP:", hasattr(app, "world_controller"))
+        print("[BOOT] WC ID:", id(app.world_controller))
+        import os
+        print("[BOOT PID]", os.getpid())
         
         # 6. Initialize AI systems with proper state
-
-
         try:
             # Try the new way first
             world_controller.world_ai = WorldAI(world_controller=world_controller)
@@ -999,7 +1018,9 @@ def setup_world_system():
 def main():
     """Main entry point for the world application with GameEngine integration"""
     try:
+        print("[BOOT] BEFORE world init")
         world_controller, world_id = setup_world_system()
+        print("[BOOT] AFTER world init:", world_controller, world_id)
         print(f"\n[CELEBRATE] World system ready! World ID: {world_id}")
         
         # Initialize GameEngine with the world controller
@@ -1011,7 +1032,9 @@ def main():
         print(f"[OK] GameEngine test complete: {test_result.get('violations', 0)} violations")
         
         # Attach both to the Flask app
-        app.world_controller = world_controller
+        with app.app_context():
+            app.world_controller = world_controller
+            
         app.game_engine = game_engine
         
         return world_controller, game_engine
@@ -1030,8 +1053,16 @@ def get_context(player_id):
 
 @app.route('/', endpoint='index')
 def index():
-    wc = current_app.world_controller
+    wc = get_world_controller()
+
+    import os
+    print("[REQUEST PID]", os.getpid())
+    print("[WC INIT CHECK]", hasattr(current_app, "world_controller"))
+
     print("WC ID (index):", id(wc))
+
+    if wc is None:
+        return "World system not initialized", 503
 
     cookie_session_id = request.cookies.get("session_id")
 
@@ -2105,6 +2136,8 @@ def dm_response():
         active_character_id = character_id or player.active_character_id
 
         # Always use the AI handler (dm_chat_handler) for all messages
+        print("[SESSION DEBUG][APP] session_manager id:", id(app.world_controller.session_manager))
+        print("[SESSION DEBUG][APP] sessions dict id:", id(app.world_controller.session_manager.sessions))
         print(f"[DEBUG] world_app passing session_id: {session_id}")
         result = app.world_controller.dm_chat_handler.process_message(
             session_id, message, active_character_id
@@ -2621,7 +2654,7 @@ def api_party_create():
         session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
-        wc = current_app.config.get('WORLD_CONTROLLER')
+        wc = current_app.world_controller
         if not wc:
             return jsonify({'success': False, 'error': 'World controller not available'}), 500
         player = wc.get_or_create_player(session_id)
@@ -2648,7 +2681,7 @@ def api_party_join():
         session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
-        wc = current_app.config.get('WORLD_CONTROLLER')
+        wc = current_app.world_controller
         if not wc:
             return jsonify({'success': False, 'error': 'World controller not available'}), 500
         player = wc.get_or_create_player(session_id)
@@ -2679,7 +2712,7 @@ def api_party_leave():
         session_id = request.cookies.get("session_id")
         if not session_id:
             return jsonify({'success': False, 'error': 'No session'}), 400
-        wc = current_app.config.get('WORLD_CONTROLLER')
+        wc = current_app.world_controller
         if not wc:
             return jsonify({'success': False, 'error': 'World controller not available'}), 500
         player = wc.get_or_create_player(session_id)

@@ -61,10 +61,13 @@ class DMChatHandler:
 
     def create_session(self, session_id, player_name, device_info=None):
         player = self.world_controller.get_or_create_player(player_name, device_info)
+
         print("[DEBUG] WC player result:", player)
+
         if player is None:
             print("[ERROR] Player creation failed in WC")
             return None
+
         session_data = {
             "player_id": player.id,
             "player_name": player_name,
@@ -73,11 +76,8 @@ class DMChatHandler:
             "party_id": None,
         }
 
-        self.sessions[session_id] = session_data
-
-        # only do this if session_manager is the REAL source of truth
-        if hasattr(self, "session_manager"):
-            self.session_manager.sessions[session_id] = session_data
+        # ✅ SINGLE SOURCE OF TRUTH
+        self.world_controller.session_manager.sessions[session_id] = session_data
 
         return session_data
 
@@ -99,7 +99,7 @@ class DMChatHandler:
         """Retrieve existing session or create a new one."""
         if session_id in self.sessions:
             session = self.sessions[session_id]
-            session.last_active = datetime.now()
+            session["last_active"] = datetime.now()
             return session
         return self.create_session(session_id, player_name, None)
 
@@ -397,13 +397,46 @@ Your answer:
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
         print("[DEBUG] dm_chat_handler.process_message called")
+        print("[SESSION DEBUG] world_controller.session_manager id:", id(self.world_controller.session_manager))
+        print("[SESSION DEBUG] world_controller.sessions dict id:", id(self.world_controller.session_manager.sessions))
+        print("[SESSION DEBUG] world_controller.keys:", list(self.world_controller.session_manager.sessions.keys()))
 
-        player = self.world_controller.get_player_by_session(session_id)
+        session = self.world_controller.session_manager.sessions.get(session_id)
 
-        if not player:
-            print(f"[WARNING] Unknown session_id (no player): {session_id}")
+        if session is None:
+            raise Exception(f"Session missing in DM handler: {session_id}")
 
-        session = self.get_or_create_session(session_id, "Player")
+        player_id = session["player_id"]
+
+        if not player_id:
+            raise Exception(f"Session missing player_id: {session_id}")
+
+        player = self.world_controller.get_player_by_id(player_id)
+
+        if player is None:
+            player = self.world_controller.players.get(player_id)
+
+        if player is None:
+            raise Exception(f"Player not found for session: {session_id}")
+
+        # Ensure conversation history exists
+        session.setdefault("conversation_history", [])
+
+        # Prefer cache first, then DB
+        player = self.world_controller.players.get(player_id) \
+            or self.world_controller.get_player_by_id(player_id)
+
+        if player is None:
+            print("[ERROR] Player missing. player_id =", player_id)
+            print("[ERROR] Known players =", list(self.world_controller.players.keys()))
+            return {"error": "player_not_loaded"}
+
+        print("[DM DEBUG] session:", session)
+        print("[DM DEBUG] player_id:", player_id)
+        print("[DM DEBUG] wc.players keys:", list(self.world_controller.players.keys()))
+
+        # ❌ REMOVE THIS (very important)
+        # session = self.get_or_create_session(session_id, "Player")
 
         fsm = self.adjudication_engine.active_fsms.get(session_id)
 
@@ -423,8 +456,10 @@ Your answer:
                 "action": fsm_result.get("action")
             }
 
-        
-        session.conversation_history.append({"role": "user", "content": message})
+        session["conversation_history"].append({
+            "role": "user",
+            "content": message
+        })
 
         # ------------------------------------------------------------------
         # 1. DETERMINISTIC MOVEMENT PRE‑PROCESSOR
@@ -478,8 +513,8 @@ Your answer:
         character = None
         if character_id:
             character = self.world_controller.character_manager.get_character(character_id)
-        elif session.active_character_id:
-            character = self.world_controller.character_manager.get_character(session.active_character_id)
+        elif session.get("character_id"):
+            character = self.world_controller.character_manager.get_character(session["character_id"])
 
         game_context = self._build_game_context(session, character)
         if encounter:
@@ -494,7 +529,7 @@ Your answer:
             if topic and topic["type"] != "general":
                 answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
                 responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
-                session.conversation_history.append({"role": "assistant", "content": answer})
+                session["conversation_history"].append({"role": "assistant", "content": answer})
                 return {"responses": responses, "tool_result": None}
             # If the fast check said it's a rules question but topic extraction failed,
             # fall through to the gameplay parser (maybe it was a false positive – rare)
@@ -503,7 +538,7 @@ Your answer:
         # PROCEED WITH GAMEPLAY INTENT PARSER (your new IntentParser)
         # ------------------------------------------------------------------
         parser = IntentParser(self.world_controller.chat_ai)
-        frame = parser.parse(message, game_context, session.conversation_history)
+        frame = parser.parse(message, game_context, session["conversation_history"])
         print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
         if frame.category is None:
             frame.category = "other"
@@ -583,19 +618,19 @@ Return ONLY valid JSON:
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""
         session = self.sessions.get(session_id)
-        if not session or not session.pending_confirmation:
+        if not session or not session.get("pending_confirmation"):
             return {"responses": [DialogResponse(speaker="DM", content="Nothing to confirm.", dialog_type="narration")]}
 
         if confirmed:
-            updates = session.pending_confirmation
+            updates = session["pending_confirmation"]
             # Apply updates (similar logic as above)
             # For simplicity, we'd need a character reference; we'll assume a character exists or we're in creation.
             # This is a placeholder – you may extend as needed.
-            session.character_data.update(updates)
-            session.pending_confirmation = None
+            session["character_data"].update(updates)
+            session["pending_confirmation"] = None
             return {"responses": [DialogResponse(speaker="DM", content="Confirmed. Changes applied.", dialog_type="narration")]}
         else:
-            session.pending_confirmation = None
+            session["pending_confirmation"] = None
             return {"responses": [DialogResponse(speaker="DM", content="Confirmation cancelled.", dialog_type="narration")]}
 
     # helper

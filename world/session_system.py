@@ -39,6 +39,10 @@ class SessionSystem:
 
     def get_or_create_session(self, session_id: str, player_id: Optional[str] = None) -> SessionState:
         """Get existing session or create new one"""
+        print("[SESSION DEBUG] session_system id:", id(self))
+        print("[SESSION DEBUG] sessions dict id:", id(self.sessions))
+        print("[SESSION DEBUG] incoming session_id:", session_id)
+        print("[SESSION DEBUG] keys:", list(self.sessions.keys()))
         if session_id not in self.sessions:
             self.sessions[session_id] = SessionState(session_id, player_id)
         elif player_id and not self.sessions[session_id].player_id:
