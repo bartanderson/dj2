@@ -36,18 +36,6 @@ class DialogResponse:
             "timestamp":self.timestamp
         }
 
-@dataclass
-class SessionState:
-    """Tracks a player's session state."""
-    session_id: str
-    player_name: str
-    created_at: datetime
-    last_active: datetime
-    character_data: Dict[str, Any] = field(default_factory=dict)
-    conversation_history: List[Dict[str, str]] = field(default_factory=list)
-    active_character_id: Optional[str] = None
-    pending_confirmation: Optional[Dict[str, Any]] = None
-
 class DMChatHandler:
     """
     Handles DM chat interactions, character creation, and game progression.
@@ -56,30 +44,7 @@ class DMChatHandler:
 
     def __init__(self, world_controller):
         self.world_controller = world_controller
-        self.sessions: Dict[str, SessionState] = {}
         self.adjudication_engine = AdjudicationEngine(world_controller)
-
-    def create_session(self, session_id, player_name, device_info=None):
-        player = self.world_controller.get_or_create_player(player_name, device_info)
-
-        print("[DEBUG] WC player result:", player)
-
-        if player is None:
-            print("[ERROR] Player creation failed in WC")
-            return None
-
-        session_data = {
-            "player_id": player.id,
-            "player_name": player_name,
-            "device_info": device_info,
-            "character_id": None,
-            "party_id": None,
-        }
-
-        # ✅ SINGLE SOURCE OF TRUTH
-        self.world_controller.session_manager.sessions[session_id] = session_data
-
-        return session_data
 
     def should_invoke_ai(self, result: dict) -> bool:
         """Determines whether AI narration should run."""
@@ -95,15 +60,7 @@ class DMChatHandler:
             return False
         return True
 
-    def get_or_create_session(self, session_id: str, player_name: str = "Player") -> SessionState:
-        """Retrieve existing session or create a new one."""
-        if session_id in self.sessions:
-            session = self.sessions[session_id]
-            session["last_active"] = datetime.now()
-            return session
-        return self.create_session(session_id, player_name, None)
-
-    def _build_game_context(self, session: SessionState, character: Optional[Character] = None) -> Dict[str, Any]:
+    def _build_game_context(self, session, character: Optional[Character] = None) -> Dict[str, Any]:
         """
         Build a context dictionary of OG System data for the AI prompt.
         Includes lists of races, classes, skills, attributes, spells, etc.
@@ -401,12 +358,11 @@ Your answer:
         print("[SESSION DEBUG] world_controller.sessions dict id:", id(self.world_controller.session_manager.sessions))
         print("[SESSION DEBUG] world_controller.keys:", list(self.world_controller.session_manager.sessions.keys()))
 
-        session = self.world_controller.session_manager.sessions.get(session_id)
-
-        if session is None:
-            raise Exception(f"Session missing in DM handler: {session_id}")
-
-        player_id = session["player_id"]
+        session = self.world_controller.session_manager.get_or_create_session(session_id)
+        player_id = session.player_id
+        
+        print("[SESSION TYPE]", type(session))
+        player_id = session.player_id
 
         if not player_id:
             raise Exception(f"Session missing player_id: {session_id}")
@@ -420,7 +376,7 @@ Your answer:
             raise Exception(f"Player not found for session: {session_id}")
 
         # Ensure conversation history exists
-        session.setdefault("conversation_history", [])
+        session.setdefault("chat_history", [])
 
         # Prefer cache first, then DB
         player = self.world_controller.players.get(player_id) \
@@ -456,10 +412,7 @@ Your answer:
                 "action": fsm_result.get("action")
             }
 
-        session["conversation_history"].append({
-            "role": "user",
-            "content": message
-        })
+        self.world_controller.session_manager.add_message(session_id, "Player", message)
 
         # ------------------------------------------------------------------
         # 1. DETERMINISTIC MOVEMENT PRE‑PROCESSOR
@@ -513,9 +466,8 @@ Your answer:
         character = None
         if character_id:
             character = self.world_controller.character_manager.get_character(character_id)
-        elif session.get("character_id"):
-            character = self.world_controller.character_manager.get_character(session["character_id"])
-
+        elif session.active_character_id:
+            character = self.world_controller.character_manager.get_character(session.active_character_id)
         game_context = self._build_game_context(session, character)
         if encounter:
             game_context["encounter"] = encounter
@@ -529,7 +481,7 @@ Your answer:
             if topic and topic["type"] != "general":
                 answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
                 responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
-                session["conversation_history"].append({"role": "assistant", "content": answer})
+                self.world_controller.session_manager.add_message(session_id, "DM", answer)
                 return {"responses": responses, "tool_result": None}
             # If the fast check said it's a rules question but topic extraction failed,
             # fall through to the gameplay parser (maybe it was a false positive – rare)
@@ -538,7 +490,8 @@ Your answer:
         # PROCEED WITH GAMEPLAY INTENT PARSER (your new IntentParser)
         # ------------------------------------------------------------------
         parser = IntentParser(self.world_controller.chat_ai)
-        frame = parser.parse(message, game_context, session["conversation_history"])
+        conversation_context = self.world_controller.session_manager.get_conversation_context(session_id)
+        frame = parser.parse(message, game_context, conversation_context)
         print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
         if frame.category is None:
             frame.category = "other"

@@ -305,6 +305,20 @@ function addWorldMessage(text) {
     }
 }
 
+function updateUIState() {
+    const state = window.sessionState || {};
+
+    const loggedIn = !!state.player_id;
+
+    console.log("UI STATE:", { loggedIn });
+
+    if (loggedIn) {
+        closeModal();
+    } else {
+        openModal();
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 
     const logoutBtn = document.getElementById('logout-btn');
@@ -388,17 +402,40 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ===== SocketIO for real‑time updates =====
-    const sessionId = localStorage.getItem('session_id');
+    const sessionId = getCookie("session_id");
 
     const socket = io({
-        query: {
-            session_id: sessionId || ""
+        auth: {
+            session_id: sessionId
         }
     });
 
-    socket.on('connected', (data) => {
-        localStorage.setItem('session_id', data.session_id);
-        document.cookie = `session_id=${data.session_id}; path=/`;
+    socket.on("player_selected", (data) => {
+        console.log("PLAYER SELECTED:", data);
+
+        // update local state immediately
+        window.sessionState = {
+            ...(window.sessionState || {}),
+            player_id: data.player_id
+        };
+
+        closeModal();
+        updateUIState();
+    });
+
+    socket.on("connected", (data) => {
+        console.log("CONNECTED STATE:", data);
+
+        // CRITICAL: persist state
+        window.sessionState = data;
+
+        if (data.player_id) {
+            closeModal();
+        } else {
+            openModal(); // or whatever shows it
+        }
+
+        updateUIState();
     });
 
     socket.on('party_update', () => {

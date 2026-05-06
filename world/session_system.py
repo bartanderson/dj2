@@ -4,6 +4,7 @@ Phase: State Mutation (for state updates), but provides context to other phases
 """
 from collections import deque
 from typing import Dict, List, Optional, Any, Deque
+from datetime import datetime
 
 class SessionState:
     """State for a single player session"""
@@ -11,24 +12,39 @@ class SessionState:
     def __init__(self, session_id: str, player_id: Optional[str] = None):
         self.session_id = session_id
         self.player_id = player_id
-        self.conversation_topics: Deque[str] = deque(maxlen=5)  # Recent topics
-        self.chat_history: List[DialogResponse] = []
+
+        self.chat_topics: Deque[str] = deque(maxlen=5)  # Recent topics
+        self.chat_history = []
+        
         self.character_data: Dict[str, Any] = {}      # Character creation progress
+
         self.awaiting_confirmation = False
         self.creation_state = "not_started"           # not_started, gathering_info, class_suggested, class_confirmed, completed
         self.pending_suggestion: Optional[Dict] = None   # Suggested class details (temporary)
+        
         self.last_interaction_time = 0
+        
+        self.character_id = None
+        self.party_id = None
         self.active_character_id: Optional[str] = None
+        self.device_id: Optional[str] = None
+        
+        self.connected_at: Optional[datetime] = None
+        self.last_active = datetime.now()
 
-    def get_creation_context(self) -> Dict:
-        """Return a dict suitable for AI prompts."""
-        return {
-            "collected_info": self.character_data,
-            "pending_suggestion": self.pending_suggestion,
-            "creation_state": self.creation_state,
-            "awaiting_confirmation": self.awaiting_confirmation,
-            "recent_topics": list(self.conversation_topics),
-        }
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+    def setdefault(self, key, default=None):
+        if not hasattr(self, key):
+            setattr(self, key, default)
+        return getattr(self, key)
 
 
 class SessionSystem:
@@ -37,18 +53,16 @@ class SessionSystem:
     def __init__(self):
         self.sessions: Dict[str, SessionState] = {}
 
-    def get_or_create_session(self, session_id: str, player_id: Optional[str] = None) -> SessionState:
-        """Get existing session or create new one"""
-        print("[SESSION DEBUG] session_system id:", id(self))
-        print("[SESSION DEBUG] sessions dict id:", id(self.sessions))
-        print("[SESSION DEBUG] incoming session_id:", session_id)
-        print("[SESSION DEBUG] keys:", list(self.sessions.keys()))
+    def get_or_create_session(self, session_id: str, player_id: str = None) -> SessionState:
         if session_id not in self.sessions:
             self.sessions[session_id] = SessionState(session_id, player_id)
-        elif player_id and not self.sessions[session_id].player_id:
-            self.sessions[session_id].player_id = player_id
 
-        return self.sessions[session_id]
+        session = self.sessions[session_id]
+
+        if player_id and session.player_id is None:
+            session.player_id = player_id
+
+        return session
 
     def get_session(self, session_id: str) -> Optional[SessionState]:
         """Get session by ID"""
@@ -67,14 +81,14 @@ class SessionSystem:
     def add_topic(self, session_id: str, topic: str):
         """Add topic to conversation topics"""
         session = self.get_session(session_id)
-        if session and topic and topic not in session.conversation_topics:
-            session.conversation_topics.append(topic)
+        if session and topic and topic not in session.chat_topics:
+            session.chat_topics.append(topic)
 
     def get_recent_topics(self, session_id: str, limit: int = 3) -> List[str]:
         """Get most recent conversation topics"""
         session = self.get_session(session_id)
         if session:
-            return list(session.conversation_topics)[-limit:]
+            return list(session.chat_topics)[-limit:]
         return []
 
     def update_character_data(self, session_id: str, updates: Dict[str, Any]):

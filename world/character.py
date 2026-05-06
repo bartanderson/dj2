@@ -345,7 +345,6 @@ class Character:
             "custom_items": [{"name": i.name, "description": i.description, "type": i.type, "cost": i.cost} for i in self.custom_items],
             "inventory": self.inventory,
             "background": self.background,
-            "player_id": getattr(self, 'player_id', None),
             "owner_id": getattr(self, 'owner_id', None),
             "attributes": {
                 "brawn": self.brawn,

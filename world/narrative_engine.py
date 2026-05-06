@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from dungeon_neo.campaign import Quest, Location, Faction, CampaignState
 from dungeon_neo.ai_integration import DungeonAI
-from core.session_manager import SessionManager
+from world.world_session import SessionManager
 
 
 class NarrativeEngine:

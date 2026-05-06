@@ -110,7 +110,10 @@ class AdjudicationEngine:
                 return {"success": False, "message": "Barter requires both what you give and what you want."}
 
             # resolve give item (player inventory)
-            inv_names = [i.name.lower() for i in char.inventory]
+            inv_names = [
+                (i.name if hasattr(i, "name") else i.get("name", "")).lower()
+                for i in char.inventory
+            ]
             matches = get_close_matches(give_name.lower(), inv_names, n=1, cutoff=0.6)
             if not matches:
                 available = ", ".join([i.name for i in char.inventory[:5]])

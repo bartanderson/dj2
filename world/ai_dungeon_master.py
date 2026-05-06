@@ -234,7 +234,6 @@ class AIDungeonMaster:
 
         # Build context for intent classification
         context = {
-            "player_id": player_id,
             "character_context": character_context or {},
             "has_character": bool(character_context),
             "recent_dialogs": [str(d) for d in self.dialog_history[-3:]],

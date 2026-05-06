@@ -159,6 +159,7 @@ from world.merchant_utils import compute_price
 from world.event_log import get_event_log
 from world.intent import IntentFrame
 from world.adjudication_engine import AdjudicationEngine
+from world.session_system import SessionSystem
 
 print("Loading world_controller.py (new version with exit_dungeon fix)")
 
@@ -423,7 +424,7 @@ class WorldController:
         # Initialize AI systems
         self.world_ai = WorldAI(campaign_state=self)
         self.dungeon_ai = None  # Will be initialized when entering dungeon
-        self.session_manager = SessionManager()
+        self.session_manager = SessionSystem()
 
         # No need to create AIDungeonMaster here; we already have consequence_engine.
         # But if some legacy code still expects dungeon_master to be an AIDungeonMaster instance,
@@ -458,7 +459,7 @@ class WorldController:
         if not session:
             return None
 
-        player_id = session.get("player_id")
+        player_id = session.player_id
         print("PLAYER_ID:", player_id)
 
         if not player_id:
@@ -1963,7 +1964,7 @@ class WorldController:
         if not session:
             return None
 
-        player_id = session.get("player_id")
+        player_id = session.player_id
         if not player_id:
             return None
 

@@ -1069,42 +1069,27 @@ def index():
     if not cookie_session_id:
         cookie_session_id = str(uuid.uuid4())
 
-    # Retrieve session data from session_manager
-    session_data = None
-    if wc and hasattr(wc, 'session_manager'):
-        session_data = wc.session_manager.sessions.get(cookie_session_id)
-
-    # Safety: ensure session_data is a dict
-    if session_data is not None and not isinstance(session_data, dict):
-        session_data = None
-        # Optionally log warning
+    session = wc.session_manager.get_or_create_session(cookie_session_id)
 
     player_logged_in = False
     active_character_id = None
     player = None
 
-    if session_data:
-        player_id = session_data.get("player_id")
+    if session.player_id:
+        player = wc.players.get(session.player_id)
 
-        if player_id:
-            # FORCE LOAD (not optional)
-            player = wc.players.get(player_id)
-
-            if not player:
-                player = wc.get_player_by_id(player_id)
-                if player:
-                    wc.players[player_id] = player  # cache it
-
+        if not player:
+            player = wc.get_player_by_id(session.player_id)
             if player:
-                player_logged_in = True
-                # ---------------------------------------------------------
-                # ✅ OPTION A FIX: ENSURE CHARACTER IS PUSHED INTO SESSION
-                # ---------------------------------------------------------
-                if not session_data.get("character_id") and player.character_ids:
-                    session_data["character_id"] = player.character_ids[0]
+                wc.players[session.player_id] = player
 
-                active_character_id = session_data.get("character_id")
-                # ---------------------------------------------------------
+        if player:
+            player_logged_in = True
+
+            if not session.character_id and player.character_ids:
+                session.character_id = player.character_ids[0]
+
+            active_character_id = session.character_id
 
     print("INDEX player:", player)
     print("INDEX player_logged_in:", player_logged_in)
@@ -1194,7 +1179,7 @@ def get_player_characters():
     if not session:
         return jsonify({'characters': []})
 
-    player_id = session.get("player_id")
+    player_id = session.player_id
     if not player_id:
         return jsonify({'characters': []})
 
@@ -1312,8 +1297,7 @@ def create_character():
 
         return jsonify({
             'success': True,
-            'character': character.to_dict(),
-            'player_id': player.id
+            'character': character.to_dict()
         })
 
     except Exception as e:
@@ -1922,7 +1906,7 @@ def submit_character():
     if not session:
         return jsonify({"error": "Invalid session"}), 401
 
-    player_id = session.get("player_id")
+    player_id = session.player_id
     if not player_id:
         return jsonify({"error": "No player selected"}), 401
 
@@ -2119,27 +2103,41 @@ def dm_response():
         message = data.get('message')
         character_id = data.get('character_id')
         wc = current_app.world_controller
-        session_id = request.args.get("session_id") or request.cookies.get("session_id")
+
+        session_id = request.cookies.get("session_id")
 
         if not session_id:
             return jsonify({"error": "No session"}), 401
 
-        session = wc.session_manager.sessions.get(session_id)
-        if not session:
-            return jsonify({"error": "Invalid session"}), 401
+        session = wc.session_manager.get_session(session_id)
+        print("[DM] SESSION:", session)
+        if not session or not session.player_id:
+            return jsonify({"error": "Not authenticated"}), 401
 
-        player = app.world_controller.get_or_create_player(session_id)
+        player_id = session.player_id
+        print("[DM] PLAYER_ID:", player_id)
+
+        # ✅ FIX: load player by player_id (not session_id)
+        player = wc.players.get(player_id)
+        if not player:
+            player = wc.get_player_by_id(player_id)
+            if player:
+                wc.players[player_id] = player
+        print("[DM] PLAYER:", player)
+
+        if not player:
+            return jsonify({"error": "Player not found"}), 404
 
         if character_id and character_id not in player.character_ids:
             return jsonify({'error': 'Character does not belong to player'}), 400
 
         active_character_id = character_id or player.active_character_id
 
-        # Always use the AI handler (dm_chat_handler) for all messages
-        print("[SESSION DEBUG][APP] session_manager id:", id(app.world_controller.session_manager))
-        print("[SESSION DEBUG][APP] sessions dict id:", id(app.world_controller.session_manager.sessions))
+        print("[SESSION DEBUG][APP] session_manager id:", id(wc.session_manager))
+        print("[SESSION DEBUG][APP] sessions dict id:", id(wc.session_manager.sessions))
         print(f"[DEBUG] world_app passing session_id: {session_id}")
-        result = app.world_controller.dm_chat_handler.process_message(
+
+        result = wc.dm_chat_handler.process_message(
             session_id, message, active_character_id
         )
 
@@ -2157,16 +2155,15 @@ def dm_response():
             ],
             'tool_result': result.get('tool_result'),
             'session_id': session_id,
-            'character_id': active_character_id,
-            'player_id': player.id
+            'character_id': active_character_id
         }
+
         if result.get('map_data'):
             response_data['map_data'] = result['map_data']
         if result.get('action'):
             response_data['action'] = result['action']
 
-        response = jsonify(response_data)
-        return response
+        return jsonify(response_data)
 
     except Exception as e:
         print(f"Error in dm-response: {str(e)}")
@@ -2234,29 +2231,36 @@ def handle_connect(auth=None):
     wc = current_app.world_controller
     sid = request.sid
 
-    # ✅ Use cookie FIRST (persistent identity)
-    session_id = request.cookies.get("session_id")
+    session_id = None
 
+    # 1. Prefer explicit client-provided ID
+    if auth and auth.get("session_id"):
+        session_id = auth.get("session_id")
+
+    # 2. Fallback to cookie
+    if not session_id:
+        session_id = request.cookies.get("session_id")
+
+    # 3. Final fallback
     if not session_id:
         session_id = str(uuid.uuid4())
 
+    print("CONNECT session_id:", session_id)
+
     sid_to_session[sid] = session_id
 
-    # ensure session exists
-    if session_id not in wc.session_manager.sessions:
-        wc.session_manager.sessions[session_id] = {
-            "player_id": None,
-            "character_id": None
-        }
+    session = wc.session_manager.get_or_create_session(session_id)
 
     print(f"CONNECT session={session_id} sid={sid}")
 
-    emit('connected', {
-        'session_id': session_id
+    emit("connected", {
+        "session_id": session.session_id,
+        "player_id": session.player_id,
+        "character_id": session.character_id,
     })
     
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(sid=None):
     session_id = request.sid
     print(f"Client disconnected: {session_id}")
     
@@ -2264,7 +2268,9 @@ def handle_disconnect():
     wc = current_app.world_controller if hasattr(app, 'world_controller') else None
     if wc and hasattr(wc, 'session_manager'):
         wc.session_manager.sessions.pop(session_id, None)
-        wc.session_manager.character_assignments.pop(session_id, None)
+        session = wc.session_manager.get_session(session_id)
+        if session:
+            session.active_character_id = None
 
 @socketio.on('player_register')
 def handle_player_register(data):
@@ -2608,6 +2614,7 @@ def select_player():
     session_id = request.cookies.get("session_id")
     if not session_id:
         return jsonify({'success': False, 'error': 'No session'}), 400
+    print("SELECT session_id:", session_id)
 
     data = request.get_json()
     player_id = data.get('player_id')
@@ -2615,12 +2622,16 @@ def select_player():
     print("SESSION MAP BEFORE:", wc.session_manager.sessions)
     print("ASSIGN:", session_id, player_id)
 
-    session = wc.session_manager.sessions.get(session_id)
+    session = wc.session_manager.get_or_create_session(session_id)
     if not session:
         return jsonify({'success': False, 'error': 'Invalid session'}), 400
 
-    # CRITICAL LINE
-    session["player_id"] = player_id
+    wc.session_manager.assign_player(session_id, player_id)
+
+    socketio.emit("player_selected", {
+        "session_id": session_id,
+        "player_id": player_id
+    })
 
     print("AFTER SELECT:", wc.session_manager.sessions)
 

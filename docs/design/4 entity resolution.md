@@ -19,7 +19,7 @@ character (player character, with inventory)
 
 active_quests (list of quest objects)
 
-conversation_history (last few messages – reserved for v2 contextual inference)
+chat_history (last few messages – reserved for v2 contextual inference)
 
 Entity type hint – optional, e.g., "item", "npc", "location", "skill", "spell", "quest". Used to restrict search domains.
 
