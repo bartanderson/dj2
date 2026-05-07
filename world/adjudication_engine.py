@@ -12,6 +12,7 @@ from world.fsm.generic_fsm import GenericFSM
 from world.fsm import builtins
 from difflib import get_close_matches
 from world.encounter_generator import generate_encounter
+from world.character import InventoryItem
 
 DEBUG = True
 
@@ -74,6 +75,19 @@ class AdjudicationEngine:
     def _log_buy_action(self, event, params):
         print(f"Buy event logged: {event.data.item}")
 
+    def _normalize_inventory(self, char):
+        normalized = []
+
+        for i in char.inventory:
+            if isinstance(i, InventoryItem):
+                normalized.append(i)
+            elif isinstance(i, dict):
+                normalized.append(char.add_item(i))
+            else:
+                raise TypeError(f"Invalid inventory item type: {type(i)}")
+
+        char.inventory = normalized
+
     # ------------------------------------------------------------------
     # Helper: start a generic FSM and store it
     # ------------------------------------------------------------------
@@ -91,6 +105,7 @@ class AdjudicationEngine:
     # ------------------------------------------------------------------
     def _handle_transaction(self, frame: IntentFrame, session_id: str, config: TransactionConfig) -> dict:
         char = self.world._get_active_character(session_id)
+        self._normalize_inventory(char)
         if not char:
             return {"success": False, "message": "No active character."}
         if not self.world.current_location or not self.world.current_location.merchant_id:
@@ -110,21 +125,25 @@ class AdjudicationEngine:
                 return {"success": False, "message": "Barter requires both what you give and what you want."}
 
             # resolve give item (player inventory)
-            inv_names = [
-                (i.name if hasattr(i, "name") else i.get("name", "")).lower()
-                for i in char.inventory
-            ]
+            inv_names = []
+            for i in char.inventory:
+                inv_names.append(i.name.lower())
             matches = get_close_matches(give_name.lower(), inv_names, n=1, cutoff=0.6)
             if not matches:
                 available = ", ".join([i.name for i in char.inventory[:5]])
                 return {"success": False, "message": f"You don't have '{give_name}'. You have: {available}."}
-            give_item = next(i for i in char.inventory if i.name.lower() == matches[0])
+            give_item = next(
+                i for i in char.inventory
+                if i.name.lower() == matches[0]
+            )
 
             # resolve want item (merchant inventory)
             self.entity_resolver.load_merchant_items(merchant)
             want_item = self.entity_resolver.resolve_item(want_name)
             if not want_item:
-                available = ", ".join([i.name for i in merchant.inventory[:5]])
+                available = ", ".join([
+                    i.name for i in merchant.inventory[:5]
+                ])
                 return {"success": False, "message": f"{merchant.name} doesn't have '{want_name}'. They have: {available}."}
 
             rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
@@ -168,12 +187,27 @@ class AdjudicationEngine:
                 available = ", ".join([i.name for i in merchant.inventory[:5]])
                 return {"success": False, "message": f"I don't have '{item_name}'. I have: {available}."}
         else:
-            inv_names = [i.get("name", "").lower() for i in char.inventory]
+            assert all(not isinstance(i, dict) for i in char.inventory), char.inventory
+            inv_names = []
+            for i in char.inventory:
+                inv_names.append(i.name.lower())
+
             matches = get_close_matches(item_name.lower(), inv_names, n=1, cutoff=0.6)
+
             if not matches:
-                available = ", ".join([i.name for i in char.inventory[:5]])
-                return {"success": False, "message": f"You don't have '{item_name}'. You have: {available}."}
-            item = next(i for i in char.inventory if i.name.lower() == matches[0])
+                available = ", ".join([
+                    i.name
+                    for i in char.inventory[:5]
+                ])
+                return {
+                    "success": False,
+                    "message": f"You don't have '{item_name}'. You have: {available}."
+                }
+
+            item = next(
+                i for i in char.inventory
+                if i.name.lower() == matches[0]
+            )
 
         rel = self.world.campaign_state.get_merchant_relationship(merchant.id, char.id)
         price = config.price_func(item, merchant, rel, frame.context) if callable(config.price_func) else config.price_func
@@ -448,7 +482,7 @@ class AdjudicationEngine:
     # Price helpers
     # ------------------------------------------------------------------
     def _compute_sell_price(self, item, merchant, rel):
-        base_price = item.cost if hasattr(item, 'cost') else 10
+        base_price = item.cost if item.cost else 10
         multiplier = 1.0
         multiplier -= (merchant.personality.greed - 5) * 0.05
         multiplier += rel.affinity * 0.03
@@ -464,7 +498,6 @@ class AdjudicationEngine:
         if character.currency < price:
             return False
         character.currency -= price
-        from world.character import InventoryItem
         new_item = InventoryItem(
             name=item.name,
             description=f"Bought from {merchant.name}",
@@ -506,7 +539,7 @@ class AdjudicationEngine:
         character.inventory.remove(give_item)
         if extra_gold > 0:
             character.currency -= extra_gold
-        from world.character import InventoryItem
+        
         new_item = InventoryItem(
             name=receive_item.name,
             description=f"Bartered from {merchant.name}",

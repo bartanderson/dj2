@@ -911,7 +911,7 @@ def dm_chat():
             'responses': [{
                 'speaker': r.speaker,
                 'content': r.content,
-                'type': r.dialog_type
+                'dialog_type': r.dialog_type
             } for r in responses]
         })
         
@@ -1621,7 +1621,7 @@ def start_backstory(character_id):
         return jsonify({
             'speaker': first.get('speaker', 'DM'),
             'content': first.get('content', ''),
-            'type': first.get('type', 'narration')
+            'dialog_type': first.get('type', 'narration')
         })
     else:
         return jsonify({"error": "No response from narrative system"}), 500

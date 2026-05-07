@@ -154,6 +154,12 @@ class Character:
         if self.classs and hasattr(self.classs, 'starting_gear'):
             self._add_starting_gear()    
 
+    def normalize_inventory_item(item):
+        if isinstance(item, InventoryItem):
+            return item
+        if isinstance(item, dict):
+            return InventoryItem(**item)
+        raise TypeError(f"Invalid inventory item type: {type(item)}")
     
     def _apply_racial_bonuses(self):
         """Apply racial attribute bonuses from OG System"""
@@ -197,6 +203,18 @@ class Character:
         will_bonus = self.will * 2
         class_bonus = (self.classs.sp_per_level if self.classs else 0) * self.level
         return will_bonus + class_bonus
+
+    def add_item(self, item):
+        # 1. Normalize nested dict
+        if isinstance(item, dict):
+            item = InventoryItem(**item)
+
+        # 2. Hard validation
+        if not isinstance(item, InventoryItem):
+            raise TypeError(f"Invalid inventory item: {type(item)}")
+
+        # 3. Canonical append path
+        self.inventory.append(item)
     
     def _add_starting_gear(self):
         """Add starting equipment from class definition"""
@@ -204,8 +222,7 @@ class Character:
             return
         
         for gear_name in self.classs.starting_gear:
-            item = InventoryItem(name=gear_name, description=f"Starting gear: {gear_name}")
-            self.inventory.append(item)
+            self.add_item(InventoryItem(name=gear_name, description=f"Starting gear: {gear_name}"))
             
             # Auto-equip armor and weapons
             if "armor" in gear_name.lower() or gear_name.lower() in ["mail", "leather", "robes"]:
@@ -247,7 +264,7 @@ class Character:
             self.defense = self.base_defense + 1
         elif "shield" in shield_name.lower():
             self.defense = self.base_defense + 2
-        
+            
     # ------------------------------------------------------------------
     # Methods for compatibility with dnd_character interface
     # ------------------------------------------------------------------
@@ -283,7 +300,7 @@ class Character:
     def add_custom_item(self, name: str, description: str, item_type: str = "adventuring_gear", cost: int = 0):
         """Add a personalized item from AI suggestions"""
         item = InventoryItem(name=name, description=description, type=item_type, cost=cost)
-        self.custom_items.append(item)
+        add_item(self, item)
     
     def get_full_inventory(self) -> List[InventoryItem]:
         """Combine standard and custom items"""
@@ -291,11 +308,19 @@ class Character:
     
     def equip_item(self, item_name: str, slot: str):
         """Equip an item from inventory"""
-        # Find item in inventory
+
+        # Normalize once
+        self.inventory = [normalize_inventory_item(i) for i in self.inventory]
+        self.custom_items = [normalize_inventory_item(i) for i in self.custom_items]
+
+        # Now safe lookup
         item = next((i for i in self.inventory if i.name == item_name), None)
+
         if not item:
-            # Check custom items
             item = next((i for i in self.custom_items if i.name == item_name), None)
+
+        if not item:
+            return  # or raise / log
         
         if item:
             item.equipped = True
@@ -433,7 +458,7 @@ class Character:
 
         char.inventory = []
         for item_data in data.get("inventory", []):
-            char.inventory.append(InventoryItem(**item_data))
+            char.add_item(char, item_data)
         
         # Restore party/session data
         char.party_id = data.get("party_id")

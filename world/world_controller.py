@@ -2261,7 +2261,7 @@ class WorldController:
             type=item.tags.pop() if item.tags else "adventuring_gear",
             cost=price
         )
-        char.inventory.append(new_item)
+        add_item(new_item)
         self.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1)
         self.character_manager._save_character_to_db(char)
         return {
@@ -2342,7 +2342,7 @@ class WorldController:
                 type=item.tags.pop() if item.tags else "adventuring_gear",
                 cost=final_price
             )
-            char.inventory.append(new_item)
+            char.add_item(char, item_data)
             self.world.campaign_state.update_merchant_relationship(merchant.id, char.id, affinity_delta=1, trust_delta=1)
             self.world.character_manager._save_character_to_db(char)
             return {
