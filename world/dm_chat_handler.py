@@ -375,8 +375,9 @@ Your answer:
         if player is None:
             raise Exception(f"Player not found for session: {session_id}")
 
-        # Ensure conversation history exists
-        session.setdefault("chat_history", [])
+        # Ensure chat_history exists
+        if not hasattr(session, "chat_history") or session.chat_history is None:
+            session.chat_history = []
 
         # Prefer cache first, then DB
         player = self.world_controller.players.get(player_id) \
@@ -570,22 +571,47 @@ Return ONLY valid JSON:
            
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""
-        session = self.sessions.get(session_id)
-        if not session or not session.get("pending_confirmation"):
-            return {"responses": [DialogResponse(speaker="DM", content="Nothing to confirm.", dialog_type="narration")]}
+
+        session = self.world_controller.session_manager.get_session(session_id)
+
+        if not session or not session.pending_confirmation:
+            return {
+                "responses": [
+                    DialogResponse(
+                        speaker="DM",
+                        content="Nothing to confirm.",
+                        dialog_type="narration"
+                    )
+                ]
+            }
 
         if confirmed:
-            updates = session["pending_confirmation"]
-            # Apply updates (similar logic as above)
-            # For simplicity, we'd need a character reference; we'll assume a character exists or we're in creation.
-            # This is a placeholder – you may extend as needed.
-            session["character_data"].update(updates)
-            session["pending_confirmation"] = None
-            return {"responses": [DialogResponse(speaker="DM", content="Confirmed. Changes applied.", dialog_type="narration")]}
-        else:
-            session["pending_confirmation"] = None
-            return {"responses": [DialogResponse(speaker="DM", content="Confirmation cancelled.", dialog_type="narration")]}
+            updates = session.pending_confirmation
 
+            session.character_data.update(updates)
+            session.pending_confirmation = None
+
+            return {
+                "responses": [
+                    DialogResponse(
+                        speaker="DM",
+                        content="Confirmed. Changes applied.",
+                        dialog_type="narration"
+                    )
+                ]
+            }
+
+        session.pending_confirmation = None
+
+        return {
+            "responses": [
+                DialogResponse(
+                    speaker="DM",
+                    content="Confirmation cancelled.",
+                    dialog_type="narration"
+                )
+            ]
+        }
     # helper
     def _is_rules_question(self, message: str) -> bool:
         """
@@ -620,8 +646,8 @@ Return ONLY valid JSON:
                 # make sure it's not part of a larger word (e.g., "spell" inside "spellbook")
                 # simple check: space or punctuation boundaries
                 idx = msg.find(topic)
-                before = msg[idx-1] if idx > 0 else ' '
-                after = msg[idx+len(topic)] if idx+len(topic) < len(msg) else ' '
+                before = msg.idx-1 if idx > 0 else ' '
+                after = msg.idx+len(topic) if idx+len(topic) < len(msg) else ' '
                 if not before.isalpha() and not after.isalpha():
                     return True
 

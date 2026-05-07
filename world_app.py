@@ -23,7 +23,7 @@ from world.ai_integration import BaseAI, WorldAI
 from world.db import Database
 from world.player import Player
 from engine.game_engine import GameEngine, GamePhase, GameContext
-from world.dm_chat_handler import DialogResponse
+from world.models.dialog import DialogResponse
 from world.utils import normalize_responses
 
 
@@ -1194,7 +1194,7 @@ def get_player_characters():
 @app.route('/api/player/active-character', methods=['GET'])
 def get_active_character():
     try:
-        session_id = session.get("session_id")
+        session_id = request.cookies.get("session_id")
 
         if not session_id:
             return jsonify({'character_id': None})
@@ -1809,13 +1809,22 @@ def world_state():
 def analyze_motivation():
     data = request.get_json()
     message = data['message']
-    
-    # Use the narrative system to analyze motivation
-    motivation = app.world_controller.narrative_system.motivation.analyze_action(
-        message, 
-        app.world_controller.narrative_system.characters.get(session.get('user_id', 'guest'))
+
+    wc = app.world_controller
+
+    # get session_id from cookie (consistent with your system)
+    session_id = request.cookies.get("session_id")
+    session_obj = wc.session_manager.get_session(session_id) if session_id else None
+
+    player_id = session_obj.player_id if session_obj else "guest"
+
+    character = wc.narrative_system.characters.get(player_id)
+
+    motivation = wc.narrative_system.motivation.analyze_action(
+        message,
+        character
     )
-    
+
     return jsonify({'motivation': motivation})
 
 @app.route('/api/narrative-guidance', methods=['POST'])
@@ -2192,14 +2201,17 @@ def recognize_player(self, session_id, player_data):
     
     return None
 
+# TODO fix character creation to be an interactive conversation
 @app.route('/api/guide-character-creation', methods=['POST'])
 def guide_character_creation():
     data = request.get_json()
-    player_id = session.get('user_id', 'guest')
     message = data.get('message', '')
+    session_obj = wc.session_manager.get_session(session_id)
+    player_id = session_obj.player_id if session_obj else 'guest'
     
     # Get current creation state
-    creation_state = session.get('creation_state', {
+    session_obj = wc.session_manager.get_session(session_id)
+    creation_state = getattr(session_obj, "creation_state", {
         'step': 0,
         'character': {
             'race': None,
@@ -2626,7 +2638,8 @@ def select_player():
     if not session:
         return jsonify({'success': False, 'error': 'Invalid session'}), 400
 
-    wc.session_manager.assign_player(session_id, player_id)
+    session = wc.session_manager.get_or_create_session(session_id)
+    session.player_id = player_id
 
     socketio.emit("player_selected", {
         "session_id": session_id,

@@ -11,7 +11,7 @@ import uuid
 from world.db import Database
 import psycopg2
 from psycopg2.extras import Json
-from world.dm_chat_handler import DialogResponse
+from world.models.dialog import DialogResponse
 
 class ActionType(Enum):
     SOCIAL = "social"

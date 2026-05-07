@@ -112,7 +112,7 @@ REVISED_PLAN: (if replan) a new numbered list of sub‑goals
         results = []
         for msg in reversed(messages):
             if msg.get("role") == "tool":
-                results.append(msg["content"])
+                results.append(msg.content)
             else:
                 break
         results.reverse()

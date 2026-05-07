@@ -1,6 +1,6 @@
 # world\utils.py
 import json
-from world.dm_chat_handler import DialogResponse
+from world.models.dialog import DialogResponse
 
 def truncate(obj, max_len=200):
     """Return a string representation of obj, truncated to max_len."""

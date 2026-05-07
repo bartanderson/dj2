@@ -6,7 +6,7 @@ Phase: Consequence (narration)
 
 from typing import List, Dict, Any, Optional
 from world.ai_dungeon_master import ConsequenceTracker, ResponseGenerator
-from world.dm_chat_handler import DialogResponse
+from world.models.dialog import DialogResponse
 
 class ConsequenceEngine:
     def __init__(self, world_controller=None, dm_chat_ai=None):

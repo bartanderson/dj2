@@ -1,3 +1,5 @@
+# world/session_system.py
+
 """
 Session management system - tracks player conversation state
 Phase: State Mutation (for state updates), but provides context to other phases
@@ -5,6 +7,7 @@ Phase: State Mutation (for state updates), but provides context to other phases
 from collections import deque
 from typing import Dict, List, Optional, Any, Deque
 from datetime import datetime
+from world.models.dialog import DialogResponse
 
 class SessionState:
     """State for a single player session"""
@@ -32,20 +35,13 @@ class SessionState:
         self.connected_at: Optional[datetime] = None
         self.last_active = datetime.now()
 
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-    def get(self, key, default=None):
-        return getattr(self, key, default)
-
-    def setdefault(self, key, default=None):
-        if not hasattr(self, key):
-            setattr(self, key, default)
-        return getattr(self, key)
-
+    def ensure_initialized(self):
+        if self.chat_history is None:
+            self.chat_history = []
+        if self.chat_topics is None:
+            self.chat_topics = deque(maxlen=5)
+        if self.last_active is None:
+            self.last_active = datetime.now()
 
 class SessionSystem:
     """Manages player session state across the game"""
@@ -65,18 +61,21 @@ class SessionSystem:
         return session
 
     def get_session(self, session_id: str) -> Optional[SessionState]:
-        """Get session by ID"""
-        return self.sessions.get(session_id)
+        session = self.sessions.get(session_id)
+        if session:
+            session.ensure_initialized()
+        return session
 
     def add_message(self, session_id: str, speaker: str, content: str):
-        """Add a message to chat history"""
         session = self.get_session(session_id)
-        if session:
-            session.chat_history.append(DialogResponse(
-                speaker= speaker,
-                content= content,
-                dialog_type="log"
-            ))
+        if not session:
+            return
+
+        session.chat_history.append(DialogResponse(
+            speaker=speaker,
+            content=content,
+            dialog_type="log"
+        ))
 
     def add_topic(self, session_id: str, topic: str):
         """Add topic to conversation topics"""
@@ -125,7 +124,7 @@ class SessionSystem:
             return ""
 
         recent_messages = session.chat_history[-message_count:]
-        return "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in recent_messages])
+        return "\n".join([f"{msg.speaker}: {msg.content}" for msg in recent_messages])
 
     def _get_timestamp(self) -> str:
         """Simple timestamp for chat history"""
