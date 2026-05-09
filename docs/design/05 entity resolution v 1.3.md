@@ -1,4 +1,8 @@
-Entity Resolution – Final Design Document (v1)
+Entity Resolution – Evolving Design Document (v1.3)
+This document defines subsystem behavior, entity lookup, index management, and internal resolution rules for Entity Resolution.
+
+Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.
+--
 1. Purpose
 Map player natural language phrases (e.g., "potion", "the sword", "Grom's wooden table") to actual game objects (items, NPCs, locations, skills, spells, etc.).
 
@@ -10,26 +14,24 @@ Handle synonyms, misspellings, and embedding‑based semantic similarity (replac
 Resolved intent fields – frame.item and frame.target (strings) from IntentParser. The resolver does not operate on raw sentences.
 
 Current context:
-
-current_location (Location object)
-
-merchant (Merchant object, if in trade)
-
-character (player character, with inventory)
-
-active_quests (list of quest objects)
-
-chat_history (last few messages – reserved for v2 contextual inference)
-
-Entity type hint – optional, e.g., "item", "npc", "location", "skill", "spell", "quest". Used to restrict search domains.
+- current_location (Location object)
+- merchant (Merchant object, if in trade)
+- character (player character, with inventory)
+- active_quests (list of quest objects)
+- chat_history (last few messages – reserved for v2 contextual inference)
+- Entity type hint – optional, e.g., "item", "npc", "location", "skill", "spell", "quest". Used to restrict search domains.
+- escalation_effects (from EscalationEngine) – optional list of active effects that may influence entity availability, visibility, or resolution priority. The resolver does not execute logic based on these effects; it only uses them as additional context signals.
 
 3. Output
 Resolved entity object (or None if not found).
 
 Confidence score (optional, for logging). Not used in v1 but may be added later.
 
+Optional resolution_trace (v2-ready) – indicates which resolution stage succeeded (exact, synonym, embedding, or escalation-assisted lookup).
+
 4. Resolution Strategy (multi‑stage, ordered)
 The resolver attempts stages in order, stopping on first success.
+EscalationEngine effects do not directly modify entity indices, but may introduce temporary resolution hints that increase priority of specific entities during matching (without altering canonical indices or data sources).
 
 4.1 Stage 1 – Exact match (case‑insensitive)
 Compare the input string (lowercased) against the canonical names of entities in the currently loaded index(es) for the given type.
@@ -49,6 +51,8 @@ Pre‑compute embeddings for all entity names in the current index when the inde
 For the input phrase, compute its embedding and compute cosine similarity against all stored embeddings.
 
 Use a threshold (default 0.8). If the highest similarity >= threshold, return the corresponding entity. If multiple entities exceed the threshold, choose the highest.
+
+Escalation effects must not directly alter embedding values, but may influence candidate ranking only through a separate weighting layer applied after similarity scoring.
 
 Performance note: Embedding computation for a single phrase is ~10ms on a typical CPU. Index embedding computation is done once per load (e.g., when merchant inventory is loaded).
 
@@ -76,6 +80,7 @@ Skills	load_skills(dnd_data)	Once at game start.
 Spells	load_spells(dnd_data)	Once at game start.
 Quests	load_active_quests(quest_list)	Every time active quests change (start, complete, fail).
 The resolver does not keep a permanent global index; it rebuilds indices as needed.
+EscalationEngine may temporarily surface entities outside of their standard index lifecycle. These entities are treated as overlay candidates and do not modify the underlying index state.
 
 5.1 API for Index Loading
 ```python
@@ -122,7 +127,9 @@ _contextual_match(raw_text, context) – v2 only (stub for now).
 6. Type Filtering
 Each resolve call may include an optional entity_type parameter (e.g., "item").
 
-If provided, the resolver only searches indices that belong to that type. If multiple indices match the type (e.g., items could be from merchant or character), all such indices are searched in order of most recent (merchant before character for buy, character before merchant for sell – determined by caller, not resolver).
+If provided, the resolver only searches indices that belong to that type.
+EscalationEngine effects may override type filtering by injecting additional candidate entities that are not restricted by the requested entity_type, but such entities are still subject to final validation against canonical object types.
+If multiple indices match the type (e.g., items could be from merchant or character), all such indices are searched in order of most recent (merchant before character for buy, character before merchant for sell – determined by caller, not resolver).
 
 If no type is provided, the resolver searches all currently loaded indices in a fixed order: items (if any), NPCs, locations, skills, spells, quests.
 
@@ -176,7 +183,14 @@ Run a series of resolve calls that simulate actual game operations (buy, sell, l
 
 Verify that the correct entity objects are returned.
 
+Escalation Integration Test:
+- Simulate an EscalationEngine effect that marks an entity as "revealed"
+- Verify that entity can be resolved even if not present in current index
+- Verify resolution_trace reflects escalation-assisted resolution path (if implemented)
+
 11. Future Extensions (v2)
+Escalation-driven entity surfacing (entities becoming temporarily resolvable due to world state changes rather than player input).
+
 Contextual inference for “it”, “that”, “the first one”, “the last one” (using conversation history).
 
 Embedding‑based semantic matching for phrases not captured by synonyms (already in v1).
@@ -188,3 +202,4 @@ Dynamic synonym loading from configuration files.
 Support for possessive references (“his sword” → resolve to owner’s last mentioned item).
 
 Async embedding pre‑computing to reduce load time.
+

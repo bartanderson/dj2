@@ -1,6 +1,15 @@
-Design Decision Log
-This document records architectural decisions that are not obvious from the code alone and that affect future development. Each entry includes the decision, rationale, and date.
+This document defines system-wide invariants, architectural boundaries, and cross-layer execution contracts.
 
+It contains constraints that apply across multiple subsystems and must remain globally consistent regardless of local implementation details.
+
+Subsystem-specific behavior, algorithms, and internal implementation details belong in their respective design documents. This document defines only:
+- cross-system responsibilities
+- execution ordering guarantees
+- authority boundaries
+- non-negotiable architectural rules
+
+Any future departure from these constraints must be explicitly documented and justified.
+--
 1. EventLog Injection Over Global Singleton (2026-04-30)
 Decision:
 EscalationEngine receives an explicit EventLog instance via its constructor, instead of calling get_event_log() internally. AdjudicationEngine creates the singleton once and passes it down.
@@ -136,7 +145,7 @@ Next Steps
 Any future departure from these decisions must be justified and added to this log. Before implementing stealth, combat targeting, or additional perception features, review the relevant entries to ensure consistency.
 
 
-## Session & Identity Management (2026-05-02)
+7. Session & Identity Management (2026-05-02)
 
 **Context:** Bugs occurred where some endpoints worked while others failed due to inconsistent session resolution (e.g., party creation using URL session vs cookie session).
 
@@ -154,7 +163,7 @@ Any future departure from these decisions must be justified and added to this lo
 
 **Current risk:** `session_players` is in‑memory only; server restart or multi‑worker deployment will lose identity. This is acceptable for v1 but must be flagged.
 
-Decision: Adjudication Output Is Lossless Through Presentation Layer
+8. Decision: Adjudication Output Is Lossless Through Presentation Layer
 Statement
 
 All outputs produced by the deterministic adjudication layer must pass through the presentation/narration layer without modification or omission.
@@ -167,3 +176,71 @@ Rules
 The AI layer may augment text only
 The AI layer may not alter, filter, or reinterpret structured outputs
 Transport objects must remain bit-for-bit intact
+
+9. EscalationEngine Authority Boundary (2026-05-08)
+Decision:
+EscalationEngine may influence interpretation, salience, and perception context, but must not mutate canonical entity resolution structures or core WorldState directly.
+
+Escalation effects may:
+- influence ContextBuilder visibility interpretation
+- mark events as salient
+- inject contextual overlays
+- emit additional events
+
+EscalationEngine must not:
+- modify EntityResolver indices
+- alter synonym mappings
+- override embedding similarity
+- rewrite canonical entity data
+- mutate WorldState outside approved adjudication flows
+
+Rationale:
+Escalation represents deterministic rule-driven interpretation layered over authoritative simulation state. Allowing escalation to directly mutate canonical lookup systems would collapse separation between simulation truth and contextual interpretation.
+
+Impact:
+- EntityResolver remains deterministic and index-driven
+- ContextBuilder becomes the integration layer between escalation and perception
+- Escalation effects function as overlays rather than source-of-truth mutations
+
+10. ContextBuilder Escalation Ordering Contract (2026-05-08)
+Decision:
+EscalationEngine perception-related effects must be applied before ContextBuilder visibility and awareness derivation steps.
+
+Once visibility computation begins, no additional escalation effects may alter visibility results during the same build cycle.
+
+Escalation effects injected later in the pipeline are informational only and must not retroactively modify derived perception outputs.
+
+Rationale:
+This preserves deterministic context construction and prevents timing-dependent visibility inconsistencies.
+
+Impact:
+- Visibility is computed exactly once per build cycle
+- Escalation cannot produce post-derivation visibility mutation
+- ContextBuilder remains a deterministic single-pass pipeline
+
+11. Escalation → ContextBuilder Execution Model (2026-05-08)
+
+EscalationEngine does not directly modify computed perception outputs.
+
+Instead, it produces deterministic EscalationEffects that are consumed by ContextBuilder as input data during a single ordered evaluation phase.
+
+ContextBuilder is the only system that computes:
+
+visibility
+awareness
+knowledge gaps
+salience filtering
+
+EscalationEngine may only:
+
+provide modifiers
+flag entities/events
+inject contextual signals
+
+It may NOT:
+
+directly override computed visibility results
+directly alter salience inclusion results
+directly mutate derived ContextBuilder outputs
+
+All perception outputs are computed once per build cycle in ContextBuilder.

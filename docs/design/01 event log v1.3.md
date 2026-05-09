@@ -1,10 +1,34 @@
-Event Log – Final Design Document (v1.2)
-1. Purpose
+Event Log – Evolving Design Document (v1.3)
+This document defines subsystem behavior, event structures, dispatch semantics, and internal processing rules for the Event Log system.
+
+Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.
+--
+1. Purpose (add clarity of authority boundary)
 Record every significant occurrence in the game world with a timestamp, type, source system, and actor.
 
 Provide a deterministic history and subscription mechanism for other systems (escalation, context builder, UI).
 
-Act as the single source of truth for “what happened”.
+Act as the AUTHORITATIVE SOURCE OF CAUSAL HISTORY for “what happened”.
+
+Authority is limited strictly to causal recording. The Event Log does not determine interpretation, salience, perception, or world state validity outside event emission order.
+
+Narrative Interpretation Boundary
+
+The Event Log defines what happened, not how it is interpreted.
+
+CONSUMER MODEL
+- Escalation Engine → derives additional causal events
+- ContextBuilder → filters + organizes events into salience context
+- Narrative Engine → converts events into descriptive storytelling
+- UI Layer → visualizes event-derived state
+
+INVARIANT
+Events are not reinterpreted after emission.
+They are only:
+- filtered
+- aggregated
+- referenced
+- or narratively expressed
 
 2. Data Structures
 2.1 AttrDict (recursive, safe)
@@ -54,16 +78,42 @@ class Event:
         if not isinstance(self.data, AttrDict):
             self.data = wrap_attrdict(self.data)
 ```
-2.4 Entity Reference Convention (for salience)
-To allow the ContextBuilder to determine if an event involves a visible entity, events must include one or more of the following fields inside data (as appropriate):
 
-entity_id – primary subject (e.g., killed creature, buying character)
+Event Integrity Contract
 
-target_id – secondary object (e.g., target of attack, item bought)
+PROTECTED FIELDS (must never be modified downstream):
+- type
+- data
+- source_system
+- actor_id
+- depth
+- timestamp
+ALLOWED DOWNSTREAM OPERATIONS:
+- read
+- filter
+- aggregate
+- annotate externally (without mutation)
+FORBIDDEN:
+- modifying event.data contents after emission (immutability guarantee)
+- rewriting event meaning
+- removing or altering causal structure
 
-involved_entities – list of IDs when many are affected (e.g., area effect)
+2.4 Entity / Salience Convention (tighten meaning)
+Narrative (left side meaning)
 
-This convention is mandatory for events that need to be considered salient based on visibility.
+Events may optionally reference entities so downstream systems can determine whether an event is relevant to a currently observed or remembered world state.
+
+Structure (right side contract)
+REQUIRED FIELDS (when event involves world entities):
+- entity_id (primary subject) e.g., killed creature, buying character
+- target_id (secondary subject) e.g., target of attack, item bought
+- involved_entities (multi-entity events) list of IDs when many are affected e.g., area effect
+RULE:
+If an event affects world state, at least one entity reference SHOULD be present unless the event is explicitly system-level (e.g. world_tick, escalation_trigger, or global_state_change).
+PURPOSE:
+- supports ContextBuilder salience filtering
+- supports visibility checks
+- supports narrative relevance weighting
 
 3. API
 3.1 Singleton Access
@@ -116,12 +166,51 @@ Exceptions in listener callbacks are logged (using logging.getLogger(__name__)) 
 
 emit never raises an exception (errors are logged internally).
 
-5. Integration
-AdjudicationEngine will hold a reference to the singleton and call emit after any action that changes state (purchase, combat action, etc.).
+5. Integration Model
+Narrative View
 
-Escalation Engine will subscribe via on_any.
+The Event Log is the backbone of simulation truth. Everything else listens to it.
 
-ContextBuilder will call get_events (but will also use its own backward scanning logic for salience).
+System Responsibilities
+ADJUDICATION ENGINE
+- emits authoritative state-changing events
+- never consumes EventLog for decision-making
+ESCALATION ENGINE
+- subscribes to ALL events (on_any)
+- may emit derived causal events
+- ONLY system allowed to increase event.depth
+- may NOT modify or reinterpret existing Event objects; only emit new events
+CONTEXT BUILDER
+- consumes event history (get_events)
+- performs salience filtering (backward scanning logic)
+- produces structured context for AI/narrative layers
+NARRATIVE ENGINE (AI LAYER)
+- consumes structured context only
+- cannot modify event log
+- produces descriptive output only (additive layer)
+UI LAYER (FUTURE)
+- consumes event stream
+- displays state snapshots
+- must not influence simulation logic
+
+6. Determinism and Replay Guarantee
+Narrative
+
+The Event Log functions as a replayable causal timeline of the simulation.
+
+Constraints
+REPLAY REQUIREMENT:
+Given identical initial state + identical event sequence,
+the system must produce identical outcomes.
+IMPLICATIONS:
+- no hidden global mutation outside EventLog
+- no nondeterministic event mutation after emission, including within subscriber systems
+- no downstream rewriting of events
+DEBUG USE:
+EventLog is sufficient to reconstruct:
+- world state progression
+- player actions
+- system decisions (via event tracing)
 
 6. Testing
 6.1 Unit Tests
