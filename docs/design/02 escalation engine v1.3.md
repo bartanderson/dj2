@@ -1,4 +1,4 @@
-Escalation Engine – Evolving Design Document (v1.3)
+Escalation Engine – Design Document (v1.3)
 
 This document defines the EscalationEngine: rule evaluation, causal propagation, and effect generation within the simulation architecture.
 

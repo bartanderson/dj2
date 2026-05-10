@@ -1,0 +1,267 @@
+# tools/analysis/persistence/persist_file_analysis.py
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+
+from tools.analysis.shared.types import FileAnalysis
+
+
+def initialize_database(connection: sqlite3.Connection) -> None:
+    cursor = connection.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS files (
+        file_path TEXT PRIMARY KEY,
+        line_count INTEGER,
+        role TEXT,
+        is_hot INTEGER
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS functions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        name TEXT,
+        line_number INTEGER,
+        return_type TEXT,
+        arguments_json TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS classes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        name TEXT,
+        line_number INTEGER,
+        methods_json TEXT,
+        base_classes_json TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS imports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        module TEXT,
+        import_type TEXT,
+        line_number INTEGER
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS behavioral_contracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        function_name TEXT,
+        line_number INTEGER,
+        description TEXT,
+        side_effects_json TEXT,
+        raises_json TEXT,
+        testable_behaviors_json TEXT,
+        complexity_score INTEGER
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS mutations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        line_number INTEGER,
+        target TEXT,
+        operation TEXT,
+        raw_expression TEXT
+    )
+    """)
+
+    # file_edges is a derived graph index used for reverse dependency traversal.
+    # It exists because imports table stores forward edges (file -> module),
+    # while dependency resolution requires reverse lookup (module -> file).
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS file_edges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_file TEXT,
+        to_module TEXT
+    )
+    """)
+
+    connection.commit()
+
+
+def persist_file_analysis(
+    connection: sqlite3.Connection,
+    analysis: FileAnalysis,
+) -> None:
+    analysis.file_path = str(Path(analysis.file_path).resolve()).replace("\\", "/")
+    cursor = connection.cursor()
+
+    cursor.execute("""
+    INSERT OR REPLACE INTO files (
+        file_path,
+        line_count,
+        role,
+        is_hot
+    )
+    VALUES (?, ?, ?, ?)
+    """, (
+        analysis.file_path,
+        analysis.metadata.line_count,
+        analysis.metadata.role,
+        int(analysis.metadata.is_hot),
+    ))
+
+    cursor.execute(
+        "DELETE FROM functions WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for function in analysis.functions:
+        cursor.execute("""
+        INSERT INTO functions (
+            file_path,
+            name,
+            line_number,
+            return_type,
+            arguments_json
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            function.name,
+            function.line_number,
+            function.return_type,
+            json.dumps(function.arguments),
+        ))
+
+    cursor.execute(
+        "DELETE FROM classes WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for cls in analysis.classes:
+        cursor.execute("""
+        INSERT INTO classes (
+            file_path,
+            name,
+            line_number,
+            methods_json,
+            base_classes_json
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            cls.name,
+            cls.line_number,
+            json.dumps(cls.methods),
+            json.dumps(cls.base_classes),
+        ))
+
+    cursor.execute(
+        "DELETE FROM imports WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for imp in analysis.imports:
+        cursor.execute("""
+        INSERT INTO imports (
+            file_path,
+            module,
+            import_type,
+            line_number
+        )
+        VALUES (?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            imp.module,
+            imp.import_type,
+            imp.line_number,
+        ))
+
+    # Mirror imports into a graph-friendly edge table for reverse lookup.
+    # Keeps query layer O(1) instead of scanning imports.
+    cursor.execute(
+        "DELETE FROM file_edges WHERE from_file = ?",
+        (analysis.file_path,),
+    )
+
+    for imp in analysis.imports:
+        cursor.execute("""
+        INSERT INTO file_edges (
+            from_file,
+            to_module
+        )
+        VALUES (?, ?)
+        """, (
+            analysis.file_path,
+            imp.module,
+        ))
+
+    cursor.execute(
+        "DELETE FROM behavioral_contracts WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for contract in analysis.behavioral_contracts:
+        cursor.execute("""
+        INSERT INTO behavioral_contracts (
+            file_path,
+            function_name,
+            line_number,
+            description,
+            side_effects_json,
+            raises_json,
+            testable_behaviors_json,
+            complexity_score
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            contract.function_name,
+            contract.line_number,
+            contract.description,
+            json.dumps(contract.side_effects),
+            json.dumps(contract.raises),
+            json.dumps(contract.testable_behaviors),
+            contract.complexity_score,
+        ))
+
+    cursor.execute(
+        "DELETE FROM mutations WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for mutation in analysis.mutations:
+        cursor.execute("""
+        INSERT INTO mutations (
+            file_path,
+            line_number,
+            target,
+            operation,
+            raw_expression
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            mutation.line_number,
+            mutation.target,
+            mutation.operation,
+            mutation.raw_expression,
+        ))
+
+    connection.commit()
+
+
+def create_database(database_path: str | Path) -> sqlite3.Connection:
+    database_path = Path(database_path)
+
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    connection = sqlite3.connect(str(database_path))
+
+    initialize_database(connection)
+
+    return connection

@@ -1,0 +1,1447 @@
+# Architectural Constitution
+
+This document defines the non-negotiable architectural principles governing the simulation system.
+
+Subsystem design documents may evolve.
+Implementation details may change.
+APIs, schemas, helper methods, and pipeline internals may be refactored.
+
+These principles must remain stable unless explicitly superseded by a deliberate architectural revision.
+
+---
+
+# 1. Core Philosophy
+
+The system is a deterministic simulation engine augmented by constrained AI presentation and interpretation layers.
+
+Simulation truth, causal history, perception state, and narrative expression are separate concerns and must remain separated.
+
+The architecture prioritizes:
+- deterministic behavior
+- replayability
+- inspectable causal flow
+- explicit authority boundaries
+- implementation evolvability
+
+---
+
+# 2. Source-of-Truth Hierarchy
+
+## WorldState
+Canonical simulation truth.
+
+Contains authoritative entity state, positions, combat state, inventories, flags, and persistent world data.
+
+No other system may silently redefine canonical world truth.
+
+---
+
+## EventLog
+Authoritative causal history.
+
+Defines:
+- what happened
+- when it happened
+- which systems emitted it
+
+Events are immutable after emission.
+
+EventLog does not determine:
+- narrative meaning
+- salience
+- visibility
+- interpretation
+
+---
+
+## EscalationEngine
+Deterministic causal propagation layer.
+
+May:
+- evaluate rules
+- emit derived events
+- generate contextual effects
+- influence interpretation overlays
+
+Must NOT:
+- rewrite prior events
+- mutate canonical WorldState directly outside approved flows
+- redefine entity resolution structures
+- perform narrative reasoning
+
+---
+
+## ContextBuilder
+Deterministic perception and context assembly layer.
+
+Responsible for:
+- visibility filtering
+- awareness derivation
+- salience filtering
+- knowledge gap construction
+- escalation overlay application
+
+ContextBuilder is a consumer of simulation state, not a mutator.
+
+Visibility is computed exactly once per build cycle.
+
+---
+
+## AI / Narrative Layer
+Presentation and expression layer only.
+
+May:
+- narrate
+- summarize
+- contextualize
+- roleplay
+- generate prose
+
+Must NOT:
+- mutate authoritative state
+- alter structured outputs
+- invent canonical truth
+- bypass deterministic systems
+
+Structured adjudication outputs must pass through unchanged.
+
+---
+
+# 3. Determinism Requirements
+
+Given:
+- identical initial state
+- identical inputs
+- identical event sequence
+
+The simulation must produce identical outcomes.
+
+The following are forbidden:
+- hidden mutable global state
+- post-emission event mutation
+- nondeterministic causal rewriting
+- multiple conflicting authority paths
+
+---
+
+# 4. Authority Boundary Rules
+
+## Only Adjudication-like systems mutate canonical simulation state.
+
+## Only EscalationEngine propagates event depth.
+
+## Only ContextBuilder determines final visibility state for a build cycle.
+
+## Only EventLog defines causal history.
+
+## AI systems never become authoritative simulation actors.
+
+---
+
+# 5. Evolution Rules
+
+The architecture is intentionally evolvable.
+
+The following MAY evolve:
+- helper APIs
+- schemas
+- effect payloads
+- internal pipeline structure
+- optimization strategies
+- subsystem decomposition
+- visibility heuristics
+- salience weighting
+- implementation details
+
+Changes are acceptable IF they preserve:
+- deterministic behavior
+- replay guarantees
+- authority boundaries
+- causal integrity
+- single-source-of-truth rules
+
+---
+
+# 6. Implementation Reconciliation Rule
+
+Design documents are not treated as infallible specifications.
+
+Implementation, runtime behavior, tests, and existing systems must continuously reconcile against:
+- architectural invariants
+- actual gameplay needs
+- deterministic guarantees
+
+When contradictions appear:
+1. identify the true authority boundary being violated
+2. determine whether the issue is:
+   - implementation bug
+   - design flaw
+   - missing invariant
+   - underspecified behavior
+3. refine the smallest responsible layer
+4. avoid introducing duplicate authority systems
+
+The solution to ambiguity is clarification and reconciliation, not architectural sprawl.
+
+---
+
+# 7. LLM Governance Rules
+
+LLMs are implementation assistants, not architectural authorities.
+
+All generated code and design proposals must be evaluated against:
+- this constitution
+- subsystem design docs
+- existing runtime behavior
+- deterministic constraints
+
+LLMs must not:
+- invent hidden authority paths
+- collapse layer boundaries
+- bypass EventLog
+- merge simulation and narrative responsibilities
+- introduce duplicate identity or state systems
+
+Implementation convenience is never sufficient justification for violating architectural boundaries.
+
+---
+
+# 8. Change Classification
+
+## Constitutional Changes
+Rare.
+Require explicit review.
+
+Examples:
+- changing authoritative ownership
+- removing deterministic guarantees
+- allowing AI-driven state mutation
+- replacing EventLog authority
+
+---
+
+## Design-Level Changes
+Expected during development.
+
+Examples:
+- changing effect schema
+- adjusting visibility heuristics
+- refining salience logic
+- restructuring helper APIs
+- optimizing pipeline stages
+
+These should remain compatible with constitutional principles.
+
+---
+
+# 9. Practical Development Strategy
+
+Prefer:
+- small deterministic implementations
+- integration testing
+- incremental refinement
+- runtime verification
+- architecture-preserving iteration
+
+Avoid:
+- premature abstraction
+- speculative complexity
+- hidden state coupling
+- parallel authority systems
+- rewriting working systems without measured benefit
+
+---
+
+# 10. Primary System Goal
+
+The objective is not architectural purity.
+
+The objective is:
+a maintainable, inspectable, replayable, AI-augmented simulation engine capable of supporting emergent narrative gameplay without sacrificing deterministic simulation integrity.This document defines system-wide invariants, architectural boundaries, and cross-layer execution contracts.
+
+It contains constraints that apply across multiple subsystems and must remain globally consistent regardless of local implementation details.
+
+Subsystem-specific behavior, algorithms, and internal implementation details belong in their respective design documents. This document defines only:
+- cross-system responsibilities
+- execution ordering guarantees
+- authority boundaries
+- non-negotiable architectural rules
+
+Any future departure from these constraints must be explicitly documented and justified.
+--
+1. EventLog Injection Over Global Singleton (2026-04-30)
+Decision:
+EscalationEngine receives an explicit EventLog instance via its constructor, instead of calling get_event_log() internally. AdjudicationEngine creates the singleton once and passes it down.
+
+Rationale:
+
+Eliminates hidden global state, making dependencies explicit.
+
+Enables deterministic testing (isolated event logs per test).
+
+Prevents split‑brain issues where different components might use different log instances.
+
+Impact:
+
+All tests that instantiate EscalidationEngine must now pass an EventLog (usually obtained via get_event_log()).
+
+The global reset_event_log() function is used only for test isolation.
+
+2. Depth Propagation Rule (2026-04-30)
+Decision:
+
+Only events emitted by EscalationEngine.emit_event() increase depth (parent_event.depth + 1).
+
+Events emitted by AdjudicationEngine (or any other system) use depth = 0 (new causal root).
+
+process_event discards events with depth >= MAX_DEPTH (default 10).
+
+Rationale:
+
+Escalation is the only component that can cause infinite loops; depth is a guard against cascades.
+
+Adjudication represents authoritative state changes and should start fresh causal chains.
+
+Keeps reasoning simple: “depth > 0 means this event originated from an escalation rule.”
+
+Impact:
+
+Integration tests verify [0, 1, 0] event depth sequences.
+
+Future combat or dialogue FSMs must not manually increase depth unless they are escalating.
+
+3. Visibility Contract: WorldController.get_entities_in_location() (2026-04-30)
+Decision:
+WorldController must implement:
+
+python
+def get_entities_in_location(self, location) -> set[str]:
+    """Return a set of entity IDs present in the given location."""
+ContextBuilder uses this method to obtain the set of candidate entities for visibility. It does not receive full entity objects at this stage.
+
+Rationale:
+
+Separation of concerns: location membership is a spatial query, not perception.
+
+Performance: sets of IDs are cheap to copy and manipulate.
+
+Future changes (lighting, stealth) will require per‑entity attributes, which can be retrieved via a separate get_entity(entity_id) method when needed.
+
+Impact:
+
+WorldController must provide this method (currently stubbed in mocks).
+
+ContextBuilder does not directly store entity objects; it uses IDs and later looks up details for the final visible_entities output.
+
+4. Lighting and Darkvision (v1 Threshold) (2026-04-30)
+Decision:
+
+Each location has a lighting attribute (float 0.0 … 1.0).
+
+lighting >= 0.3 → considered “lit”.
+
+lighting < 0.3 → considered “dark”.
+
+Characters have a boolean has_darkvision.
+
+Visibility rule:
+
+If lighting >= 0.3 or has_darkvision → all entities in the location are visible.
+
+Otherwise (dark, no darkvision) → only the character themselves is visible.
+
+Rationale:
+
+Provides a simple, deterministic perception model that depends on environment and character traits.
+
+Avoids premature complexity (distance, cone of vision, etc.) until stealth is added.
+
+Impact:
+
+`ContextBuilder._compute_visibility` now implements this conditional logic.
+
+Unit tests for lighting scenarios (lit, dark, dark+darkvision) are required.
+
+5. Entity Reference Convention for Event Salience (2026-04-30)
+Decision:
+Events that need to be considered “salient” by the ContextBuilder must include one or more of the following fields in their data dictionary:
+
+entity_id – primary subject (e.g., killed creature, buying character)
+
+target_id – secondary object (e.g., target of attack, item bought)
+
+involved_entities – list of IDs when many are affected (e.g., area effect)
+
+Rationale:
+
+Allows ContextBuilder to determine if an event involves a currently visible entity without hard‑coding every possible event type.
+
+Creates a uniform, extensible way to filter events for AI context.
+
+Impact:
+
+All event emissions in AdjudicationEngine (purchase, combat, etc.) must add these fields as appropriate.
+
+Future FSM actions (dialogue, quests) must follow the same convention.
+
+6. Removal of Global get_event_log() from EscalationEngine (2026-04-30)
+Decision:
+EscalationEngine no longer calls get_event_log() internally. It only uses the event_log instance passed to its constructor.
+
+Rationale:
+
+Enforces dependency injection and prevents accidental use of the wrong log instance.
+
+Makes the component fully testable in isolation.
+
+Impact:
+
+All references to get_event_log() inside escalation_engine.py have been replaced with self.event_log.
+
+The static helper EscalationEngine.emit_event was converted to an instance method that uses the injected log.
+
+Next Steps
+Any future departure from these decisions must be justified and added to this log. Before implementing stealth, combat targeting, or additional perception features, review the relevant entries to ensure consistency.
+
+
+7. Session & Identity Management (2026-05-02)
+
+**Context:** Bugs occurred where some endpoints worked while others failed due to inconsistent session resolution (e.g., party creation using URL session vs cookie session).
+
+**Decisions:**
+
+1. **Single source of session truth** – Only the HTTP cookie `session_id` determines identity. No query parameters, no request body injection, no fallback chains in production paths.
+
+2. **Server‑side session map as authoritative runtime state** – `world_controller.session_players[session_id] → player_id → active_character` is the sole binding. Mutated only by authenticated flows (e.g., `/api/select-player`), never inferred from payload.
+
+3. **UI must never construct identity state** – Frontend sends only `player_id`, `party_name`, and commands. It does **not** send `session_id` or binding info.
+
+4. **Endpoint consistency** – All world mutation endpoints assume identity is already resolved before handler logic runs, using a central resolver (e.g., `session_id = request.cookies.get("session_id")`), not scattered per‑endpoint.
+
+5. **Debugging principle** – When multiple systems “sometimes work” depending on entry point, the cause is duplicated identity resolution paths. The fix is to remove parallel identity systems, not patch symptoms.
+
+**Current risk:** `session_players` is in‑memory only; server restart or multi‑worker deployment will lose identity. This is acceptable for v1 but must be flagged.
+
+8. Decision: Adjudication Output Is Lossless Through Presentation Layer
+Statement
+
+All outputs produced by the deterministic adjudication layer must pass through the presentation/narration layer without modification or omission.
+
+Required fields (minimum)
+map_data
+action
+salient_events
+Rules
+The AI layer may augment text only
+The AI layer may not alter, filter, or reinterpret structured outputs
+Transport objects must remain bit-for-bit intact
+
+9. EscalationEngine Authority Boundary (2026-05-08)
+Decision:
+EscalationEngine may influence interpretation, salience, and perception context, but must not mutate canonical entity resolution structures or core WorldState directly.
+
+Escalation effects may:
+- influence ContextBuilder visibility interpretation
+- mark events as salient
+- inject contextual overlays
+- emit additional events
+
+EscalationEngine must not:
+- modify EntityResolver indices
+- alter synonym mappings
+- override embedding similarity
+- rewrite canonical entity data
+- mutate WorldState outside approved adjudication flows
+
+Rationale:
+Escalation represents deterministic rule-driven interpretation layered over authoritative simulation state. Allowing escalation to directly mutate canonical lookup systems would collapse separation between simulation truth and contextual interpretation.
+
+Impact:
+- EntityResolver remains deterministic and index-driven
+- ContextBuilder becomes the integration layer between escalation and perception
+- Escalation effects function as overlays rather than source-of-truth mutations
+
+10. ContextBuilder Escalation Ordering Contract (2026-05-08)
+Decision:
+EscalationEngine perception-related effects must be applied before ContextBuilder visibility and awareness derivation steps.
+
+Once visibility computation begins, no additional escalation effects may alter visibility results during the same build cycle.
+
+Escalation effects injected later in the pipeline are informational only and must not retroactively modify derived perception outputs.
+
+Rationale:
+This preserves deterministic context construction and prevents timing-dependent visibility inconsistencies.
+
+Impact:
+- Visibility is computed exactly once per build cycle
+- Escalation cannot produce post-derivation visibility mutation
+- ContextBuilder remains a deterministic single-pass pipeline
+
+11. Escalation → ContextBuilder Execution Model (2026-05-08)
+
+EscalationEngine does not directly modify computed perception outputs.
+
+Instead, it produces deterministic EscalationEffects that are consumed by ContextBuilder as input data during a single ordered evaluation phase.
+
+ContextBuilder is the only system that computes:
+
+visibility
+awareness
+knowledge gaps
+salience filtering
+
+EscalationEngine may only:
+
+provide modifiers
+flag entities/events
+inject contextual signals
+
+It may NOT:
+
+directly override computed visibility results
+directly alter salience inclusion results
+directly mutate derived ContextBuilder outputs
+
+All perception outputs are computed once per build cycle in ContextBuilder.📦 00C IMPLEMENTATION_SEQUENCE.md (GOOD ENOUGH VERSION)
+
+⚠️ Status This document is non-authoritative execution order only.
+It does not define system architecture or invariants.
+It exists only to keep implementation order stable.
+It may be updated or discarded at any time.
+
+🧠 Minimal rule for using this file
+Use it only to answer:
+	“what do I build next?”
+Not:
+	why architecture works
+	how systems interact
+	what is authoritative
+
+🧭 Build Order (current working sequence)
+
+1. Core truth layer
+
+Event Log (01)
+
+Escalation Engine (02)
+
+👉 Nothing else matters until these are working together.
+
+2. World interpretation layer
+
+ContextBuilder (04)
+
+Entity Resolution (05)
+
+👉 Defines what the world means and what exists
+
+3. Gameplay logic layer
+
+Dialog System (06)
+
+Quest System (08)
+
+Perception & Discovery (09)
+
+👉 Consumes world + events + entities
+
+4. Tooling (non-runtime)
+
+FSM Generator (07)
+
+👉 Helps build systems, not part of runtime execution
+
+5. Interface layer
+
+UI Contract (10)
+
+👉 Defines engine → UI data shape only
+
+6. Simulation stress layer
+
+Combat System (11)
+
+👉 Depends on full system stability
+
+🧷 Skipped / deferred work
+
+If anything is not being built yet, it is implicitly a todo or in system design docs
+
+---
+
+✔ Why this version will hold up
+
+This avoids your future “why is this file messed up?” moment because:
+
+no branching explanation layers
+no dependency theory
+no duplicate categorization
+no hidden authority creep
+no “future architecture hints”
+
+It is just: ordered execution steps with no ambition
+
+A useful mental check going forward:
+
+If a document answers “what must always be true?” → it belongs in 0A / 0B
+If it answers “what do I build next?” → it belongs in the sequence file
+If it starts explaining why the system exists the way it does → it’s probably drifting into the wrong layer
+Event Log – Design Document (v1.3)
+This document defines subsystem behavior, event structures, dispatch semantics, and internal processing rules for the Event Log system.
+
+Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.
+--
+1. Purpose (add clarity of authority boundary)
+Record every significant occurrence in the game world with a timestamp, type, source system, and actor.
+
+Provide a deterministic history and subscription mechanism for other systems (escalation, context builder, UI).
+
+Act as the AUTHORITATIVE SOURCE OF CAUSAL HISTORY for “what happened”.
+
+Authority is limited strictly to causal recording. The Event Log does not determine interpretation, salience, perception, or world state validity outside event emission order.
+
+Narrative Interpretation Boundary
+
+The Event Log defines what happened, not how it is interpreted.
+
+CONSUMER MODEL
+- Escalation Engine → derives additional causal events
+- ContextBuilder → filters + organizes events into salience context
+- Narrative Engine → converts events into descriptive storytelling
+- UI Layer → visualizes event-derived state
+
+INVARIANT
+Events are not reinterpreted after emission.
+They are only:
+- filtered
+- aggregated
+- referenced
+- or narratively expressed
+
+2. Data Structures
+2.1 AttrDict (recursive, safe)
+```python
+class AttrDict(dict):
+    """Recursive dict wrapper for dot‑access. Raises AttributeError on missing key."""
+    def __getattr__(self, item):
+        try:
+            value = self[item]
+        except KeyError:
+            raise AttributeError(item)
+        if isinstance(value, dict):
+            return AttrDict(value)
+        return value
+    def __setattr__(self, key, value):
+        self[key] = value
+```
+2.2 Recursive Wrapping Helper
+```python
+def wrap_attrdict(obj):
+    """Recursively convert dict and list structures to AttrDict."""
+    if isinstance(obj, dict):
+        return AttrDict({k: wrap_attrdict(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [wrap_attrdict(v) for v in obj]
+    return obj
+```
+2.3 Event
+```python
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Optional
+
+@dataclass
+class Event:
+    type: str                         # domain.entity.phase, e.g., "economy.buy"
+    data: AttrDict                    # wrapped at creation
+    source_system: str                # "combat", "economy", "movement", "adjudication_engine"
+    actor_id: Optional[str] = None    # player or NPC ID if applicable
+    depth: int = 0                    # escalation depth guard (not user data)
+    timestamp: str = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+        # Ensure data is AttrDict (if constructed without wrapper)
+        if not isinstance(self.data, AttrDict):
+            self.data = wrap_attrdict(self.data)
+```
+
+Event Integrity Contract
+
+PROTECTED FIELDS (must never be modified downstream):
+- type
+- data
+- source_system
+- actor_id
+- depth
+- timestamp
+ALLOWED DOWNSTREAM OPERATIONS:
+- read
+- filter
+- aggregate
+- annotate externally (without mutation)
+FORBIDDEN:
+- modifying event.data contents after emission (immutability guarantee)
+- rewriting event meaning
+- removing or altering causal structure
+
+2.4 Entity / Salience Convention (tighten meaning)
+Narrative (left side meaning)
+
+Events may optionally reference entities so downstream systems can determine whether an event is relevant to a currently observed or remembered world state.
+
+Structure (right side contract)
+REQUIRED FIELDS (when event involves world entities):
+- entity_id (primary subject) e.g., killed creature, buying character
+- target_id (secondary subject) e.g., target of attack, item bought
+- involved_entities (multi-entity events) list of IDs when many are affected e.g., area effect
+RULE:
+If an event affects world state, at least one entity reference SHOULD be present unless the event is explicitly system-level (e.g. world_tick, escalation_trigger, or global_state_change).
+PURPOSE:
+- supports ContextBuilder salience filtering
+- supports visibility checks
+- supports narrative relevance weighting
+
+3. API
+3.1 Singleton Access
+```python
+def get_event_log(max_size: int = 10000) -> EventLog
+3.2 Class EventLog
+__init__(self, max_size: int = 10000)
+
+#Initialises empty event list, listener dicts, and wildcard list.
+
+emit(self, event_type: str, data: dict, source_system: str, actor_id: Optional[str] = None, depth: int = 0) -> None
+
+#Creates an Event with the given data (automatically wrapped in AttrDict).
+
+#Appends to internal list; if length exceeds max_size, drops the oldest event.
+
+#Notifies all listeners for the exact event type (in registration order).
+
+#Notifies all wildcard listeners (in registration order) after type‑specific.
+
+#Catches and logs any exception raised by a listener; other listeners still run.
+
+on(self, event_type: str, callback: Callable[[Event], None]) -> None
+
+#Registers a callback for a specific event type.
+
+on_any(self, callback: Callable[[Event], None]) -> None
+
+#Registers a callback for all events.
+
+get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Event]
+
+#Returns the most recent events (up to limit). If event_type provided, filters by type.
+
+3Raises ValueError if limit < 1.
+
+clear(self) -> None
+
+#Removes all events (primarily for testing).
+```
+
+4. Performance and Error Handling
+emit with no listeners: <5ms.
+
+emit with up to 100 listeners: <20ms.
+
+get_events (limit=100): <5ms.
+
+Exceptions in listener callbacks are logged (using logging.getLogger(__name__)) and ignored; other listeners still run.
+
+emit never raises an exception (errors are logged internally).
+
+5. Integration Model
+Narrative View
+
+The Event Log is the backbone of simulation truth. Everything else listens to it.
+
+System Responsibilities
+ADJUDICATION ENGINE
+- emits authoritative state-changing events
+- never consumes EventLog for decision-making
+ESCALATION ENGINE
+- subscribes to ALL events (on_any)
+- may emit derived causal events
+- ONLY system allowed to increase event.depth
+- may NOT modify or reinterpret existing Event objects; only emit new events
+CONTEXT BUILDER
+- consumes event history (get_events)
+- performs salience filtering (backward scanning logic)
+- produces structured context for AI/narrative layers
+NARRATIVE ENGINE (AI LAYER)
+- consumes structured context only
+- cannot modify event log
+- produces descriptive output only (additive layer)
+UI LAYER (FUTURE)
+- consumes event stream
+- displays state snapshots
+- must not influence simulation logic
+
+6. Determinism and Replay Guarantee
+Narrative
+
+The Event Log functions as a replayable causal timeline of the simulation.
+
+Constraints
+REPLAY REQUIREMENT:
+Given identical initial state + identical event sequence,
+the system must produce identical outcomes.
+IMPLICATIONS:
+- no hidden global mutation outside EventLog
+- no nondeterministic event mutation after emission, including within subscriber systems
+- no downstream rewriting of events
+DEBUG USE:
+EventLog is sufficient to reconstruct:
+- world state progression
+- player actions
+- system decisions (via event tracing)
+
+6. Testing
+6.1 Unit Tests
+Emit an event, verify it appears in get_events.
+
+Register a type‑specific listener, emit matching event, verify listener called.
+
+Register multiple listeners for same type, verify all called in registration order.
+
+Register wildcard listener, verify called for every event.
+
+Verify max_size drops oldest event.
+
+Verify clear() empties the log.
+
+Verify AttrDict nesting: event.data.a.b.c works and missing key raises AttributeError.
+
+Verify that wrap_attrdict converts nested dicts and lists correctly.
+
+6.2 Integration Test
+(To be written after escalation engine) – emit an event and verify that a registered escalation action is triggered.
+
+7. Future Extensions (v2)
+Persistence of event log to database.
+
+Asynchronous dispatch.
+
+Listener removal (off method).
+
+Escalation Engine – Design Document (v1.3)
+
+This document defines the EscalationEngine: rule evaluation, causal propagation, and effect generation within the simulation architecture.
+
+Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.
+
+--
+
+The Escalation Engine is the rule-driven causal propagation layer of the simulation architecture.
+
+It does not define authoritative world state.
+It does not perform narrative interpretation.
+It evaluates structured events against deterministic escalation rules and emits rule-driven follow-up effects or events.
+
+Think of it as:
+
+Event Log = “what happened”
+Escalation Engine = “what additional consequences may occur because of it”
+
+Core function categories:
+- rule matching
+- trigger evaluation
+- event emission (via EventLog)
+- depth control (anti-loop safety)
+
+1. Purpose
+EscalationEngine evaluates EventLog events against declarative YAML rules 
+Rules are evaluated per event in isolation; the engine does not maintain conversational or narrative state.
+
+Execute actions (registered Python functions) when rules match and conditions are true.
+When a rule matches, EscalationEngine executes pre-registered Python functions referenced by name in the YAML.
+Actions receive:
+- triggering Event
+- computed context object (rule + extracted fields)
+Actions may emit new events via EventLog 
+Actions must not modify the original event.
+
+Manage a structured list of active effects (world modifiers) that can be queried by the ContextBuilder.
+EscalationEngine maintains persistent “effects” representing world state modifiers derived from events.
+Effects are:
+- independent of Event history
+- queryable by ContextBuilder during narrative construction
+- updated or appended only via rule-triggered actions
+
+Prevent infinite loops using a depth guard stored in the Event object (not inside event data).
+EscalationEngine enforces recursion safety using event.depth.
+Rules:
+- if event.depth >= MAX_DEPTH, processing stops
+- emitted event increments depth: new_event.depth = event.depth + 1
+- only EscalationEngine is allowed to propagate depth
+
+
+2. Rule Format (YAML) example
+Escalation rules are defined declaratively in YAML. YAML specifies:
+- triggering events
+- conditions
+- rule matching and selection
+- resulting actions
+
+Conditions operate against normalized Event objects whose data field is always an AttrDict, allowing deterministic attribute-style access via AttrDict (event.data.entity_id).
+
+Python action handlers implement deterministic mechanics only, including:
+- state mutation
+- calculations
+- persistence
+- event emission
+
+The AI layer may contextualize outputs but does not influence rule execution.
+
+Rules are evaluated independently
+Multiple rules may match the same event
+Execution order is deterministic (YAML order)
+
+Rule execution is strictly single-pass per event. A rule may not re-trigger evaluation of earlier rules within the same processing cycle unless explicitly emitted as a new event via EventLog.
+
+Actions are executed in the order listed in the YAML actions array. Actions are not parallelized and must complete before the next action executes.
+
+Rule evaluation is side-effect aware only at the EventLog emission boundary; conditions must not depend on transient side effects produced earlier in the same rule execution cycle.
+
+Rule logic must remain defined in YAML; Python callbacks may only implement deterministic actions. 
+
+This preserves:
+- inspectable causal chains
+- deterministic reasoning
+- generator compatibility
+- AI constraint boundaries
+- consistency with the system’s phase/bucket architecture
+
+2.1 Pattern Matching Semantics
+Event patterns use shell-style wildcard matching via fnmatch.
+Examples:
+- event: combat.*
+- event: economy.buy
+- event: perception.*
+
+Matching behavior:
+Matching uses fnmatch semantics against event.type.
+Example:
+- `"combat.*" matches "combat.entity.killed" and "combat.turn.started".`
+- `"*.entity.killed" matches "combat.entity.killed" and "economy.entity.killed".`
+combat.* matches all event types in the combat namespace
+exact names match only identical event types
+matching is deterministic and case-sensitive
+
+For performance, wildcard patterns may be precompiled internally to regex during rule loading, but runtime behavior must remain equivalent to fnmatch.
+
+Rules MAY emit effects that include a salience flag.
+This flag is a deterministic instruction consumed by ContextBuilder and does not modify event data or EventLog state.
+
+```yaml
+rules:
+  - id: faction_retaliation
+    event: combat.entity.killed
+    conditions:
+      - event.data.killed_faction == "bandits"
+      - event.data.location_id is not None
+    actions:
+      - increase_threat
+      - spawn_hunters
+      - emit_warning_event
+
+  - id: merchant_suspicion
+    event: economy.theft.detected
+    conditions:
+      - event.data.value > 100
+    actions:
+      - reduce_reputation
+      - notify_guards
+```
+
+3. Active Effects (structured)
+Active effects returned by get_active_effects() MUST represent a snapshot at call time.
+ContextBuilder operates only on this snapshot and MUST NOT observe mid-frame mutations.
+
+```python
+EscalationEffect = {
+    "id": str,                     # unique identifier
+    "type": str,                   # e.g., "reinforcement", "faction_modifier"
+    "source_event": str,           # the event type that created it
+    "expires_at": Optional[str],   # ISO timestamp, None = indefinite
+    "salience": Optional[bool],   # if True, forces inclusion in ContextBuilder salience list
+    "data": dict                   # effect‑specific parameters
+}
+```
+The engine maintains self.active_effects: List[EscalationEffect].
+Actions can add/remove effects. The engine prunes expired effects before processing events (or on a scheduled tick).
+
+4. Engine API
+4.1 Initialisation
+```python
+def __init__(self, event_log: EventLog, world_controller: WorldController):
+    self.event_log = event_log
+    self.world = world_controller
+    self.rules = []               # list of rule dicts, each with a "_compiled" key
+    self.action_registry = {}     # name -> callable
+    self.active_effects = []
+```
+4.2 Rule Loading
+```python
+def load_rules(self, yaml_path: str) -> None:
+    """Load YAML, precompile patterns, store rules."""
+    # Raises FileNotFoundError, yaml.YAMLError, or ValueError on invalid structure.
+```
+4.3 Action Registration
+```python
+def register_action(self, name: str, func: Callable[[Event, dict], None]) -> None:
+    """Register a function that can be invoked by name from a rule."""
+    self.action_registry[name] = func
+```
+4.4 Event Processing (Depth Guard)
+```python
+def process_event(self, event: Event) -> None:
+    """Called by EventLog for every event. Evaluates rules in priority order."""
+    if event.depth > MAX_DEPTH:   # MAX_DEPTH = 10
+        logger.warning(f"Event depth {event.depth} exceeded limit, discarding")
+        return
+
+    for rule in sorted(self.rules, key=lambda r: -r.get("priority", 0)):
+        if not rule["_compiled"].match(event.type):
+            continue
+        # Evaluate conditions (simpleeval with event (AttrDict) and world facade)
+        if not all(self._eval_condition(cond, event) for cond in rule.get("conditions", [])):
+            continue
+        # Execute actions
+        for action in rule.get("actions", []):
+            func = self.action_registry.get(action["name"])
+            if func:
+                func(event, action.get("params", {}))
+            else:
+                logger.error(f"Unknown escalation action: {action['name']}")
+        if rule.get("stop_on_match", False):
+            break
+```
+4.5 Effect Management
+```python
+def add_effect(self, effect: EscalationEffect) -> None:
+    self.active_effects.append(effect)
+
+def remove_effect(self, effect_id: str) -> None:
+    self.active_effects = [e for e in self.active_effects if e["id"] != effect_id]
+
+def get_active_effects(self) -> List[EscalationEffect]:
+    self.prune_effects(datetime.now(timezone.utc))
+    return self.active_effects.copy()
+
+def prune_effects(self, current_time: datetime) -> None:
+    self.active_effects = [e for e in self.active_effects
+                           if e["expires_at"] is None or e["expires_at"] > current_time.isoformat()]
+```
+4.6 Condition Evaluation
+Uses simpleeval with a context containing:
+
+event (AttrDict‑wrapped Event object, so event.data.target.faction works)
+
+world (read-only interface exposing query functions)
+
+Returns True/False. If evaluation fails (invalid expression, missing key), logs warning and returns False.
+
+5.1 Integration with Event Log
+
+Event correlation is strictly defined as:
+
+- exact match on event.type, OR
+- match on explicit effect.source_event, OR
+- shared entity_id between event.data and effect.scope
+
+No semantic or fuzzy matching is permitted.
+
+EscalationEngine is registered as a listener to EventLog and processes all emitted events.
+
+Depth is strictly a propagation control mechanism within EscalationEngine only.
+ContextBuilder MUST NOT interpret, filter, or branch logic based on event.depth.
+
+```python
+self.event_log = get_event_log()
+self.escalation = EscalationEngine(self.event_log, self.world)
+self.escalation.load_rules("config/escalation_rules.yaml")
+self.event_log.on_any(self.escalation.process_event)
+
+source_system = "escalation_engine"
+
+actor_id = None
+
+depth = event.depth + 1
+
+and call self.event_log.emit(...).
+```
+
+5.2 Depth Propagation Rule (v1)
+
+Depth propagation is handled exclusively by EscalationEngine during event emission. Adjudication-originated events always begin with depth = 0.
+
+6. Performance Constraints
+Rule matching (precompiled regex): <1ms per rule.
+
+Condition evaluation: <2ms per condition.
+
+process_event for ≤50 rules: <50ms.
+
+7. Testing
+7.1 Unit Tests
+Load rules, verify precompiled patterns match correctly.
+
+Register an action, emit event that matches rule → action called.
+
+Condition evaluation (true/false, invalid expression).
+
+Priority ordering (higher first, stable for equal).
+
+stop_on_match halts further rules.
+
+Depth guard prevents infinite loops.
+
+Effect lifecycle (add, remove, prune).
+
+7.2 Integration Test
+Emit an event that triggers a rule, which adds an effect and emits a follow‑up event. Verify that the follow‑up event has depth = original_depth + 1 and that the effect appears in get_active_effects().
+
+8. Future Extensions (v2)
+Rule hot‑reload.
+
+Asynchronous action execution.
+
+Conditional branching in rule actions.
+
+9. Authority Boundary
+
+EscalationEngine visibility-related effects are interpretive overlays only and must never directly mutate or redefine canonical visibility state.
+All visibility changes must be applied exclusively through ContextBuilder’s deterministic visibility pipeline.# world/event_log.py
+import logging
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+# ----------------------------------------------------------------------
+# AttrDict – recursive dict wrapper with safe attribute access
+# ----------------------------------------------------------------------
+class AttrDict(dict):
+    """
+    Recursive dict wrapper that allows dot‑access.
+    Raises AttributeError when a key is missing (consistent with normal attribute lookup).
+    """
+    def __getattr__(self, item: str) -> Any:
+        try:
+            value = self[item]
+        except KeyError:
+            raise AttributeError(item)
+        # No need to re‑wrap because wrap_attrdict already did recursively.
+        return value
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        self[key] = value
+
+    def __deepcopy__(self, memo: Dict) -> 'AttrDict':
+        import copy
+        return AttrDict({k: copy.deepcopy(v, memo) for k, v in self.items()})
+
+
+def wrap_attrdict(obj: Any) -> Any:
+    """
+    Recursively convert dict and list structures to AttrDict.
+    Applied once at event creation.
+    """
+    if isinstance(obj, AttrDict):
+        return obj
+    if isinstance(obj, dict):
+        return AttrDict({k: wrap_attrdict(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return [wrap_attrdict(v) for v in obj]
+    return obj
+
+
+# ----------------------------------------------------------------------
+# Event Dataclass
+# ----------------------------------------------------------------------
+@dataclass
+class Event:
+    type: str                         # domain.entity.phase, e.g., "economy.buy"
+    data: dict                        # raw data (will be wrapped)
+    source_system: str                # "combat", "economy", "movement", etc.
+    actor_id: Optional[str] = None    # player or NPC ID if applicable
+    depth: int = 0                    # escalation depth guard (not user data)
+    timestamp: str = None
+
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+        # Normalize data to AttrDict once, recursively.
+        self.data = wrap_attrdict(self.data)
+
+
+# ----------------------------------------------------------------------
+# Event Log (Singleton)
+# ----------------------------------------------------------------------
+class EventLog:
+    def __init__(self, max_size: int = 10000):
+        if max_size < 1:
+            raise ValueError("max_size must be >= 1")
+        self._events: List[Event] = []
+        self._listeners: Dict[str, List[Callable[[Event], None]]] = defaultdict(list)
+        self._wildcard: List[Callable[[Event], None]] = []
+        self._max_size = max_size
+
+    def emit(self, event_type: str, data: dict, source_system: str,
+             actor_id: Optional[str] = None, depth: int = 0) -> None:
+        """Create an Event, store it, and notify matching listeners."""
+        
+        if "session_id" not in data:
+            print(f"[WARN] {event_type} missing session_id:", data)
+
+        event = Event(event_type, data, source_system, actor_id, depth)
+        self._events.append(event)
+        if len(self._events) > self._max_size:
+            self._events.pop(0)
+
+        # Notify type-specific listeners
+        for callback in self._listeners.get(event_type, []):
+            self._safe_callback(callback, event)
+
+        # Notify wildcard listeners
+        for callback in self._wildcard:
+            self._safe_callback(callback, event)
+
+    def on(self, event_type: str, callback: Callable[[Event], None]) -> None:
+        """Register a callback for a specific event type."""
+        self._listeners[event_type].append(callback)
+
+    def on_any(self, callback: Callable[[Event], None]) -> Callable:
+        """Register a callback for all events, returning the callback as a handle."""
+        self._wildcard.append(callback)
+        return callback
+
+    def get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Event]:
+        """Return the most recent events (up to limit), optionally filtered by type."""
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        # Scan from newest to oldest, collect matches, then reverse.
+        matches = []
+        for e in reversed(self._events):
+            if event_type is None or e.type == event_type:
+                matches.append(e)
+                if len(matches) >= limit:
+                    break
+        # Return in chronological order (oldest first)
+        return list(reversed(matches))
+
+    def get_all_events(self) -> List[Event]:
+        """Return the entire event list (for backward scanning in ContextBuilder)."""
+        return self._events[:]   # shallow copy
+
+    def clear(self) -> None:
+        """Remove all events and listeners (primarily for testing; resets system state)."""
+        self._events.clear()
+        self._listeners.clear()
+        self._wildcard.clear()
+
+    def _safe_callback(self, callback: Callable[[Event], None], event: Event) -> None:
+        """Invoke a callback safely; log and swallow exceptions."""
+        try:
+            callback(event)
+        except Exception as e:
+            logger.error(f"Error in event listener for {event.type}: {e}", exc_info=True)
+
+
+# ----------------------------------------------------------------------
+# Singleton Access
+# ----------------------------------------------------------------------
+_event_log_instance = None
+
+def get_event_log(max_size: int = 10000) -> EventLog:
+    global _event_log_instance
+    if _event_log_instance is None:
+        _event_log_instance = EventLog(max_size)
+    elif _event_log_instance._max_size != max_size:
+        logger.warning("EventLog already initialized with max_size=%d, ignoring new max_size=%d",
+                       _event_log_instance._max_size, max_size)
+    return _event_log_instance
+
+def reset_event_log() -> None:
+    """Reset the singleton for test isolation."""
+    global _event_log_instance
+    _event_log_instance = Noneimport fnmatch
+import re
+import logging
+import copy
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
+
+import yaml
+from simpleeval import simple_eval
+
+from world.event_log import Event, AttrDict
+
+logger = logging.getLogger(__name__)
+
+MAX_DEPTH = 10
+
+
+class DotDict(dict):
+    """Allows dot‑access to dict keys. Used only for evaluation context."""
+    def __getattr__(self, item):
+        try:
+            value = self[item]
+        except KeyError:
+            raise AttributeError(item)
+        return value
+    def __setattr__(self, key, value):
+        self[key] = value
+
+
+class EscalationEngine:
+    def __init__(self, event_log, world_controller):
+        self.event_log = event_log
+        self.world = world_controller
+        self.rules = []
+        self.action_registry = {}
+        self.active_effects = []
+
+    # ------------------------------------------------------------------
+    # Rule Loading
+    # ------------------------------------------------------------------
+    def load_rules(self, yaml_path: str) -> None:
+        with open(yaml_path, 'r') as f:
+            rules_data = yaml.safe_load(f)
+        if not isinstance(rules_data, dict) or 'rules' not in rules_data:
+            raise ValueError("Invalid rules file: missing top-level 'rules' key")
+        self.rules = []
+        for rule in rules_data['rules']:
+            pattern = rule.get('event_pattern')
+            if not pattern:
+                raise ValueError(f"Rule missing 'event_pattern': {rule}")
+            rule['_compiled'] = re.compile(fnmatch.translate(pattern))
+            self.rules.append(rule)
+        self.rules.sort(key=lambda r: -r.get('priority', 0))
+
+    # ------------------------------------------------------------------
+    # Action Registry
+    # ------------------------------------------------------------------
+    def register_action(self, name: str, func: Callable[[Event, dict], None]) -> None:
+        self.action_registry[name] = func
+
+    # ------------------------------------------------------------------
+    # Event Processing
+    # ------------------------------------------------------------------
+    def process_event(self, event: Event) -> None:
+        if event.depth >= MAX_DEPTH:
+            logger.warning(f"Event depth {event.depth} exceeded limit, discarding: {event.type}")
+            return
+
+        world_facade = self._get_world_facade()
+
+        for rule in self.rules:
+            if not rule['_compiled'].fullmatch(event.type):
+                continue
+            # Evaluate conditions
+            conditions_ok = True
+            for cond in rule.get('conditions', []):
+                if not self._eval_condition(cond, event, world_facade):
+                    conditions_ok = False
+                    break
+            if not conditions_ok:
+                continue
+            # Execute actions
+            for action_def in rule.get('actions', []):
+                action_name = action_def.get('name')
+                params = action_def.get('params', {})
+                func = self.action_registry.get(action_name)
+                if func:
+                    try:
+                        func(event, params)
+                    except Exception as e:
+                        logger.error(f"Error executing escalation action '{action_name}': {e}", exc_info=True)
+                else:
+                    logger.error(f"Unknown escalation action: {action_name}")
+            if rule.get('stop_on_match', False):
+                break
+
+    # ------------------------------------------------------------------
+    # Evaluation Helpers
+    # ------------------------------------------------------------------
+    def _event_to_eval_dict(self, event: Event) -> DotDict:
+        return DotDict({
+            "type": event.type,
+            "data": event.data,
+            "source_system": event.source_system,
+            "actor_id": event.actor_id,
+            "depth": event.depth,
+            "timestamp": event.timestamp,
+        })
+
+    def _eval_condition(self, expr: str, event: Event, world: Dict) -> bool:
+        eval_event = self._event_to_eval_dict(event)
+        context = {
+            'event': eval_event,
+            'world': world,
+        }
+        try:
+            result = simple_eval(expr, functions={}, names=context)
+            return bool(result)
+        except Exception as e:
+            logger.warning(f"Condition evaluation failed: {expr} – {e}")
+            return False
+
+    def _get_world_facade(self) -> Dict:
+        location = getattr(self.world, 'current_location', None)
+        if location:
+            location_info = {
+                'terrain': getattr(location, 'terrain', None),
+                'name': getattr(location, 'name', None),
+            }
+        else:
+            location_info = {}
+        return {
+            'current_location': location_info,
+            'get_faction_standing': (
+                lambda fid: self.world.campaign_state.get_faction_standing(fid)
+                if hasattr(self.world, 'campaign_state') else 0
+            ),
+        }
+
+    # ------------------------------------------------------------------
+    # Effect Management
+    # ------------------------------------------------------------------
+    def add_effect(self, effect: Dict) -> None:
+        required = {"id", "type", "source_event", "expires_at", "data"}
+        if not required.issubset(effect):
+            raise ValueError(f"Invalid effect structure: missing keys {required - effect.keys()}")
+        self.active_effects.append(effect)
+
+    def remove_effect(self, effect_id: str) -> None:
+        self.active_effects = [e for e in self.active_effects if e['id'] != effect_id]
+
+    def get_active_effects(self) -> List[Dict]:
+        self.prune_effects()
+        return copy.deepcopy(self.active_effects)
+
+    def prune_effects(self) -> None:
+        now = datetime.now(timezone.utc)
+        self.active_effects = [e for e in self.active_effects
+                               if e.get('expires_at') is None or e['expires_at'] > now.isoformat()]
+
+    # ------------------------------------------------------------------
+    # Helper Event Emission (instance method, uses injected event_log)
+    # ------------------------------------------------------------------
+    def emit_event(self, parent_event: Event, event_type: str, data: dict,
+                   source_system: str = "escalation_engine",
+                   actor_id: Optional[str] = None) -> None:
+        self.event_log.emit(
+            event_type,
+            data,
+            source_system,
+            actor_id,
+            depth=parent_event.depth + 1
+        )

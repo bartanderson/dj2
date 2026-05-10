@@ -1,4 +1,4 @@
-Event Log – Evolving Design Document (v1.3)
+Event Log – Design Document (v1.3)
 This document defines subsystem behavior, event structures, dispatch semantics, and internal processing rules for the Event Log system.
 
 Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.

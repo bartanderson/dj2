@@ -1,4 +1,4 @@
-ContextBuilder – Evolving Design Document (v1.3)
+ContextBuilder – Design Document (v1.3)
 This document defines subsystem behavior, context derivation, visibility processing, salience filtering, and internal pipeline rules for ContextBuilder.
 
 Global architectural constraints, authority boundaries, and cross-system execution rules are defined in System Invariants & Cross-Layer Contracts.
