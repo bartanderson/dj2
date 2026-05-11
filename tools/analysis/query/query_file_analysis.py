@@ -129,6 +129,31 @@ def fetch_imports_for_file(
 
     return results
 
+def fetch_symbol_references_for_file(
+    connection: sqlite3.Connection,
+    file_path: str,
+):
+    cursor = connection.cursor()
+
+    cursor.execute("""
+    SELECT
+        caller,
+        callee,
+        line_number
+    FROM symbol_references
+    WHERE file_path = ?
+    """, (file_path,))
+
+    rows = cursor.fetchall()
+
+    return [
+        {
+            "caller": row[0],
+            "callee": row[1],
+            "line_number": row[2],
+        }
+        for row in rows
+    ]
 
 def fetch_mutations_for_file(
     connection: sqlite3.Connection,
@@ -211,6 +236,10 @@ def fetch_complete_file_analysis(
         "functions": fetch_functions_for_file(connection, file_path),
         "classes": fetch_classes_for_file(connection, file_path),
         "imports": fetch_imports_for_file(connection, file_path),
+        "symbol_references": fetch_symbol_references_for_file(
+            connection,
+            file_path,
+        ),
         "mutations": fetch_mutations_for_file(connection, file_path),
         "behavioral_contracts": fetch_behavioral_contracts_for_file(
             connection,

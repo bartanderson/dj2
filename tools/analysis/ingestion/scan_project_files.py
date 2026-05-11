@@ -7,6 +7,7 @@ from typing import Generator, Iterable, List
 
 from tools.analysis.ingestion.parse_ast import parse_ast
 from tools.analysis.shared.types import FileAnalysis
+from tools.analysis.graph.module_resolution import normalize_file_path
 
 
 DEFAULT_IGNORED_DIRECTORIES = {
@@ -85,7 +86,8 @@ def scan_project_files(
     )
 
     for file_path in python_files:
-        analysis = parse_ast(file_path)
+        normalized_path = normalize_file_path(file_path)
+        analysis = parse_ast(normalized_path)
 
         if analysis is None:
             continue

@@ -6,10 +6,13 @@ import sqlite3
 from typing import Any, Dict, List, Set
 
 from tools.analysis.query.query_file_analysis import (
-    fetch_complete_file_analysis,
+    fetch_complete_file_analysis, fetch_all_symbol_names,
 )
 from tools.analysis.ingestion.parse_ast import _safe_read_file
 from pathlib import Path
+
+from tools.analysis.graph.symbol_index import build_symbol_index
+from tools.analysis.graph.module_resolution import file_path_from_module_name
 
 
 def _fetch_import_dependents(connection, module_name: str):
@@ -51,6 +54,8 @@ def build_context_bundle(
 
     visited: Set[str] = set()
 
+    known_symbols = fetch_all_symbol_names(connection)
+
     bundle: Dict[str, Any] = {
         "entry_file": None,
         "related_files": [],
@@ -66,8 +71,19 @@ def build_context_bundle(
         entry_file_path,
     )
 
+    symbol_index = build_symbol_index(connection)
+
+    known_symbols = set(symbol_index.keys())
+
     if entry_analysis is None:
         return bundle
+
+
+    entry_analysis["symbol_references"] = [
+        ref
+        for ref in entry_analysis["symbol_references"]
+        if ref["callee"] in known_symbols
+    ]
 
     bundle["entry_file"] = entry_analysis
 
@@ -98,6 +114,13 @@ def build_context_bundle(
 
         if related_analysis is None:
             continue
+
+
+        related_analysis["symbol_references"] = [
+            ref
+            for ref in related_analysis["symbol_references"]
+            if ref["callee"] in known_symbols
+        ]
 
         bundle["related_files"].append(related_analysis)
 

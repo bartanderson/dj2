@@ -12,10 +12,10 @@ from tools.analysis.shared.types import (
     FunctionRepresentation,
     ClassRepresentation,
     ImportRepresentation,
+    SymbolReference,
     BehavioralContract,
     MutationEvent,
 )
-
 
 # ----------------------------
 # Helpers (pure AST extraction)
@@ -101,6 +101,50 @@ def _extract_classes(tree: ast.AST) -> List[ClassRepresentation]:
 
     return results
 
+def _extract_symbol_references(tree: ast.AST):
+    references = []
+
+    current_function = None
+
+    class Visitor(ast.NodeVisitor):
+        def visit_FunctionDef(self, node):
+            nonlocal current_function
+
+            previous = current_function
+            current_function = node.name
+
+            self.generic_visit(node)
+
+            current_function = previous
+
+        def visit_Call(self, node):
+            if current_function is None:
+                self.generic_visit(node)
+                return
+
+            callee = None
+
+            if isinstance(node.func, ast.Name):
+                callee = node.func.id
+
+            elif isinstance(node.func, ast.Attribute):
+                callee = node.func.attr
+
+            if callee in known_symbols:
+                references.append(
+                    SymbolReference(
+                        caller=current_function,
+                        callee=callee,
+                        line_number=node.lineno,
+                    )
+                )
+
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+
+    return references
+
 
 def _extract_mutations(tree: ast.AST) -> List[MutationEvent]:
     # Minimal deterministic placeholder extraction
@@ -173,6 +217,7 @@ def parse_ast(file_path: str | Path) -> Optional[FileAnalysis]:
     functions = _extract_functions(tree)
     classes = _extract_classes(tree)
     imports = _extract_imports(tree)
+    symbol_references = _extract_symbol_references(tree)
     mutations = _extract_mutations(tree)
 
     return FileAnalysis(
@@ -187,6 +232,7 @@ def parse_ast(file_path: str | Path) -> Optional[FileAnalysis]:
         classes=classes,
         imports=imports,
         mutations=mutations,
+        symbol_references=symbol_references,
 
         behavioral_contracts=[],  # intentionally deferred or simplified
         phase_violations=[],

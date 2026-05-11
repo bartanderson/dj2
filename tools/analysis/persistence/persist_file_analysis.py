@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
-
+from tools.analysis.graph.module_resolution import normalize_file_path
 
 def initialize_database(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
@@ -89,6 +89,27 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS symbols (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        symbol_type TEXT,
+        name TEXT,
+        line_number INTEGER,
+        signature TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS symbol_references (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        caller TEXT,
+        callee TEXT,
+        line_number INTEGER
+    )
+    """)
+
     connection.commit()
 
 
@@ -96,8 +117,11 @@ def persist_file_analysis(
     connection: sqlite3.Connection,
     analysis: FileAnalysis,
 ) -> None:
-    analysis.file_path = str(Path(analysis.file_path).resolve()).replace("\\", "/")
+    analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
+
+    functions = list(analysis.functions)
+    classes = list(analysis.classes)
 
     cursor.execute("""
     INSERT OR REPLACE INTO files (
@@ -119,7 +143,7 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
-    for function in analysis.functions:
+    for function in functions:
         cursor.execute("""
         INSERT INTO functions (
             file_path,
@@ -137,12 +161,22 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
+    for function in functions:
+        _insert_symbol(
+            cursor,
+            analysis.file_path,
+            "function",
+            function.name,
+            function.line_number,
+            function.return_type or "",
+        )
+
     cursor.execute(
         "DELETE FROM classes WHERE file_path = ?",
         (analysis.file_path,),
     )
 
-    for cls in analysis.classes:
+    for cls in classes:
         cursor.execute("""
         INSERT INTO classes (
             file_path,
@@ -159,6 +193,15 @@ def persist_file_analysis(
             json.dumps(cls.methods),
             json.dumps(cls.base_classes),
         ))
+
+    for cls in classes:
+        _insert_symbol(
+            cursor,
+            analysis.file_path,
+            "class",
+            cls.name,
+            cls.line_number,
+        )
 
     cursor.execute(
         "DELETE FROM imports WHERE file_path = ?",
@@ -252,8 +295,28 @@ def persist_file_analysis(
             mutation.raw_expression,
         ))
 
-    connection.commit()
+    cursor.execute(
+        "DELETE FROM symbol_references WHERE file_path = ?",
+        (analysis.file_path,),
+    )
 
+    for ref in analysis.symbol_references:
+        cursor.execute("""
+        INSERT INTO symbol_references (
+            file_path,
+            caller,
+            callee,
+            line_number
+        )
+        VALUES (?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            ref.caller,
+            ref.callee,
+            ref.line_number,
+        ))
+
+    connection.commit()
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)
@@ -265,3 +328,15 @@ def create_database(database_path: str | Path) -> sqlite3.Connection:
     initialize_database(connection)
 
     return connection
+
+def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
+    cursor.execute("""
+    INSERT INTO symbols (
+        file_path,
+        symbol_type,
+        name,
+        line_number,
+        signature
+    )
+    VALUES (?, ?, ?, ?, ?)
+    """, (file_path, symbol_type, name, line_number, signature))

@@ -63,6 +63,12 @@ class ImportRepresentation:
     import_type: str  # "import" | "from_import"
     line_number: int
 
+@dataclass
+class SymbolReference:
+    caller: str
+    callee: str
+    line_number: int
+
 
 # ----------------------------
 # Behavioral analysis layer
@@ -108,6 +114,7 @@ class FileAnalysis:
     functions: List[FunctionRepresentation] = field(default_factory=list)
     classes: List[ClassRepresentation] = field(default_factory=list)
     imports: List[ImportRepresentation] = field(default_factory=list)
+    symbol_references: List[SymbolReference] = field(default_factory=list)
 
     behavioral_contracts: List[BehavioralContract] = field(default_factory=list)
     mutations: List[MutationEvent] = field(default_factory=list)
