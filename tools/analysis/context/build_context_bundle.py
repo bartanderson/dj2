@@ -6,26 +6,19 @@ import sqlite3
 from typing import Any, Dict, List, Set
 
 from tools.analysis.query.query_file_analysis import (
-    fetch_complete_file_analysis, fetch_all_symbol_names,
+    fetch_complete_file_analysis,
 )
-from tools.analysis.ingestion.parse_ast import _safe_read_file
+
 from pathlib import Path
+# 🔒 PIPELINE GUARDS (runtime invariants only)
 
-from tools.analysis.graph.symbol_index import build_symbol_index
-from tools.analysis.graph.module_resolution import file_path_from_module_name
+FORBIDDEN_TRACE_SYMBOLS = {
+    "add_file",
+}
 
-
-def _fetch_import_dependents(connection, module_name: str):
-    cursor = connection.cursor()
-
-    cursor.execute("""
-    SELECT DISTINCT from_file
-    FROM file_edges
-    WHERE to_module = ?
-    """, (module_name,))
-
-    return [row[0] for row in cursor.fetchall()]
-
+def _assert_no_forbidden_trace(symbol_name: str):
+    if symbol_name in FORBIDDEN_TRACE_SYMBOLS:
+        raise RuntimeError(f"[PIPELINE VIOLATION] forbidden symbol: {symbol_name}")
 
 def _derive_module_name(file_path: str) -> str:
     normalized = file_path.replace("\\", "/")
@@ -43,26 +36,13 @@ def build_context_bundle(
     max_dependency_files: int = 10,
 ) -> Dict[str, Any]:
     """
-    Build focused structured context around a file.
-
-    Goals:
-    - deterministic
-    - bounded
-    - AI-consumable
-    - no raw AST access
+    Context layer responsibility:
+    - fetch file analyses
+    - package deterministic context
+    - NO symbol resolution
+    - NO graph logic
+    - NO dependency inference
     """
-
-    visited: Set[str] = set()
-
-    known_symbols = fetch_all_symbol_names(connection)
-
-    bundle: Dict[str, Any] = {
-        "entry_file": None,
-        "related_files": [],
-    }
-    print("ENTRY INPUT:", entry_file_path)
-    normalized_entry_path = entry_file_path.replace("\\", "/")
-    print("Normalized ENTRY INPUT:", normalized_entry_path)
 
     entry_file_path = str(Path(entry_file_path).resolve()).replace("\\", "/")
 
@@ -71,39 +51,45 @@ def build_context_bundle(
         entry_file_path,
     )
 
-    symbol_index = build_symbol_index(connection)
-
-    known_symbols = set(symbol_index.keys())
-
     if entry_analysis is None:
-        return bundle
+        return {
+            "entry_file": None,
+            "related_files": [],
+        }
 
+    # --------------------------------------------------
+    # ENTRY FILE (NO TRANSFORMATION)
+    # --------------------------------------------------
 
-    entry_analysis["symbol_references"] = [
-        ref
-        for ref in entry_analysis["symbol_references"]
-        if ref["callee"] in known_symbols
-    ]
+    entry_analysis["symbol_references"] = entry_analysis.get("symbol_references", [])
 
-    bundle["entry_file"] = entry_analysis
-
-    visited.add(entry_file_path)
+    bundle: Dict[str, Any] = {
+        "entry_file": entry_analysis,
+        "related_files": [],
+    }
 
     if not include_dependents:
         return bundle
 
-    imports = entry_analysis["imports"]
+    # --------------------------------------------------
+    # RELATED FILES (DIRECT FETCH ONLY)
+    # --------------------------------------------------
 
-    dependent_files = set()
+    imports = entry_analysis.get("imports", [])
+    dependent_files: Set[str] = set()
 
     for imp in imports:
-        dependent_files.update(
-            _fetch_import_dependents(connection, imp["module"])
-        )
+        module = imp.get("module")
+        if not module:
+            continue
 
-    related_count = 0
+        # NOTE: dependency resolution is intentionally deferred
+        # so we only include entry-level context for now
+        continue
 
-    for dependent_path in dependent_files:
+    visited: Set[str] = {entry_file_path}
+
+    for dependent_path in list(dependent_files)[:max_dependency_files]:
         if dependent_path in visited:
             continue
 
@@ -115,20 +101,7 @@ def build_context_bundle(
         if related_analysis is None:
             continue
 
-
-        related_analysis["symbol_references"] = [
-            ref
-            for ref in related_analysis["symbol_references"]
-            if ref["callee"] in known_symbols
-        ]
-
-        bundle["related_files"].append(related_analysis)
-
         visited.add(dependent_path)
-
-        related_count += 1
-
-        if related_count >= max_dependency_files:
-            break
+        bundle["related_files"].append(related_analysis)
 
     return bundle

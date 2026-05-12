@@ -8,13 +8,21 @@ def build_symbol_index(connection: sqlite3.Connection):
     cursor = connection.cursor()
 
     cursor.execute("""
-        SELECT file_path, name, symbol_type
+        SELECT
+            name,
+            file_path,
+            symbol_type,
+            line_number
         FROM symbols
     """)
 
-    index = defaultdict(set)
+    index = defaultdict(list)
 
-    for file_path, name, symbol_type in cursor.fetchall():
-        index[name].add(file_path)
+    for name, file_path, symbol_type, line_number in cursor.fetchall():
+        index[name].append({
+            "file_path": file_path,
+            "symbol_type": symbol_type,
+            "line_number": line_number,
+        })
 
-    return index
+    return dict(index)

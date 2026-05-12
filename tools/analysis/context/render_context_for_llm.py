@@ -147,10 +147,7 @@ def render_context_bundle_for_llm(
     entry_file = context_bundle.get("entry_file")
 
     if entry_file is not None:
-        output_sections.append(
-            "=== ENTRY FILE ==="
-        )
-
+        output_sections.append("=== ENTRY FILE ===")
         output_sections.append(
             render_file_analysis_for_llm(entry_file)
         )
@@ -158,15 +155,26 @@ def render_context_bundle_for_llm(
     related_files = context_bundle.get("related_files", [])
 
     if related_files:
-        output_sections.append(
-            "=== RELATED FILES ==="
-        )
+        output_sections.append("=== RELATED FILES ===")
+
+        entry_path = entry_file.get("file_path") if entry_file else None
+        seen_paths = set()
+
+        # mark entry file so it never repeats in related section
+        if entry_path:
+            seen_paths.add(entry_path)
 
         for related_file in related_files:
+            file_path = related_file.get("file_path")
+
+            # skip duplicates across entry + related + internal repeats
+            if file_path in seen_paths:
+                continue
+
+            seen_paths.add(file_path)
+
             output_sections.append(
-                render_file_analysis_for_llm(
-                    related_file
-                )
+                render_file_analysis_for_llm(related_file)
             )
 
     return "\n\n".join(output_sections)

@@ -14,12 +14,13 @@ def build_context_packet(connection, file_path: str) -> ContextPacket:
         file_path=file_path,
         summary=analysis["file"],
 
-        key_functions=[f["name"] for f in analysis["functions"]],
-        key_classes=[c["name"] for c in analysis["classes"]],
+        # PURE STRUCTURAL DATA ONLY
+        key_functions=[f["name"] for f in analysis.get("functions", [])],
+        key_classes=[c["name"] for c in analysis.get("classes", [])],
 
-        dependencies=[i["module"] for i in analysis["imports"]],
+        # DO NOT TREAT AS "DEPENDENCIES"
+        dependencies=[],
 
-        referenced_symbols=[
-            r["callee"] for r in analysis["symbol_references"]
-        ],
+        # DO NOT TREAT AS "RESOLVED SYMBOLS"
+        referenced_symbols=[],
     )

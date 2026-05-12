@@ -8,7 +8,8 @@ from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
-
+from tools.analysis.graph.symbol_classifier import classify_symbol
+    
 def initialize_database(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
 
@@ -162,6 +163,8 @@ def persist_file_analysis(
         ))
 
     for function in functions:
+        if classify_symbol(function.name) != "project":
+            continue
         _insert_symbol(
             cursor,
             analysis.file_path,
@@ -195,6 +198,9 @@ def persist_file_analysis(
         ))
 
     for cls in classes:
+        if classify_symbol(cls.name) != "project":
+            continue
+
         _insert_symbol(
             cursor,
             analysis.file_path,
@@ -301,6 +307,8 @@ def persist_file_analysis(
     )
 
     for ref in analysis.symbol_references:
+        if classify_symbol(ref.callee) != "project":
+            continue
         cursor.execute("""
         INSERT INTO symbol_references (
             file_path,

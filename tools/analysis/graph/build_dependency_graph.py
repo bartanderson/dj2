@@ -22,7 +22,8 @@ def build_dependency_graph(file_analyses: List[Dict[str, Any]]) -> List[Dict[str
             }
         ]
     """
-
+    seen_edges = set()
+    
     edges: List[Dict[str, str]] = []
 
     # Build quick lookup: module -> file
@@ -51,6 +52,18 @@ def build_dependency_graph(file_analyses: List[Dict[str, Any]]) -> List[Dict[str
 
             if to_file is None:
                 continue
+
+            to_file = module_to_file.get(module)
+
+            if to_file is None:
+                continue
+
+            edge = (from_file, to_file)
+
+            if edge in seen_edges:
+                continue
+
+            seen_edges.add(edge)
 
             edges.append({
                 "from_file": from_file,

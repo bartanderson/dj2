@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from typing import List, Optional
+from tools.analysis.ingestion.extract_symbols import extract_symbols
 
 from tools.analysis.shared.types import (
     FileAnalysis,
@@ -28,22 +29,31 @@ def _safe_read_file(path: Path) -> Optional[str]:
         return None
 
 
-def _extract_imports(tree: ast.AST) -> List[ImportRepresentation]:
+def _extract_imports(
+    tree: ast.AST,
+) -> tuple[List[ImportRepresentation], dict[str, str]]:
     imports: List[ImportRepresentation] = []
+    alias_map: dict[str, str] = {}
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
+                module_name = alias.name
+
                 imports.append(
                     ImportRepresentation(
-                        module=alias.name,
+                        module=module_name,
                         import_type="import",
                         line_number=getattr(node, "lineno", -1),
                     )
                 )
 
+                local_name = alias.asname or alias.name.split(".")[-1]
+                alias_map[local_name] = module_name
+
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
+
             imports.append(
                 ImportRepresentation(
                     module=module,
@@ -52,7 +62,19 @@ def _extract_imports(tree: ast.AST) -> List[ImportRepresentation]:
                 )
             )
 
-    return imports
+            for alias in node.names:
+                imported_name = alias.name
+                local_name = alias.asname or imported_name
+
+                canonical_name = (
+                    f"{module}.{imported_name}"
+                    if module
+                    else imported_name
+                )
+
+                alias_map[local_name] = canonical_name
+
+    return imports, alias_map
 
 
 def _extract_functions(tree: ast.AST) -> List[FunctionRepresentation]:
@@ -101,49 +123,64 @@ def _extract_classes(tree: ast.AST) -> List[ClassRepresentation]:
 
     return results
 
-def _extract_symbol_references(tree: ast.AST):
-    references = []
-
-    current_function = None
+def _extract_symbol_references(
+    tree: ast.AST,
+    known_symbols: set[str],
+    alias_map: dict[str, str],
+):
+    references = set()
 
     class Visitor(ast.NodeVisitor):
-        def visit_FunctionDef(self, node):
-            nonlocal current_function
+        def __init__(self):
+            self.current_function = "<module>"
 
-            previous = current_function
-            current_function = node.name
+        def visit_FunctionDef(self, node):
+            previous = self.current_function
+            self.current_function = f"{node.name}"
 
             self.generic_visit(node)
 
-            current_function = previous
+            self.current_function = previous
 
         def visit_Call(self, node):
-            if current_function is None:
-                self.generic_visit(node)
-                return
-
             callee = None
 
             if isinstance(node.func, ast.Name):
-                callee = node.func.id
+                raw_name = node.func.id
+
+                # alias resolution
+                callee = alias_map.get(raw_name, raw_name)
 
             elif isinstance(node.func, ast.Attribute):
                 callee = node.func.attr
 
-            if callee in known_symbols:
-                references.append(
-                    SymbolReference(
-                        caller=current_function,
-                        callee=callee,
-                        line_number=node.lineno,
-                    )
-                )
+            if callee:
+                # normalize alias resolution first
+                resolved = alias_map.get(callee, callee)
+
+                # HARD FILTER: drop known stdlib / external patterns
+                if (
+                    resolved.startswith("pathlib.")
+                    or resolved.startswith("dataclasses.")
+                    or resolved.startswith("collections.")
+                    or resolved in {"Path", "defaultdict", "field"}
+                ):
+                    return
+
+                references.add((
+                    self.current_function,
+                    resolved,
+                    node.lineno,
+                ))
 
             self.generic_visit(node)
 
     Visitor().visit(tree)
 
-    return references
+    return [
+        SymbolReference(caller=a, callee=b, line_number=c)
+        for (a, b, c) in references
+    ]
 
 
 def _extract_mutations(tree: ast.AST) -> List[MutationEvent]:
@@ -199,7 +236,7 @@ def _extract_behavioral_contracts(tree: ast.AST) -> List[BehavioralContract]:
 # Core API (the only thing other modules should call)
 # ----------------------------
 
-def parse_ast(file_path: str | Path) -> Optional[FileAnalysis]:
+def parse_ast( file_path: str | Path, global_known_symbols: set[str] | None = None,) -> Optional[FileAnalysis]:
     path = Path(file_path)
 
     source = _safe_read_file(path)
@@ -216,8 +253,14 @@ def parse_ast(file_path: str | Path) -> Optional[FileAnalysis]:
 
     functions = _extract_functions(tree)
     classes = _extract_classes(tree)
-    imports = _extract_imports(tree)
-    symbol_references = _extract_symbol_references(tree)
+    imports, alias_map = _extract_imports(tree)
+    known_symbols = global_known_symbols or set()
+    symbol_references = _extract_symbol_references(
+        tree,
+        known_symbols,
+        alias_map,
+    )
+    
     mutations = _extract_mutations(tree)
 
     return FileAnalysis(

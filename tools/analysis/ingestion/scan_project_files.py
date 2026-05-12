@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import ast
+from tools.analysis.ingestion.extract_symbols import extract_symbols
 from pathlib import Path
 from typing import Generator, Iterable, List
 
-from tools.analysis.ingestion.parse_ast import parse_ast
+from tools.analysis.ingestion.parse_ast import parse_ast, _safe_read_file
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
+from tools.analysis.persistence.persist_file_analysis import create_database
+from tools.analysis.graph.symbol_index import build_symbol_index
+
 
 
 DEFAULT_IGNORED_DIRECTORIES = {
@@ -60,34 +65,72 @@ def discover_python_files(
 
     return sorted(discovered_files)
 
-
 def scan_project_files(
     project_root: str | Path,
     ignored_directory_names: Iterable[str] | None = None,
 ) -> Generator[FileAnalysis, None, None]:
     """
-    Deterministic project scan.
+Deterministic project scan.
 
-    Responsibilities:
-    - discover Python files
-    - apply ignore filtering
-    - parse files into FileAnalysis objects
+Two-phase pipeline:
 
-    Non-responsibilities:
-    - persistence
-    - embeddings
-    - orchestration
-    - reporting
-    - semantic analysis
+PASS 1:
+- discover Python files
+- apply ignore filtering
+- build GLOBAL_SYMBOLS from per-file local symbol extraction
+
+PASS 2:
+- parse each file into FileAnalysis
+- resolve symbol references using GLOBAL_SYMBOLS
+
+Constraints:
+- no database access during scanning or analysis
+- no persistence in this module
+- no cross-file graph construction here
+
+Outputs:
+- FileAnalysis stream (generator)
     """
+
     python_files = discover_python_files(
         project_root=project_root,
         ignored_directory_names=ignored_directory_names,
     )
 
+    # -------------------------
+    # PASS 1 — GLOBAL SYMBOLS
+    # -------------------------
+    GLOBAL_SYMBOLS: set[str] = set()
+
+    for file_path in python_files:
+        source = Path(file_path).read_text(
+            encoding="utf-8",
+            errors="ignore",
+        )
+
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+
+        symbols = extract_symbols(tree)
+
+        # normalize to set safety (extract_symbols may return dict or set)
+        if isinstance(symbols, dict):
+            GLOBAL_SYMBOLS.update(symbols.get("all", set()))
+        else:
+            GLOBAL_SYMBOLS.update(symbols)
+
+    # -------------------------
+    # PASS 2 — FULL ANALYSIS
+    # -------------------------
     for file_path in python_files:
         normalized_path = normalize_file_path(file_path)
-        analysis = parse_ast(normalized_path)
+
+        analysis = parse_ast(
+            normalized_path,
+            global_known_symbols=GLOBAL_SYMBOLS,
+        )
 
         if analysis is None:
             continue
