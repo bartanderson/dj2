@@ -9,7 +9,8 @@ from pathlib import Path
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
 from tools.analysis.graph.symbol_classifier import classify_symbol
-    
+
+
 def initialize_database(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
 
@@ -79,9 +80,6 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     )
     """)
 
-    # file_edges is a derived graph index used for reverse dependency traversal.
-    # It exists because imports table stores forward edges (file -> module),
-    # while dependency resolution requires reverse lookup (module -> file).
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS file_edges (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,10 +112,17 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def _canonical_symbol(name: str) -> str:
+    if not name:
+        return name
+    return name.split(".")[-1]
+
+
 def persist_file_analysis(
     connection: sqlite3.Connection,
     analysis: FileAnalysis,
 ) -> None:
+
     analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
 
@@ -139,12 +144,17 @@ def persist_file_analysis(
         int(analysis.metadata.is_hot),
     ))
 
+    # -------------------------
+    # FUNCTIONS
+    # -------------------------
     cursor.execute(
         "DELETE FROM functions WHERE file_path = ?",
         (analysis.file_path,),
     )
 
     for function in functions:
+        canonical = _canonical_symbol(function.name)
+
         cursor.execute("""
         INSERT INTO functions (
             file_path,
@@ -156,30 +166,33 @@ def persist_file_analysis(
         VALUES (?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
-            function.name,
+            canonical,
             function.line_number,
             function.return_type,
             json.dumps(function.arguments),
         ))
 
-    for function in functions:
-        if classify_symbol(function.name) != "project":
-            continue
-        _insert_symbol(
-            cursor,
-            analysis.file_path,
-            "function",
-            function.name,
-            function.line_number,
-            function.return_type or "",
-        )
+        if classify_symbol(canonical) == "project":
+            _insert_symbol(
+                cursor,
+                analysis.file_path,
+                "function",
+                canonical,
+                function.line_number,
+                function.return_type or "",
+            )
 
+    # -------------------------
+    # CLASSES
+    # -------------------------
     cursor.execute(
         "DELETE FROM classes WHERE file_path = ?",
         (analysis.file_path,),
     )
 
     for cls in classes:
+        canonical = _canonical_symbol(cls.name)
+
         cursor.execute("""
         INSERT INTO classes (
             file_path,
@@ -191,24 +204,24 @@ def persist_file_analysis(
         VALUES (?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
-            cls.name,
+            canonical,
             cls.line_number,
             json.dumps(cls.methods),
             json.dumps(cls.base_classes),
         ))
 
-    for cls in classes:
-        if classify_symbol(cls.name) != "project":
-            continue
+        if classify_symbol(canonical) == "project":
+            _insert_symbol(
+                cursor,
+                analysis.file_path,
+                "class",
+                canonical,
+                cls.line_number,
+            )
 
-        _insert_symbol(
-            cursor,
-            analysis.file_path,
-            "class",
-            cls.name,
-            cls.line_number,
-        )
-
+    # -------------------------
+    # IMPORTS
+    # -------------------------
     cursor.execute(
         "DELETE FROM imports WHERE file_path = ?",
         (analysis.file_path,),
@@ -230,8 +243,6 @@ def persist_file_analysis(
             imp.line_number,
         ))
 
-    # Mirror imports into a graph-friendly edge table for reverse lookup.
-    # Keeps query layer O(1) instead of scanning imports.
     cursor.execute(
         "DELETE FROM file_edges WHERE from_file = ?",
         (analysis.file_path,),
@@ -249,6 +260,9 @@ def persist_file_analysis(
             imp.module,
         ))
 
+    # -------------------------
+    # BEHAVIORAL CONTRACTS
+    # -------------------------
     cursor.execute(
         "DELETE FROM behavioral_contracts WHERE file_path = ?",
         (analysis.file_path,),
@@ -278,6 +292,9 @@ def persist_file_analysis(
             contract.complexity_score,
         ))
 
+    # -------------------------
+    # MUTATIONS
+    # -------------------------
     cursor.execute(
         "DELETE FROM mutations WHERE file_path = ?",
         (analysis.file_path,),
@@ -301,14 +318,25 @@ def persist_file_analysis(
             mutation.raw_expression,
         ))
 
+    # -------------------------
+    # SYMBOL REFERENCES (FIXED)
+    # -------------------------
     cursor.execute(
         "DELETE FROM symbol_references WHERE file_path = ?",
         (analysis.file_path,),
     )
 
     for ref in analysis.symbol_references:
-        if classify_symbol(ref.callee) != "project":
+        #print("PERSIST REF:", ref.callee, classify_symbol(ref.callee))
+
+        full = ref.callee  # DO NOT strip
+        
+        result = classify_symbol(full)
+        print("CLASSIFY:", full, "->", result)
+        
+        if classify_symbol(full) != "project":
             continue
+
         cursor.execute("""
         INSERT INTO symbol_references (
             file_path,
@@ -326,16 +354,26 @@ def persist_file_analysis(
 
     connection.commit()
 
+
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)
+
+    if database_path.exists():
+        print("\n" + "=" * 80)
+        print("⚠️  WARNING: Existing database detected")
+        print(f"📁 Path: {database_path}")
+        print("\nIf results look wrong:")
+        print("1. delete the DB file manually")
+        print("2. rerun pipeline")
+        print("=" * 80 + "\n")
 
     database_path.parent.mkdir(parents=True, exist_ok=True)
 
     connection = sqlite3.connect(str(database_path))
-
     initialize_database(connection)
 
     return connection
+
 
 def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
     cursor.execute("""
@@ -348,3 +386,12 @@ def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=
     )
     VALUES (?, ?, ?, ?, ?)
     """, (file_path, symbol_type, name, line_number, signature))
+
+def run_sql(connection: sqlite3.Connection, query: str):
+    """
+    Debug utility ONLY.
+    Centralized SQL execution so we don't scatter ad-hoc scripts.
+    """
+    cursor = connection.cursor()
+    cursor.execute(query)
+    return cursor.fetchall()

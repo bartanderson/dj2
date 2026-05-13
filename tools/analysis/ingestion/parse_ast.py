@@ -136,40 +136,35 @@ def _extract_symbol_references(
 
         def visit_FunctionDef(self, node):
             previous = self.current_function
-            self.current_function = f"{node.name}"
+            self.current_function = node.name
 
             self.generic_visit(node)
 
             self.current_function = previous
 
         def visit_Call(self, node):
-            callee = None
+            full = None
 
+            # CASE 1: direct call (foo())
             if isinstance(node.func, ast.Name):
-                raw_name = node.func.id
+                raw = node.func.id
+                full = alias_map.get(raw, raw)
 
-                # alias resolution
-                callee = alias_map.get(raw_name, raw_name)
-
+            # CASE 2: attribute call (a.b.c())
             elif isinstance(node.func, ast.Attribute):
-                callee = node.func.attr
+                base = node.func.value
 
-            if callee:
-                # normalize alias resolution first
-                resolved = alias_map.get(callee, callee)
+                # SAFE: module-level call
+                if isinstance(base, ast.Name):
+                    base_name = alias_map.get(base.id, base.id)
+                    full = f"{base_name}.{node.func.attr}"
+                else:
+                    return  # DROP runtime object calls
 
-                # HARD FILTER: drop known stdlib / external patterns
-                if (
-                    resolved.startswith("pathlib.")
-                    or resolved.startswith("dataclasses.")
-                    or resolved.startswith("collections.")
-                    or resolved in {"Path", "defaultdict", "field"}
-                ):
-                    return
-
+            if full:
                 references.add((
                     self.current_function,
-                    resolved,
+                    full,
                     node.lineno,
                 ))
 
@@ -262,6 +257,8 @@ def parse_ast( file_path: str | Path, global_known_symbols: set[str] | None = No
     )
     
     mutations = _extract_mutations(tree)
+
+    print("SYMBOL REFERENCES:", len(symbol_references))
 
     return FileAnalysis(
         file_path=str(path).replace("\\", "/"),

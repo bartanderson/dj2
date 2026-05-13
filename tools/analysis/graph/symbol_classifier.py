@@ -67,6 +67,8 @@ def classify_symbol(name: str) -> SymbolClass:
         - AST extraction
         - indexing layer
     """
+    if name.startswith("tools.analysis"):
+        return "project"
 
     if not name:
         return "external"

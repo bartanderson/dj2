@@ -1,0 +1,38 @@
+profiles:
+
+  analysis_systems:
+    include:
+      - tools/analysis
+      - codebase_analyzer
+
+  simulation_system:
+    include:
+      - world
+      - engine
+      - core
+      - dungeon_neo
+      - og_system
+
+  narrative_systems:
+    include:
+      - ai_context
+
+  full_runtime:
+    include:
+      - world
+      - engine
+      - core
+      - dungeon_neo
+      - og_system
+      - ai_context
+      - tools/analysis
+      - codebase_analyzer
+
+exclude:
+  - archive
+  - __pycache__
+  - .git
+  - venv
+  - node_modules
+  - Lib
+  - docs
