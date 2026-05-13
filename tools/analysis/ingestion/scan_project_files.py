@@ -58,6 +58,18 @@ def discover_python_files(
     discovered_files: List[Path] = []
 
     for path in root.rglob("*.py"):
+
+        path = path.resolve()
+
+        # HARD BOUNDARY: must remain inside project root
+        if not str(path).startswith(str(root)):
+            continue
+
+        # HARD ENVIRONMENT EXCLUSION
+        if any(part in {"site-packages", "__pycache__", ".venv", "Lib"} for part in path.parts):
+            continue
+
+        # your existing ignore rules
         if should_ignore_path(path, ignored):
             continue
 
@@ -67,39 +79,39 @@ def discover_python_files(
 
 def scan_project_files(
     project_root: str | Path,
+    project_prefixes: list[str],
     ignored_directory_names: Iterable[str] | None = None,
 ) -> Generator[FileAnalysis, None, None]:
-    """
-Deterministic project scan.
 
-Two-phase pipeline:
-
-PASS 1:
-- discover Python files
-- apply ignore filtering
-- build GLOBAL_SYMBOLS from per-file local symbol extraction
-
-PASS 2:
-- parse each file into FileAnalysis
-- resolve symbol references using GLOBAL_SYMBOLS
-
-Constraints:
-- no database access during scanning or analysis
-- no persistence in this module
-- no cross-file graph construction here
-
-Outputs:
-- FileAnalysis stream (generator)
-    """
+    project_root = Path(project_root).resolve()
 
     python_files = discover_python_files(
         project_root=project_root,
         ignored_directory_names=ignored_directory_names,
     )
 
+    # normalize early so filtering is consistent
+    python_files = [
+        Path(p).resolve()
+        for p in python_files
+    ]
+
+    # -------------------------------------------------
+    # HARD BOUNDARY FILTER (prevents environment leakage)
+    # -------------------------------------------------
+    python_files = [
+        p for p in python_files
+        if str(p).startswith(str(project_root))
+        and "site-packages" not in str(p)
+        and "Lib\\site-packages" not in str(p)
+        and ".venv" not in str(p)
+        and "__pycache__" not in str(p)
+    ]
+
     # -------------------------
     # PASS 1 — GLOBAL SYMBOLS
     # -------------------------
+
     GLOBAL_SYMBOLS: set[str] = set()
 
     for file_path in python_files:
@@ -113,9 +125,10 @@ Outputs:
         except SyntaxError:
             continue
 
-        symbols = extract_symbols(tree)
+        module_prefix = normalize_file_path(file_path).replace("/", ".").rstrip(".py")
 
-        # normalize to set safety (extract_symbols may return dict or set)
+        symbols = extract_symbols(tree, module_prefix)
+
         if isinstance(symbols, dict):
             GLOBAL_SYMBOLS.update(symbols.get("all", set()))
         else:
@@ -130,6 +143,7 @@ Outputs:
         analysis = parse_ast(
             normalized_path,
             global_known_symbols=GLOBAL_SYMBOLS,
+            project_prefixes=project_prefixes,
         )
 
         if analysis is None:

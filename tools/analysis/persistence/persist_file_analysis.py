@@ -121,6 +121,7 @@ def _canonical_symbol(name: str) -> str:
 def persist_file_analysis(
     connection: sqlite3.Connection,
     analysis: FileAnalysis,
+    project_prefixes,
 ) -> None:
 
     analysis.file_path = normalize_file_path(analysis.file_path)
@@ -172,7 +173,7 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
-        if classify_symbol(canonical) == "project":
+        if classify_symbol(canonical, project_prefixes) == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
@@ -210,7 +211,7 @@ def persist_file_analysis(
             json.dumps(cls.base_classes),
         ))
 
-        if classify_symbol(canonical) == "project":
+        if classify_symbol(canonical, project_prefixes) == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
@@ -327,14 +328,13 @@ def persist_file_analysis(
     )
 
     for ref in analysis.symbol_references:
-        #print("PERSIST REF:", ref.callee, classify_symbol(ref.callee))
 
         full = ref.callee  # DO NOT strip
         
-        result = classify_symbol(full)
+        result = classify_symbol(full, project_prefixes)
         print("CLASSIFY:", full, "->", result)
         
-        if classify_symbol(full) != "project":
+        if classify_symbol(full, project_prefixes) != "project":
             continue
 
         cursor.execute("""

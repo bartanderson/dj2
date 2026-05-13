@@ -59,42 +59,24 @@ RUNTIME_NAMES = {
 }
 
 
-def classify_symbol(name: str) -> SymbolClass:
-    """
-    Deterministic symbol classification for filtering + graph purity.
-    Used by:
-        - persistence layer
-        - AST extraction
-        - indexing layer
-    """
-    if name.startswith("tools.analysis"):
-        return "project"
-
+def classify_symbol(name: str, project_prefixes: list[str]) -> SymbolClass:
     if not name:
         return "external"
 
-    # 1. BUILTINS
+    # BUILTINS
     if name in BUILTINS:
         return "builtin"
 
-    # 2. STD LIB IMPORT PATHS
+    # STD LIB
     if any(name.startswith(prefix) for prefix in STDLIB_PREFIXES):
         return "stdlib"
 
-    # 3. RUNTIME / AST INTERNALS
+    # RUNTIME
     if name in RUNTIME_NAMES:
         return "runtime"
 
-    # 4. PROJECT SYMBOLS (heuristic boundary)
-    # anything dot-qualified that is NOT stdlib is assumed project or external package
-    if "." in name:
-        # project code in your system uses tools.analysis.*
-        if name.startswith("tools."):
-            return "project"
-        return "external"
-
-    # 5. Only treat fully-qualified internal namespace as project
-    if name.startswith("tools."):
+    # PROJECT (ONLY SOURCE OF TRUTH)
+    if any(name.startswith(prefix) for prefix in project_prefixes):
         return "project"
 
     return "external"
