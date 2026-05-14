@@ -116,6 +116,8 @@ class FileAnalysis:
     imports: List[ImportRepresentation] = field(default_factory=list)
     symbol_references: List[SymbolReference] = field(default_factory=list)
 
+    runtime_bindings: dict[str, str] = field(default_factory=dict)
+    
     behavioral_contracts: List[BehavioralContract] = field(default_factory=list)
     mutations: List[MutationEvent] = field(default_factory=list)
 

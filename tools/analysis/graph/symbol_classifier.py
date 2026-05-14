@@ -2,7 +2,32 @@
 
 from __future__ import annotations
 
+import builtins
+import sys
+
 from typing import Literal
+
+
+# ----------------------------
+# BUILTIN NAMES
+# ----------------------------
+BUILTINS = set(dir(builtins))
+
+
+# ----------------------------
+# STDLIB MODULE PREFIXES
+# ----------------------------
+STDLIB_PREFIXES = set(sys.stdlib_module_names)
+
+
+# ----------------------------
+# LANGUAGE-LEVEL RUNTIME RECEIVERS
+# ----------------------------
+RUNTIME_PREFIXES = (
+    "self.",
+    "cls.",
+)
+
 
 SymbolClass = Literal[
     "project",
@@ -12,71 +37,70 @@ SymbolClass = Literal[
     "external",
 ]
 
-# ----------------------------
-# BUILTIN NAMES (Python runtime primitives)
-# ----------------------------
-BUILTINS = {
-    "str",
-    "len",
-    "set",
-    "list",
-    "dict",
-    "any",
-    "range",
-    "print",
-    "isinstance",
-    "sorted",
-    "dict",
-    "set",
-    "bool",
-    "int",
-    "float",
-    "tuple",
-}
 
-# ----------------------------
-# STDLIB MODULE PREFIXES (import-based noise)
-# ----------------------------
-STDLIB_PREFIXES = (
-    "pathlib.",
-    "collections.",
-    "dataclasses.",
-    "typing.",
-    "sqlite3.",
-    "json.",
-    "ast.",
-)
+def classify_symbol(
+    name: str,
+    project_prefixes: list[str],
+    runtime_bindings: dict[str, str] | None = None,
+    project_symbols: set[str] | None = None,
+) -> SymbolClass:
 
-# ----------------------------
-# RUNTIME / AST HELPERS (optional keep/debug)
-# ----------------------------
-RUNTIME_NAMES = {
-    "visit",
-    "generic_visit",
-    "walk",
-    "NodeVisitor",
-    "AST",
-}
-
-
-def classify_symbol(name: str, project_prefixes: list[str]) -> SymbolClass:
     if not name:
         return "external"
 
-    # BUILTINS
-    if name in BUILTINS:
+    runtime_bindings = runtime_bindings or {}
+
+    parts = name.split(".")
+    root = parts[-1]
+
+    # ----------------------------
+    # 0. LOCAL PROJECT SYMBOLS
+    # AST-derived semantic truth
+    # ----------------------------
+
+    if project_symbols and root in project_symbols:
+        return "project"
+
+    # ----------------------------
+    # 1. BUILTINS
+    # ----------------------------
+    if root in BUILTINS:
         return "builtin"
 
-    # STD LIB
-    if any(name.startswith(prefix) for prefix in STDLIB_PREFIXES):
-        return "stdlib"
 
-    # RUNTIME
-    if name in RUNTIME_NAMES:
+    # ----------------------------
+    # 2. LANGUAGE RUNTIME RECEIVERS
+    # ----------------------------
+    
+    if any(p in ("self", "ctx", "app") for p in parts):
+        return "runtime" # context-bound object access
+        
+    if parts[0] in ("get", "generate"):
+        return "runtime" # runtime dispatch entry
+
+    # ----------------------------
+    # 3. DYNAMIC RUNTIME BINDINGS
+    # ----------------------------
+    if any(part in runtime_bindings for part in parts):
         return "runtime"
 
-    # PROJECT (ONLY SOURCE OF TRUTH)
+    # ----------------------------
+    # 4. STDLIB
+    # ----------------------------
+    if parts[0] in STDLIB_PREFIXES:
+        return "stdlib"
+
+    # ----------------------------
+    # 5. PROJECT
+    # ----------------------------
     if any(name.startswith(prefix) for prefix in project_prefixes):
         return "project"
 
+    # ----------------------------
+    # 6. EVERYTHING ELSE
+    # ----------------------------
+    # print("EXTERNAL TRACE:", {
+    #     "name": name,
+    #     "root": name.split(".")[0],
+    # })
     return "external"

@@ -12,6 +12,7 @@ from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
 from tools.analysis.persistence.persist_file_analysis import create_database
 from tools.analysis.graph.symbol_index import build_symbol_index
+from tools.analysis.audit.symbol_audit import SymbolAudit
 
 
 
@@ -84,6 +85,7 @@ def scan_project_files(
 ) -> Generator[FileAnalysis, None, None]:
 
     project_root = Path(project_root).resolve()
+    audit = SymbolAudit()
 
     python_files = discover_python_files(
         project_root=project_root,
@@ -130,9 +132,15 @@ def scan_project_files(
         symbols = extract_symbols(tree, module_prefix)
 
         if isinstance(symbols, dict):
-            GLOBAL_SYMBOLS.update(symbols.get("all", set()))
+            sym_set = symbols.get("all", set())
         else:
-            GLOBAL_SYMBOLS.update(symbols)
+            sym_set = symbols
+
+        GLOBAL_SYMBOLS.update(sym_set)
+
+        # # audit: definition frequency only
+        # for s in sym_set:
+        #     audit.symbol_counts[s] += 1
 
     # -------------------------
     # PASS 2 — FULL ANALYSIS
@@ -143,10 +151,40 @@ def scan_project_files(
         analysis = parse_ast(
             normalized_path,
             global_known_symbols=GLOBAL_SYMBOLS,
-            project_prefixes=project_prefixes,
         )
 
         if analysis is None:
             continue
 
+        # -------------------------
+        # PER-FILE PROJECT SYMBOLS
+        # -------------------------
+
+        project_symbols: set[str] = set()
+
+        # functions
+        for f in analysis.functions:
+            project_symbols.add(f.name.split(".")[-1]) # get the last name in dotted list and add to functions
+
+        # classes
+        for c in analysis.classes:
+            for method in c.methods:
+                project_symbols.add(c.name.split(".")[-1]) # get the last name in dotted list and add to classes
+
+        # attach semantic truth to analysis object
+        analysis.project_symbols = project_symbols
+
+        # # audit: usage frequency ONLY
+        # for ref in analysis.symbol_references:
+        #     audit.total += 1
+        #     audit.symbol_counts[ref.callee] += 1
+
         yield analysis
+
+    # print("\n=== SYMBOL AUDIT ===")
+    # print("Total references:", audit.total)
+    # print("Unique symbols:", len(audit.symbol_counts))
+
+    # print("\nTop symbols:")
+    # for k, v in audit.symbol_counts.most_common(15):
+    #     print(v, k)

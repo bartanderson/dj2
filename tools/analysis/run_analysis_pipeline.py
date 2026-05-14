@@ -87,7 +87,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     profiles, exclude = load_analysis_profiles(get_config_path())
-    include = profiles["analysis_systems"]["include"]
+    include = profiles["full_runtime"]["include"]
     PROJECT_PREFIXES = build_project_prefixes(include)
 
     raw_root = profiles.get("project_root", ".")

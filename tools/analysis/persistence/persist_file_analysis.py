@@ -127,6 +127,8 @@ def persist_file_analysis(
     analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
 
+    runtime_bindings = analysis.runtime_bindings
+
     functions = list(analysis.functions)
     classes = list(analysis.classes)
 
@@ -173,7 +175,9 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
-        if classify_symbol(canonical, project_prefixes) == "project":
+        cls = classify_symbol(canonical, project_prefixes, runtime_bindings)
+
+        if cls == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
@@ -211,7 +215,7 @@ def persist_file_analysis(
             json.dumps(cls.base_classes),
         ))
 
-        if classify_symbol(canonical, project_prefixes) == "project":
+        if classify_symbol(canonical, project_prefixes, runtime_bindings, analysis.project_symbols) == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
@@ -330,11 +334,11 @@ def persist_file_analysis(
     for ref in analysis.symbol_references:
 
         full = ref.callee  # DO NOT strip
-        
-        result = classify_symbol(full, project_prefixes)
+
+        result = classify_symbol(full, project_prefixes, runtime_bindings, analysis.project_symbols)
         print("CLASSIFY:", full, "->", result)
-        
-        if classify_symbol(full, project_prefixes) != "project":
+
+        if result != "project":
             continue
 
         cursor.execute("""

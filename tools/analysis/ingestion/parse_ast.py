@@ -129,7 +129,6 @@ def _extract_symbol_references(
     tree: ast.AST,
     known_symbols: set[str],
     alias_map: dict[str, str],
-    project_prefixes=None,
 ):
     references = set()
 
@@ -160,14 +159,15 @@ def _extract_symbol_references(
             if isinstance(node.func, ast.Attribute):
                 base = node.func.value
 
-                # CASE 1: simple name (wc.create_party)
+                # CASE 1: simple name (runtime object or module alias access)
                 if isinstance(base, ast.Name):
-                    base_name = (
-                        alias_map.get(base.id)
-                        or runtime_bindings.get(base.id)
-                        or base.id
-                    )
-                    full = f"{base_name}.{node.func.attr}"
+                    base_name = alias_map.get(base.id)
+
+                    # ONLY resolve if it's a known import alias
+                    if base_name is not None:
+                        full = f"{base_name}.{node.func.attr}"
+                    else:
+                        return  # unresolved base name; cannot resolve to import alias
 
                 # CASE 2: chained attributes (a.b.c)
                 elif isinstance(base, ast.Attribute):
@@ -261,7 +261,6 @@ def _extract_behavioral_contracts(tree: ast.AST) -> List[BehavioralContract]:
 def parse_ast(
     file_path: str | Path,
     global_known_symbols: set[str] | None = None,
-    project_prefixes: list[str] | None = None,
     ) -> Optional[FileAnalysis]:
 
     path = Path(file_path)
@@ -272,6 +271,7 @@ def parse_ast(
 
     try:
         tree = ast.parse(source)
+        runtime_bindings = _extract_runtime_bindings(tree)
         print("DEBUG FILE:", file_path)
         print("SOURCE LENGTH:", len(source))
         print("IMPORT NODES:", len([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]))
@@ -286,7 +286,6 @@ def parse_ast(
         tree,
         known_symbols,
         alias_map,
-        project_prefixes,
     )
     
     mutations = _extract_mutations(tree)
@@ -307,8 +306,9 @@ def parse_ast(
         mutations=mutations,
         symbol_references=symbol_references,
 
+        runtime_bindings=runtime_bindings,
+
         behavioral_contracts=[],  # intentionally deferred or simplified
-        phase_violations=[],
     )
 
 
@@ -349,5 +349,11 @@ def _extract_runtime_bindings(tree: ast.AST) -> dict[str, str]:
 
                     if isinstance(cur, ast.Name):
                         parts.append(cur.id)
-                        bindings[var_name] = ".".join(reversed(parts))
+                        resolved = ".".join(reversed(parts))
+
+                        # Flask app injection normalization
+                        if resolved == "current_app.world_controller":
+                            resolved = "world.world_controller.WorldController"
+
+                        bindings[var_name] = resolved
     return bindings
