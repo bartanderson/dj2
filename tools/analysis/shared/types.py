@@ -1,7 +1,7 @@
 # tools/analysis/shared/types.py
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 
 
 # ----------------------------
@@ -68,6 +68,12 @@ class SymbolReference:
     caller: str
     callee: str
     line_number: int
+
+@dataclass
+class SymbolClassification:
+    origin: Literal["project", "builtin", "stdlib", "external"]
+    binding: Literal["function", "method", "class", "attribute", "module", "unknown"]
+    resolution: Literal["static", "dynamic", "unresolved"]
 
 
 # ----------------------------

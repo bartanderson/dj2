@@ -261,21 +261,35 @@ def _extract_behavioral_contracts(tree: ast.AST) -> List[BehavioralContract]:
 def parse_ast(
     file_path: str | Path,
     global_known_symbols: set[str] | None = None,
+    runtime_bindings: dict[str, str] | None = None,
     ) -> Optional[FileAnalysis]:
 
     path = Path(file_path)
 
     source = _safe_read_file(path)
     if source is None:
+        print("PARSE_AST DROP: source is None for", file_path)
+        print("PARSE_AST RETURN NONE:", file_path)
         return None
 
     try:
         tree = ast.parse(source)
+    except SyntaxError as e:
+        print("PARSE_AST SYNTAX ERROR:", file_path)
+        print("  error:", repr(e))
+        print("PARSE_AST RETURN NONE:", file_path)
+        return None
+    except Exception as e:
+        print("PARSE_AST UNKNOWN ERROR:", file_path)
+        print("  error:", repr(e))
+        print("PARSE_AST RETURN NONE:", file_path)
+        return None
         runtime_bindings = _extract_runtime_bindings(tree)
         print("DEBUG FILE:", file_path)
         print("SOURCE LENGTH:", len(source))
         print("IMPORT NODES:", len([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]))
     except SyntaxError:
+        print("PARSE_AST RETURN NONE:", file_path)
         return None
 
     functions = _extract_functions(tree)

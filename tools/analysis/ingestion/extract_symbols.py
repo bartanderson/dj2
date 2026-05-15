@@ -2,15 +2,49 @@
 
 import ast
 
+
 def extract_symbols(tree, module_prefix: str = ""):
-    functions = set()
-    classes = set()
+    symbols = set()
 
+    # -------------------------------------------------
+    # PATCH: attach parent links so we can detect methods
+    # -------------------------------------------------
     for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node
+
+    # -------------------------------------------------
+    # SYMBOL COLLECTION
+    # -------------------------------------------------
+    for node in ast.walk(tree):
+
+        # -------------------------
+        # FUNCTIONS + METHODS
+        # -------------------------
         if isinstance(node, ast.FunctionDef):
-            functions.add(f"{module_prefix}.{node.name}" if module_prefix else node.name)
+            parent = getattr(node, "parent", None)
 
+            if isinstance(parent, ast.ClassDef):
+                symbols.add(
+                    f"{module_prefix}.{parent.name}.{node.name}"
+                    if module_prefix
+                    else f"{parent.name}.{node.name}"
+                )
+            else:
+                symbols.add(
+                    f"{module_prefix}.{node.name}"
+                    if module_prefix
+                    else node.name
+                )
+
+        # -------------------------
+        # CLASSES
+        # -------------------------
         elif isinstance(node, ast.ClassDef):
-            classes.add(f"{module_prefix}.{node.name}" if module_prefix else node.name)
+            symbols.add(
+                f"{module_prefix}.{node.name}"
+                if module_prefix
+                else node.name
+            )
 
-    return functions | classes
+    return symbols
