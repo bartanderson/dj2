@@ -21,9 +21,8 @@ STDLIB_PREFIXES = set(sys.stdlib_module_names)
 
 
 # ----------------------------
-# LANGUAGE-LEVEL RUNTIME RECEIVERS
+# SYMBOL CLASSIFICATION TYPES
 # ----------------------------
-
 SymbolClass = Literal[
     "project",
     "builtin",
@@ -34,74 +33,25 @@ SymbolClass = Literal[
     "external_unknown",
 ]
 
-def _match_project(name: str, project_symbols: set[str]) -> bool:
-    if name in project_symbols:
-        return True
-    if name.split(".")[-1] in project_symbols:
-        return True
-    return False
 
-def classify_symbol_v2(
-    name: str,
-    project_prefixes: list[str],
-    project_symbols: set[str],
-    runtime_bindings: dict[str, str] | None = None,
-):
-    if not name:
-        return SymbolClassification(
-            origin="external",
-            binding="unknown",
-            resolution="unresolved",
-        )
+# ---------------------------------------------------------
+# STABLE PROJECT IDENTITY KEY
+#
+# Converts:
+#   ai.ai_boundary.AIBoundary.classify_intent
+#
+# into:
+#   classify_intent
+#
+# This is now the ONLY allowed project identity rule.
+# ---------------------------------------------------------
+def project_key(name: str) -> str:
+    return name.split(".")[-1]
 
-    root = name.split(".")[-1]
-    parts = name.split(".")
 
-    # ----------------------------
-    # ORIGIN (global truth layer)
-    # ----------------------------
-    if project_symbols and root in project_symbols:
-        origin = "project"
-    elif root in BUILTINS:
-        origin = "builtin"
-    elif any(name.startswith(p) for p in project_prefixes):
-        origin = "project"
-    else:
-        origin = "external"
-
-    # ----------------------------
-    # BINDING (structural role)
-    # ----------------------------
-    if root in BUILTINS:
-        binding = "builtin"
-    elif name.startswith("self.") or name.startswith("cls."):
-        binding = "method"
-    elif "." in name:
-        binding = "attribute"
-    elif parts and parts[0] in ("get", "generate"):
-        binding = "function"
-    else:
-        binding = "unknown"
-
-    # ----------------------------
-    # RESOLUTION (runtime awareness)
-    # ----------------------------
-    if runtime_bindings:
-        resolution = "dynamic" if name in runtime_bindings else "static"
-    else:
-        resolution = "static"
-
-    # ----------------------------
-    # FINAL STRUCTURE
-    # ----------------------------
-    return SymbolClassification(
-        origin=origin,
-        binding=binding,
-        resolution=resolution,
-    )
-
-#---v2 above, v1 below ----------------
-
+# ---------------------------------------------------------
+# MAIN CLASSIFIER
+# ---------------------------------------------------------
 def classify_symbol(
     name: str,
     project_prefixes: list[str],
@@ -109,6 +59,9 @@ def classify_symbol(
     project_symbols: set[str] | None = None,
 ) -> SymbolClass:
 
+    # ----------------------------
+    # EMPTY SAFETY
+    # ----------------------------
     if not name:
         return "external_unknown"
 
@@ -117,13 +70,27 @@ def classify_symbol(
     parts = name.split(".")
     root = parts[-1]
 
-    # ----------------------------
-    # 1. PROJECT (highest priority)
-    # ----------------------------
-    if project_symbols and _match_project(name, project_symbols):
-        return "project"
+    # ---------------------------------------------------------
+    # PROJECT ROOT CACHE
+    #
+    # Example:
+    #   ai.ai_boundary.AIBoundary.classify_intent
+    #
+    # becomes:
+    #   classify_intent
+    # ---------------------------------------------------------
+    project_roots = (
+        {project_key(symbol) for symbol in project_symbols}
+        if project_symbols
+        else set()
+    )
 
-    if any(name.startswith(p) for p in project_prefixes):
+    # ----------------------------
+    # 1. PROJECT
+    #
+    # SINGLE AUTHORITATIVE RULE
+    # ----------------------------
+    if project_key(name) in project_roots:
         return "project"
 
     # ----------------------------
@@ -139,9 +106,9 @@ def classify_symbol(
         return "stdlib"
 
     # ----------------------------
-    # 4. RUNTIME (strict match only)
+    # 4. RUNTIME
     # ----------------------------
-    if name in runtime_bindings:
+    if runtime_bindings.get(name):
         return "runtime"
 
     if any(p in ("self", "cls", "ctx", "app") for p in parts):
@@ -150,19 +117,22 @@ def classify_symbol(
     if parts and parts[0] in ("get", "generate"):
         return "runtime"
 
-    # debug print
+    # ----------------------------
+    # DEBUG FALLTHROUGH
+    # ----------------------------
     print(
         "CLASSIFY FALLTHROUGH:",
         {
             "name": name,
             "root": root,
-            "project_match": root in project_symbols if project_symbols else None,
+            "project_key": project_key(name),
+            "project_match": project_key(name) in project_roots,
             "has_dot": "." in name,
         }
     )
 
     # ----------------------------
-    # 5. EXTERNAL (split cleanly)
+    # 5. EXTERNAL
     # ----------------------------
     if "." in name:
         return "external_lib"

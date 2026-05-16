@@ -8,7 +8,10 @@ from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
-from tools.analysis.graph.symbol_classifier import classify_symbol
+from tools.analysis.graph.symbol_classifier import (
+    classify_symbol,
+    project_key,
+)
 
 
 def initialize_database(connection: sqlite3.Connection) -> None:
@@ -158,6 +161,18 @@ def persist_file_analysis(
     for function in functions:
         canonical = _canonical_symbol(function.name)
 
+        print("\n--- FUNCTION CLASSIFICATION DEBUG ---")
+        print("raw name:", function.name)
+        print("canonical:", canonical)
+        print("project sample:", list(project_prefixes)[:5])
+        print("runtime keys sample:", list(runtime_bindings.keys())[:5])
+        print("GLOBAL match:", canonical in project_prefixes)
+        print("DOT check (if any):", "." in canonical)
+
+        for s in list(project_prefixes)[:20]:
+            if function.name in s:
+                print("PREFIX MATCH FOUND:", function.name, "IN", s)
+
         cursor.execute("""
         INSERT INTO functions (
             file_path,
@@ -175,8 +190,10 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
+        print("CLASSIFY INPUT:", canonical)
         cls = classify_symbol(canonical, project_prefixes, runtime_bindings)
-
+        print("CLASSIFY OUTPUT:", cls)
+        
         if cls == "project":
             _insert_symbol(
                 cursor,
@@ -331,12 +348,60 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
+    # REQUIRED ADDITION
+    from collections import defaultdict
+    bucket_counts = defaultdict(int)
+
+    KNOWN_BUCKETS = {
+        "project",
+        "builtin",
+        "stdlib",
+        "runtime",
+        "external_lib",
+        "external_unknown",
+    }
+
     for ref in analysis.symbol_references:
 
         full = ref.callee  # DO NOT strip
 
         result = classify_symbol(full, project_prefixes, runtime_bindings, analysis.project_symbols)
         print("CLASSIFY:", full, "->", result)
+
+        # REQUIRED ADDITION
+        bucket_counts[result] += 1
+
+        has_dot = "." in full
+        root = full.split(".")[-1] if full else full
+
+        is_project = (
+            project_key(full) in {
+                project_key(symbol)
+                for symbol in analysis.project_symbols
+            }
+            if analysis.project_symbols
+            else False
+        )
+
+        print(
+            "CLASSIFY DEBUG |",
+            "name=", full,
+            "| root=", root,
+            "| dot=", has_dot,
+            "| project_match=", is_project
+        )
+
+        if result not in KNOWN_BUCKETS:
+            print("⚠ UNKNOWN BUCKET:", result, "for", full)
+
+        if result == "external_lib" and not has_dot:
+            print("⚠ OVERMATCH external_lib without dot:", full)
+
+        if result == "external_unknown" and has_dot:
+            print("⚠ MISCLASSIFIED dotted symbol as unknown:", full)
+
+        if result == "project" and not analysis.project_symbols:
+            print("⚠ EMPTY PROJECT SYMBOL SET BUT PROJECT CLASSIFIED:", full)
 
         if result != "project":
             continue
@@ -357,6 +422,9 @@ def persist_file_analysis(
         ))
 
     connection.commit()
+
+    # REQUIRED ADDITION (END OF BLOCK)
+    print("CLASSIFICATION SUMMARY:", dict(bucket_counts))
 
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:

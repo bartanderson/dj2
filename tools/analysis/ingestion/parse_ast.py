@@ -131,8 +131,14 @@ def _extract_symbol_references(
     alias_map: dict[str, str],
 ):
     references = set()
+    local_symbol_map = {}
+
 
     runtime_bindings = _extract_runtime_bindings(tree)
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            local_symbol_map[node.name] = node.name
 
     class Visitor(ast.NodeVisitor):
         def __init__(self):
@@ -152,7 +158,12 @@ def _extract_symbol_references(
             # CASE 1: direct call (foo())
             if isinstance(node.func, ast.Name):
                 raw = node.func.id
-                base = alias_map.get(raw, runtime_bindings.get(raw, raw))
+                base = (
+                    alias_map.get(raw)
+                    or runtime_bindings.get(raw)
+                    or local_symbol_map.get(raw)
+                    or raw
+                )
                 full = base
 
             # CASE 2: attribute call (a.b.c())

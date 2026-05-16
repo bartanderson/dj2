@@ -172,10 +172,15 @@ def scan_project_files(
     # -------------------------
     # PASS 2 — FULL ANALYSIS
     # -------------------------
+    PROJECT_SYMBOL_ROOTS = {s.split(".")[-1] for s in GLOBAL_SYMBOLS}
+    
     for file_path in python_files:
 
         normalized_path = normalize_file_path(file_path)
 
+        # -------------------------
+        # 1. PARSE FIRST
+        # -------------------------
         analysis = parse_ast(
             normalized_path,
             global_known_symbols=GLOBAL_SYMBOLS,
@@ -188,16 +193,13 @@ def scan_project_files(
             continue
 
         # -------------------------
-        # ATTACH TO ANALYSIS OBJECT
+        # ATTACH GLOBAL PROJECT SYMBOLS
         # -------------------------
         analysis.project_symbols = GLOBAL_SYMBOLS
 
-        print(
-            "PROJECT SYMBOLS:",
-            len(analysis.project_symbols)
-        )
+        print("PROJECT SYMBOLS:", len(analysis.project_symbols))
 
         # -------------------------
-        # YIELD RESULT
+        # 4. YIELD
         # -------------------------
         yield analysis
