@@ -33,20 +33,32 @@ SymbolClass = Literal[
     "external_unknown",
 ]
 
+# ---------------------------------------------------------
+# FRAMEWORK ROOT EXTRACTOR
+# ---------------------------------------------------------
+def external_root(name: str) -> str:
+    """
+    Extracts top-level external namespace:
+    flask.jsonify → flask
+    io.BytesIO → io
+    """
+    if "." not in name:
+        return "unknown"
+    return name.split(".")[0]
 
 # ---------------------------------------------------------
 # STABLE PROJECT IDENTITY KEY
-#
-# Converts:
-#   ai.ai_boundary.AIBoundary.classify_intent
-#
-# into:
-#   classify_intent
-#
-# This is now the ONLY allowed project identity rule.
 # ---------------------------------------------------------
 def project_key(name: str) -> str:
     return name.split(".")[-1]
+
+
+# ---------------------------------------------------------
+# MODULE KEY (FIXED: STABLE TOP-LEVEL MODULE GROUPING)
+# ---------------------------------------------------------
+def module_key2(name: str) -> str:
+    parts = name.split(".")
+    return ".".join(parts[:2]) if len(parts) >= 2 else parts[0]
 
 
 # ---------------------------------------------------------
@@ -67,30 +79,40 @@ def classify_symbol(
 
     runtime_bindings = runtime_bindings or {}
 
+    print("\n--- MATCH DEBUG ---")
+    print("NAME:", name)
+    print("PROJECT_SYMBOLS SAMPLE:", list(project_symbols)[:10] if project_symbols else None)
+    print("PROJECT_PREFIXES:", project_prefixes)
+    print("PROJECT KEY NAME:", project_key(name))
+    print("IN PROJECT_SYMBOLS (leaf):",
+          project_key(name) in {project_key(s) for s in project_symbols}
+          if project_symbols else False)
+    print("-------------------\n")
+
     parts = name.split(".")
-    root = parts[-1]
+    root = parts[0] if "." in name else name
 
     # ---------------------------------------------------------
-    # PROJECT ROOT CACHE
-    #
-    # Example:
-    #   ai.ai_boundary.AIBoundary.classify_intent
-    #
-    # becomes:
-    #   classify_intent
+    # PROJECT CACHE
     # ---------------------------------------------------------
-    project_roots = (
-        {project_key(symbol) for symbol in project_symbols}
-        if project_symbols
-        else set()
-    )
+    project_symbols = project_symbols or set()
+
+    project_leafs = {project_key(s) for s in project_symbols}
+    project_modules = {module_key2(s) for s in project_symbols}
+
+    leaf = project_key(name)
+
+    # FIXED: module comparison uses consistent 2-level grouping
+    module = module_key2(name)
 
     # ----------------------------
-    # 1. PROJECT
-    #
-    # SINGLE AUTHORITATIVE RULE
+    # 1. PROJECT (AUTHORITATIVE)
     # ----------------------------
-    if project_key(name) in project_roots:
+    if (
+        name in project_symbols
+        or leaf in project_leafs
+        or module in project_modules
+    ):
         return "project"
 
     # ----------------------------
@@ -102,13 +124,13 @@ def classify_symbol(
     # ----------------------------
     # 3. STDLIB
     # ----------------------------
-    if root in STDLIB_PREFIXES:
+    if parts[0] in STDLIB_PREFIXES:
         return "stdlib"
 
     # ----------------------------
     # 4. RUNTIME
     # ----------------------------
-    if runtime_bindings.get(name):
+    if name in runtime_bindings:
         return "runtime"
 
     if any(p in ("self", "cls", "ctx", "app") for p in parts):
@@ -124,17 +146,21 @@ def classify_symbol(
         "CLASSIFY FALLTHROUGH:",
         {
             "name": name,
-            "root": root,
             "project_key": project_key(name),
-            "project_match": project_key(name) in project_roots,
+            "root": root,
+            "parts": parts,
             "has_dot": "." in name,
+            "runtime_match": name in runtime_bindings,
+            "builtin_match": root in BUILTINS,
+            "stdlib_match": parts[0] in STDLIB_PREFIXES,
         }
     )
 
     # ----------------------------
-    # 5. EXTERNAL
+    # 5. External root tagging (simple heuristic grouping)
     # ----------------------------
+
     if "." in name:
-        return "external_lib"
+        return f"external_lib.{external_root(name)}"
 
     return "external_unknown"
