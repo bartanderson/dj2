@@ -8,10 +8,6 @@ from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
-from tools.analysis.graph.symbol_classifier import project_key
-from tools.analysis.graph.context_classification import (
-    classify_symbol_with_context,
-)
 from tools.analysis.graph.context_classification import (
     classify_symbol_with_context,
 )
@@ -367,15 +363,6 @@ def persist_file_analysis(
     )
 
     from collections import defaultdict
-    bucket_counts = defaultdict(int)
-    KNOWN_BUCKETS = {
-        "project",
-        "builtin",
-        "stdlib",
-        "runtime",
-        "external_lib",
-        "external_unknown",
-    }
 
     seen_edges = set()
 
@@ -389,15 +376,9 @@ def persist_file_analysis(
         seen_edges.add(key)
 
         full = ref.callee
-        identity = _identity_symbol(full)
 
         # SINGLE SOURCE OF TRUTH
         result = classify_symbol_with_context(full, ctx)
-
-        print("CLASSIFY:", full, "->", result)
-
-        # optional raw stats (keep if you want)
-        bucket_counts[result] += 1
 
         # GRAPH BUILDING (NEW AUTHORITY)
         builder.add_reference(
@@ -428,35 +409,6 @@ def persist_file_analysis(
 
     connection.commit()
     external_roots = defaultdict(int)
-
-    for k, v in bucket_counts.items():
-        if k.startswith("external_lib."):
-            root = k.split(".", 1)[1]
-            external_roots[root] += v
-
-    summary = {
-        "project": bucket_counts.get("project", 0),
-        "builtin": bucket_counts.get("builtin", 0),
-        "stdlib": bucket_counts.get("stdlib", 0),
-        "runtime": bucket_counts.get("runtime", 0),
-        "external_lib_total": sum(v for k, v in bucket_counts.items() if k.startswith("external_lib")),
-        "external_roots": dict(sorted(external_roots.items(), key=lambda x: -x[1])[:10]),
-        "external_unknown": bucket_counts.get("external_unknown", 0),
-    }
-
-    print("\n===== CLASSIFICATION SUMMARY (STRUCTURED) =====")
-    for k, v in summary.items():
-        print(f"{k}: {v}")
-    print("==============================================\n")
-    print(
-        f"SNAPSHOT | "
-        f"P={summary['project']} "
-        f"B={summary['builtin']} "
-        f"S={summary['stdlib']} "
-        f"R={summary['runtime']} "
-        f"E={summary['external_lib_total']} "
-        f"U={summary['external_unknown']}"
-    )
 
     graph = builder.build()
     print("GRAPH EDGES:", len(graph.edges))

@@ -152,3 +152,99 @@ class GraphBuilder:
             edges.add((caller_module, callee_module))
 
         return sorted(edges)
+
+    def module_stats(self):
+        """
+        Computes module-level dependency statistics.
+        """
+
+        fan_in = {}
+        fan_out = {}
+
+        for caller, callee in self.module_projection():
+            fan_out[caller] = fan_out.get(caller, 0) + 1
+            fan_in[callee] = fan_in.get(callee, 0) + 1
+
+        modules = set(fan_in.keys()) | set(fan_out.keys())
+
+        stats = {}
+
+        for m in modules:
+            stats[m] = {
+                "fan_in": fan_in.get(m, 0),
+                "fan_out": fan_out.get(m, 0),
+                "total": fan_in.get(m, 0) + fan_out.get(m, 0),
+            }
+
+        return stats
+
+    def find_module_cycles(self):
+        """
+        Detect cycles in module dependency graph using DFS.
+        """
+
+        from collections import defaultdict
+
+        graph = defaultdict(list)
+
+        for caller, callee in self.module_projection():
+            graph[caller].append(callee)
+
+        visited = set()
+        stack = set()
+        cycles = []
+
+        def dfs(node, path):
+            if node in stack:
+                cycle_start = path.index(node)
+                cycles.append(path[cycle_start:] + [node])
+                return
+
+            if node in visited:
+                return
+
+            visited.add(node)
+            stack.add(node)
+
+            for neigh in graph[node]:
+                dfs(neigh, path + [neigh])
+
+            stack.remove(node)
+
+        for node in graph:
+            if node not in visited:
+                dfs(node, [node])
+
+        return cycles
+
+    def rank_modules(self):
+        """
+        Ranks modules by structural importance.
+
+        Heuristic:
+        - high fan-in = important dependency target
+        - high fan-out = coupling risk
+        - cycles increase importance weight
+        """
+
+        stats = self.module_stats()
+        cycles = self.find_module_cycles()
+
+        cycle_nodes = set()
+        for c in cycles:
+            cycle_nodes.update(c)
+
+        ranked = []
+
+        for module, s in stats.items():
+            score = (
+                s["fan_in"] * 2
+                + s["fan_out"] * 1
+                + (5 if module in cycle_nodes else 0)
+            )
+
+            ranked.append((module, score, s))
+
+        ranked.sort(key=lambda x: x[1], reverse=True)
+
+        return ranked
