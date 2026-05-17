@@ -12,6 +12,7 @@ from tools.analysis.graph.symbol_classifier import (
     classify_symbol,
     project_key,
 )
+from tools.analysis.graph.symbol_router import route_symbol
 
 def _identity_symbol(name: str) -> str:
     if not name:
@@ -166,6 +167,14 @@ def persist_file_analysis(
         canonical = _canonical_symbol(function.name)
         identity = _identity_symbol(function.name)   # MUST BE FIRST
 
+        route = route_symbol(
+            canonical,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        print("ROUTE DEBUG |", canonical, "->", route)
+
         print("\n--- FUNCTION CLASSIFICATION DEBUG ---")
         print("raw name:", function.name)
         print("identity:", identity)
@@ -201,6 +210,7 @@ def persist_file_analysis(
 
         cls = classify_symbol(
             canonical,
+            route,
             project_prefixes,
             runtime_bindings,
             analysis.project_symbols
@@ -230,6 +240,14 @@ def persist_file_analysis(
         identity = _identity_symbol(class_obj.name)
         canonical = _canonical_symbol(class_obj.name)
 
+        route = route_symbol(
+            canonical,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        print("ROUTE DEBUG |", canonical, "->", route)
+
         cursor.execute("""
         INSERT INTO classes (
             file_path,
@@ -247,7 +265,15 @@ def persist_file_analysis(
             json.dumps(class_obj.base_classes),
         ))
 
-        if classify_symbol(identity, project_prefixes, runtime_bindings, analysis.project_symbols) == "project":
+        cls = classify_symbol(
+            identity,
+            route,
+            project_prefixes,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        if cls == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
@@ -363,10 +389,8 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
-    # REQUIRED ADDITION
     from collections import defaultdict
     bucket_counts = defaultdict(int)
-
     KNOWN_BUCKETS = {
         "project",
         "builtin",
@@ -376,13 +400,52 @@ def persist_file_analysis(
         "external_unknown",
     }
 
+    seen_edges = set()
+
     for ref in analysis.symbol_references:
+
+        key = (ref.caller, ref.callee, ref.line_number)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
 
         full = ref.callee
         identity = _identity_symbol(full)
 
+        route = route_symbol(
+            full,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        print("ROUTE DEBUG |", full, "->", route)
+
         result = classify_symbol(
             full,
+            route,
+            project_prefixes,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        print("CLASSIFY:", full, "->", result)
+
+        bucket_counts[result] += 1
+
+        full = ref.callee
+        identity = _identity_symbol(full)
+
+        route = route_symbol(
+            full,
+            runtime_bindings,
+            analysis.project_symbols
+        )
+
+        print("ROUTE DEBUG |", full, "->", route)
+
+        result = classify_symbol(
+            full,
+            route,
             project_prefixes,
             runtime_bindings,
             analysis.project_symbols
@@ -451,16 +514,12 @@ def persist_file_analysis(
         ))
 
     connection.commit()
-
     external_roots = defaultdict(int)
 
-    for ref in analysis.symbol_references:
-        full = ref.callee
-        result = classify_symbol(full, project_prefixes, runtime_bindings, analysis.project_symbols)
-
-        if isinstance(result, str) and result.startswith("external_lib."):
-            root = result.split(".", 1)[1]
-            external_roots[root] += 1
+    for k, v in bucket_counts.items():
+        if k.startswith("external_lib."):
+            root = k.split(".", 1)[1]
+            external_roots[root] += v
 
     summary = {
         "project": bucket_counts.get("project", 0),

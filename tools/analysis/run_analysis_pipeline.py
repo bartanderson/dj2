@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from tools.analysis.load_config_profiles import load_analysis_profiles
+from tools.analysis.load_config_profiles import (
+    load_analysis_profiles,
+    build_profile_prefixes,
+)
 
 from tools.analysis.ingestion.scan_project_files import (
     scan_project_files,
@@ -12,7 +15,8 @@ from tools.analysis.persistence.persist_file_analysis import (
     create_database,
     persist_file_analysis,
 )
-from tools.analysis.load_config_profiles import build_project_prefixes
+
+from tools.analysis.graph.project_context import build_project_prefixes
 
 def get_config_path():
     # repo root = two levels up from this file
@@ -49,6 +53,10 @@ def run_analysis_pipeline(
 
     This is intentionally minimal and boring.
     """
+
+    if not project_prefixes:
+        from tools.analysis.graph.project_context import build_project_prefixes
+        project_prefixes = build_profile_prefixes(project_root)
 
     connection = create_database(database_path)
 

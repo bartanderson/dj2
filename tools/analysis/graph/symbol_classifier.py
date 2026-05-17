@@ -66,11 +66,21 @@ def module_key2(name: str) -> str:
 # ---------------------------------------------------------
 def classify_symbol(
     name: str,
+    route: str,
     project_prefixes: list[str],
     runtime_bindings: dict[str, str] | None = None,
     project_symbols: set[str] | None = None,
 ) -> SymbolClass:
 
+    # ROUTE IS ONLY AUTHORITATIVE FOR CONFIRMED SIGNALS
+    if route in {"builtin", "runtime", "stdlib"}:
+        return route
+
+    # NEVER trust project route without validation
+    if route == "project":
+        if project_symbols and name in project_symbols:
+            return "project"
+        
     # ----------------------------
     # EMPTY SAFETY
     # ----------------------------
@@ -108,39 +118,39 @@ def classify_symbol(
     # ----------------------------
     # 1. PROJECT (AUTHORITATIVE)
     # ----------------------------
-    if (
-        name in project_symbols
-        or leaf in project_leafs
-        or module in project_modules
-    ):
+    is_strong_match = name in project_symbols
+    is_leaf_match = leaf in project_leafs
+    is_module_match = module in project_modules
+
+    # prevent garbage promotion
+    if is_strong_match:
         return "project"
 
-    # ----------------------------
-    # 2. BUILTINS
-    # ----------------------------
-    if root in BUILTINS:
+    if is_module_match and len(name.split(".")) > 1:
+        return "project"
+
+    # leaf match ONLY if prefix resolves to a real project module boundary
+    if is_leaf_match and project_prefixes:
+        for p in project_prefixes:
+            if name == p or name.startswith(p + "."):
+                return "project"
+
+    if route == "builtin":
         return "builtin"
 
-    # ----------------------------
-    # 3. STDLIB
-    # ----------------------------
-    if parts[0] in STDLIB_PREFIXES:
+    if route == "stdlib":
         return "stdlib"
 
-    # ----------------------------
-    # 4. RUNTIME
-    # ----------------------------
-    if name in runtime_bindings:
+    if route == "runtime":
         return "runtime"
 
-    if any(p in ("self", "cls", "ctx", "app") for p in parts):
-        return "runtime"
-
-    if parts and parts[0] in ("get", "generate"):
-        return "runtime"
+    if route == "external":
+        if "." in name:
+            return f"external_lib.{parts[0]}"
+        return "external_unknown"
 
     # ----------------------------
-    # DEBUG FALLTHROUGH
+    # 2. DEBUG FALLTHROUGH
     # ----------------------------
     print(
         "CLASSIFY FALLTHROUGH:",
@@ -157,10 +167,8 @@ def classify_symbol(
     )
 
     # ----------------------------
-    # 5. External root tagging (simple heuristic grouping)
+    # 3. UNROUTED SYMBOL
     # ----------------------------
 
-    if "." in name:
-        return f"external_lib.{external_root(name)}"
-
+    print("⚠ UNROUTED SYMBOL:", name, "| route =", route)
     return "external_unknown"

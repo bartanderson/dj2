@@ -11,7 +11,7 @@ def load_analysis_profiles(path: str = "tools/analysis/analysis_profiles.yaml"):
 
     return profiles, exclude
 
-def build_project_prefixes(include_paths: list[str]) -> list[str]:
+def build_profile_prefixes(include_paths: list[str]) -> list[str]:
     prefixes = []
 
     for p in include_paths:
