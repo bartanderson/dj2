@@ -8,14 +8,14 @@ from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
-from tools.analysis.graph.symbol_classifier import (
-    classify_symbol,
-    project_key,
-)
-from tools.analysis.graph.symbol_router import route_symbol
+from tools.analysis.graph.symbol_classifier import project_key
 from tools.analysis.graph.context_classification import (
     classify_symbol_with_context,
 )
+from tools.analysis.graph.context_classification import (
+    classify_symbol_with_context,
+)
+from tools.analysis.graph.graph_builder import GraphBuilder
 
 def _identity_symbol(name: str) -> str:
     if not name:
@@ -226,14 +226,6 @@ def persist_file_analysis(
         identity = _identity_symbol(class_obj.name)
         canonical = _canonical_symbol(class_obj.name)
 
-        route = route_symbol(
-            canonical,
-            runtime_bindings,
-            analysis.project_symbols
-        )
-
-        print("ROUTE DEBUG |", canonical, "->", route)
-
         cursor.execute("""
         INSERT INTO classes (
             file_path,
@@ -251,13 +243,12 @@ def persist_file_analysis(
             json.dumps(class_obj.base_classes),
         ))
 
-        cls = classify_symbol(
+        cls = classify_symbol_with_context(
             identity,
-            route,
-            project_prefixes,
-            runtime_bindings,
-            analysis.project_symbols
+            ctx,
         )
+
+        print("CLASSIFY OUTPUT:", canonical, "->", cls)
 
         if cls == "project":
             _insert_symbol(
@@ -388,6 +379,8 @@ def persist_file_analysis(
 
     seen_edges = set()
 
+    builder = GraphBuilder()
+
     for ref in analysis.symbol_references:
 
         key = (ref.caller, ref.callee, ref.line_number)
@@ -398,66 +391,23 @@ def persist_file_analysis(
         full = ref.callee
         identity = _identity_symbol(full)
 
-        result = classify_symbol_with_context(
-            full,
-            ctx,
-        )
+        # SINGLE SOURCE OF TRUTH
+        result = classify_symbol_with_context(full, ctx)
 
         print("CLASSIFY:", full, "->", result)
 
+        # optional raw stats (keep if you want)
         bucket_counts[result] += 1
 
-        full = ref.callee
-        identity = _identity_symbol(full)
-
-        result = classify_symbol_with_context(
-            full,
-            ctx,
+        # GRAPH BUILDING (NEW AUTHORITY)
+        builder.add_reference(
+            caller=ref.caller,
+            callee=ref.callee,
+            line_number=ref.line_number,
+            bucket=result,
         )
 
-        # REQUIRED ADDITION
-        bucket_counts[result] += 1
-
-        has_dot = "." in full
-        root = full.split(".")[-1] if full else full
-
-        is_project = (
-            project_key(full) in {
-                project_key(symbol)
-                for symbol in analysis.project_symbols
-            }
-            if analysis.project_symbols
-            else False
-        )
-
-        print(
-            "CLASSIFY DEBUG |",
-            "raw=", full,
-            "| identity=", identity,
-            "| root=", root,
-            "| dot=", has_dot,
-            "| project_match=", is_project
-        )
-
-        if result.startswith("external_lib."):
-            base = "external_lib"
-        elif result in KNOWN_BUCKETS:
-            base = result
-        else:
-            print("⚠ UNKNOWN BUCKET:", result, "for", full)
-            base = result
-
-        bucket_counts[base] += 1
-
-        if result == "external_lib" and not has_dot:
-            print("⚠ OVERMATCH external_lib without dot:", full)
-
-        if result == "external_unknown" and has_dot:
-            print("⚠ MISCLASSIFIED dotted symbol as unknown:", full)
-
-        if result == "project" and not analysis.project_symbols:
-            print("⚠ EMPTY PROJECT SYMBOL SET BUT PROJECT CLASSIFIED:", full)
-
+        # PERSIST ONLY PROJECT EDGES
         if result != "project":
             continue
 
@@ -507,6 +457,10 @@ def persist_file_analysis(
         f"E={summary['external_lib_total']} "
         f"U={summary['external_unknown']}"
     )
+
+    graph = builder.build()
+    print("GRAPH EDGES:", len(graph.edges))
+    return graph
 
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
