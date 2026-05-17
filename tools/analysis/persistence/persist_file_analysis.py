@@ -13,6 +13,9 @@ from tools.analysis.graph.symbol_classifier import (
     project_key,
 )
 from tools.analysis.graph.symbol_router import route_symbol
+from tools.analysis.graph.context_classification import (
+    classify_symbol_with_context,
+)
 
 def _identity_symbol(name: str) -> str:
     if not name:
@@ -137,6 +140,16 @@ def persist_file_analysis(
 
     runtime_bindings = analysis.runtime_bindings
 
+    from tools.analysis.graph.project_graph_context import (
+        ProjectGraphContext,
+    )
+
+    ctx = ProjectGraphContext(
+        project_prefixes=project_prefixes,
+        project_symbols=analysis.project_symbols,
+        runtime_bindings=runtime_bindings,
+    )
+
     functions = list(analysis.functions)
     classes = list(analysis.classes)
 
@@ -167,28 +180,6 @@ def persist_file_analysis(
         canonical = _canonical_symbol(function.name)
         identity = _identity_symbol(function.name)   # MUST BE FIRST
 
-        route = route_symbol(
-            canonical,
-            runtime_bindings,
-            analysis.project_symbols
-        )
-
-        print("ROUTE DEBUG |", canonical, "->", route)
-
-        print("\n--- FUNCTION CLASSIFICATION DEBUG ---")
-        print("raw name:", function.name)
-        print("identity:", identity)
-        print("canonical:", canonical)
-        print("project sample:", list(project_prefixes)[:5])
-        print("runtime keys sample:", list(runtime_bindings.keys())[:5])
-
-        print("GLOBAL match:", canonical in project_prefixes)
-        print("DOT check (if any):", "." in canonical)
-
-        for s in list(project_prefixes)[:20]:
-            if function.name in s:
-                print("PREFIX MATCH FOUND:", function.name, "IN", s)
-
         cursor.execute("""
         INSERT INTO functions (
             file_path,
@@ -206,17 +197,12 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
-        print("CLASSIFY INPUT:", canonical)
-
-        cls = classify_symbol(
+        cls = classify_symbol_with_context(
             canonical,
-            route,
-            project_prefixes,
-            runtime_bindings,
-            analysis.project_symbols
+            ctx,
         )
 
-        print("CLASSIFY OUTPUT:", cls)
+        print("CLASSIFY OUTPUT:", canonical, "->", cls)
 
         if cls == "project":
             _insert_symbol(
@@ -412,20 +398,9 @@ def persist_file_analysis(
         full = ref.callee
         identity = _identity_symbol(full)
 
-        route = route_symbol(
+        result = classify_symbol_with_context(
             full,
-            runtime_bindings,
-            analysis.project_symbols
-        )
-
-        print("ROUTE DEBUG |", full, "->", route)
-
-        result = classify_symbol(
-            full,
-            route,
-            project_prefixes,
-            runtime_bindings,
-            analysis.project_symbols
+            ctx,
         )
 
         print("CLASSIFY:", full, "->", result)
@@ -435,22 +410,10 @@ def persist_file_analysis(
         full = ref.callee
         identity = _identity_symbol(full)
 
-        route = route_symbol(
+        result = classify_symbol_with_context(
             full,
-            runtime_bindings,
-            analysis.project_symbols
+            ctx,
         )
-
-        print("ROUTE DEBUG |", full, "->", route)
-
-        result = classify_symbol(
-            full,
-            route,
-            project_prefixes,
-            runtime_bindings,
-            analysis.project_symbols
-        )
-        print("CLASSIFY:", full, "->", result)
 
         # REQUIRED ADDITION
         bucket_counts[result] += 1
