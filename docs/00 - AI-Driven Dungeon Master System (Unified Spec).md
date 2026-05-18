@@ -65,14 +65,14 @@ CampaignState
 Event system
 Phase control
 4. The 7 Phases (Execution Order)
-1. Input
-2. Interpretation
-3. Adjudication
-4. Execution (Action System)
-5. Resolution
-6. Presentation
-7. Progression
-5. Authoritative Data Flow
+    1. Input
+    2. Interpretation
+    3. Adjudication
+    4. Execution (Action System)
+    5. Resolution
+    6. Presentation
+    7. Progression
+    5. Authoritative Data Flow
 User Speech
   ↓
 STT

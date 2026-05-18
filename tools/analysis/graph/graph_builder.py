@@ -49,7 +49,13 @@ class GraphBuilder:
             )
         )
 
-        self.bucket_counts[bucket] += 1
+        if isinstance(bucket, dict):
+            key = bucket.get("bucket", "unknown_event")
+        else:
+            key = bucket
+
+        self.bucket_counts[key] += 1
+        
 
     def build(self) -> GraphBundle:
         return GraphBundle(
@@ -82,6 +88,80 @@ class GraphBuilder:
         for e in self.edges:
             graph.setdefault(e.caller, set()).add(e.callee)
         return graph
+
+    def critical_modules(self, top_n: int = 10):
+        """
+        Returns most important modules in the system.
+        """
+        ranked = self.rank_modules()
+        return ranked[:top_n]
+
+    def impacted_modules(self, target_module: str):
+        """
+        Returns all modules transitively impacted
+        by changes to target_module.
+        """
+
+        from collections import defaultdict, deque
+
+        reverse_graph = defaultdict(set)
+
+        for caller, callee in self.module_projection():
+            reverse_graph[callee].add(caller)
+
+        impacted = set()
+        queue = deque([target_module])
+
+        while queue:
+            current = queue.popleft()
+
+            for dep in reverse_graph[current]:
+                if dep not in impacted:
+                    impacted.add(dep)
+                    queue.append(dep)
+
+        return impacted
+
+    def risk_scores(self):
+        """
+        Computes architectural risk scores for modules.
+        """
+
+        stats = self.module_stats()
+        cycles = self.find_module_cycles()
+
+        cycle_nodes = set()
+        for c in cycles:
+            cycle_nodes.update(c)
+
+        scores = {}
+
+        for module, s in stats.items():
+
+            impact = len(self.impacted_modules(module))
+
+            score = (
+                s["fan_in"] * 3
+                + s["fan_out"] * 2
+                + impact * 2
+                + (10 if module in cycle_nodes else 0)
+            )
+
+            scores[module] = {
+                "score": score,
+                "fan_in": s["fan_in"],
+                "fan_out": s["fan_out"],
+                "impact_radius": impact,
+                "in_cycle": module in cycle_nodes,
+            }
+
+        return dict(
+            sorted(
+                scores.items(),
+                key=lambda kv: kv[1]["score"],
+                reverse=True,
+            )
+        )
 
     def top_callees(self, limit: int = 10):
         counts = {}

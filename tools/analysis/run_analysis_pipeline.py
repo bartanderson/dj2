@@ -85,7 +85,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-
+    parser.add_argument("path", help="Root path to analyze")
     parser.add_argument(
         "--database",
         default="tools/analysis/data/analysis.db",
@@ -99,7 +99,12 @@ if __name__ == "__main__":
     PROJECT_PREFIXES = build_project_prefixes(include)
 
     raw_root = profiles.get("project_root", ".")
-    project_root = resolve_project_root(raw_root)
+
+    project_root = resolve_project_root(
+        args.path if args.path else profiles.get("project_root", ".")
+    )
+
+    Path(args.database).unlink()
 
     run_analysis_pipeline(
         project_root=project_root,

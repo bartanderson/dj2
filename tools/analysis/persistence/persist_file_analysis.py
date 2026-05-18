@@ -12,6 +12,11 @@ from tools.analysis.graph.context_classification import (
     classify_symbol_with_context,
 )
 from tools.analysis.graph.graph_builder import GraphBuilder
+from tools.analysis.graph.evaluation_snapshot import build_evaluation_snapshot
+from tools.analysis.graph.edge_semantics import classify_edge_semantics
+
+from collections import defaultdict
+bucket_counts = defaultdict(int)
 
 def _identity_symbol(name: str) -> str:
     if not name:
@@ -112,7 +117,9 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         file_path TEXT,
         caller TEXT,
         callee TEXT,
-        line_number INTEGER
+        line_number INTEGER,
+        bucket TEXT,
+        edge_role TEXT
     )
     """)
 
@@ -364,6 +371,7 @@ def persist_file_analysis(
 
     from collections import defaultdict
 
+    failure_events = []
     seen_edges = set()
 
     builder = GraphBuilder()
@@ -377,19 +385,30 @@ def persist_file_analysis(
 
         full = ref.callee
 
+        edge_role = classify_edge_semantics(ref.caller, ref.callee)
+
         # SINGLE SOURCE OF TRUTH
         result = classify_symbol_with_context(full, ctx)
+
+        if isinstance(result, dict):
+            failure_events.append(result)
+            bucket = result.get("bucket", "classification_gap")
+        else:
+            bucket = result
+
+        bucket_counts[bucket] += 1
 
         # GRAPH BUILDING (NEW AUTHORITY)
         builder.add_reference(
             caller=ref.caller,
             callee=ref.callee,
             line_number=ref.line_number,
-            bucket=result,
+            bucket=bucket,   # ✅ FIXED
+            # edge_role=edge_role,
         )
 
         # PERSIST ONLY PROJECT EDGES
-        if result != "project":
+        if bucket != "project":   # (optional consistency improvement)
             continue
 
         cursor.execute("""
@@ -397,14 +416,16 @@ def persist_file_analysis(
             file_path,
             caller,
             callee,
-            line_number
+            line_number,
+            edge_role
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
             ref.caller,
             ref.callee,
             ref.line_number,
+            edge_role,
         ))
 
     connection.commit()
@@ -412,6 +433,9 @@ def persist_file_analysis(
 
     graph = builder.build()
     print("GRAPH EDGES:", len(graph.edges))
+    snapshot = build_evaluation_snapshot(analysis, bucket_counts, graph, failure_events,)
+    print("\n===== EVALUATION SNAPSHOT =====")
+    print(snapshot)
     return graph
 
 
