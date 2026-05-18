@@ -17,42 +17,36 @@ from tools.analysis.persistence.persist_file_analysis import (
 )
 
 from tools.analysis.graph.project_context import build_project_prefixes
+from tools.analysis.core.pathing import (
+    resolve_project_root,
+)
+
+def resolve_repo_root(path: str | Path) -> Path:
+    p = Path(path).resolve()
+
+    for parent in [p, *p.parents]:
+
+        if (parent / ".git").exists():
+            return parent
+
+        if (parent / "pyproject.toml").exists():
+            return parent
+
+    return p
 
 def get_config_path():
     # repo root = two levels up from this file
     repo_root = Path(__file__).resolve().parents[2]
     return repo_root / "config" / "analysis_profiles.yaml"
 
-def resolve_project_root(cfg_root: str) -> Path:
-    if cfg_root == ".":
-        return Path.cwd()
-
-    # allow env override for portability
-    if cfg_root.startswith("${") and cfg_root.endswith("}"):
-        env_key = cfg_root[2:-1]
-        return Path(os.environ.get(env_key, Path.cwd()))
-
-    return Path(cfg_root)
-
 def run_analysis_pipeline(
     project_root: str | Path,
     database_path: str | Path,
     project_prefixes: list[str],
 ) -> None:
-    """
-    High-level deterministic analysis pipeline.
 
-    Pipeline:
-        filesystem
-            ↓
-        AST parsing
-            ↓
-        FileAnalysis generation
-            ↓
-        persistence
-
-    This is intentionally minimal and boring.
-    """
+    project_root = Path(project_root).resolve()
+    repo_root = resolve_repo_root(project_root)
 
     if not project_prefixes:
         from tools.analysis.graph.project_context import build_project_prefixes
@@ -65,7 +59,11 @@ def run_analysis_pipeline(
     file_analyses = []
 
     try:
-        for analysis in scan_project_files(project_root, project_prefixes):
+        for analysis in scan_project_files(
+            project_root,
+            project_prefixes,
+            repo_root=repo_root,   # 👈 ADD THIS
+        ):
             persist_file_analysis(connection, analysis, project_prefixes)
             file_analyses.append(analysis)
 
@@ -89,7 +87,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--database",
         default="tools/analysis/data/analysis.db",
-        help="SQLite database path",
     )
 
     args = parser.parse_args()
@@ -100,14 +97,15 @@ if __name__ == "__main__":
 
     raw_root = profiles.get("project_root", ".")
 
-    project_root = resolve_project_root(
+    root_input = args.path if args.path else raw_root
+    analysis_root = resolve_project_root(
         args.path if args.path else profiles.get("project_root", ".")
     )
 
-    Path(args.database).unlink()
+    Path(args.database).unlink(missing_ok=True)
 
     run_analysis_pipeline(
-        project_root=project_root,
+        project_root=analysis_root,
         database_path=args.database,
         project_prefixes=PROJECT_PREFIXES,
     )

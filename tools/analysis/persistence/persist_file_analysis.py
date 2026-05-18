@@ -146,10 +146,12 @@ def persist_file_analysis(
     from tools.analysis.graph.project_graph_context import (
         ProjectGraphContext,
     )
-
+    
+    project_symbols = getattr(analysis, "project_symbols", None) or set()
+    
     ctx = ProjectGraphContext(
         project_prefixes=project_prefixes,
-        project_symbols=analysis.project_symbols,
+        project_symbols=project_symbols,
         runtime_bindings=runtime_bindings,
     )
 
@@ -372,8 +374,10 @@ def persist_file_analysis(
     from collections import defaultdict
 
     failure_events = []
+    failure_breakdown = defaultdict(int)
+    unknown_examples = []
+    gap_samples = []
     seen_edges = set()
-
     builder = GraphBuilder()
 
     for ref in analysis.symbol_references:
@@ -390,26 +394,43 @@ def persist_file_analysis(
         # SINGLE SOURCE OF TRUTH
         result = classify_symbol_with_context(full, ctx)
 
+        # ----------------------------
+        # HARD NORMALIZATION CONTRACT
+        # ----------------------------
         if isinstance(result, dict):
-            failure_events.append(result)
-            bucket = result.get("bucket", "classification_gap")
-        else:
-            bucket = result
 
+            bucket = result.get("bucket") or "classification_gap"
+
+            failure_events.append(result)
+
+            if bucket == "classification_gap":
+                gap_samples.append({
+                    "callee": full,
+                    "caller": ref.caller,
+                    "line": ref.line_number,
+                    "normalized": normalize_symbol(full),
+                    "in_global_symbols": normalize_symbol(full) in ctx.project_symbols,
+                    "root": full.split(".")[0],
+                })
+
+        elif result is None:
+            bucket = "classification_gap"
+
+        else:
+            bucket = str(result)
+
+        failure_breakdown[bucket] += 1
         bucket_counts[bucket] += 1
 
-        # GRAPH BUILDING (NEW AUTHORITY)
         builder.add_reference(
             caller=ref.caller,
             callee=ref.callee,
             line_number=ref.line_number,
-            bucket=bucket,   # ✅ FIXED
-            # edge_role=edge_role,
+            bucket=bucket,   # ALWAYS STRING NOW
         )
 
-        # PERSIST ONLY PROJECT EDGES
-        if bucket != "project":   # (optional consistency improvement)
-            continue
+        # persist EVERYTHING
+
 
         cursor.execute("""
         INSERT INTO symbol_references (
@@ -417,23 +438,29 @@ def persist_file_analysis(
             caller,
             callee,
             line_number,
+            bucket,
             edge_role
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
             ref.caller,
             ref.callee,
             ref.line_number,
+            bucket,
             edge_role,
         ))
 
     connection.commit()
-    external_roots = defaultdict(int)
 
     graph = builder.build()
     print("GRAPH EDGES:", len(graph.edges))
-    snapshot = build_evaluation_snapshot(analysis, bucket_counts, graph, failure_events,)
+    snapshot = build_evaluation_snapshot(
+        analysis,
+        bucket_counts,
+        graph,
+        failure_events=failure_events,
+    )
     print("\n===== EVALUATION SNAPSHOT =====")
     print(snapshot)
     return graph

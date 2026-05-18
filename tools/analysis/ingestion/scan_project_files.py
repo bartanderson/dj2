@@ -12,9 +12,10 @@ from tools.analysis.ingestion.parse_ast import parse_ast
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
 from tools.analysis.audit.symbol_audit import SymbolAudit
-from tools.analysis.graph.module_resolution import (
+from tools.analysis.core.pathing import (
     normalize_file_path,
     module_name_from_file_path,
+    is_within_project_boundary,
 )
 
 
@@ -84,10 +85,12 @@ def discover_python_files(
 def scan_project_files(
     project_root: str | Path,
     project_prefixes: list[str],
+    repo_root: str | Path,
     ignored_directory_names: Iterable[str] | None = None,
 ) -> Generator[FileAnalysis, None, None]:
 
-    project_root = Path(project_root).resolve()
+    project_root = Path(project_root).resolve(strict=True)
+    repo_root = Path(repo_root).resolve()
     audit = SymbolAudit()
 
     python_files = discover_python_files(
@@ -104,11 +107,7 @@ def scan_project_files(
     # -------------------------
     python_files = [
         p for p in python_files
-        if str(p).startswith(str(project_root))
-        and "site-packages" not in str(p)
-        and "Lib\\site-packages" not in str(p)
-        and ".venv" not in str(p)
-        and "__pycache__" not in str(p)
+        if is_within_project_boundary(p, project_root)
     ]
 
     # -------------------------
@@ -124,9 +123,6 @@ def scan_project_files(
         if "__pycache__" in str(file_path):
             continue
 
-        if file_path.name == "__init__.py":
-            continue
-
         source = Path(file_path).read_text(
             encoding="utf-8",
             errors="ignore",
@@ -140,11 +136,26 @@ def scan_project_files(
         # -------------------------
         # CANONICAL MODULE IDENTITY
         # -------------------------
+        def safe_module_name(file_path: Path, project_root: Path) -> str:
+            file_path = Path(file_path).resolve()
+            project_root = Path(project_root).resolve()
+
+            rel = file_path.as_posix().replace(project_root.as_posix(), "").lstrip("/")
+
+            if not rel.endswith(".py"):
+                return ""
+
+            rel = rel[:-3]  # strip .py
+
+            parts = [p for p in rel.split("/") if p]
+
+            return ".".join(parts)
+        
         module_prefix = module_name_from_file_path(
             file_path=file_path,
-            project_root=project_root,
+            project_root=repo_root,
         )
-
+                
         if not module_prefix:
             continue
 
@@ -164,10 +175,6 @@ def scan_project_files(
             continue
 
         GLOBAL_SYMBOLS.update(sym_set)
-
-        print("FILE PASS1:", file_path)
-        print("SYMS:", len(sym_set))
-        print("GLOBAL SIZE:", len(GLOBAL_SYMBOLS))
 
     # -------------------------
     # PASS 2 — FULL ANALYSIS

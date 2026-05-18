@@ -312,6 +312,8 @@ def parse_ast(
         known_symbols,
         alias_map,
     )
+    if ref.route is None:
+        ref.route = infer_route_from_import(ref.callee)
     
     mutations = _extract_mutations(tree)
 

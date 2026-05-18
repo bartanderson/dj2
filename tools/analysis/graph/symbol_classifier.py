@@ -23,6 +23,11 @@ SymbolClass = Literal[
 # ----------------------------
 # HELPERS
 # ----------------------------
+def normalize_symbol(name: str) -> str:
+    if not name:
+        return name
+    return name.replace("<module>.", "").strip()
+
 def external_root(name: str) -> str:
     if "." not in name:
         return "unknown"
@@ -49,8 +54,10 @@ def classify_symbol(
     project_symbols: set[str] | None = None,
 ) -> SymbolClass:
 
+    name = normalize_symbol(name)
+
     runtime_bindings = runtime_bindings or {}
-    project_symbols = project_symbols or set()
+    project_symbols = {normalize_symbol(s) for s in (project_symbols or set())}
 
     if not name:
         return "classification_gap"
@@ -68,8 +75,7 @@ def classify_symbol(
     # ROUTE TRUSTED LAYER
     # ----------------------------
     if route == "project":
-        if name in project_symbols:
-            return "project"
+        return "project"
 
     if route in {"builtin", "stdlib", "runtime"}:
         return route  # type: ignore
@@ -83,7 +89,7 @@ def classify_symbol(
     if module in project_modules and len(parts) > 1:
         return "project"
 
-    if leaf in project_leafs and project_prefixes:
+    if project_prefixes:
         for p in project_prefixes:
             if name == p or name.startswith(p + "."):
                 return "project"
@@ -99,7 +105,7 @@ def classify_symbol(
 
     if route == "external":
         if "." in name:
-            return f"external_lib.{parts[0]}"  # type: ignore
+            return f"external_lib.{parts[0]}"  # keep, but treat as bucket string, not SymbolClass
         return "unresolved_qualified_reference"
 
     # ----------------------------
