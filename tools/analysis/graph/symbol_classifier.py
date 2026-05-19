@@ -49,6 +49,8 @@ def classify_symbol(
     project_symbols: set[str] | None = None,
 ) -> SymbolClass:
 
+    print("CLASSIFY INPUT:", repr(name), "ROUTE:", route)
+
     runtime_bindings = runtime_bindings or {}
     project_symbols = project_symbols or set()
 
@@ -68,8 +70,7 @@ def classify_symbol(
     # ROUTE TRUSTED LAYER
     # ----------------------------
     if route == "project":
-        if name in project_symbols:
-            return "project"
+        return "project"
 
     if route in {"builtin", "stdlib", "runtime"}:
         return route  # type: ignore
