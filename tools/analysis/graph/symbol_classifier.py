@@ -55,6 +55,7 @@ def classify_symbol(
 ) -> SymbolClass:
 
     name = normalize_symbol(name)
+    print("CLASSIFY INPUT:", repr(name), "ROUTE:", route)
 
     runtime_bindings = runtime_bindings or {}
     project_symbols = {normalize_symbol(s) for s in (project_symbols or set())}

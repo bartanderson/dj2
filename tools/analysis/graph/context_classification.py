@@ -10,8 +10,8 @@ def classify_symbol_with_context(
 
     route = route_symbol(
         name,
-        runtime_bindings=ctx.runtime_bindings,
-        project_symbols=ctx.project_symbols,
+        ctx.runtime_bindings,      # ✅ MUST be dict
+        ctx.project_prefixes,
     )
 
     return classify_symbol(

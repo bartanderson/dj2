@@ -17,6 +17,18 @@ from tools.analysis.shared.types import (
     BehavioralContract,
     MutationEvent,
 )
+from tools.analysis.graph.symbol_resolution import resolve_symbol_identity
+
+def normalize_symbol(name: str) -> str:
+    """
+    Collapse fully-qualified runtime/attribute symbols
+    into classification-level identity.
+    """
+    if not name:
+        return name
+
+    # keep last segment for dotted access chains
+    return name.split(".")[-1]
 
 # ----------------------------
 # Helpers (pure AST extraction)
@@ -158,13 +170,14 @@ def _extract_symbol_references(
             # CASE 1: direct call (foo())
             if isinstance(node.func, ast.Name):
                 raw = node.func.id
-                base = (
+                resolved = (
                     alias_map.get(raw)
                     or runtime_bindings.get(raw)
                     or local_symbol_map.get(raw)
                     or raw
                 )
-                full = base
+
+                full = resolve_symbol_identity(resolved, alias_map)
 
             # CASE 2: attribute call (a.b.c())
             if isinstance(node.func, ast.Attribute):
@@ -176,7 +189,10 @@ def _extract_symbol_references(
 
                     # ONLY resolve if it's a known import alias
                     if base_name is not None:
-                        full = f"{base_name}.{node.func.attr}"
+                        full = resolve_symbol_identity(
+                            f"{base_name}.{node.func.attr}",
+                            alias_map,
+                        )
                     else:
                         return  # unresolved base name; cannot resolve to import alias
 
@@ -211,7 +227,11 @@ def _extract_symbol_references(
     print("ALIAS MAP:", alias_map)
 
     return [
-        SymbolReference(caller=a, callee=b, line_number=c)
+        SymbolReference(
+            caller=a,
+            callee=normalize_symbol(b),
+            line_number=c,
+        )
         for (a, b, c) in references
     ]
 
@@ -275,6 +295,8 @@ def parse_ast(
     runtime_bindings: dict[str, str] | None = None,
     ) -> Optional[FileAnalysis]:
 
+    runtime_bindings = runtime_bindings or {}
+
     path = Path(file_path)
 
     source = _safe_read_file(path)
@@ -288,19 +310,10 @@ def parse_ast(
     except SyntaxError as e:
         print("PARSE_AST SYNTAX ERROR:", file_path)
         print("  error:", repr(e))
-        print("PARSE_AST RETURN NONE:", file_path)
         return None
     except Exception as e:
         print("PARSE_AST UNKNOWN ERROR:", file_path)
         print("  error:", repr(e))
-        print("PARSE_AST RETURN NONE:", file_path)
-        return None
-        runtime_bindings = _extract_runtime_bindings(tree)
-        print("DEBUG FILE:", file_path)
-        print("SOURCE LENGTH:", len(source))
-        print("IMPORT NODES:", len([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]))
-    except SyntaxError:
-        print("PARSE_AST RETURN NONE:", file_path)
         return None
 
     functions = _extract_functions(tree)
