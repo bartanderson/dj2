@@ -2,28 +2,33 @@ from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role
 
 
-def score_node(node_name: str) -> int:
+def structural_score(node_name: str) -> int:
+    # PURE GRAPH SIGNAL ONLY
+    return 0
+
+
+def node_semantic_tag(node_name: str) -> str:
     if not node_name:
-        return 0
+        return "unknown"
 
     lowered = node_name.lower()
 
-    if lowered == "print":
-        return -10
-    if lowered == "<module>":
-        return -8
     if lowered.startswith("test_"):
-        return -6
+        return "test_code"
+    if lowered == "print":
+        return "runtime_noise"
+    if lowered == "<module>":
+        return "module_root"
     if lowered == "main":
-        return -4
+        return "entry_point"
+
+    if node_name[0].isupper():
+        return "type_or_class"
 
     if "." in node_name:
-        return 3
+        return "qualified_reference"
 
-    if node_name and node_name[0].isupper():
-        return 5
-
-    return 1
+    return "general_symbol"
 
 
 def build_evaluation_snapshot(
@@ -52,17 +57,19 @@ def build_evaluation_snapshot(
         node_degree[edge.caller] += 1
         node_degree[edge.callee] += 1
 
-    weighted_nodes = []
+    ranked_nodes = []
 
     for node, degree in node_degree.items():
-        weighted_score = degree + score_node(node)
-        role = classify_semantic_role(node)
 
-        weighted_nodes.append(
-            (node, degree, weighted_score, role)
+        role = node_semantic_tag(node)
+
+        structural_score = degree
+
+        ranked_nodes.append(
+            (node, degree, structural_score, role)
         )
 
-    top_nodes = sorted(weighted_nodes, key=lambda x: -x[2])[:10]
+    top_nodes = sorted(ranked_nodes, key=lambda x: -x[2])[:10]
 
     high_fanout = [
         (n, d, s, r)
