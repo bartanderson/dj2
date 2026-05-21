@@ -8,6 +8,24 @@ if __name__ == "__main__":
         project_prefixes=[],
     )
 
-    print(result["edge_count"])
-    print(result["gap_rate"])
-    print(result["project_ratio"])
+print(result["metrics"]["total_edges"])
+
+print(
+    result["metrics"]["bucket_totals"]["classification_gap"]
+    / max(1, result["metrics"]["total_edges"])
+)
+
+metrics = result["metrics"]
+
+total_edges = metrics["total_edges"]
+bucket = metrics["bucket_totals"]
+
+assert bucket["project"] + bucket["builtin"] + bucket["classification_gap"] == total_edges
+
+print("✔ EDGE CONSERVATION OK")
+
+print("project ratio:",
+      bucket["project"] / max(1, total_edges))
+
+print("gap ratio:",
+      bucket["classification_gap"] / max(1, total_edges))

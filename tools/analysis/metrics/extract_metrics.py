@@ -3,123 +3,40 @@
 from __future__ import annotations
 
 
-def extract_metrics(file_analyses: list) -> dict:
-    # ================================
-    # RAW DISTRIBUTION DEBUG ENTRY
-    # ================================
-    print("\n================ METRICS RAW INPUT ================\n")
-    print("file_count:", len(file_analyses))
-
-    # ----------------------------
-    # INPUT EXTRACTION + FILE SAMPLE DEBUG
-    # ----------------------------
-
-    total_gap = 0
-    total_builtin = 0
+def extract_metrics(snapshots):
     total_edges = 0
-    total_project = 0
 
-    bucket_breakdown  = {}
-
-    for i, a in enumerate(file_analyses):
-
-        bs = a.get("bucket_summary", {})
-
-        # ----------------------------
-        # BUCKET CONTRACT VALIDATION
-        # ----------------------------
-        required_keys = ["classification_gap", "builtin", "project"]
-
-        for k in required_keys:
-            if k not in bs:
-                print(f"⚠ missing bucket key: {k}")
-
-        edges = a.get("edge_count", 0)
-
-        gap = bs.get("classification_gap", 0)
-        builtin = bs.get("builtin", 0)
-        project = bs.get("project", 0)
-
-        total_gap += gap
-        total_builtin += builtin
-        total_edges += edges
-        total_project += project
-
-        # FILE SAMPLE DEBUG (ONLY FIRST 3 FILES)
-        if i < 3:
-            print("\n---------------- FILE SAMPLE ----------------")
-            print("index:", i)
-            print("edges:", edges)
-            print("gap:", gap)
-            print("builtin:", builtin)
-
-    bucket_breakdown  = {}
-    for a in file_analyses:
-        fb = a.get("bucket_breakdown ", {})
-        for k, v in fb.items():
-            bucket_breakdown [k] = bucket_breakdown .get(k, 0) + v
-
-    # ----------------------------
-    # DEBUG INPUT (ONLY SEMANTIC BOUNDARY)
-    # ----------------------------
-    print("\n" + "=" * 90)
-    print("📊 METRICS INPUT BOUNDARY")
-    print("file_count:", len(file_analyses))
-
-    print("total_edges:", total_edges)
-    print("total_gap:", total_gap)
-    print("total_builtin:", total_builtin)
-    print("TOTAL PROJECT:", total_project)
-    print("\n================ VALIDATION =================\n")
-
-    assert total_project >= 0
-    assert total_edges >= 0
-    assert total_builtin >= 0
-
-    print("PROJECT sanity check:", total_project, "vs edges:", total_edges)
-
-    if total_project == 0 and total_edges > 0:
-        print("⚠ WARNING: project signal is completely missing from pipeline")
-    # ----------------------------
-    # COMPUTATION
-    # ----------------------------
-    classification_gap = total_gap
-    runtime = total_builtin
-
-    gap_rate = classification_gap / max(1, total_edges)
-    project_ratio = total_project / max(1, total_edges)
-
-    # ----------------------------
-    # OUTPUT RESULT
-    # ----------------------------
-    metrics = {
-        "edge_count": total_edges,
-        "bucket_summary": {
-            "classification_gap": total_gap,
-            "builtin": total_builtin,
-        },
-        "bucket_breakdown ": bucket_breakdown ,
-        "gap_rate": gap_rate,
-        "runtime_noise": runtime,
-        "project_ratio": project_ratio,
+    bucket_totals = {
+        "project": 0,
+        "builtin": 0,
+        "classification_gap": 0,
+        "external_lib": 0,
+        "runtime": 0,
+        "unresolved_qualified_reference": 0,
     }
 
-    # ----------------------------
-    # DEBUG OUTPUT
-    # ----------------------------
-    print("\n" + "=" * 90)
-    print("📈 METRICS OUTPUT BOUNDARY")
-    print("gap_rate:", gap_rate)
-    print("runtime_noise:", runtime)
-    print("project_ratio:", project_ratio)
+    failure_breakdown = {}
+    unknown_samples = []
 
-    print("\n================ GLOBAL TOTALS ================\n")
-    print("edges:", total_edges)
-    print("gap:", total_gap)
-    print("builtin:", total_builtin)
+    for s in snapshots:
+        total_edges += s["edge_count"]
 
-    print("\n================ NORMALIZED CHECKS ================\n")
-    print("gap/edges:", total_gap / max(1, total_edges))
-    print("builtin/edges:", total_builtin / max(1, total_edges))
+        bs = s["bucket_summary"]
+        bucket_totals["project"] += bs.get("project", 0)
+        bucket_totals["builtin"] += bs.get("builtin", 0)
+        bucket_totals["classification_gap"] += bs.get("classification_gap", 0)
+        bucket_totals["external_lib"] += bs.get("external_lib", 0)
+        bucket_totals["runtime"] += bs.get("runtime", 0)
+        bucket_totals["unresolved_qualified_reference"] += bs.get("unresolved_qualified_reference", 0)
 
-    return metrics
+        for k, v in s.get("failure_breakdown", {}).items():
+            failure_breakdown[k] = failure_breakdown.get(k, 0) + v
+
+        unknown_samples.extend(s.get("unknown_samples", [])[:5])
+
+    return {
+        "total_edges": total_edges,
+        "bucket_totals": bucket_totals,
+        "failure_breakdown": failure_breakdown,
+        "unknown_samples": unknown_samples[:50],
+    }

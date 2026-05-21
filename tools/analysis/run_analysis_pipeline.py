@@ -198,20 +198,16 @@ def run_analysis_pipeline(
         "No edges found despite snapshots existing"
     )
 
-    print("✔ reducer invariants passed")
-
-    print("\nAGGREGATED PREVIEW (first 3 files only)")
-    print("edges:", total_edges)
-    print("classification_gap:", total_classification_gap)
-    print("builtin:", total_builtin)
-
     print("=" * 80 + "\n")
 
     report = extract_metrics(file_analyses)
 
     print("Analysis complete. Processed", processed_count, "files.")
 
-    return report
+    return {
+        "snapshots": file_analyses,
+        "metrics": report,
+    }
 
 if __name__ == "__main__":
 

@@ -383,7 +383,7 @@ def persist_file_analysis(
     gap_samples = []
     seen_edges = set()
     builder = GraphBuilder()
-
+    classified_edges = 0
     for ref in analysis.symbol_references:
 
         key = (ref.caller, ref.callee, ref.line_number)
@@ -438,6 +438,7 @@ def persist_file_analysis(
         print("bucket_counts BEFORE:", dict(bucket_counts))
 
         bucket_counts[bucket] += 1
+        classified_edges += 1 
 
         print("[TRACE D - POST REDUCE]")
         print("bucket_counts AFTER:", dict(bucket_counts))
@@ -481,9 +482,14 @@ def persist_file_analysis(
     graph = builder.build()
     graph_edge_count = len(graph.edges)
     analysis.graph_edge_count = len(graph.edges)
+
+    print("\n[EDGE AUDIT]")
+    print("graph.edges:", len(graph.edges))
+    print("bucket_counts sum:", sum(bucket_counts.values()))
+    print("bucket_counts:", dict(bucket_counts))
+
     snapshot = build_evaluation_snapshot(
         analysis,
-        bucket_counts,
         graph,
     )
 
@@ -497,6 +503,15 @@ def persist_file_analysis(
     print("\n[ASSERT 3 - SNAPSHOT INTEGRITY]")
     print("keys:", list(snapshot.keys()))
     print("bucket_summary:", bs)
+
+    print("TOTAL EDGES:", len(graph.edges))
+    print("CLASSIFIED EDGES:", classified_edges)
+    print("BUCKET TOTALS:", dict(bucket_counts))
+
+    print("\n[FINAL EDGE RECONCILIATION]")
+    print("graph.edges:", len(graph.edges))
+    print("classified_edges:", classified_edges)
+    print("bucket sum:", sum(bucket_counts.values()))
 
     return snapshot
 

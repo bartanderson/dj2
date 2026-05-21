@@ -1,9 +1,13 @@
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role
+from tools.analysis.graph.symbol_classifier import classify_symbol
+
+BUCKET_NORMALIZER = {
+    "unresolved_qualified_reference": "classification_gap",
+}
 
 
 def structural_score(node_name: str) -> int:
-    # PURE GRAPH SIGNAL ONLY
     return 0
 
 
@@ -33,18 +37,50 @@ def node_semantic_tag(node_name: str) -> str:
 
 def build_evaluation_snapshot(
     analysis,
-    bucket_counts,
     graph,
 ):
+
     # ----------------------------
-    # DEGREE COMPUTATION
+    # INITIALIZE BUCKETS (ONLY ONCE)
     # ----------------------------
+    bucket_summary = {
+        "project": 0,
+        "builtin": 0,
+        "classification_gap": 0,
+    }
+
     node_degree = defaultdict(int)
 
+    # ----------------------------
+    # SINGLE PASS TRUTH BUILD
+    # ----------------------------
     for edge in graph.edges:
+
+        bucket = classify_symbol(
+            edge.callee,
+            route="external",
+            project_prefixes=[],
+        )
+
+        bucket = BUCKET_NORMALIZER.get(bucket, bucket)
+
+        # safety: ignore unknowns instead of crashing
+        if bucket not in bucket_summary:
+            bucket = "classification_gap"
+
+        bucket_summary[bucket] += 1
+
         node_degree[edge.caller] += 1
         node_degree[edge.callee] += 1
 
+    # ----------------------------
+    # HARD INVARIANT
+    # ----------------------------
+    assert sum(bucket_summary.values()) == len(graph.edges)
+
+    # ----------------------------
+    # NODE RANKING
+    # ----------------------------
     ranked_nodes = []
     for node, degree in node_degree.items():
         role = node_semantic_tag(node)
@@ -59,38 +95,16 @@ def build_evaluation_snapshot(
     ]
 
     # ----------------------------
-    # NORMALIZE BUCKETS (LOCKED)
-    # ----------------------------
-    bucket_summary = {
-        "project": bucket_counts.get("project", 0),
-        "builtin": bucket_counts.get("builtin", 0),
-        "classification_gap": bucket_counts.get("classification_gap", 0),
-    }
-
-    # enforce contract
-    assert set(bucket_summary.keys()) == {
-        "project",
-        "builtin",
-        "classification_gap",
-    }
-
-    # ----------------------------
-    # SNAPSHOT OUTPUT (LOCKED CONTRACT)
+    # SNAPSHOT OUTPUT (FINAL CONTRACT)
     # ----------------------------
     return {
         "file_count": getattr(analysis, "file_count", None),
         "edge_count": len(graph.edges),
-
         "bucket_summary": bucket_summary,
-
         "graph_insights": {
             "top_nodes_by_degree": top_nodes,
         },
-
         "structural_signals": {
             "high_fanout_nodes": high_fanout,
         },
-
-        "failure_breakdown": getattr(analysis, "failure_breakdown", {}),
-        "unknown_samples": getattr(analysis, "unknown_samples", []),
     }
