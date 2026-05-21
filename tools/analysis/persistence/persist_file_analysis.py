@@ -16,7 +16,6 @@ from tools.analysis.graph.evaluation_snapshot import build_evaluation_snapshot
 from tools.analysis.graph.edge_semantics import classify_edge_semantics
 
 from collections import defaultdict
-bucket_counts = defaultdict(int)
 
 def _identity_symbol(name: str) -> str:
     if not name:
@@ -137,7 +136,7 @@ def persist_file_analysis(
     analysis: FileAnalysis,
     project_prefixes,
 ) -> None:
-
+    bucket_counts = defaultdict(int)
     analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
 
@@ -206,6 +205,9 @@ def persist_file_analysis(
             canonical,
             ctx,
         )
+        print("CLASSIFY TRACE:", canonical)
+        print("  → bucket:", cls)
+        print("  → file:", analysis.file_path)
 
         print("CLASSIFY OUTPUT:", canonical, "->", cls)
 
@@ -253,7 +255,11 @@ def persist_file_analysis(
             ctx,
         )
 
-        print("CLASSIFY OUTPUT:", canonical, "->", cls)
+        print("\nCLASSIFY EVENT")
+        print("file:", analysis.file_path)
+        print("input:", identity)
+        print("canonical:", canonical)
+        print("bucket:", cls)
 
         if cls == "project":
             _insert_symbol(
@@ -371,10 +377,8 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
-    from collections import defaultdict
-
     failure_events = []
-    failure_breakdown = defaultdict(int)
+    bucket_breakdown = defaultdict(int)
     unknown_examples = []
     gap_samples = []
     seen_edges = set()
@@ -392,7 +396,12 @@ def persist_file_analysis(
         edge_role = classify_edge_semantics(ref.caller, ref.callee)
 
         # SINGLE SOURCE OF TRUTH
+        print("CLASSIFY INPUT TRACE:", ref.caller, "→", ref.callee)
+        print("CTX SYMBOL COUNT:", len(ctx.project_symbols))
         result = classify_symbol_with_context(full, ctx)
+        print("\n[TRACE A - CLASSIFIER OUTPUT]")
+        print("input:", full)
+        print("result:", repr(result), type(result))
 
         # ----------------------------
         # HARD NORMALIZATION CONTRACT
@@ -419,8 +428,20 @@ def persist_file_analysis(
         else:
             bucket = str(result)
 
-        failure_breakdown[bucket] += 1
+        print("[TRACE B - EXTRACTED BUCKET]")
+        print("raw result:", repr(result))
+        print("final bucket:", repr(bucket), type(bucket))
+
+        bucket_breakdown[bucket] += 1
+        assert isinstance(bucket, str), f"BUCKET NOT STRING: {bucket}"
+        print("[TRACE C - PRE REDUCE]")
+        print("bucket_counts BEFORE:", dict(bucket_counts))
+
         bucket_counts[bucket] += 1
+
+        print("[TRACE D - POST REDUCE]")
+        print("bucket_counts AFTER:", dict(bucket_counts))
+        print("bucket_breakdown AFTER:", dict(bucket_breakdown))
 
         builder.add_reference(
             caller=ref.caller,
@@ -428,6 +449,10 @@ def persist_file_analysis(
             line_number=ref.line_number,
             bucket=bucket,   # ALWAYS STRING NOW
         )
+        print("[TRACE E - GRAPH INSERT]")
+        print("caller:", ref.caller)
+        print("callee:", ref.callee)
+        print("bucket:", bucket)
 
         # persist EVERYTHING
 
@@ -454,16 +479,26 @@ def persist_file_analysis(
     connection.commit()
 
     graph = builder.build()
-    print("GRAPH EDGES:", len(graph.edges))
+    graph_edge_count = len(graph.edges)
+    analysis.graph_edge_count = len(graph.edges)
     snapshot = build_evaluation_snapshot(
         analysis,
         bucket_counts,
         graph,
-        failure_events=failure_events,
     )
-    print("\n===== EVALUATION SNAPSHOT =====")
-    print(snapshot)
-    return graph
+
+    assert isinstance(snapshot, dict), type(snapshot)
+    assert "bucket_summary" in snapshot, snapshot.keys()
+    assert "edge_count" in snapshot, snapshot.keys()
+
+    bs = snapshot["bucket_summary"]
+    assert isinstance(bs, dict), type(bs)
+
+    print("\n[ASSERT 3 - SNAPSHOT INTEGRITY]")
+    print("keys:", list(snapshot.keys()))
+    print("bucket_summary:", bs)
+
+    return snapshot
 
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:

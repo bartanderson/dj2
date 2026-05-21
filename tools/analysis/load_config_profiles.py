@@ -13,6 +13,8 @@ def load_analysis_profiles(path: str = "tools/analysis/analysis_profiles.yaml"):
 
 def build_profile_prefixes(include_paths: list[str]) -> list[str]:
     prefixes = []
+    if isinstance(include_paths, (str, Path)):
+        include_paths = [str(include_paths)]
 
     for p in include_paths:
         p = p.strip().replace("/", ".").replace("\\", ".")

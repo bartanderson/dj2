@@ -7,17 +7,25 @@ def classify_symbol_with_context(
     name: str,
     ctx: ProjectGraphContext,
 ):
+    assert not isinstance(
+        ctx,
+        dict,
+    ), "ctx must be ProjectGraphContext, not dict"
+
+    project_prefixes = ctx.project_prefixes
+    runtime_bindings = ctx.runtime_bindings or {}
+    project_symbols = ctx.project_symbols or set()
 
     route = route_symbol(
-        name,
-        ctx.runtime_bindings,      # ✅ MUST be dict
-        ctx.project_prefixes,
+        name=name,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols,
     )
 
     return classify_symbol(
-        name,
-        route,
-        ctx.project_prefixes,
-        ctx.runtime_bindings,
-        ctx.project_symbols,
+        name=name,
+        route=route,
+        project_prefixes=project_prefixes,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols,
     )

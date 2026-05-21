@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 import sys
 from typing import Literal, Tuple, Dict, Any
+from tools.analysis.graph.symbol_identity import normalize_symbol
 
 BUILTINS = set(dir(builtins))
 STDLIB_PREFIXES = set(sys.stdlib_module_names)
@@ -23,10 +24,12 @@ SymbolClass = Literal[
 # ----------------------------
 # HELPERS
 # ----------------------------
-def normalize_symbol(name: str) -> str:
-    if not name:
-        return name
-    return name.replace("<module>.", "").strip()
+
+
+# def normalize_symbol(name: str) -> str:
+#     if not name:
+#         return name
+#     return name.replace("<module>.", "").strip()
 
 def external_root(name: str) -> str:
     if "." not in name:
@@ -52,7 +55,7 @@ def classify_symbol(
     project_prefixes: list[str],
     runtime_bindings: dict[str, str] | None = None,
     project_symbols: set[str] | None = None,
-) -> SymbolClass:
+) -> str:
 
     name = normalize_symbol(name)
     print("CLASSIFY INPUT:", repr(name), "ROUTE:", route)
@@ -80,7 +83,10 @@ def classify_symbol(
 
     if route in {"builtin", "stdlib", "runtime"}:
         return route  # type: ignore
-
+    
+    # runtime binding override (VERY IMPORTANT)
+    if name in runtime_bindings:
+        return "runtime"
     # ----------------------------
     # PROJECT MATCHING
     # ----------------------------
@@ -101,8 +107,19 @@ def classify_symbol(
     if root in BUILTINS:
         return "builtin"
 
+    # stdlib module detection (module-level only)
     if parts[0] in STDLIB_PREFIXES:
         return "stdlib"
+
+    # common stdlib symbol-level aliases
+    STD_SYMBOL_HINTS = {
+        "Path": "stdlib",
+        "defaultdict": "stdlib",
+        "field": "stdlib",
+    }
+
+    if name in STD_SYMBOL_HINTS:
+        return STD_SYMBOL_HINTS[name]  # type: ignore
 
     if route == "external":
         if "." in name:
@@ -112,5 +129,4 @@ def classify_symbol(
     # ----------------------------
     # FALLBACK
     # ----------------------------
-    print("⚠ CLASSIFICATION GAP:", name, route)
-    return "classification_gap"
+    return "unresolved_qualified_reference"

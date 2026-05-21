@@ -35,22 +35,10 @@ def build_evaluation_snapshot(
     analysis,
     bucket_counts,
     graph,
-    failure_events=None,
 ):
-    failure_events = failure_events or []
-    failure_breakdown = defaultdict(int)
-    unknown_examples = []
-    for event in failure_events:
-        if not isinstance(event, dict):
-            continue
-
-        bucket = event.get("bucket", "unknown")
-        failure_breakdown[bucket] += 1
-
-        # keep only a few samples (avoid log explosion)
-        if len(unknown_examples) < 10:
-            unknown_examples.append(event)
-                
+    # ----------------------------
+    # DEGREE COMPUTATION
+    # ----------------------------
     node_degree = defaultdict(int)
 
     for edge in graph.edges:
@@ -58,16 +46,9 @@ def build_evaluation_snapshot(
         node_degree[edge.callee] += 1
 
     ranked_nodes = []
-
     for node, degree in node_degree.items():
-
         role = node_semantic_tag(node)
-
-        structural_score = degree
-
-        ranked_nodes.append(
-            (node, degree, structural_score, role)
-        )
+        ranked_nodes.append((node, degree, degree, role))
 
     top_nodes = sorted(ranked_nodes, key=lambda x: -x[2])[:10]
 
@@ -77,24 +58,30 @@ def build_evaluation_snapshot(
         if s > 3
     ]
 
-    failure_breakdown = defaultdict(int)
+    # ----------------------------
+    # NORMALIZE BUCKETS (LOCKED)
+    # ----------------------------
+    bucket_summary = {
+        "project": bucket_counts.get("project", 0),
+        "builtin": bucket_counts.get("builtin", 0),
+        "classification_gap": bucket_counts.get("classification_gap", 0),
+    }
 
-    for event in failure_events:
-        if not event:
-            continue
+    # enforce contract
+    assert set(bucket_summary.keys()) == {
+        "project",
+        "builtin",
+        "classification_gap",
+    }
 
-        if isinstance(event, dict):
-            bucket = event.get("bucket", "classification_gap")
-        else:
-            bucket = str(event)
-
-        failure_breakdown[bucket] += 1
-
+    # ----------------------------
+    # SNAPSHOT OUTPUT (LOCKED CONTRACT)
+    # ----------------------------
     return {
         "file_count": getattr(analysis, "file_count", None),
         "edge_count": len(graph.edges),
 
-        "bucket_summary": dict(bucket_counts),
+        "bucket_summary": bucket_summary,
 
         "graph_insights": {
             "top_nodes_by_degree": top_nodes,
@@ -104,7 +91,6 @@ def build_evaluation_snapshot(
             "high_fanout_nodes": high_fanout,
         },
 
-        # NEW STRUCTURED FAILURE VIEW
-        "failure_breakdown": dict(failure_breakdown),
-        "unknown_samples": unknown_examples,
+        "failure_breakdown": getattr(analysis, "failure_breakdown", {}),
+        "unknown_samples": getattr(analysis, "unknown_samples", []),
     }

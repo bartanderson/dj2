@@ -194,7 +194,12 @@ def scan_project_files(
             runtime_bindings=runtime_bindings,
         )
 
-        print("FILE:", normalized_path)
+        print("\n================ FILE PRODUCER =================")
+        print("file:", normalized_path)
+        print("edges:", getattr(analysis, "graph_edge_count", 0))
+        print("symbols:", len(analysis.symbol_references))
+        project_symbols = getattr(analysis, "project_symbols", None)
+        print("project_symbols:", "not available at scan stage" if project_symbols is None else len(project_symbols))
 
         if analysis is None:
             continue

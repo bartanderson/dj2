@@ -15,6 +15,7 @@ from tools.analysis.graph.symbol_identity import (
 from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
+from tools.analysis.graph.symbol_classifier import normalize_symbol
 
 RouteType = Literal[
     "project",
@@ -116,7 +117,25 @@ def route_symbol(
     if not name:
         return "unknown"
 
-    # HIGH-CONFIDENCE DOMAINS FIRST
+    name = normalize_symbol(name)
+
+    print(
+        "ROUTE DEBUG:",
+        {
+            "name": name,
+            "project_symbols_type": type(project_symbols).__name__,
+            "project_symbols_count": (
+                len(project_symbols)
+                if project_symbols is not None
+                else None
+            ),
+            "runtime_bindings_count": (
+                len(runtime_bindings)
+                if runtime_bindings is not None
+                else None
+            ),
+        },
+    )
 
     if is_builtin_symbol(name):
         return "builtin"
@@ -127,10 +146,8 @@ def route_symbol(
     if is_stdlib_symbol(name):
         return "stdlib"
 
-    # PROJECT MATCHING IS FUZZIER
-    # SO IT MUST COME LATER
-
     if is_project_symbol(name, project_symbols):
+        print("MATCH CHECK:", name)
         return "project"
 
     if "." in name:
