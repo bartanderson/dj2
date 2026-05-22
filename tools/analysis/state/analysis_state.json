@@ -1,166 +1,156 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
 
   "meta": {
     "run_id": "",
-    "timestamp": ""
+    "timestamp": "",
+    "state": "ACTIVE_REFACTORED_PIPELINE"
   },
 
   "progress": {
     "stage": "ACTIVE",
 
     "active": {
-      "module": "classification",
-      "task": "stabilize explicit semantic edge propagation",
-      "phase": "Phase 2 (pipeline separation)"
+      "module": "pipeline",
+      "task": "stabilize classification → graph → snapshot flow",
+      "phase": "Phase 2 (classification boundary correction)"
     },
 
-    "file_index": 75,
-    "total_files": 75
+    "file_index": 0,
+    "total_files": 0
   },
 
   "modules": {
+
+    "ingestion": {
+      "file": "tools.analysis.scanning.scan_project_files",
+      "status": "STABLE",
+      "contract": "Produces FileAnalysis objects",
+      "outputs": {
+        "file_analysis": "FileAnalysis"
+      },
+      "invariants": {
+        "must_emit_analysis_objects": true
+      }
+    },
+
+    "classification": {
+      "file": "tools.analysis.classification.classify_references",
+      "status": "STABLE",
+      "role": "explicit semantic routing stage",
+
+      "outputs": {
+        "enriched_file_analysis": "FileAnalysis (with classified edges)"
+      },
+
+      "invariants": {
+        "must_not_be_in_persistence": true,
+        "must_classify_symbol_references_only": true
+      }
+    },
+
+    "symbol_router": {
+      "file": "tools.analysis.graph.symbol_router",
+      "status": "STABLE",
+      "role": "low-level routing logic",
+
+      "outputs": {
+        "route": "project | runtime | builtin | stdlib | external | unknown"
+      },
+
+      "invariants": {
+        "must_be_pure": true,
+        "no_side_effects": true
+      }
+    },
+
     "snapshot": {
-      "file": "tools/analysis/graph/evaluation_snapshot.py",
+      "file": "tools.analysis.graph.evaluation_snapshot",
+      "status": "STABLE",
 
-      "status": "STABLE_STRUCTURALLY",
+      "inputs": {
+        "analysis": "FileAnalysis",
+        "graph": "Graph"
+      },
 
-      "snapshot": {
-        "edge_count": 0,
-        "bucket_summary": {
-          "project": 0,
-          "builtin": 0,
-          "classification_gap": 0
-        }
+      "outputs": {
+        "snapshot": "dict",
+        "edge_count": "int",
+        "bucket_summary": "dict"
       },
 
       "invariants": {
         "edge_conservation": true,
-        "snapshot_generation_independent_of_persistence": true
-      }
-    },
-
-    "classifier": {
-      "file": "tools/analysis/classification/classify_references.py",
-
-      "status": "ACTIVE",
-
-      "role": "semantic routing of symbol references before graph construction",
-
-      "outputs": {
-        "classified_symbol_reference": {
-          "bucket": "string"
-        }
-      },
-
-      "invariants": {
-        "classification_is_deterministic": true,
-        "all_graph_edges_receive_explicit_bucket": true
-      },
-
-      "depends_on": [
-        "tools/analysis/graph/symbol_classifier.py",
-        "tools/analysis/graph/context_classification.py"
-      ]
-    },
-
-    "classification_references": {
-      "file": "tools/analysis/classification/classify_references.py",
-      "status": "STABLE",
-      "contract": {
-        "input": "FileAnalysis",
-        "output": "FileAnalysis (enriched with .bucket on references)",
-        "responsibility": "assign semantic bucket to all SymbolReference objects",
-        "must_not": [
-          "build graph",
-          "persist data",
-          "compute metrics"
-        ]
+        "snapshot_must_match_graph": true
       }
     },
 
     "metrics": {
-      "file": "tools/analysis/metrics/extract_metrics.py",
-
+      "file": "tools.analysis.metrics.extract_metrics",
       "status": "STABLE",
 
       "outputs": {
-        "total_edges": 0,
-        "bucket_totals": {},
-        "failure_breakdown": {},
-        "unknown_samples": []
+        "total_edges": "int",
+        "bucket_totals": "dict",
+        "failure_breakdown": "dict"
       },
 
       "invariants": {
-        "must_match_snapshot_edge_sum": true
+        "must_match_snapshot": true
       }
     },
 
     "reducer": {
-      "file": "tools/analysis/reducer/reduce.py",
-
+      "file": "tools.analysis.reducer.reduce",
       "status": "STABLE",
+      "role": "system validation layer",
 
-      "role": "system validation and invariant enforcement",
-
-      "invariants": [
-        "non-negative reduced totals",
-        "edge conservation validation",
-        "snapshot structural validation"
-      ]
-    },
-
-    "pipeline": {
-      "file": "tools/analysis/run_analysis_pipeline.py",
-
-      "status": "EVOLVING",
-
-      "role": "explicit orchestration of ingestion → classification → persistence → graph → snapshot → reducer → metrics",
-
-      "invariants": [
-        "pipeline stages remain explicitly ordered",
-        "classification occurs before graph construction",
-        "snapshot generation occurs outside persistence",
-        "post-reduction edge sanity check",
-        "snapshot-list consistency check"
-      ],
-
-      "depends_on": [
-        "classifier",
-        "snapshot",
-        "metrics",
-        "reducer"
-      ]
-    },
-
-    "persistence": {
-      "file": "tools/analysis/persistence/persist_file_analysis.py",
-
-      "status": "STABLE",
-
-      "contract": {
-        "input": "FileAnalysis (already classified)",
-        "output": "database writes only",
-        "must_not": [
-          "classification",
-          "context building",
-          "graph reasoning"
-        ]
+      "invariants": {
+        "edge_conservation_required": true,
+        "no_snapshot_mutation": true
       }
     },
 
-    "contract": {
-      "file": "tools/analysis/contracts/tool_system_contract.json",
+    "pipeline": {
+      "file": "tools.analysis.run_analysis_pipeline",
+      "status": "EVOLVED",
 
-      "status": "REFERENCE_ONLY",
+      "role": "orchestration only",
 
-      "implementable": "Phase 3"
+      "stages": [
+        "ingestion",
+        "classification",
+        "persistence",
+        "graph_build",
+        "snapshot",
+        "metrics",
+        "reducer"
+      ],
+
+      "invariants": {
+        "classification_must_precede_graph": true,
+        "persistence_must_not_classify": true,
+        "snapshot_must_be_readonly": true
+      }
+    },
+
+    "persistence": {
+      "file": "tools.analysis.persistence.persist_file_analysis",
+      "status": "SIMPLIFIED",
+
+      "role": "database writer only",
+
+      "invariants": {
+        "no_classification_logic": true,
+        "no_graph_construction": true,
+        "no_snapshot_generation": true
+      }
     }
   },
 
   "global_invariants": {
     "edge_conservation": true,
-    "classification_precedes_graph_building": true,
-    "persistence_no_longer_constructs_snapshots": true
+    "classification_boundary_respected": true,
+    "no_cross_layer_logic": true
   }
 }

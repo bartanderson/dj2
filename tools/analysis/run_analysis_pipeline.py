@@ -14,6 +14,7 @@ from tools.analysis.query.query_file_analysis import fetch_complete_file_analysi
 from tools.analysis.metrics.extract_metrics import extract_metrics
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.classification.classify_references import classify_references
+from tools.analysis.contracts.ledger_validator import LedgerRuntimeValidator
 
 def resolve_repo_root(path: str | Path) -> Path:
     p = Path(path).resolve()
@@ -48,6 +49,7 @@ def run_analysis_pipeline(
     connection = create_database(database_path)
 
     try:
+
         # --------------------------
         # INGESTION
         # --------------------------
