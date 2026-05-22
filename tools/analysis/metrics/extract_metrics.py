@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+# MODULE: metrics
+# OWNED: TRUE
+#
+# CONTRACT (LOCKED v1)
+# - Aggregates snapshot outputs into system metrics
+# - Must aggregate snapshot totals deterministically
+# - Does NOT own classification or snapshot construction
 
 def extract_metrics(snapshots):
     total_edges = 0

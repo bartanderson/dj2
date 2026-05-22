@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+# MODULE: classifier
+# OWNED: TRUE
+#
+# CONTRACT (LOCKED v1)
+# - Owns symbol → bucket classification
+# - Must produce deterministic bucket labels
+# - Does NOT own snapshot aggregation or metrics
+
 import builtins
 import sys
 from typing import Literal, Tuple, Dict, Any

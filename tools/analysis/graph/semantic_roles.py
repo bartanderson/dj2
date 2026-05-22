@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+# MODULE: classifier
+# INCLUDED_IN: snapshot (dependency)
+#
+# CONTRACT NOTE:
+# - provides semantic tagging / role inference
+# - used by classification pipeline
+# - does NOT own classification decisions
 
 SEMANTIC_ROLES = {
     "print": "runtime_noise",

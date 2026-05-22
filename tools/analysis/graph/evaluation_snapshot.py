@@ -1,3 +1,15 @@
+# tools/analysis/graph/evaluation_snapshot.py
+
+# MODULE: snapshot
+# OWNED: TRUE
+#
+# CONTRACT (LOCKED v1)
+# - Owns edge → bucket classification
+# - Must produce deterministic bucket_summary per edge
+# - Must maintain invariant: sum(bucket_summary) == len(graph.edges)
+# - Requires explicit classification context (project_prefixes passed by caller)
+# - Does NOT own metrics or global aggregation
+
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role
 from tools.analysis.graph.symbol_classifier import classify_symbol

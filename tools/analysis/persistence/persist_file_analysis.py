@@ -11,8 +11,7 @@ from tools.analysis.graph.module_resolution import normalize_file_path
 from tools.analysis.graph.context_classification import (
     classify_symbol_with_context,
 )
-from tools.analysis.graph.graph_builder import GraphBuilder
-from tools.analysis.graph.evaluation_snapshot import build_evaluation_snapshot
+
 from tools.analysis.graph.edge_semantics import classify_edge_semantics
 
 from collections import defaultdict
@@ -133,9 +132,10 @@ def _canonical_symbol(name: str) -> str:
 
 def persist_file_analysis(
     connection: sqlite3.Connection,
-    analysis: FileAnalysis,
+    analysis,   # ← REQUIRED (was accidentally removed logically)
     project_prefixes,
 ) -> None:
+
     bucket_counts = defaultdict(int)
     analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
@@ -145,9 +145,9 @@ def persist_file_analysis(
     from tools.analysis.graph.project_graph_context import (
         ProjectGraphContext,
     )
-    
+
     project_symbols = getattr(analysis, "project_symbols", None) or set()
-    
+
     ctx = ProjectGraphContext(
         project_prefixes=project_prefixes,
         project_symbols=project_symbols,
@@ -382,139 +382,8 @@ def persist_file_analysis(
     unknown_examples = []
     gap_samples = []
     seen_edges = set()
-    builder = GraphBuilder()
-    classified_edges = 0
-    for ref in analysis.symbol_references:
 
-        key = (ref.caller, ref.callee, ref.line_number)
-        if key in seen_edges:
-            continue
-        seen_edges.add(key)
-
-        full = ref.callee
-
-        edge_role = classify_edge_semantics(ref.caller, ref.callee)
-
-        # SINGLE SOURCE OF TRUTH
-        print("CLASSIFY INPUT TRACE:", ref.caller, "→", ref.callee)
-        print("CTX SYMBOL COUNT:", len(ctx.project_symbols))
-        result = classify_symbol_with_context(full, ctx)
-        print("\n[TRACE A - CLASSIFIER OUTPUT]")
-        print("input:", full)
-        print("result:", repr(result), type(result))
-
-        # ----------------------------
-        # HARD NORMALIZATION CONTRACT
-        # ----------------------------
-        if isinstance(result, dict):
-
-            bucket = result.get("bucket") or "classification_gap"
-
-            failure_events.append(result)
-
-            if bucket == "classification_gap":
-                gap_samples.append({
-                    "callee": full,
-                    "caller": ref.caller,
-                    "line": ref.line_number,
-                    "normalized": normalize_symbol(full),
-                    "in_global_symbols": normalize_symbol(full) in ctx.project_symbols,
-                    "root": full.split(".")[0],
-                })
-
-        elif result is None:
-            bucket = "classification_gap"
-
-        else:
-            bucket = str(result)
-
-        print("[TRACE B - EXTRACTED BUCKET]")
-        print("raw result:", repr(result))
-        print("final bucket:", repr(bucket), type(bucket))
-
-        bucket_breakdown[bucket] += 1
-        assert isinstance(bucket, str), f"BUCKET NOT STRING: {bucket}"
-        print("[TRACE C - PRE REDUCE]")
-        print("bucket_counts BEFORE:", dict(bucket_counts))
-
-        bucket_counts[bucket] += 1
-        classified_edges += 1 
-
-        print("[TRACE D - POST REDUCE]")
-        print("bucket_counts AFTER:", dict(bucket_counts))
-        print("bucket_breakdown AFTER:", dict(bucket_breakdown))
-
-        builder.add_reference(
-            caller=ref.caller,
-            callee=ref.callee,
-            line_number=ref.line_number,
-            bucket=bucket,   # ALWAYS STRING NOW
-        )
-        print("[TRACE E - GRAPH INSERT]")
-        print("caller:", ref.caller)
-        print("callee:", ref.callee)
-        print("bucket:", bucket)
-
-        # persist EVERYTHING
-
-
-        cursor.execute("""
-        INSERT INTO symbol_references (
-            file_path,
-            caller,
-            callee,
-            line_number,
-            bucket,
-            edge_role
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            analysis.file_path,
-            ref.caller,
-            ref.callee,
-            ref.line_number,
-            bucket,
-            edge_role,
-        ))
-
-    connection.commit()
-
-    graph = builder.build()
-    graph_edge_count = len(graph.edges)
-    analysis.graph_edge_count = len(graph.edges)
-
-    print("\n[EDGE AUDIT]")
-    print("graph.edges:", len(graph.edges))
-    print("bucket_counts sum:", sum(bucket_counts.values()))
-    print("bucket_counts:", dict(bucket_counts))
-
-    snapshot = build_evaluation_snapshot(
-        analysis,
-        graph,
-    )
-
-    assert isinstance(snapshot, dict), type(snapshot)
-    assert "bucket_summary" in snapshot, snapshot.keys()
-    assert "edge_count" in snapshot, snapshot.keys()
-
-    bs = snapshot["bucket_summary"]
-    assert isinstance(bs, dict), type(bs)
-
-    print("\n[ASSERT 3 - SNAPSHOT INTEGRITY]")
-    print("keys:", list(snapshot.keys()))
-    print("bucket_summary:", bs)
-
-    print("TOTAL EDGES:", len(graph.edges))
-    print("CLASSIFIED EDGES:", classified_edges)
-    print("BUCKET TOTALS:", dict(bucket_counts))
-
-    print("\n[FINAL EDGE RECONCILIATION]")
-    print("graph.edges:", len(graph.edges))
-    print("classified_edges:", classified_edges)
-    print("bucket sum:", sum(bucket_counts.values()))
-
-    return snapshot
-
+    return None
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)

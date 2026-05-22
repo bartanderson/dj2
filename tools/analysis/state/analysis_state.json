@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+
+  "meta": {
+    "run_id": "",
+    "timestamp": ""
+  },
+
+  "progress": {
+    "stage": "ACTIVE",
+
+    "active": {
+      "module": "snapshot",
+      "task": "classify + stabilize bucket propagation",
+      "phase": "Phase 1 (contracts)"
+    },
+
+    "file_index": 0,
+    "total_files": 0
+  },
+
+  "modules": {
+    "snapshot": {
+      "file": "tools/analysis/graph/evaluation_snapshot.py",
+
+      "status": "STABLE",
+
+      "snapshot": {
+        "edge_count": 0,
+        "bucket_summary": {
+          "project": 0,
+          "builtin": 0,
+          "classification_gap": 0
+        }
+      },
+
+      "invariants": {
+        "edge_conservation": true,
+        "classification_requires_explicit_project_context": true
+      }
+    },
+
+    "classifier": {
+      "file": "tools/analysis/graph/symbol_classifier.py",
+
+      "status": "EVOLVING",
+
+      "outputs": {
+        "bucket_label": "string"
+      },
+
+      "invariants": {
+        "classification_is_deterministic": true
+      }
+    },
+
+    "metrics": {
+      "file": "tools/analysis/metrics/extract_metrics.py",
+
+      "status": "STABLE",
+
+      "outputs": {
+        "total_edges": 0,
+        "bucket_totals": {},
+        "failure_breakdown": {},
+        "unknown_samples": []
+      },
+
+      "invariants": {
+        "must_match_snapshot_edge_sum": true
+      }
+    },
+
+    "reducer": {
+      "file": "tools/analysis/reducer/reduce.py",
+      "status": "STABLE",
+      "role": "system validation and invariant enforcement"
+    },
+
+    "pipeline": {
+      "file": "tools/analysis/run_analysis_pipeline.py",
+      "status": "EVOLVING",
+      "role": "orchestration + reducer invocation + cross-layer validation",
+      "invariants": [
+        "post-reduction edge sanity check",
+        "snapshot-list consistency check"
+      ],
+      "depends_on": ["snapshot", "metrics", "reducer"]
+    },
+
+    "contract": {
+      "file": "tools/analysis/contracts/tool_system_contract.json",
+      "status": "REFERENCE_ONLY",
+      "implementable": "Phase 3"
+    }
+  },
+
+  "global_invariants": {
+    "edge_conservation": true
+  }
+}
