@@ -13,6 +13,7 @@ from tools.analysis.graph.evaluation_snapshot import build_evaluation_snapshot
 from tools.analysis.query.query_file_analysis import fetch_complete_file_analysis
 from tools.analysis.metrics.extract_metrics import extract_metrics
 from tools.analysis.reducer.reduce import reduce
+from tools.analysis.classification.classify_references import classify_references
 
 def resolve_repo_root(path: str | Path) -> Path:
     p = Path(path).resolve()
@@ -60,6 +61,14 @@ def run_analysis_pipeline(
         processed_count = len(file_analyses)
 
         # --------------------------
+        # CLASSIFICATION
+        # --------------------------
+        file_analyses = [
+            classify_references(a)
+            for a in file_analyses
+        ]
+
+        # --------------------------
         # PERSISTENCE
         # --------------------------
         for analysis in file_analyses:
@@ -80,7 +89,7 @@ def run_analysis_pipeline(
                     caller=ref.caller,
                     callee=ref.callee,
                     line_number=ref.line_number,
-                    bucket="unclassified",
+                    bucket=ref.bucket if hasattr(ref, "bucket") else "unknown",
                 )
 
             graph = builder.build()

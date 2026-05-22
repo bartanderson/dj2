@@ -8,9 +8,6 @@ from pathlib import Path
 
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
-from tools.analysis.graph.context_classification import (
-    classify_symbol_with_context,
-)
 
 from tools.analysis.graph.edge_semantics import classify_edge_semantics
 
@@ -129,34 +126,19 @@ def _canonical_symbol(name: str) -> str:
         return name
     return name.split(".")[-1]
 
-
 def persist_file_analysis(
     connection: sqlite3.Connection,
-    analysis,   # ← REQUIRED (was accidentally removed logically)
+    analysis,
     project_prefixes,
 ) -> None:
 
-    bucket_counts = defaultdict(int)
-    analysis.file_path = normalize_file_path(analysis.file_path)
     cursor = connection.cursor()
 
-    runtime_bindings = analysis.runtime_bindings
+    analysis.file_path = normalize_file_path(analysis.file_path)
 
-    from tools.analysis.graph.project_graph_context import (
-        ProjectGraphContext,
-    )
-
-    project_symbols = getattr(analysis, "project_symbols", None) or set()
-
-    ctx = ProjectGraphContext(
-        project_prefixes=project_prefixes,
-        project_symbols=project_symbols,
-        runtime_bindings=runtime_bindings,
-    )
-
-    functions = list(analysis.functions)
-    classes = list(analysis.classes)
-
+    # -------------------------
+    # FILE
+    # -------------------------
     cursor.execute("""
     INSERT OR REPLACE INTO files (
         file_path,
@@ -180,10 +162,7 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
-    for function in functions:
-        canonical = _canonical_symbol(function.name)
-        identity = _identity_symbol(function.name)   # MUST BE FIRST
-
+    for function in analysis.functions:
         cursor.execute("""
         INSERT INTO functions (
             file_path,
@@ -195,28 +174,19 @@ def persist_file_analysis(
         VALUES (?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
-            canonical,
+            _canonical_symbol(function.name),
             function.line_number,
             function.return_type,
             json.dumps(function.arguments),
         ))
 
-        cls = classify_symbol_with_context(
-            canonical,
-            ctx,
-        )
-        print("CLASSIFY TRACE:", canonical)
-        print("  → bucket:", cls)
-        print("  → file:", analysis.file_path)
-
-        print("CLASSIFY OUTPUT:", canonical, "->", cls)
-
-        if cls == "project":
+        # ONLY USE PRECOMPUTED VALUE
+        if getattr(function, "bucket", None) == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
                 "function",
-                canonical,
+                _canonical_symbol(function.name),
                 function.line_number,
                 function.return_type or "",
             )
@@ -229,10 +199,7 @@ def persist_file_analysis(
         (analysis.file_path,),
     )
 
-    for class_obj in classes:
-        identity = _identity_symbol(class_obj.name)
-        canonical = _canonical_symbol(class_obj.name)
-
+    for cls_obj in analysis.classes:
         cursor.execute("""
         INSERT INTO classes (
             file_path,
@@ -244,30 +211,19 @@ def persist_file_analysis(
         VALUES (?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
-            canonical,
-            class_obj.line_number,
-            json.dumps(class_obj.methods),
-            json.dumps(class_obj.base_classes),
+            _canonical_symbol(cls_obj.name),
+            cls_obj.line_number,
+            json.dumps(cls_obj.methods),
+            json.dumps(cls_obj.base_classes),
         ))
 
-        cls = classify_symbol_with_context(
-            identity,
-            ctx,
-        )
-
-        print("\nCLASSIFY EVENT")
-        print("file:", analysis.file_path)
-        print("input:", identity)
-        print("canonical:", canonical)
-        print("bucket:", cls)
-
-        if cls == "project":
+        if getattr(cls_obj, "bucket", None) == "project":
             _insert_symbol(
                 cursor,
                 analysis.file_path,
                 "class",
-                canonical,
-                class_obj.line_number,
+                _canonical_symbol(cls_obj.name),
+                cls_obj.line_number,
             )
 
     # -------------------------
@@ -369,21 +325,7 @@ def persist_file_analysis(
             mutation.raw_expression,
         ))
 
-    # -------------------------
-    # SYMBOL REFERENCES (FIXED)
-    # -------------------------
-    cursor.execute(
-        "DELETE FROM symbol_references WHERE file_path = ?",
-        (analysis.file_path,),
-    )
-
-    failure_events = []
-    bucket_breakdown = defaultdict(int)
-    unknown_examples = []
-    gap_samples = []
-    seen_edges = set()
-
-    return None
+    connection.commit()
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)

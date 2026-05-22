@@ -74,39 +74,11 @@ def is_runtime_symbol(
 
     return False
 
-
-def is_project_symbol(
-    name: str,
-    project_symbols: set[str] | None = None,
-) -> bool:
-
+def is_project_symbol(name: str, project_symbols: set[str] | None = None) -> bool:
     if not name or not project_symbols:
         return False
 
-    from tools.analysis.graph.symbol_identity import (
-        project_key,
-        module_key,
-    )
-
-    project_leafs = {
-        project_key(s)
-        for s in project_symbols
-    }
-
-    project_modules = {
-        module_key(s)
-        for s in project_symbols
-    }
-
-    leaf = project_key(name)
-    module = module_key(name)
-
-    return (
-        name in project_symbols
-        or leaf in project_leafs
-        or module in project_modules
-    )
-
+    return name in project_symbols
 
 def route_symbol(
     name: str,

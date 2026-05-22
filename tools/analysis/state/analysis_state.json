@@ -10,20 +10,20 @@
     "stage": "ACTIVE",
 
     "active": {
-      "module": "snapshot",
-      "task": "classify + stabilize bucket propagation",
-      "phase": "Phase 1 (contracts)"
+      "module": "classification",
+      "task": "stabilize explicit semantic edge propagation",
+      "phase": "Phase 2 (pipeline separation)"
     },
 
-    "file_index": 0,
-    "total_files": 0
+    "file_index": 75,
+    "total_files": 75
   },
 
   "modules": {
     "snapshot": {
       "file": "tools/analysis/graph/evaluation_snapshot.py",
 
-      "status": "STABLE",
+      "status": "STABLE_STRUCTURALLY",
 
       "snapshot": {
         "edge_count": 0,
@@ -36,21 +36,46 @@
 
       "invariants": {
         "edge_conservation": true,
-        "classification_requires_explicit_project_context": true
+        "snapshot_generation_independent_of_persistence": true
       }
     },
 
     "classifier": {
-      "file": "tools/analysis/graph/symbol_classifier.py",
+      "file": "tools/analysis/classification/classify_references.py",
 
-      "status": "EVOLVING",
+      "status": "ACTIVE",
+
+      "role": "semantic routing of symbol references before graph construction",
 
       "outputs": {
-        "bucket_label": "string"
+        "classified_symbol_reference": {
+          "bucket": "string"
+        }
       },
 
       "invariants": {
-        "classification_is_deterministic": true
+        "classification_is_deterministic": true,
+        "all_graph_edges_receive_explicit_bucket": true
+      },
+
+      "depends_on": [
+        "tools/analysis/graph/symbol_classifier.py",
+        "tools/analysis/graph/context_classification.py"
+      ]
+    },
+
+    "classification_references": {
+      "file": "tools/analysis/classification/classify_references.py",
+      "status": "STABLE",
+      "contract": {
+        "input": "FileAnalysis",
+        "output": "FileAnalysis (enriched with .bucket on references)",
+        "responsibility": "assign semantic bucket to all SymbolReference objects",
+        "must_not": [
+          "build graph",
+          "persist data",
+          "compute metrics"
+        ]
       }
     },
 
@@ -73,29 +98,69 @@
 
     "reducer": {
       "file": "tools/analysis/reducer/reduce.py",
+
       "status": "STABLE",
-      "role": "system validation and invariant enforcement"
+
+      "role": "system validation and invariant enforcement",
+
+      "invariants": [
+        "non-negative reduced totals",
+        "edge conservation validation",
+        "snapshot structural validation"
+      ]
     },
 
     "pipeline": {
       "file": "tools/analysis/run_analysis_pipeline.py",
+
       "status": "EVOLVING",
-      "role": "orchestration + reducer invocation + cross-layer validation",
+
+      "role": "explicit orchestration of ingestion → classification → persistence → graph → snapshot → reducer → metrics",
+
       "invariants": [
+        "pipeline stages remain explicitly ordered",
+        "classification occurs before graph construction",
+        "snapshot generation occurs outside persistence",
         "post-reduction edge sanity check",
         "snapshot-list consistency check"
       ],
-      "depends_on": ["snapshot", "metrics", "reducer"]
+
+      "depends_on": [
+        "classifier",
+        "snapshot",
+        "metrics",
+        "reducer"
+      ]
+    },
+
+    "persistence": {
+      "file": "tools/analysis/persistence/persist_file_analysis.py",
+
+      "status": "STABLE",
+
+      "contract": {
+        "input": "FileAnalysis (already classified)",
+        "output": "database writes only",
+        "must_not": [
+          "classification",
+          "context building",
+          "graph reasoning"
+        ]
+      }
     },
 
     "contract": {
       "file": "tools/analysis/contracts/tool_system_contract.json",
+
       "status": "REFERENCE_ONLY",
+
       "implementable": "Phase 3"
     }
   },
 
   "global_invariants": {
-    "edge_conservation": true
+    "edge_conservation": true,
+    "classification_precedes_graph_building": true,
+    "persistence_no_longer_constructs_snapshots": true
   }
 }
