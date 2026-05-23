@@ -141,6 +141,7 @@ def _extract_symbol_references(
     tree: ast.AST,
     known_symbols: set[str],
     alias_map: dict[str, str],
+    module_name: str,
 ):
     references = set()
     local_symbol_map = {}
@@ -174,10 +175,26 @@ def _extract_symbol_references(
                     alias_map.get(raw)
                     or runtime_bindings.get(raw)
                     or local_symbol_map.get(raw)
-                    or raw
+                    or f"{module_name}.{raw}"
+                )
+
+                print(
+                    "[RESOLUTION PIPELINE]",
+                    {
+                        "raw": raw,
+                        "resolved": resolved,
+                    }
                 )
 
                 full = resolve_symbol_identity(resolved, alias_map)
+
+                print(
+                    "[RESOLUTION RESULT]",
+                    {
+                        "resolved": resolved,
+                        "full": full,
+                    }
+                )
 
             # CASE 2: attribute call (a.b.c())
             if isinstance(node.func, ast.Attribute):
@@ -229,7 +246,7 @@ def _extract_symbol_references(
     return [
         SymbolReference(
             caller=a,
-            callee=normalize_symbol(b),
+            callee=b,
             line_number=c,
         )
         for (a, b, c) in references
@@ -299,6 +316,13 @@ def parse_ast(
 
     path = Path(file_path)
 
+    module_name = (
+        str(path)
+        .replace("\\", "/")
+        .replace("/", ".")
+        .removesuffix(".py")
+    )
+
     source = _safe_read_file(path)
     if source is None:
         print("PARSE_AST DROP: source is None for", file_path)
@@ -324,6 +348,7 @@ def parse_ast(
         tree,
         known_symbols,
         alias_map,
+        module_name,
     )
     
     mutations = _extract_mutations(tree)

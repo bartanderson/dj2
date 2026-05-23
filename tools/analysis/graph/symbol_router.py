@@ -74,57 +74,141 @@ def is_runtime_symbol(
 
     return False
 
-def is_project_symbol(name: str, project_symbols: set[str] | None = None) -> bool:
-    if not name or not project_symbols:
+def is_project_symbol(
+    name: str,
+    project_symbols: set[str] | None,
+) -> bool:
+
+    if not project_symbols:
         return False
 
-    return name in project_symbols
+    # exact canonical match
+    if name in project_symbols:
+        return True
+
+    # semantic short-name match
+    short_name = name.split(".")[-1]
+
+    for symbol in project_symbols:
+        if symbol.split(".")[-1] == short_name:
+            print(
+                "[PROJECT SHORT MATCH]",
+                {
+                    "input": name,
+                    "matched": symbol,
+                }
+            )
+            return True
+
+    return False
+
+def terminal_symbol(name: str) -> str:
+    return name.split(".")[-1]
+
+def canonical_symbol(name: str, project_prefixes: list[str] | None = None) -> str:
+    if not name:
+        return name
+    return name
+
 
 def route_symbol(
     name: str,
     runtime_bindings: dict[str, str] | None = None,
     project_symbols: set[str] | None = None,
+    project_prefixes: list[str] | None = None,
 ) -> RouteType:
 
     if not name:
+        print("[CP0 EMPTY INPUT]")
         return "unknown"
 
-    name = normalize_symbol(name)
+    print("\n[CP0 RAW INPUT]", name)
 
-    print(
-        "ROUTE DEBUG:",
-        {
-            "name": name,
-            "project_symbols_type": type(project_symbols).__name__,
-            "project_symbols_count": (
-                len(project_symbols)
-                if project_symbols is not None
-                else None
-            ),
-            "runtime_bindings_count": (
-                len(runtime_bindings)
-                if runtime_bindings is not None
-                else None
-            ),
-        },
-    )
+    runtime_bindings = runtime_bindings or {}
+    project_symbols = project_symbols or set()
+    project_prefixes = project_prefixes or []
 
+    # -------------------------
+    # Canonicalization stage
+    # -------------------------
+    original_name = name
+    name = canonical_symbol(name, project_prefixes)
+
+    print("\n[NAME TRANSFORM TRACE]")
+    print("  original:", repr(original_name))
+    print("  after canonical:", repr(name))
+
+    # -------------------------
+    # Project symbol preparation
+    # -------------------------
+    normalized_project_symbols = {
+        normalize_symbol(s) for s in project_symbols
+    }
+
+    print("\n[PROJECT SYMBOL SAMPLE]")
+    print(list(project_symbols)[:5])
+
+    print("\n[PROJECT SYMBOL SAMPLE NORMALIZED]")
+    print(list(normalized_project_symbols)[:5])
+
+    print("\n[CP2 CLASSIFY INPUT]", name)
+
+    print("\n[ROUTE DEBUG]", {
+        "name": name,
+        "project_symbols_count": len(project_symbols),
+        "runtime_bindings_count": len(runtime_bindings),
+    })
+
+    # -------------------------
+    # Builtin / runtime / stdlib
+    # -------------------------
     if is_builtin_symbol(name):
+        print("[MATCH]", name, "-> builtin")
         return "builtin"
 
     if is_runtime_symbol(name, runtime_bindings):
+        print("[MATCH]", name, "-> runtime")
         return "runtime"
 
     if is_stdlib_symbol(name):
+        print("[MATCH]", name, "-> stdlib")
         return "stdlib"
 
-    if is_project_symbol(name, project_symbols):
-        print("MATCH CHECK:", name)
+    # -------------------------
+    # Normalization stage
+    # -------------------------
+    normalized_name = normalize_symbol(name)
+    print("\n[CP1 NORMALIZED]", normalized_name)
+
+    # -------------------------
+    # Project match probe (FULL)
+    # -------------------------
+    print("\n[PROJECT MATCH DEEP PROBE]")
+    print("  name:", repr(normalized_name))
+
+    exact_match = normalized_name in project_symbols
+    normalized_match = normalized_name in normalized_project_symbols
+
+    print("  exact_match:", exact_match)
+    print("  normalized_match:", normalized_match)
+
+    if not exact_match and not normalized_match:
+        print("  MISS TYPE: no identity match at all")
+    elif not exact_match and normalized_match:
+        print("  MISS TYPE: normalization mismatch")
+    elif exact_match:
+        print("  HIT TYPE: exact match")
+        print("[CP3 project]", normalized_name)
         return "project"
 
-    if "." in name:
+    # -------------------------
+    # External / fallback
+    # -------------------------
+    if "." in normalized_name:
+        print("[CP3.5 external]", normalized_name)
         return "external"
 
+    print("[CP4 FALLBACK UNKNOWN]", normalized_name)
     return "unknown"
 
 def route_symbol_with_context(
