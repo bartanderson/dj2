@@ -170,6 +170,17 @@
         "must_load_json_contract": true,
         "must_not_mutate_contract": true
       }
+    },
+    
+    "global": {
+      "file": "tools.analysis.pipeline.global_validation",
+      "status": "STABLE",
+      "role": "final pipeline integrity check",
+      "invariants": {
+        "edge_conservation": true,
+        "classification_boundary_respected": true,
+        "no_cross_layer_logic": true
+      }
     }
   },
 

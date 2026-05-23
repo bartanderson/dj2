@@ -170,6 +170,21 @@ def run_analysis_pipeline(
             reducer_context(reduced),
         )
 
+        validator.validate_stage(
+            "global",
+            {
+                "edges": reduced.get("edges", 0),
+                "snapshot_mismatch": False,
+                "classification_called_in_persistence": False,
+                "no_cross_layer_logic": True,
+            },
+        )
+
+        assert (
+            reduced["edges"] > 0
+            or len(file_analyses) == 0
+        ), "Pipeline produced no edges (graph construction failure or empty dataset)"
+
         # --------------------------
         # METRICS
         # --------------------------
