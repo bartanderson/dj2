@@ -36,45 +36,25 @@ def get_config_path():
     repo_root = Path(__file__).resolve().parents[2]
     return repo_root / "config" / "analysis_profiles.yaml"
 
-def snapshot_context(graph) -> dict:
-    return {
-        "edges": len(graph.edges),
-        "snapshot_mismatch": False,
-    }
-
-
-def reducer_context(reduced) -> dict:
-    return {
-        "edges": reduced["edges"],
-        "snapshot_mismatch": False,
-    }
-
-
-def metrics_context(report) -> dict:
-    return {
-        "edges": report.get("total_edges", 0),
-        "snapshot_mismatch": False,
-    }
-
 def validate(stage: str, validator, context: dict):
     validator.validate_stage(stage, context)
 
-def ingestion_context(file_analyses) -> dict:
-    return {
-        "file_count": len(file_analyses),
-        "edges": sum(len(fa.symbol_references) for fa in file_analyses),
+def build_stage_context(stage: str, *, edges: int = 0, snapshot_mismatch: bool = False,
+                        classification_called_in_persistence: bool = False,
+                        no_cross_layer_logic: bool = True) -> dict:
+    """
+    Unified stage context builder for ContractRuntimeValidator.
+    This eliminates duplication of inline dicts across the pipeline.
+    """
+    context = {
+        "edges": edges,
+        "snapshot_mismatch": snapshot_mismatch,
+        "classification_called_in_persistence": classification_called_in_persistence,
+        "no_cross_layer_logic": no_cross_layer_logic,
     }
+    return context
 
-def classification_context(file_analyses) -> dict:
-    return {
-        "file_count": len(file_analyses),
-        "edges": sum(len(fa.symbol_references) for fa in file_analyses),
-    }
-
-def persistence_context(file_analyses) -> dict:
-    return {
-        "persisted_count": len(file_analyses),
-    }
+# tools/analysis/run_analysis_pipeline.py
 
 def run_analysis_pipeline(
     project_root: str | Path,
@@ -88,51 +68,43 @@ def run_analysis_pipeline(
     if not project_prefixes:
         project_prefixes = build_profile_prefixes(project_root)
 
-
     try:
 
         connection = create_database(database_path)
 
+        # Load and enforce system contract
         contract = load_system_contract()
         validator = ContractRuntimeValidator(contract)
 
         # --------------------------
         # INGESTION
         # --------------------------
-        file_analyses = list(
-            scan_project_files(project_root, project_prefixes, repo_root)
-        )
-        validator.validate_stage("ingestion", ingestion_context(file_analyses))
-
+        file_analyses = list(scan_project_files(project_root, project_prefixes, repo_root))
         if not file_analyses:
             raise RuntimeError("Pipeline produced no analyses")
-
         processed_count = len(file_analyses)
 
         # --------------------------
         # CLASSIFICATION
         # --------------------------
         file_analyses = [
-            classify_references(a, project_prefixes)
-            for a in file_analyses
+            classify_references(a, project_prefixes) for a in file_analyses
         ]
-        validator.validate_stage("classification", classification_context(file_analyses))
 
         # --------------------------
         # PERSISTENCE
         # --------------------------
         for analysis in file_analyses:
             persist_file_analysis(connection, analysis, project_prefixes)
-        validator.validate_stage("persistence", persistence_context(file_analyses))
 
         # --------------------------
-        # SNAPSHOTS
+        # SNAPSHOTS + METRICS
         # --------------------------
-
         snapshots = []
 
         for analysis in file_analyses:
             builder = GraphBuilder()
+
             for ref in analysis.symbol_references:
                 assert ref.bucket is not None
                 builder.add_reference(
@@ -144,18 +116,18 @@ def run_analysis_pipeline(
 
             graph = builder.build()
 
-            validator.validate_stage("snapshot", snapshot_context(graph))
-
-            snapshot = build_evaluation_snapshot(
-                analysis=analysis,
-                graph=graph,
+            # Snapshot stage
+            validator.validate_stage(
+                "snapshot",
+                build_stage_context("snapshot", edges=len(graph.edges)),
             )
 
+            snapshot = build_evaluation_snapshot(analysis=analysis, graph=graph)
+
+            # Metrics stage
             validator.validate_stage(
                 "metrics",
-                metrics_context({
-                    "total_edges": len(graph.edges),
-                }),
+                build_stage_context("metrics", edges=len(graph.edges)),
             )
 
             snapshots.append(snapshot)
@@ -167,26 +139,28 @@ def run_analysis_pipeline(
 
         validator.validate_stage(
             "reducer",
-            reducer_context(reduced),
+            build_stage_context("reducer", edges=reduced.get("edges", 0)),
         )
 
-        validator.validate_stage(
-            "global",
-            {
-                "edges": reduced.get("edges", 0),
-                "snapshot_mismatch": False,
-                "classification_called_in_persistence": False,
-                "no_cross_layer_logic": True,
-            },
+        assert reduced["edges"] > 0 or len(file_analyses) == 0, (
+            "Pipeline produced no edges (graph construction failure or empty dataset)"
         )
-
-        assert (
-            reduced["edges"] > 0
-            or len(file_analyses) == 0
-        ), "Pipeline produced no edges (graph construction failure or empty dataset)"
 
         # --------------------------
-        # METRICS
+        # GLOBAL INVARIANTS
+        # --------------------------
+        validator.validate_stage(
+            "global",
+            build_stage_context(
+                "global",
+                edges=reduced.get("edges", 0),
+                classification_called_in_persistence=False,
+                no_cross_layer_logic=True,
+            ),
+        )
+
+        # --------------------------
+        # FINAL METRICS REPORT
         # --------------------------
         report = extract_metrics([snapshot])
 
