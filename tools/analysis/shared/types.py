@@ -68,6 +68,7 @@ class SymbolReference:
     caller: str
     callee: str
     line_number: int
+    bucket: Optional[str] = None
 
 @dataclass
 class SymbolClassification:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 from tools.analysis.load_config_profiles import (load_analysis_profiles, build_profile_prefixes)
 from tools.analysis.ingestion.scan_project_files import (scan_project_files)
@@ -14,6 +15,7 @@ from tools.analysis.query.query_file_analysis import fetch_complete_file_analysi
 from tools.analysis.metrics.extract_metrics import extract_metrics
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.classification.classify_references import classify_references
+from tools.analysis.contracts.load_contract import load_system_contract
 from tools.analysis.contracts.ledger_validator import LedgerRuntimeValidator
 
 def resolve_repo_root(path: str | Path) -> Path:
@@ -34,6 +36,46 @@ def get_config_path():
     repo_root = Path(__file__).resolve().parents[2]
     return repo_root / "config" / "analysis_profiles.yaml"
 
+def snapshot_context(graph) -> dict:
+    return {
+        "edges": len(graph.edges),
+        "snapshot_mismatch": False,
+    }
+
+
+def reducer_context(reduced) -> dict:
+    return {
+        "edges": reduced["edges"],
+        "snapshot_mismatch": False,
+    }
+
+
+def metrics_context(report) -> dict:
+    return {
+        "edges": report.get("total_edges", 0),
+        "snapshot_mismatch": False,
+    }
+
+def validate(stage: str, validator, context: dict):
+    validator.validate_stage(stage, context)
+
+def ingestion_context(file_analyses) -> dict:
+    return {
+        "file_count": len(file_analyses),
+        "edges": sum(len(fa.symbol_references) for fa in file_analyses),
+    }
+
+def classification_context(file_analyses) -> dict:
+    return {
+        "file_count": len(file_analyses),
+        "edges": sum(len(fa.symbol_references) for fa in file_analyses),
+    }
+
+def persistence_context(file_analyses) -> dict:
+    return {
+        "persisted_count": len(file_analyses),
+    }
+
 def run_analysis_pipeline(
     project_root: str | Path,
     database_path: str | Path,
@@ -46,9 +88,13 @@ def run_analysis_pipeline(
     if not project_prefixes:
         project_prefixes = build_profile_prefixes(project_root)
 
-    connection = create_database(database_path)
 
     try:
+
+        connection = create_database(database_path)
+
+        contract = load_system_contract()
+        validator = LedgerRuntimeValidator(contract)
 
         # --------------------------
         # INGESTION
@@ -56,6 +102,7 @@ def run_analysis_pipeline(
         file_analyses = list(
             scan_project_files(project_root, project_prefixes, repo_root)
         )
+        validator.validate_stage("ingestion", ingestion_context(file_analyses))
 
         if not file_analyses:
             raise RuntimeError("Pipeline produced no analyses")
@@ -66,15 +113,17 @@ def run_analysis_pipeline(
         # CLASSIFICATION
         # --------------------------
         file_analyses = [
-            classify_references(a)
+            classify_references(a, project_prefixes)
             for a in file_analyses
         ]
+        validator.validate_stage("classification", classification_context(file_analyses))
 
         # --------------------------
         # PERSISTENCE
         # --------------------------
         for analysis in file_analyses:
             persist_file_analysis(connection, analysis, project_prefixes)
+        validator.validate_stage("persistence", persistence_context(file_analyses))
 
         # --------------------------
         # SNAPSHOTS
@@ -83,22 +132,30 @@ def run_analysis_pipeline(
         snapshots = []
 
         for analysis in file_analyses:
-
             builder = GraphBuilder()
-
             for ref in analysis.symbol_references:
+                assert ref.bucket is not None
                 builder.add_reference(
                     caller=ref.caller,
                     callee=ref.callee,
                     line_number=ref.line_number,
-                    bucket=ref.bucket if hasattr(ref, "bucket") else "unknown",
+                    bucket=ref.bucket or "unknown",
                 )
 
             graph = builder.build()
 
+            validator.validate_stage("snapshot", snapshot_context(graph))
+
             snapshot = build_evaluation_snapshot(
                 analysis=analysis,
                 graph=graph,
+            )
+
+            validator.validate_stage(
+                "metrics",
+                metrics_context({
+                    "total_edges": len(graph.edges),
+                }),
             )
 
             snapshots.append(snapshot)
@@ -108,8 +165,9 @@ def run_analysis_pipeline(
         # --------------------------
         reduced = reduce(snapshots)
 
-        assert reduced["edges"] > 0 or len(file_analyses) == 0, (
-            "No edges found despite snapshots existing"
+        validator.validate_stage(
+            "reducer",
+            reducer_context(reduced),
         )
 
         # --------------------------

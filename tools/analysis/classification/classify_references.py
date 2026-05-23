@@ -25,57 +25,31 @@
 # - Graph edges must never remain semantically unclassified
 # - Classification logic must remain independent of persistence
 
-from tools.analysis.graph.project_graph_context import (
-    ProjectGraphContext,
-)
+from tools.analysis.graph.project_graph_context import ProjectGraphContext
 
-from tools.analysis.graph.context_classification import (
-    classify_symbol_with_context,
-)
+# from tools.analysis.graph.context_classification import (
+#     classify_symbol_with_context,
+# )
 
-def classify_references(analysis):
+from tools.analysis.graph.symbol_router import route_symbol
+from tools.analysis.graph.context_classification import classify_symbol_with_context
 
-    runtime_bindings = analysis.runtime_bindings
 
-    project_symbols = getattr(
-        analysis,
-        "project_symbols",
-        None,
-    ) or set()
-
-    project_prefixes = getattr(
-        analysis,
-        "project_prefixes",
-        [],
-    )
-
+def classify_references(analysis, project_prefixes):
     ctx = ProjectGraphContext(
         project_prefixes=project_prefixes,
-        project_symbols=project_symbols,
-        runtime_bindings=runtime_bindings,
+        project_symbols=getattr(analysis, "project_symbols", None) or set(),
+        runtime_bindings=getattr(analysis, "runtime_bindings", {}) or {},
     )
 
     for ref in analysis.symbol_references:
-
-        print("\n[CLASSIFICATION STAGE]")
-        print("callee:", ref.callee)
-        print("normalized:", ref.callee.split('.')[-1])
-        print(
-            "in project symbols:",
-            ref.callee.split('.')[-1] in ctx.project_symbols
+        route = route_symbol(
+            name=ref.callee,
+            runtime_bindings=analysis.runtime_bindings,
+            project_symbols=analysis.project_symbols,
         )
 
-        result = classify_symbol_with_context(
-            ref.callee,
-            ctx,
-        )
-
-        bucket = (
-            result.get("bucket")
-            if isinstance(result, dict)
-            else str(result or "classification_gap")
-        )
-
-        ref.bucket = bucket
+        # IN-PLACE ENRICHMENT (key change)
+        ref.bucket = route
 
     return analysis
