@@ -148,8 +148,8 @@
       }
     },
 
-    "ledger_validator": {
-      "file": "tools.analysis.validation.ledger_validator",
+    "contract_validator": {
+      "file": "tools.analysis.validation.contract_validator",
       "status": "ACTIVE",
 
       "role": "runtime invariant enforcement",
@@ -171,7 +171,7 @@
         "must_not_mutate_contract": true
       }
     },
-    
+
     "global": {
       "file": "tools.analysis.pipeline.global_validation",
       "status": "STABLE",

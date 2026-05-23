@@ -1,7 +1,7 @@
-# tools/analysis/contracts/ledger_validator.py
+# tools/analysis/contracts/contract_validator.py
 
 
-# MODULE: ledger
+# MODULE: contract
 # OWNED: TRUE
 # ROLE: runtime validation + cross-module consistency enforcement
 #
@@ -30,24 +30,24 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 
-class LedgerViolation(Exception):
+class ContractViolation(Exception):
     pass
 
 
-class LedgerRuntimeValidator:
-    def __init__(self, ledger: Dict[str, Any]):
-        self.ledger = ledger
+class ContractRuntimeValidator:
+    def __init__(self, contract: Dict[str, Any]):
+        self.contract = contract
 
     def validate_stage(self, stage: str, context: Dict[str, Any]) -> None:
         """
         context = runtime snapshot of what just happened in pipeline stage
         """
 
-        modules = self.ledger.get("modules", {})
+        modules = self.contract.get("modules", {})
         stage_contract = modules.get(stage)
 
         if not stage_contract:
-            raise LedgerViolation(f"Unknown stage: {stage}")
+            raise ContractViolation(f"Unknown stage: {stage}")
 
         invariants = stage_contract.get("invariants", {})
 
@@ -63,19 +63,19 @@ class LedgerRuntimeValidator:
         if name == "edge_conservation":
             edges = context.get("edges", None)
             if edges is not None and edges < 0:
-                raise LedgerViolation(f"[{stage}] negative edge count")
+                raise ContractViolation(f"[{stage}] negative edge count")
 
         # ---- classification boundary ----
         if name == "classification_must_not_be_in_persistence":
             if context.get("classification_called_in_persistence"):
-                raise LedgerViolation(f"[{stage}] classification leaked into persistence")
+                raise ContractViolation(f"[{stage}] classification leaked into persistence")
 
         # ---- snapshot integrity ----
         if name == "snapshot_must_match_graph":
             if context.get("snapshot_mismatch"):
-                raise LedgerViolation(f"[{stage}] snapshot mismatch detected")
+                raise ContractViolation(f"[{stage}] snapshot mismatch detected")
 
         # ---- generic boolean guard ----
         if isinstance(rule, bool) and rule is True:
             if context.get(name) is False:
-                raise LedgerViolation(f"[{stage}] invariant failed: {name}")
+                raise ContractViolation(f"[{stage}] invariant failed: {name}")

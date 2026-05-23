@@ -16,7 +16,7 @@ from tools.analysis.metrics.extract_metrics import extract_metrics
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.classification.classify_references import classify_references
 from tools.analysis.contracts.load_contract import load_system_contract
-from tools.analysis.contracts.ledger_validator import LedgerRuntimeValidator
+from tools.analysis.contracts.contract_validator import ContractRuntimeValidator
 
 def resolve_repo_root(path: str | Path) -> Path:
     p = Path(path).resolve()
@@ -94,7 +94,7 @@ def run_analysis_pipeline(
         connection = create_database(database_path)
 
         contract = load_system_contract()
-        validator = LedgerRuntimeValidator(contract)
+        validator = ContractRuntimeValidator(contract)
 
         # --------------------------
         # INGESTION
