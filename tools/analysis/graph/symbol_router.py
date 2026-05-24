@@ -2,6 +2,46 @@
 
 from __future__ import annotations
 
+# CP2.5 SEMANTIC OBSERVATION LAYER (TRACE-ONLY)
+# -------------------------------------------------
+# PURPOSE:
+#   Deterministic capture of semantic context signals for
+#   downstream reconstruction and auditability.
+#
+# BEHAVIORAL GUARANTEE:
+#   - MUST NOT influence CP3 routing decisions
+#   - MUST NOT mutate control flow
+#   - MUST NOT be used for classification
+#
+# ROLE IN PIPELINE:
+#   This layer is a PURE OBSERVATION STAGE that runs in parallel
+#   to routing logic.
+#
+#   It exists to emit structured signals derived from:
+#     - lexical form (surface token)
+#     - local decomposition (leaf/root/depth)
+#     - runtime bindings proximity
+#     - project symbol proximity (non-authoritative)
+#
+#   These signals are consumed ONLY by:
+#     - SemanticCandidateBuilder
+#     - TraceCollector inspection tooling
+#     - future semantic reconstruction layers
+#
+# DATA NATURE:
+#   - All outputs are NON-BINDING hints
+#   - All signals are advisory metadata only
+#   - No signal is a classification truth
+#
+# ARCHITECTURAL NOTE:
+#   This layer is the first step in semantic identity recovery,
+#   but it does NOT participate in identity resolution.
+#
+# DO NOT:
+#   - return values from this layer
+#   - branch logic on these signals
+#   - treat any probe as ground truth
+
 import builtins
 import sys
 
@@ -18,6 +58,7 @@ from tools.analysis.graph.project_graph_context import (
 from tools.analysis.graph.symbol_classifier import normalize_symbol
 from tools.analysis.graph.route_trace import TraceCollector
 from tools.analysis.graph.semantic_candidate_builder import SemanticCandidateBuilder
+#from tools.analysis.graph.route_trace import #graph_route_trace
 
 RouteType = Literal[
     "project",
@@ -120,6 +161,20 @@ def route_symbol_shadow(
 ):
     tracer = TraceCollector(name)
 
+    # -----------------------------
+    # 1. RUN ORIGINAL ROUTER FIRST
+    # -----------------------------
+    result = _route_symbol_core(
+        name=name,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols,
+        project_prefixes=project_prefixes,
+        trace_collector=tracer,
+    )
+
+    # -----------------------------
+    # 2. SEMANTIC RECONSTRUCTION (POST-HOC ONLY)
+    # -----------------------------
     builder = SemanticCandidateBuilder()
 
     candidates = builder.from_trace(
@@ -131,15 +186,15 @@ def route_symbol_shadow(
 
     tracer.record(
         "semantic_candidates",
-        [c.__dict__ for c in candidates]
-    )
-
-    result = _route_symbol_core(
-        name=name,
-        runtime_bindings=runtime_bindings,
-        project_symbols=project_symbols,
-        project_prefixes=project_prefixes,
-        trace_collector=tracer,
+        [
+            {
+                "leaf": getattr(c, "leaf", None),
+                "fqdn": getattr(c, "fqdn", None),
+                "confidence": getattr(c, "confidence", None),
+                "source": getattr(c, "source", None),
+            }
+            for c in candidates
+        ],
     )
 
     return result, tracer.get()
@@ -186,10 +241,39 @@ def _route_symbol_core(
     print(list(normalized_project_symbols)[:5])
 
     print("\n[CP2 CLASSIFY INPUT]", name)
+    # -------------------------
+    # CP2.5 Semantic Observation Layer (NON-BINDING)
+    # -------------------------
+    cp25_normalized_probe = normalize_symbol(name)
     if trace_collector:
         trace_collector.snapshot_semantic_identity(
-        cp2_input=name,
-    )
+            cp2_input=name,
+            cp2_original_input=original_name,
+        )
+
+        leaf = terminal_symbol(name)
+        root = name.split(".")[0]
+
+        project_leaves = {
+            terminal_symbol(normalize_symbol(s))
+            for s in project_symbols or set()
+        }
+
+        trace_collector.record("cp25_semantic_probe", {
+            "input": name,
+            "leaf": leaf,
+            "root": root,
+            "has_dots": "." in name,
+            "depth": len(name.split(".")),
+
+            "leaf_hit": leaf in project_leaves,
+            "runtime_root_hit": root in (runtime_bindings or {}),
+
+            "cp3_project_equivalent": cp25_normalized_probe in project_symbols,
+        })
+
+    print("\n[CP2.5 SEMANTIC OBSERVATION LAYER]")
+    print("  status: ACTIVE (non-binding instrumentation)")
 
     print("\n[ROUTE DEBUG]", {
         "name": name,
@@ -265,6 +349,25 @@ def _route_symbol_core(
         print("  MATCH TYPE: normalized set fallback")
         return "project"
 
+    if normalized_name in project_symbols:
+        print("  MATCH TYPE: fqdn exact")
+        return "project"
+
+    # -------------------------
+    # CP3.1 ROUTE OBSERVATION LAYER (shadow comparison hook)
+    # -------------------------
+    if trace_collector:
+        trace_collector.record(
+            "cp31_route_observation",
+            {
+                "input": name,
+                "normalized": normalized_name,
+                "leaf": normalized_name.split(".")[-1],
+                "is_project_symbol": normalized_name in project_symbols,
+                "is_normalized_project_symbol": normalized_name in normalized_project_symbols,
+            },
+        )
+
     print("  MISS TYPE: no semantic project match")
 
     # -------------------------
@@ -288,98 +391,13 @@ def route_symbol(
     project_prefixes: list[str] | None = None,
 ) -> RouteType:
 
-    if not name:
-        print("[CP0 EMPTY INPUT]")
-        return "unknown"
-
-    print("\n[CP0 RAW INPUT]", name)
-
-    runtime_bindings = runtime_bindings or {}
-    project_symbols = project_symbols or set()
-    project_prefixes = project_prefixes or []
-
-    # -------------------------
-    # Canonicalization stage
-    # -------------------------
-    original_name = name
-    name = canonical_symbol(name, project_prefixes)
-
-    print("\n[NAME TRANSFORM TRACE]")
-    print("  original:", repr(original_name))
-    print("  after canonical:", repr(name))
-
-    # -------------------------
-    # Project symbol preparation
-    # -------------------------
-    normalized_project_symbols = {
-        normalize_symbol(s) for s in project_symbols
-    }
-
-    print("\n[PROJECT SYMBOL SAMPLE]")
-    print(list(project_symbols)[:5])
-
-    print("\n[PROJECT SYMBOL SAMPLE NORMALIZED]")
-    print(list(normalized_project_symbols)[:5])
-
-    print("\n[CP2 CLASSIFY INPUT]", name)
-
-    print("\n[ROUTE DEBUG]", {
-        "name": name,
-        "project_symbols_count": len(project_symbols),
-        "runtime_bindings_count": len(runtime_bindings),
-    })
-
-    # -------------------------
-    # Builtin / runtime / stdlib
-    # -------------------------
-    if is_builtin_symbol(name):
-        print("[MATCH]", name, "-> builtin")
-        return "builtin"
-
-    if is_runtime_symbol(name, runtime_bindings):
-        print("[MATCH]", name, "-> runtime")
-        return "runtime"
-
-    if is_stdlib_symbol(name):
-        print("[MATCH]", name, "-> stdlib")
-        return "stdlib"
-
-    # -------------------------
-    # Normalization stage
-    # -------------------------
-    normalized_name = normalize_symbol(name)
-    print("\n[CP1 NORMALIZED]", normalized_name)
-
-    # -------------------------
-    # Project match probe (FULL)
-    # -------------------------
-    print("\n[PROJECT MATCH DEEP PROBE]")
-    print("  name:", repr(normalized_name))
-
-    exact_match = normalized_name in project_symbols
-    normalized_match = normalized_name in normalized_project_symbols
-
-    print("  exact_match:", exact_match)
-    print("  normalized_match:", normalized_match)
-
-    if not exact_match and not normalized_match:
-        print("  MISS TYPE: no identity match at all")
-    elif not exact_match and normalized_match:
-        print("  MISS TYPE: normalization mismatch")
-    elif exact_match:
-        print("  HIT TYPE: exact match")
-        print("[CP3 project]", normalized_name)
-        return "project"
-
-    # -------------------------
-    # External / fallback
-    # -------------------------
-    if "." in normalized_name:
-        print("[CP3.5 external]", normalized_name)
-        return "external"
-
-    print("[CP4 FALLBACK UNKNOWN]", normalized_name)
-    return "unknown"
+    return _route_symbol_core(
+        name=name,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols,
+        project_prefixes=project_prefixes,
+        trace_collector=None,
+    )
 
 def route_symbol_with_context(
     name: str,

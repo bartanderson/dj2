@@ -45,7 +45,7 @@ class SemanticRouteTrace(RouteTrace):
 
 class TraceCollector:
     def __init__(self, name: str):
-        self.trace = RouteTrace(input_raw=name)
+        self.trace = SemanticRouteTrace(input_raw=name)
 
     def record(self, key: str, value):
         setattr(self.trace, key, value)
@@ -54,35 +54,31 @@ class TraceCollector:
         for k, v in kwargs.items():
             setattr(self.trace, k, v)
 
+    def snapshot_semantic_identity(self, **kwargs):
+        self.trace.semantic_identity = {
+            **(self.trace.semantic_identity or {}),
+            **kwargs,
+        }
+
+    def record_semantic(
+        self,
+        surface: str,
+        fqdn: str | None = None,
+        confidence: float | None = None,
+        evidence: list[str] | None = None,
+        module: str | None = None,
+        binding_type: str | None = None,
+    ):
+        candidate = SemanticCandidate(
+            surface=surface,
+            fqdn=fqdn,
+            module=module,
+            binding_type=binding_type,
+            confidence=confidence or 1.0,
+            evidence=evidence or [],
+        )
+
+        self.trace.resolved_candidates.append(candidate)
+
     def get(self):
         return self.trace
-
-
-def snapshot_semantic_identity(self, **kwargs):
-    if not hasattr(self.trace, "semantic_identity"):
-        return
-
-    self.trace.semantic_identity = {
-        **(self.trace.semantic_identity or {}),
-        **kwargs,
-    }
-
-def record_semantic(
-    self,
-    event: str,
-    surface: str,
-    fqdn: str | None = None,
-    confidence: float | None = None,
-    evidence: list[str] | None = None,
-):
-    if not hasattr(self.trace, "resolved_candidates"):
-        return
-
-    candidate = SemanticCandidate(
-        surface=surface,
-        fqdn=fqdn,
-        confidence=confidence or 1.0,
-        evidence=evidence or [],
-    )
-
-    self.trace.resolved_candidates.append(candidate)
