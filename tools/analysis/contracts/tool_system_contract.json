@@ -1,10 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
 
   "meta": {
     "run_id": "",
     "timestamp": "",
-    "state": "ACTIVE_REFACTORED_PIPELINE"
+    "state": "SEMANTIC_RECONSTRUCTION_SHADOW_LAYER_ACTIVE"
   },
 
   "progress": {
@@ -13,7 +13,7 @@
     "active": {
       "module": "pipeline",
       "task": "stabilize classification → graph → snapshot flow",
-      "phase": "Phase 2 (classification boundary correction)"
+      "phase": "Phase 1 (semantic observability + shadow reconstruction)"
     },
 
     "file_index": 0,
@@ -25,34 +25,39 @@
     "ingestion": {
       "file": "tools.analysis.scanning.scan_project_files",
       "status": "STABLE",
-      "contract": "Produces FileAnalysis objects",
+
+      "contract": "Produces FileAnalysis objects (FLATTENED SYMBOL SPACE)",
+
       "outputs": {
         "file_analysis": "FileAnalysis"
       },
+
       "invariants": {
-        "must_emit_analysis_objects": true
+        "must_emit_analysis_objects": true,
+        "must_preserve_raw_ast_structure": true
       }
     },
 
     "classification": {
       "file": "tools.analysis.classification.classify_references",
       "status": "STABLE",
-      "role": "explicit semantic routing stage",
+      "role": "explicit semantic routing stage (STRING DOMAIN ONLY)",
 
       "outputs": {
-        "enriched_file_analysis": "FileAnalysis (with classified edges)"
+        "enriched_file_analysis": "FileAnalysis (string-classified edges only)"
       },
 
       "invariants": {
         "must_not_be_in_persistence": true,
-        "must_classify_symbol_references_only": true
+        "must_classify_symbol_references_only": true,
+        "must_not_introduce_semantic_identity_objects": true
       }
     },
 
     "symbol_router": {
       "file": "tools.analysis.graph.symbol_router",
       "status": "STABLE",
-      "role": "low-level routing logic",
+      "role": "deterministic routing over flattened symbols",
 
       "outputs": {
         "route": "project | runtime | builtin | stdlib | external | unknown"
@@ -60,7 +65,31 @@
 
       "invariants": {
         "must_be_pure": true,
-        "no_side_effects": true
+        "no_side_effects": true,
+        "string_identity_only": true
+      }
+    },
+
+    "trace_layer": {
+      "file": "tools.analysis.graph.route_trace",
+      "status": "ACTIVE",
+
+      "role": "semantic reconstruction shadow layer (OBSERVABILITY ONLY)",
+
+      "components": {
+        "TraceCollector": "records CP0–CP4 + semantic probes",
+        "RouteTrace": "immutable trace snapshot"
+      },
+
+      "outputs": {
+        "trace": "RouteTrace",
+        "semantic_signals": "unresolved reconstruction hints"
+      },
+
+      "invariants": {
+        "no_effect_on_routing": true,
+        "no_effect_on_graph": true,
+        "shadow_execution_only": true
       }
     },
 
@@ -131,7 +160,8 @@
         "classification_must_precede_graph": true,
         "persistence_must_not_classify": true,
         "snapshot_must_be_readonly": true,
-        "runtime_contract_validation_required": true
+        "runtime_contract_validation_required": true,
+        "trace_layer_is_non_blocking": true
       }
     },
 
@@ -144,7 +174,8 @@
       "invariants": {
         "no_classification_logic": true,
         "no_graph_construction": true,
-        "no_snapshot_generation": true
+        "no_snapshot_generation": true,
+        "must_accept_flattened_symbols_only": true
       }
     },
 
@@ -156,7 +187,8 @@
 
       "invariants": {
         "must_not_mutate_contract": true,
-        "must_validate_stage_boundaries": true
+        "must_validate_stage_boundaries": true,
+        "trace_layer_ignored_for_decisions": true
       }
     },
 
@@ -175,11 +207,14 @@
     "global": {
       "file": "tools.analysis.pipeline.global_validation",
       "status": "STABLE",
+
       "role": "final pipeline integrity check",
+
       "invariants": {
         "edge_conservation": true,
         "classification_boundary_respected": true,
-        "no_cross_layer_logic": true
+        "no_cross_layer_logic": true,
+        "semantic_reconstruction_is_non_authoritative": true
       }
     }
   },
@@ -188,6 +223,7 @@
     "edge_conservation": true,
     "classification_boundary_respected": true,
     "no_cross_layer_logic": true,
-    "contract_is_immutable": true
+    "contract_is_immutable": true,
+    "semantic_layer_is_observational_only": true
   }
 }

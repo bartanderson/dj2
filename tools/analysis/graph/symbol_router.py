@@ -16,6 +16,8 @@ from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
 from tools.analysis.graph.symbol_classifier import normalize_symbol
+from tools.analysis.graph.route_trace import TraceCollector
+from tools.analysis.graph.semantic_candidate_builder import SemanticCandidateBuilder
 
 RouteType = Literal[
     "project",
@@ -110,6 +112,174 @@ def canonical_symbol(name: str, project_prefixes: list[str] | None = None) -> st
         return name
     return name
 
+def route_symbol_shadow(
+    name: str,
+    runtime_bindings: dict[str, str] | None = None,
+    project_symbols: set[str] | None = None,
+    project_prefixes: list[str] | None = None,
+):
+    tracer = TraceCollector(name)
+
+    builder = SemanticCandidateBuilder()
+
+    candidates = builder.from_trace(
+        name=name,
+        alias_map=runtime_bindings,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols or set(),
+    )
+
+    tracer.record(
+        "semantic_candidates",
+        [c.__dict__ for c in candidates]
+    )
+
+    result = _route_symbol_core(
+        name=name,
+        runtime_bindings=runtime_bindings,
+        project_symbols=project_symbols,
+        project_prefixes=project_prefixes,
+        trace_collector=tracer,
+    )
+
+    return result, tracer.get()
+
+def _route_symbol_core(
+    name: str,
+    runtime_bindings: dict[str, str] | None = None,
+    project_symbols: set[str] | None = None,
+    project_prefixes: list[str] | None = None,
+    trace_collector=None,
+) -> RouteType:
+
+    if not name:
+        print("[CP0 EMPTY INPUT]")
+        return "unknown"
+
+    print("\n[CP0 RAW INPUT]", name)
+
+    runtime_bindings = runtime_bindings or {}
+    project_symbols = project_symbols or set()
+    project_prefixes = project_prefixes or []
+
+    # -------------------------
+    # Canonicalization stage
+    # -------------------------
+    original_name = name
+    name = canonical_symbol(name, project_prefixes)
+
+    print("\n[NAME TRANSFORM TRACE]")
+    print("  original:", repr(original_name))
+    print("  after canonical:", repr(name))
+
+    # -------------------------
+    # Project symbol preparation
+    # -------------------------
+    normalized_project_symbols = {
+        normalize_symbol(s) for s in project_symbols
+    }
+
+    print("\n[PROJECT SYMBOL SAMPLE]")
+    print(list(project_symbols)[:5])
+
+    print("\n[PROJECT SYMBOL SAMPLE NORMALIZED]")
+    print(list(normalized_project_symbols)[:5])
+
+    print("\n[CP2 CLASSIFY INPUT]", name)
+    if trace_collector:
+        trace_collector.snapshot_semantic_identity(
+        cp2_input=name,
+    )
+
+    print("\n[ROUTE DEBUG]", {
+        "name": name,
+        "project_symbols_count": len(project_symbols),
+        "runtime_bindings_count": len(runtime_bindings),
+    })
+
+    # -------------------------
+    # Builtin / runtime / stdlib
+    # -------------------------
+    if is_builtin_symbol(name):
+        if trace_collector:
+            trace_collector.record("builtin_match", name)
+        print("[MATCH]", name, "-> builtin")
+        return "builtin"
+
+    if is_runtime_symbol(name, runtime_bindings):
+        if trace_collector:
+            trace_collector.record("runtime_match", name)
+        print("[MATCH]", name, "-> runtime")
+        return "runtime"
+
+    if is_stdlib_symbol(name):
+        if trace_collector:
+            trace_collector.record("stdlib_match", name)
+        print("[MATCH]", name, "-> stdlib")
+        return "stdlib"
+
+    # -------------------------
+    # Normalization stage
+    # -------------------------
+    normalized_name = normalize_symbol(name)
+    print("\n[CP1 NORMALIZED]", normalized_name)
+
+    # -------------------------
+    # Project match probe (FULL)
+    # -------------------------
+    print("\n[CP3 SEMANTIC PROJECT MATCH]")
+
+    leaf_name = normalized_name.split(".")[-1]
+
+    print("  normalized_name:", normalized_name)
+    print("  leaf_name:", leaf_name)
+
+    # 1. exact fqdn match
+    if normalized_name in project_symbols:
+        print("  MATCH TYPE: fqdn exact")
+        return "project"
+
+    # 2. leaf match (what you were implicitly relying on)
+    leaf_matches = [
+        s for s in project_symbols
+        if terminal_symbol(normalize_symbol(s)) == leaf_name
+    ]
+
+    print("  leaf_matches:", len(leaf_matches))
+
+    if leaf_matches:
+        print("  MATCH TYPE: leaf semantic")
+
+        # optional trace hook (safe additive)
+        if trace_collector:
+            trace_collector.record("project_match_leaf", {
+                "input": normalized_name,
+                "leaf": leaf_name,
+                "candidates": leaf_matches[:5],
+            })
+
+        return "project"
+
+    # 3. normalized-set fallback (your existing idea, but now last resort)
+    if normalized_name in normalized_project_symbols:
+        print("  MATCH TYPE: normalized set fallback")
+        return "project"
+
+    print("  MISS TYPE: no semantic project match")
+
+    # -------------------------
+    # External / fallback
+    # -------------------------
+    if "." in normalized_name:
+        print("[CP3.5 external]", normalized_name)
+        if trace_collector:
+            trace_collector.record("external_match", name)
+        return "external"
+
+    print("[CP4 FALLBACK UNKNOWN]", normalized_name)
+    if trace_collector:
+        trace_collector.record("unknown_match", name)
+    return "unknown"
 
 def route_symbol(
     name: str,
