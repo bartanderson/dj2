@@ -8,6 +8,9 @@ from __future__ import annotations
 #   Deterministic capture of semantic context signals for
 #   downstream reconstruction and auditability.
 #
+# THIS IS THE ONLY DETERMINISTIC AUTHORITY LAYER.
+# All routing decisions in this module are final within the pipeline.
+#
 # BEHAVIORAL GUARANTEE:
 #   - MUST NOT influence CP3 routing decisions
 #   - MUST NOT mutate control flow
@@ -215,7 +218,15 @@ def route_symbol_shadow(
             if identity is not None else None
         ),
 
-        candidates=[],  # populated ONLY if SemanticCandidateBuilder exists
+        candidates=[
+            {
+                "fqdn": identity.fqdn,
+                "confidence": identity.confidence,
+                "surface": getattr(identity, "surface", name),
+                "leaf": getattr(identity, "leaf", name.split(".")[-1]),
+                "module": getattr(identity, "module", None),
+            }
+        ] if identity is not None else [],
 
         observation=(
             {
@@ -228,19 +239,7 @@ def route_symbol_shadow(
     )
     tracer.trace.semantic_identity = sico
 
-    if tracer.trace.semantic_observation:
 
-        if identity is not None:
-            tracer.record(
-                "semantic_candidates",
-                [
-                    {
-                        "fqdn": getattr(identity, "fqdn", None),
-                        "confidence": getattr(identity, "confidence", 1.0),
-                        "source": "semantic_identity",
-                    }
-                ],
-            )
 
     print("\n[SEMANTIC OBSERVATION]")
     print(tracer.trace.semantic_observation)
@@ -297,6 +296,8 @@ def _route_symbol_core(
 
     # -------------------------
     # CP2.5 SEMANTIC OBSERVATION LAYER (TRACE ONLY)
+    # THIS LAYER IS OBSERVATIONAL ONLY.
+    # It must not influence upstream logic, routing, or classification decisions.
     # -------------------------
     if trace_collector:
 

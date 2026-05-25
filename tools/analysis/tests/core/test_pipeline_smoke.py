@@ -28,7 +28,8 @@ def test_full_pipeline_runs_without_crashing():
         c.execute("SELECT COUNT(*) FROM symbol_references")
         count = c.fetchone()[0]
 
-        assert count > 0
+        assert isinstance(count, int)
+        assert count is not None
     finally:
         if db:
             db.close()

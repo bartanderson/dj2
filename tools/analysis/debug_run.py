@@ -20,7 +20,15 @@ metrics = result["metrics"]
 total_edges = metrics["total_edges"]
 bucket = metrics["bucket_totals"]
 
-assert bucket["project"] + bucket["builtin"] + bucket["classification_gap"] == total_edges
+assert (
+    bucket["project"]
+    + bucket["builtin"]
+    + bucket["classification_gap"]
+    + bucket["external_lib"]
+    + bucket["runtime"]
+    + bucket["unresolved_qualified_reference"]
+    == total_edges
+)
 
 print("✔ EDGE CONSERVATION OK")
 

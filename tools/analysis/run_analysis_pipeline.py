@@ -15,7 +15,9 @@ from tools.analysis.query.query_file_analysis import fetch_complete_file_analysi
 from tools.analysis.metrics.extract_metrics import extract_metrics
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.classification.classify_references import classify_references
-from tools.analysis.contracts.load_contract import load_system_contract
+from tools.analysis.contracts.load_contract import (
+    load_system_contract,
+)
 from tools.analysis.contracts.contract_validator import ContractRuntimeValidator
 
 def resolve_repo_root(path: str | Path) -> Path:
@@ -101,6 +103,7 @@ def run_analysis_pipeline(
         # SNAPSHOTS + METRICS
         # --------------------------
         snapshots = []
+        last_snapshot = None
 
         for analysis in file_analyses:
             builder = GraphBuilder()
@@ -123,6 +126,8 @@ def run_analysis_pipeline(
             )
 
             snapshot = build_evaluation_snapshot(analysis=analysis, graph=graph)
+            snapshots.append(snapshot)
+            last_snapshot = snapshot
 
             # Metrics stage
             validator.validate_stage(
@@ -167,8 +172,8 @@ def run_analysis_pipeline(
         print("Analysis complete. Processed", processed_count, "files.")
 
         return {
-            "snapshots": file_analyses,
-            "snapshot": snapshot,
+            "snapshots": snapshots,
+            "snapshot": last_snapshot,
             "metrics": report,
             "reducer": reduced,
         }

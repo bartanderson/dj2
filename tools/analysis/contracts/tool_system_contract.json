@@ -66,7 +66,7 @@
     "classification": {
       "file": "tools.analysis.classification.classify_references",
       "status": "STABLE",
-      "role": "explicit semantic routing stage (STRING DOMAIN ONLY)",
+      "role": "deterministic routing stage (string-based classification only)",
 
       "outputs": {
         "enriched_file_analysis": "FileAnalysis (string-classified edges only)"
@@ -79,53 +79,16 @@
       }
     },
 
-    "symbol_router": {
-      "file": "tools.analysis.graph.symbol_router",
+    "graph_build": {
+      "file": "tools.analysis.graph.graph_builder",
       "status": "STABLE",
-      "role": "deterministic routing over flattened symbols",
 
-      "cp_contract": {
-        "cp0": "raw input capture (string only)",
-        "cp1": "canonicalization (pure rename only)",
-        "cp2": "builtin/runtime/stdlib pre-classification gate",
-        "cp2_5": "semantic observation layer (NON-BINDING, TRACE ONLY)",
-        "cp3": "authoritative project routing decision (ONLY valid decision boundary)",
-        "cp3_1": "route echo layer (non-authoritative trace mirror)",
-        "cp3_5": "external fallback classification boundary",
-        "cp4": "unknown fallback terminal state"
-      },
-
-      "outputs": {
-        "route": "project | runtime | builtin | stdlib | external | unknown"
-      },
+      "role": "constructs structural graph from classified symbol references",
 
       "invariants": {
-        "must_be_pure": true,
-        "no_side_effects": true,
-        "string_identity_only": true
-      }
-    },
-
-    "trace_layer": {
-      "file": "tools.analysis.graph.route_trace",
-      "status": "ACTIVE",
-
-      "role": "semantic reconstruction shadow layer (OBSERVABILITY ONLY)",
-
-      "components": {
-        "TraceCollector": "records CP0–CP4 + semantic probes",
-        "RouteTrace": "immutable trace snapshot"
-      },
-
-      "outputs": {
-        "trace": "RouteTrace",
-        "semantic_signals": "unresolved reconstruction hints"
-      },
-
-      "invariants": {
-        "no_effect_on_routing": true,
-        "no_effect_on_graph": true,
-        "shadow_execution_only": true
+        "must_only_consume_classified_edges": true,
+        "must_not_perform_identity_resolution": true,
+        "must_not_modify_routing_results": true
       }
     },
 
@@ -176,17 +139,67 @@
       }
     },
 
+    "symbol_router": {
+      "file": "tools.analysis.graph.symbol_router",
+      "status": "STABLE",
+      "role": "deterministic routing over flattened symbols",
+
+      "cp_contract": {
+        "cp0": "raw input capture (string only)",
+        "cp1": "canonicalization (pure rename only)",
+        "cp2": "builtin/runtime/stdlib pre-classification gate",
+        "cp2_5": "semantic observation layer (NON-BINDING, TRACE ONLY)",
+        "cp3": "authoritative project routing decision (ONLY valid decision boundary)",
+        "cp3_1": "route echo layer (non-authoritative trace mirror)",
+        "cp3_5": "external fallback classification boundary",
+        "cp4": "unknown fallback terminal state"
+      },
+
+      "outputs": {
+        "route": "project | runtime | builtin | stdlib | external | unknown"
+      },
+
+      "invariants": {
+        "must_be_pure": true,
+        "no_side_effects": true,
+        "string_identity_only": true
+      }
+    },
+
+    "trace_layer": {
+      "file": "tools.analysis.graph.route_trace",
+      "status": "ACTIVE",
+
+      "role": "shadow observability layer (trace + reconstruction comparison only)",
+
+      "components": {
+        "TraceCollector": "records CP0–CP4 + semantic probes",
+        "RouteTrace": "immutable trace snapshot"
+      },
+
+      "outputs": {
+        "trace": "RouteTrace",
+        "semantic_signals": "unresolved reconstruction hints"
+      },
+
+      "invariants": {
+        "no_effect_on_routing": true,
+        "no_effect_on_graph": true,
+        "shadow_execution_only": true
+      }
+    },
+
     "pipeline": {
       "stages": [
-        "ingestion",
-        "semantic_identity_reconstruction",
-        "classification",
-        "persistence",
-        "graph_build",
-        "snapshot",
-        "metrics",
-        "reducer"
-      ],
+      "ingestion",
+      "semantic_identity_reconstruction",
+      "classification",
+      "graph_build",
+      "snapshot",
+      "metrics",
+      "reducer",
+      "persistence"
+    ],
 
       "invariants": {
         "classification_must_precede_graph": true,
@@ -209,7 +222,8 @@
         "no_classification_logic": true,
         "no_graph_construction": true,
         "no_snapshot_generation": true,
-        "must_accept_flattened_symbols_only": true
+        "must_accept_flattened_symbols_only": true,
+        "must_not_receive_ir1_or_shadow_objects": true
       }
     },
 
@@ -248,12 +262,13 @@
         "edge_conservation": true,
         "classification_boundary_respected": true,
         "no_cross_layer_logic": true,
-        "semantic_reconstruction_is_non_authoritative": true
+        "semantic_reconstruction_is_non_authoritative": true,
+        "semantic_identity_is_non_authoritative_for_routing": true
       }
     }
   },
 
-  "global_invariants": {
+  "system_truth": {
     "edge_conservation": true,
     "classification_boundary_respected": true,
     "no_cross_layer_logic": true,
