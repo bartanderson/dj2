@@ -59,6 +59,17 @@
       "status": "STABLE",
       "role": "deterministic routing over flattened symbols",
 
+      "cp_contract": {
+        "cp0": "raw input capture (string only)",
+        "cp1": "canonicalization (pure rename only)",
+        "cp2": "builtin/runtime/stdlib pre-classification gate",
+        "cp2_5": "semantic observation layer (NON-BINDING, TRACE ONLY)",
+        "cp3": "authoritative project routing decision (ONLY valid decision boundary)",
+        "cp3_1": "route echo layer (non-authoritative trace mirror)",
+        "cp3_5": "external fallback classification boundary",
+        "cp4": "unknown fallback terminal state"
+      },
+
       "outputs": {
         "route": "project | runtime | builtin | stdlib | external | unknown"
       },

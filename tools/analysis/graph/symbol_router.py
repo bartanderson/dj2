@@ -56,9 +56,8 @@ from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
 from tools.analysis.graph.symbol_classifier import normalize_symbol
-from tools.analysis.graph.route_trace import TraceCollector
 from tools.analysis.graph.semantic_candidate_builder import SemanticCandidateBuilder
-#from tools.analysis.graph.route_trace import #graph_route_trace
+from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
 
 RouteType = Literal[
     "project",
@@ -184,18 +183,25 @@ def route_symbol_shadow(
         project_symbols=project_symbols or set(),
     )
 
-    tracer.record(
-        "semantic_candidates",
-        [
-            {
-                "leaf": getattr(c, "leaf", None),
-                "fqdn": getattr(c, "fqdn", None),
-                "confidence": getattr(c, "confidence", None),
-                "source": getattr(c, "source", None),
-            }
-            for c in candidates
-        ],
-    )
+    if tracer.trace.semantic_observation:
+
+        tracer.record(
+            "semantic_candidates",
+            [
+                {
+                    "surface": getattr(c, "surface", None),
+                    "fqdn": getattr(c, "fqdn", None),
+                    "confidence": getattr(c, "confidence", 1.0),
+                    "source": getattr(c, "source", "unknown"),
+                    "evidence": getattr(c, "evidence", []),
+                }
+                for c in candidates
+                if getattr(c, "fqdn", None)
+            ],
+        )
+
+    print("\n[SEMANTIC OBSERVATION]")
+    print(tracer.trace.semantic_observation)
 
     return result, tracer.get()
 
@@ -234,6 +240,11 @@ def _route_symbol_core(
         normalize_symbol(s) for s in project_symbols
     }
 
+    project_leaves = {
+        terminal_symbol(normalize_symbol(s))
+        for s in project_symbols
+    }
+
     print("\n[PROJECT SYMBOL SAMPLE]")
     print(list(project_symbols)[:5])
 
@@ -241,45 +252,43 @@ def _route_symbol_core(
     print(list(normalized_project_symbols)[:5])
 
     print("\n[CP2 CLASSIFY INPUT]", name)
+
     # -------------------------
-    # CP2.5 Semantic Observation Layer (NON-BINDING)
+    # CP2.5 SEMANTIC OBSERVATION LAYER (TRACE ONLY)
     # -------------------------
-    cp25_normalized_probe = normalize_symbol(name)
     if trace_collector:
-        trace_collector.snapshot_semantic_identity(
-            cp2_input=name,
-            cp2_original_input=original_name,
-        )
 
         leaf = terminal_symbol(name)
         root = name.split(".")[0]
 
-        project_leaves = {
-            terminal_symbol(normalize_symbol(s))
-            for s in project_symbols or set()
-        }
+        observation = SemanticObservation(
+            surface=name,
+            normalized=normalize_symbol(name),
+            leaf=leaf,
+            root=root,
+            has_dots=("." in name),
+            depth=len(name.split(".")),
+            runtime_root_hit=(root in (runtime_bindings or {})),
+            project_leaf_hit=(leaf in project_leaves),
+        )
 
-        trace_collector.record("cp25_semantic_probe", {
-            "input": name,
-            "leaf": leaf,
-            "root": root,
-            "has_dots": "." in name,
-            "depth": len(name.split(".")),
+        trace_collector.trace.semantic_observation = observation
 
-            "leaf_hit": leaf in project_leaves,
-            "runtime_root_hit": root in (runtime_bindings or {}),
+        trace_collector.record(
+            "cp25_semantic_probe",
+            {
+                "surface": observation.surface,
+                "normalized": observation.normalized,
+                "leaf": observation.leaf,
+                "root": observation.root,
+                "has_dots": observation.has_dots,
+                "depth": observation.depth,
+                "runtime_root_hit": observation.runtime_root_hit,
+                "project_leaf_hit": observation.project_leaf_hit,
+            },
+        )
 
-            "cp3_project_equivalent": cp25_normalized_probe in project_symbols,
-        })
-
-    print("\n[CP2.5 SEMANTIC OBSERVATION LAYER]")
-    print("  status: ACTIVE (non-binding instrumentation)")
-
-    print("\n[ROUTE DEBUG]", {
-        "name": name,
-        "project_symbols_count": len(project_symbols),
-        "runtime_bindings_count": len(runtime_bindings),
-    })
+    print("\n[CP2.5 SEMANTIC OBSERVATION CAPTURED]")
 
     # -------------------------
     # Builtin / runtime / stdlib
@@ -303,27 +312,27 @@ def _route_symbol_core(
         return "stdlib"
 
     # -------------------------
-    # Normalization stage
+    # CP1 Normalization stage
     # -------------------------
     normalized_name = normalize_symbol(name)
+    leaf_name = terminal_symbol(normalized_name)
+
     print("\n[CP1 NORMALIZED]", normalized_name)
 
     # -------------------------
-    # Project match probe (FULL)
+    # CP3 PROJECT MATCH
     # -------------------------
     print("\n[CP3 SEMANTIC PROJECT MATCH]")
-
-    leaf_name = normalized_name.split(".")[-1]
-
     print("  normalized_name:", normalized_name)
     print("  leaf_name:", leaf_name)
 
     # 1. exact fqdn match
     if normalized_name in project_symbols:
         print("  MATCH TYPE: fqdn exact")
-        return "project"
+        routing_result = "project"
+        return routing_result
 
-    # 2. leaf match (what you were implicitly relying on)
+    # 2. leaf semantic match
     leaf_matches = [
         s for s in project_symbols
         if terminal_symbol(normalize_symbol(s)) == leaf_name
@@ -334,7 +343,6 @@ def _route_symbol_core(
     if leaf_matches:
         print("  MATCH TYPE: leaf semantic")
 
-        # optional trace hook (safe additive)
         if trace_collector:
             trace_collector.record("project_match_leaf", {
                 "input": normalized_name,
@@ -342,19 +350,17 @@ def _route_symbol_core(
                 "candidates": leaf_matches[:5],
             })
 
-        return "project"
+        routing_result = "project"
+        return routing_result
 
-    # 3. normalized-set fallback (your existing idea, but now last resort)
+    # 3. normalized fallback match
     if normalized_name in normalized_project_symbols:
         print("  MATCH TYPE: normalized set fallback")
-        return "project"
-
-    if normalized_name in project_symbols:
-        print("  MATCH TYPE: fqdn exact")
-        return "project"
+        routing_result = "project"
+        return routing_result
 
     # -------------------------
-    # CP3.1 ROUTE OBSERVATION LAYER (shadow comparison hook)
+    # CP3.1 ROUTE OBSERVATION (TRACE ONLY)
     # -------------------------
     if trace_collector:
         trace_collector.record(
@@ -362,9 +368,8 @@ def _route_symbol_core(
             {
                 "input": name,
                 "normalized": normalized_name,
-                "leaf": normalized_name.split(".")[-1],
-                "is_project_symbol": normalized_name in project_symbols,
-                "is_normalized_project_symbol": normalized_name in normalized_project_symbols,
+                "leaf": leaf_name,
+                "routing_result": None,
             },
         )
 
@@ -382,6 +387,7 @@ def _route_symbol_core(
     print("[CP4 FALLBACK UNKNOWN]", normalized_name)
     if trace_collector:
         trace_collector.record("unknown_match", name)
+
     return "unknown"
 
 def route_symbol(

@@ -2,6 +2,10 @@
 
 from dataclasses import dataclass, field
 from typing import Optional, Any
+from tools.analysis.graph.semantic_observation import (
+    SemanticObservation,
+    SemanticCandidate,
+)
 
 @dataclass
 class RouteTrace:
@@ -28,18 +32,8 @@ class RouteTrace:
 
 
 @dataclass
-class SemanticCandidate:
-    surface: str
-    fqdn: Optional[str] = None
-    module: Optional[str] = None
-    binding_type: Optional[str] = None
-    confidence: float = 1.0
-    evidence: list[str] = field(default_factory=list)
-
-
-@dataclass
 class SemanticRouteTrace(RouteTrace):
-    semantic_identity: dict | None = None
+    semantic_observation: SemanticObservation | None = None
     resolved_candidates: list[SemanticCandidate] = field(default_factory=list)
     comparison_attempts: list[dict] = field(default_factory=list)
 
@@ -55,10 +49,17 @@ class TraceCollector:
             setattr(self.trace, k, v)
 
     def snapshot_semantic_identity(self, **kwargs):
-        self.trace.semantic_identity = {
-            **(self.trace.semantic_identity or {}),
-            **kwargs,
-        }
+
+        if not hasattr(self.trace, "semantic_observation"):
+            return
+
+        observation = self.trace.semantic_observation
+
+        if observation is None:
+            return
+
+        for k, v in kwargs.items():
+            observation.metadata[k] = v
 
     def record_semantic(
         self,
