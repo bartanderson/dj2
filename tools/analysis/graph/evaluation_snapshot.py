@@ -3,12 +3,15 @@
 # MODULE: snapshot
 # OWNED: TRUE
 #
-# CONTRACT (LOCKED v1)
-# - Owns edge → bucket classification
-# - Must produce deterministic bucket_summary per edge
-# - Must maintain invariant: sum(bucket_summary) == len(graph.edges)
-# - Requires explicit classification context (project_prefixes passed by caller)
-# - Does NOT own metrics or global aggregation
+# CONTRACT (LOCKED v2 - IR1 aligned snapshot layer)
+#
+# - Consumes classified edges (post-routing stage)
+# - Aggregates bucket results across file-level snapshots
+# - Produces deterministic per-file structural summary
+#
+# DOES NOT OWN
+# - classification (moved to classify_references)
+# - identity reconstruction (IR1 responsibility)
 
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role

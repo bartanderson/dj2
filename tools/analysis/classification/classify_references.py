@@ -3,31 +3,50 @@
 # MODULE: classification
 # OWNED: TRUE
 #
-# CONTRACT (LOCKED v2 - aligned with semantic reconstruction phase)
+# CONTRACT (LOCKED v3 - IR1-aware classification boundary)
 #
-# - Classifies SymbolReference edges before graph construction
-# - Uses deterministic routing via symbol_router.route_symbol (legacy routing stage)
-# - Produces bucket assignment:
+# PURPOSE
+# - Assign bucket labels to SymbolReference edges after IR1 reconstruction exists
+#
+# RESPONSIBILITY
+# - Consume IR1 (SemanticIdentity) or resolved symbol strings
+# - Apply deterministic routing via symbol_router.route_symbol
+# - Emit bucket classification:
 #     project | runtime | builtin | stdlib | external | unknown
-# - Does NOT perform semantic reconstruction (shadow pipeline owns that responsibility)
-# - Does NOT depend on semantic_candidate_builder
-# - Does NOT mutate persistence layer structures beyond SymbolReference.bucket
+#
+# STRICT BOUNDARIES
+# - Does NOT perform semantic reconstruction (IR1 owns this)
+# - Does NOT compute identity resolution
+# - Does NOT use SemanticCandidateBuilder or identity inference logic
+# - Does NOT mutate IR1 objects
 #
 # PIPELINE POSITION
-# FileAnalysis
-#     → classify_references (routing only)
-#     → GraphBuilder
-#     → build_evaluation_snapshot
+# FileAnalysis ingestion pipeline:
+#
+#   IR1 semantic_identity_reconstruction
+#       → produces SemanticIdentity (single resolved representation)
+#
+#   classify_references (THIS MODULE)
+#       → assigns deterministic routing buckets only
+#       → does NOT perform identity reconstruction
+#       → consumes IR1 + runtime context only
+#
+#   GraphBuilder
+#       → builds structural call/reference graph
+#
+#   build_evaluation_snapshot
+#       → aggregates final analytical view (read-only)
 #
 # IMPORTANT ARCHITECTURAL NOTE
-# - Semantic reconstruction is handled in route_symbol_shadow()
-# - CP2.5 probe is observational only and must not influence classification
-# - This module must remain purely deterministic and non-semantic
+# - IR1 is authoritative identity source
+# - CP2.5 remains observational only
+# - routing is deterministic decision layer only
 #
 # GLOBAL INVARIANTS
 # - Classification must remain deterministic
-# - No semantic identity reconstruction in this stage
-# - Graph edges must always be assigned a bucket
+# - No identity reconstruction allowed here
+# - No cross-symbol inference
+# - Every edge must resolve to exactly one bucket
 
 from tools.analysis.graph.project_graph_context import ProjectGraphContext
 from tools.analysis.graph.symbol_router import route_symbol

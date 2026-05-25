@@ -1,103 +1,86 @@
 # tools/analysis/graph/semantic_candidate_builder.py
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import Dict, List, Set
+from tools.analysis.representation.semantic_identity import SemanticIdentity
 
 
-@dataclass
-class ResolvedCandidate:
-    surface: str
-    fqdn: Optional[str]
-    module: Optional[str]
-    confidence: float
-    source: str
-    evidence: List[str] = field(default_factory=list)
-
-
-class SemanticCandidateBuilder:
+class SemanticIdentityBuilder:
     """
-    Phase 1 semantic reconstruction layer.
+    IR1 construction layer.
 
-    PURELY OBSERVATIONAL:
-    - does not affect routing
-    - does not modify graph
-    - does not replace identity
+    PURPOSE:
+    - unify runtime + alias + project signals
+    - produce single coherent identity object per symbol
+
+    NOT RESPONSIBLE FOR:
+    - routing
+    - classification
+    - metrics
     """
 
-    def __init__(self):
-        self.candidates: list[ResolvedCandidate] = []
-
-    def from_trace(
+    def build(
         self,
         name: str,
         alias_map: Dict[str, str],
         runtime_bindings: Dict[str, str],
-        project_symbols: set[str],
-    ) -> list[ResolvedCandidate]:
+        project_symbols: Set[str],
+    ) -> SemanticIdentity:
 
         leaf = name.split(".")[-1]
 
-        evidence = []
+        identity = SemanticIdentity(
+            surface=name,
+            leaf=leaf,
+        )
 
-        # 1. runtime binding hint
+        # ----------------------------
+        # 1. Runtime binding (strongest signal)
+        # ----------------------------
         if leaf in runtime_bindings:
             fqdn = runtime_bindings[leaf]
-            evidence.append(f"runtime_binding:{leaf}->{fqdn}")
 
-            self.candidates.append(
-                ResolvedCandidate(
-                    surface=leaf,
-                    fqdn=fqdn,
-                    module=None,
-                    confidence=0.8,
-                    source="runtime_binding",
-                    evidence=evidence,
-                )
-            )
+            identity.fqdn = fqdn
+            identity.identity_type = "runtime"
+            identity.confidence = max(identity.confidence, 0.85)
 
-        # 2. alias map hint
+            identity.runtime_hints[leaf] = fqdn
+            identity.provenance.append(f"runtime_binding:{leaf}->{fqdn}")
+
+        # ----------------------------
+        # 2. Alias resolution
+        # ----------------------------
         if leaf in alias_map:
             fqdn = alias_map[leaf]
-            evidence.append(f"alias_map:{leaf}->{fqdn}")
 
-            self.candidates.append(
-                ResolvedCandidate(
-                    surface=leaf,
-                    fqdn=fqdn,
-                    module=fqdn.split(".")[0] if "." in fqdn else None,
-                    confidence=0.9,
-                    source="import_alias",
-                    evidence=evidence,
-                )
-            )
+            identity.fqdn = identity.fqdn or fqdn
+            identity.module = fqdn.split(".")[0] if "." in fqdn else None
 
-        # 3. project symbol hint (leaf-level match)
+            identity.identity_type = identity.identity_type if identity.identity_type != "unknown" else "alias"
+            identity.confidence = max(identity.confidence, 0.9)
+
+            identity.alias_hints[leaf] = fqdn
+            identity.provenance.append(f"alias_map:{leaf}->{fqdn}")
+
+        # ----------------------------
+        # 3. Project symbol match
+        # ----------------------------
         for sym in project_symbols:
             if sym.split(".")[-1] == leaf:
-                evidence.append(f"project_leaf_match:{sym}")
+                identity.project_hits.append(sym)
 
-                self.candidates.append(
-                    ResolvedCandidate(
-                        surface=leaf,
-                        fqdn=sym,
-                        module=".".join(sym.split(".")[:-1]),
-                        confidence=0.7,
-                        source="project_leaf",
-                        evidence=evidence,
-                    )
-                )
+                identity.fqdn = identity.fqdn or sym
+                identity.module = identity.module or ".".join(sym.split(".")[:-1])
 
-        # 4. fallback unresolved semantic stub
-        if not self.candidates:
-            self.candidates.append(
-                ResolvedCandidate(
-                    surface=leaf,
-                    fqdn=None,
-                    module=None,
-                    confidence=0.0,
-                    source="unresolved",
-                    evidence=["no_resolution_signal"],
-                )
-            )
+                identity.identity_type = identity.identity_type if identity.identity_type != "unknown" else "project"
+                identity.confidence = max(identity.confidence, 0.7)
 
-        return self.candidates
+                identity.provenance.append(f"project_leaf_match:{sym}")
+
+        # ----------------------------
+        # 4. Fallback
+        # ----------------------------
+        if identity.identity_type == "unknown":
+            identity.confidence = 0.05
+            identity.provenance.append("no_resolution_signal")
+
+        return identity

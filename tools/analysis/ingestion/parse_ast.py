@@ -6,6 +6,8 @@ import ast
 from pathlib import Path
 from typing import List, Optional
 from tools.analysis.ingestion.extract_symbols import extract_symbols
+from tools.analysis.ir.ir1 import IR1Symbol
+from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 
 from tools.analysis.shared.types import (
     FileAnalysis,
@@ -142,35 +144,45 @@ def _extract_symbol_references(
     known_symbols: set[str],
     alias_map: dict[str, str],
     module_name: str,
-):
-    references = set()
+    project_symbols: set[str] | None = None,
+) -> list[SymbolReference]:
+
+    results = []
     local_symbol_map = {}
 
-
     runtime_bindings = _extract_runtime_bindings(tree)
+
+    identity_builder = SemanticIdentityBuilder()
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             local_symbol_map[node.name] = node.name
 
     class Visitor(ast.NodeVisitor):
+
         def __init__(self):
             self.current_function = "<module>"
 
         def visit_FunctionDef(self, node):
-            previous = self.current_function
+            prev = self.current_function
             self.current_function = node.name
 
             self.generic_visit(node)
 
-            self.current_function = previous
+            self.current_function = prev
 
         def visit_Call(self, node):
-            full = None
 
-            # CASE 1: direct call (foo())
+            raw = None
+            resolved = None
+
+            # ----------------------
+            # CASE 1: direct call
+            # ----------------------
             if isinstance(node.func, ast.Name):
+
                 raw = node.func.id
+
                 resolved = (
                     alias_map.get(raw)
                     or runtime_bindings.get(raw)
@@ -178,64 +190,99 @@ def _extract_symbol_references(
                     or f"{module_name}.{raw}"
                 )
 
-                print(
-                    "[RESOLUTION PIPELINE]",
-                    {
-                        "raw": raw,
-                        "resolved": resolved,
-                    }
-                )
+            # ----------------------
+            # CASE 2: attribute call
+            # ----------------------
+            elif isinstance(node.func, ast.Attribute):
 
-                full = resolve_symbol_identity(resolved, alias_map)
-
-                print(
-                    "[RESOLUTION RESULT]",
-                    {
-                        "resolved": resolved,
-                        "full": full,
-                    }
-                )
-
-            # CASE 2: attribute call (a.b.c())
-            if isinstance(node.func, ast.Attribute):
                 base = node.func.value
 
-                # CASE 1: simple name (runtime object or module alias access)
+                # import_alias.func()
                 if isinstance(base, ast.Name):
+
                     base_name = alias_map.get(base.id)
 
-                    # ONLY resolve if it's a known import alias
                     if base_name is not None:
-                        full = resolve_symbol_identity(
-                            f"{base_name}.{node.func.attr}",
-                            alias_map,
-                        )
+                        raw = f"{base_name}.{node.func.attr}"
+                        resolved = raw
                     else:
-                        return  # unresolved base name; cannot resolve to import alias
+                        self.generic_visit(node)
+                        return
 
-                # CASE 2: chained attributes (a.b.c)
+                # chained.attr.call()
                 elif isinstance(base, ast.Attribute):
+
                     parts = []
 
                     current = base
+
                     while isinstance(current, ast.Attribute):
                         parts.append(current.attr)
                         current = current.value
 
                     if isinstance(current, ast.Name):
-                        parts.append(alias_map.get(current.id, current.id))
-                        full = ".".join(reversed(parts + [node.func.attr]))
+
+                        parts.append(
+                            alias_map.get(current.id, current.id)
+                        )
+
+                        raw = ".".join(
+                            reversed(parts + [node.func.attr])
+                        )
+
+                        resolved = raw
+
                     else:
+                        self.generic_visit(node)
                         return
+
                 else:
+                    self.generic_visit(node)
                     return
 
-            if full:
-                references.add((
-                    self.current_function,
-                    full,
-                    node.lineno,
-                ))
+            # ----------------------
+            # unresolved
+            # ----------------------
+            if raw is None:
+                self.generic_visit(node)
+                return
+
+            identity = identity_builder.build(
+                raw,
+                alias_map,
+                runtime_bindings,
+                known_symbols,
+            )
+
+            fqdn = identity.fqdn or resolved or raw
+
+            ir1 = IR1Symbol(
+                surface=raw,
+                normalized=raw.split(".")[-1],
+                fqdn=fqdn,
+                module=(
+                    fqdn.split(".")[0]
+                    if fqdn and "." in fqdn
+                    else None
+                ),
+                kind=(
+                    "runtime"
+                    if raw in runtime_bindings
+                    else "unknown"
+                ),
+                provenance=[
+                    "cp0_raw",
+                    "cp1_normalized",
+                    "cp2_resolve",
+                ],
+                confidence=identity.confidence,
+            )
+
+            results.append((
+                self.current_function,
+                ir1,
+                node.lineno,
+            ))
 
             self.generic_visit(node)
 
@@ -245,11 +292,12 @@ def _extract_symbol_references(
 
     return [
         SymbolReference(
-            caller=a,
-            callee=b,
-            line_number=c,
+            caller=caller,
+            callee=ir1.fqdn or ir1.surface,
+            line_number=lineno,
+            ir1=ir1,
         )
-        for (a, b, c) in references
+        for (caller, ir1, lineno) in results
     ]
 
 
@@ -349,6 +397,7 @@ def parse_ast(
         known_symbols,
         alias_map,
         module_name,
+        known_symbols,   # or project_symbols if that’s the real intended source
     )
     
     mutations = _extract_mutations(tree)

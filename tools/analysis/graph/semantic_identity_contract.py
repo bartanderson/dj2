@@ -1,10 +1,26 @@
 # tools/analysis/graph/semantic_identity_contract.py
 
+"""
+INVARIANTS (authoritative):
+
+- identity:
+    Optional single SemanticIdentity projection (NOT a collection)
+    Represents the best resolved semantic interpretation for a symbol.
+
+- candidates:
+    Independent hypothesis set derived from shadow/semantic exploration.
+    NOT derived from identity and NOT used for identity construction.
+
+- This contract is a transport/aggregation structure only.
+  It MUST NOT perform inference, routing, or resolution.
+"""
+
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
 
 @dataclass
+
 class SemanticIdentityContract:
     surface: str
 
@@ -18,6 +34,7 @@ class SemanticIdentityContract:
     routing_result: str  # project | runtime | builtin | stdlib | external | unknown
 
     # Shadow layer enrichment (non-authoritative)
+    identity: Optional[dict] = None
     candidates: list[dict] = field(default_factory=list)
 
     # CP2.5 observation snapshot (frozen)

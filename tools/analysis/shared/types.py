@@ -3,6 +3,10 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Literal
 
+from tools.analysis.ir.ir1 import IR1Symbol
+
+
+
 
 # ----------------------------
 # Core file-level representation
@@ -65,9 +69,19 @@ class ImportRepresentation:
 
 @dataclass
 class SymbolReference:
+    """
+    Bridge representation:
+    - preserves legacy string-based routing (callee)
+    - optionally carries IR1 identity for future pipeline stages
+    """
+
     caller: str
     callee: str
     line_number: int
+
+    # A → B bridge field (non-breaking addition)
+    ir1: Optional[IR1Symbol] = None
+
     bucket: Optional[str] = None
 
 @dataclass

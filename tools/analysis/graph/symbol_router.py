@@ -41,6 +41,8 @@ from __future__ import annotations
 #   - return values from this layer
 #   - branch logic on these signals
 #   - treat any probe as ground truth
+#
+# NOTE: CP2.5 outputs are consumed only by trace + shadow reconstruction. They are not part of identity resolution.
 
 import builtins
 import sys
@@ -56,7 +58,7 @@ from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
 from tools.analysis.graph.symbol_classifier import normalize_symbol
-from tools.analysis.graph.semantic_candidate_builder import SemanticCandidateBuilder
+from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
 from tools.analysis.graph.semantic_identity_contract import SemanticIdentityContract
 
@@ -175,14 +177,23 @@ def route_symbol_shadow(
     # -----------------------------
     # 2. SEMANTIC RECONSTRUCTION (POST-HOC ONLY)
     # -----------------------------
-    builder = SemanticCandidateBuilder()
+    builder = SemanticIdentityBuilder()
 
-    candidates = builder.from_trace(
+    identity = builder.build(
         name=name,
         alias_map=runtime_bindings,
         runtime_bindings=runtime_bindings,
         project_symbols=project_symbols or set(),
     )
+
+    if identity is None:
+        identity = type("EmptyIdentity", (), {
+            "fqdn": None,
+            "confidence": 0.0,
+            "surface": name,
+            "leaf": name.split(".")[-1],
+            "module": None,
+        })()
 
     sico = SemanticIdentityContract(
         surface=name,
@@ -193,47 +204,43 @@ def route_symbol_shadow(
 
         routing_result=result,
 
-        candidates=[
+        identity=(
             {
-                "fqdn": getattr(c, "fqdn", None),
-                "confidence": getattr(c, "confidence", 1.0),
-                "source": getattr(c, "source", "unknown"),
+                "fqdn": identity.fqdn,
+                "confidence": identity.confidence,
+                "surface": identity.surface,
+                "leaf": identity.leaf,
+                "module": identity.module,
             }
-            for c in candidates
-            if getattr(c, "fqdn", None)
-        ],
+            if identity is not None else None
+        ),
 
-        observation = (
+        candidates=[],  # populated ONLY if SemanticCandidateBuilder exists
+
+        observation=(
             {
                 k: getattr(tracer.trace.semantic_observation, k)
                 for k in tracer.trace.semantic_observation.__slots__
             }
-            if hasattr(tracer.trace.semantic_observation, "__slots__")
-            else (
-                vars(tracer.trace.semantic_observation)
-                if tracer.trace.semantic_observation is not None
-                else None
-            )
+            if tracer.trace.semantic_observation is not None
+            else None
         )
     )
     tracer.trace.semantic_identity = sico
 
     if tracer.trace.semantic_observation:
 
-        tracer.record(
-            "semantic_candidates",
-            [
-                {
-                    "surface": getattr(c, "surface", None),
-                    "fqdn": getattr(c, "fqdn", None),
-                    "confidence": getattr(c, "confidence", 1.0),
-                    "source": getattr(c, "source", "unknown"),
-                    "evidence": getattr(c, "evidence", []),
-                }
-                for c in candidates
-                if getattr(c, "fqdn", None)
-            ],
-        )
+        if identity is not None:
+            tracer.record(
+                "semantic_candidates",
+                [
+                    {
+                        "fqdn": getattr(identity, "fqdn", None),
+                        "confidence": getattr(identity, "confidence", 1.0),
+                        "source": "semantic_identity",
+                    }
+                ],
+            )
 
     print("\n[SEMANTIC OBSERVATION]")
     print(tracer.trace.semantic_observation)

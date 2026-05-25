@@ -4,19 +4,28 @@ tools.analysis.contracts
 This package defines the authoritative structural contract system
 for the analysis pipeline.
 
-It is intentionally restricted to:
-- structural schema definitions
-- contract loading
-- typed projections of tool_system_contract.json
+It includes:
+
+- AST ingestion contracts
+- IR1 semantic identity contracts
+- classification contracts
+- snapshot contracts
+- validation contracts
 
 It must NOT contain:
-- analysis logic
-- parsing logic (AST or semantic)
-- classification heuristics
-- orchestration behavior
+- runtime execution logic
+- graph mutation logic
+- routing logic
+- identity reconstruction algorithms (IR1 lives outside contracts)
+
+CONTRACT LAYERS:
+- AST (observation)
+- IR1 (semantic identity reconstruction)
+- classification (deterministic routing)
+- snapshot (aggregation)
+- metrics (global reduction)
 """
 
-# Hard boundary marker for developers and future refactors
 _CONTRACTS_PACKAGE = True
 
 def assert_contract_boundary_integrity():

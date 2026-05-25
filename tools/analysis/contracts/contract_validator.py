@@ -3,27 +3,22 @@
 
 # MODULE: contract
 # OWNED: TRUE
-# ROLE: runtime validation + cross-module consistency enforcement
 #
-# CONTRACT (LOCKED v1)
-# - Validates pipeline invariants at runtime (not documentation)
-# - Ensures classification → snapshot → reduction consistency
-# - Rejects or flags inconsistent edge/bucket propagation
-# - Must NOT mutate data (validation-only module)
-# - Must NOT perform classification or graph construction
+# CONTRACT (LOCKED v2 - IR1 integrated validation layer)
 #
-# BOUNDARIES
-# - DOES NOT own: classification, snapshot building, graph construction
-# - DOES own: invariant validation, structural checks, reconciliation scoring
+# ROLE:
+# - runtime validation of pipeline invariants across:
+#     IR1 → classification → snapshot → metrics
 #
-# INVARIANTS (GLOBAL)
-# - edge_conservation MUST hold across pipeline stages
-# - snapshot.bucket_summary MUST reconcile with reducer output
-# - classification routes MUST be stable for identical inputs
+# ENSURES:
+# - IR1 objects are structurally valid SemanticIdentity instances
+# - classification consumes but does not mutate IR1
+# - snapshot only aggregates post-classification outputs
 #
-# FAILURE MODE
-# - MUST emit structured validation report
-# - MUST NOT silently correct pipeline state
+# STRICT RULES:
+# - must not perform identity reconstruction
+# - must not resolve symbols
+# - must only validate invariants
 
 
 from dataclasses import dataclass

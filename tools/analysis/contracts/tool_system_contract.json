@@ -38,6 +38,31 @@
       }
     },
 
+    "semantic_identity_reconstruction": {
+      "file": "tools.analysis.graph.semantic_identity_builder",
+      "status": "ACTIVE",
+
+      "role": "IR1 identity synthesis layer (OBSERVATION + CONSOLIDATION ONLY)",
+
+      "inputs": {
+        "file_analysis": "FileAnalysis",
+        "alias_map": "dict",
+        "runtime_bindings": "dict",
+        "project_symbols": "set"
+      },
+
+      "outputs": {
+        "semantic_identity_map": "Dict[str, SemanticIdentity]"
+      },
+
+      "invariants": {
+        "must_not_classify": true,
+        "must_not_route": true,
+        "must_not_mutate_ast": true,
+        "must_only_consolidate_identity_signals": true
+      }
+    },
+
     "classification": {
       "file": "tools.analysis.classification.classify_references",
       "status": "STABLE",
@@ -152,13 +177,9 @@
     },
 
     "pipeline": {
-      "file": "tools.analysis.run_analysis_pipeline",
-      "status": "EVOLVED",
-
-      "role": "orchestration only",
-
       "stages": [
         "ingestion",
+        "semantic_identity_reconstruction",
         "classification",
         "persistence",
         "graph_build",
@@ -171,6 +192,8 @@
         "classification_must_precede_graph": true,
         "persistence_must_not_classify": true,
         "snapshot_must_be_readonly": true,
+
+        "semantic_identity_must_precede_classification": true,
         "runtime_contract_validation_required": true,
         "trace_layer_is_non_blocking": true
       }
