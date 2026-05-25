@@ -58,6 +58,7 @@ from tools.analysis.graph.project_graph_context import (
 from tools.analysis.graph.symbol_classifier import normalize_symbol
 from tools.analysis.graph.semantic_candidate_builder import SemanticCandidateBuilder
 from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
+from tools.analysis.graph.semantic_identity_contract import SemanticIdentityContract
 
 RouteType = Literal[
     "project",
@@ -183,6 +184,40 @@ def route_symbol_shadow(
         project_symbols=project_symbols or set(),
     )
 
+    sico = SemanticIdentityContract(
+        surface=name,
+        normalized=normalize_symbol(name),
+        leaf=name.split(".")[-1],
+        root=name.split(".")[0],
+        depth=len(name.split(".")),
+
+        routing_result=result,
+
+        candidates=[
+            {
+                "fqdn": getattr(c, "fqdn", None),
+                "confidence": getattr(c, "confidence", 1.0),
+                "source": getattr(c, "source", "unknown"),
+            }
+            for c in candidates
+            if getattr(c, "fqdn", None)
+        ],
+
+        observation = (
+            {
+                k: getattr(tracer.trace.semantic_observation, k)
+                for k in tracer.trace.semantic_observation.__slots__
+            }
+            if hasattr(tracer.trace.semantic_observation, "__slots__")
+            else (
+                vars(tracer.trace.semantic_observation)
+                if tracer.trace.semantic_observation is not None
+                else None
+            )
+        )
+    )
+    tracer.trace.semantic_identity = sico
+
     if tracer.trace.semantic_observation:
 
         tracer.record(
@@ -269,7 +304,7 @@ def _route_symbol_core(
             has_dots=("." in name),
             depth=len(name.split(".")),
             runtime_root_hit=(root in (runtime_bindings or {})),
-            project_leaf_hit=(leaf in project_leaves),
+            project_leaf_hit=leaf in project_leaves,
         )
 
         trace_collector.trace.semantic_observation = observation
@@ -326,6 +361,8 @@ def _route_symbol_core(
     print("  normalized_name:", normalized_name)
     print("  leaf_name:", leaf_name)
 
+    routing_result: RouteType | None = None
+
     # 1. exact fqdn match
     if normalized_name in project_symbols:
         print("  MATCH TYPE: fqdn exact")
@@ -360,7 +397,7 @@ def _route_symbol_core(
         return routing_result
 
     # -------------------------
-    # CP3.1 ROUTE OBSERVATION (TRACE ONLY)
+    # CP3.1 ROUTE OBSERVATION
     # -------------------------
     if trace_collector:
         trace_collector.record(
@@ -369,7 +406,7 @@ def _route_symbol_core(
                 "input": name,
                 "normalized": normalized_name,
                 "leaf": leaf_name,
-                "routing_result": None,
+                "routing_result": routing_result,
             },
         )
 
@@ -382,13 +419,15 @@ def _route_symbol_core(
         print("[CP3.5 external]", normalized_name)
         if trace_collector:
             trace_collector.record("external_match", name)
-        return "external"
+        routing_result = "external"
+        return routing_result
 
     print("[CP4 FALLBACK UNKNOWN]", normalized_name)
     if trace_collector:
         trace_collector.record("unknown_match", name)
 
-    return "unknown"
+    routing_result = "unknown"
+    return routing_result
 
 def route_symbol(
     name: str,
