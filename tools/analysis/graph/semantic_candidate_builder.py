@@ -83,4 +83,9 @@ class SemanticIdentityBuilder:
             identity.confidence = 0.05
             identity.provenance.append("no_resolution_signal")
 
+        if identity.fqdn in project_symbols or identity.leaf in project_symbols:
+            identity.identity_type = identity.identity_type if identity.identity_type != "unknown" else "project"
+            identity.confidence = max(identity.confidence, 0.85)
+            identity.provenance.append("project_symbol_hint")
+
         return identity

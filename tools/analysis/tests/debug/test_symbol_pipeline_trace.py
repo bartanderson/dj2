@@ -92,8 +92,7 @@ def run_classification_stage(identities):
 
     for i in identities:
         bucket = classify_symbol(
-            name=i.fqdn or i.surface,
-            route="unknown",
+            identity=i,
             project_symbols={
                 "tools.analysis.context.build_context_bundle.build_context_bundle"
             },

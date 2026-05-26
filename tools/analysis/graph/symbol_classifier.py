@@ -15,6 +15,7 @@ import sys
 from typing import Literal, Tuple, Dict, Any
 from tools.analysis.graph.symbol_identity import normalize_symbol
 from tools.analysis.contracts.classification_contract import load_classification_contract
+from tools.analysis.representation.semantic_identity import SemanticIdentity
 
 BUILTINS = set(dir(builtins))
 STDLIB_PREFIXES = set(sys.stdlib_module_names)
@@ -58,20 +59,21 @@ def module_key2(name: str) -> str:
 # ----------------------------
 # CORE CLASSIFIER
 # ----------------------------
+
 def classify_symbol(
-    name: str,
-    route: str,
-    project_prefixes=None,
-    runtime_bindings=None,
-    project_symbols=None,
+    identity: SemanticIdentity,
+    project_symbols: set[str] | None = None,
+    runtime_bindings: dict[str, str] | None = None,
 ):
+    project_symbols = project_symbols or set()
+    runtime_bindings = runtime_bindings or {}
+
+    name = identity.fqdn or identity.surface
+    leaf = identity.leaf or name.split(".")[-1]
+
     contract = load_classification_contract()
     routes = contract.routes
     priority = contract.rules["route_override_priority"]
-
-    project_prefixes = project_prefixes or []
-    runtime_bindings = runtime_bindings or {}
-    project_symbols = project_symbols or set()
 
     STDLIB_HINTS = {
         "pathlib",
@@ -82,28 +84,24 @@ def classify_symbol(
         "typing",
     }
 
-    leaf = name.split(".")[-1]
-
     # 1. ROUTE OVERRIDE
-    if route in priority:
-        if route == "project":
+    if identity.identity_type in priority:
+        if identity.identity_type == "project":
             return routes["project"]["output"]
-        if route == "builtin":
+        if identity.identity_type == "builtin":
             return routes["builtin"]["output"]
-        if route == "stdlib":
+        if identity.identity_type == "stdlib":
             return routes["stdlib"]["output"]
-        if route == "runtime":
+        if identity.identity_type == "runtime":
             return routes["runtime"]["output"]
 
     # 2. BUILTIN
+    import builtins
     if name in dir(builtins):
         return routes["builtin"]["output"]
 
     # 3. STDLIB
-    if (
-        leaf in ("Path", "defaultdict", "field")
-        or name in ("Path", "defaultdict", "field")
-    ):
+    if leaf in ("Path", "defaultdict", "field") or name in ("Path", "defaultdict", "field"):
         return routes["stdlib"]["output"]
 
     if "." in name:
@@ -112,16 +110,15 @@ def classify_symbol(
             return routes["stdlib"]["output"]
 
     # 4. RUNTIME
-    if name in runtime_bindings:
+    if leaf in runtime_bindings:
         return routes["runtime"]["output"]
 
-    # 5. PROJECT (FIXED)
+    # 5. PROJECT
     if name in project_symbols or leaf in project_symbols:
         return routes["project"]["output"]
 
-    # 6. EXTERNAL (FIXED COLLAPSE)
+    # 6. EXTERNAL
     if "." in name:
         return routes["external"]["output"]
 
-    # 7. FALLBACK (FIXED)
     return "unknown"
