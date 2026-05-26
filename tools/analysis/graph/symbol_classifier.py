@@ -65,13 +65,13 @@ def classify_symbol(
     runtime_bindings=None,
     project_symbols=None,
 ):
-    """
-    Contract-driven classifier.
+    contract = load_classification_contract()
+    routes = contract.routes
+    priority = contract.rules["route_override_priority"]
 
-    Rule:
-    - route override is authoritative only if it matches contract priority
-    - otherwise classification falls back to deterministic name analysis
-    """
+    project_prefixes = project_prefixes or []
+    runtime_bindings = runtime_bindings or {}
+    project_symbols = project_symbols or set()
 
     STDLIB_HINTS = {
         "pathlib",
@@ -82,69 +82,46 @@ def classify_symbol(
         "typing",
     }
 
-    contract = load_classification_contract()
-    routes = contract.routes
-    priority = contract.rules["route_override_priority"]
+    leaf = name.split(".")[-1]
 
-    project_prefixes = project_prefixes or []
-    runtime_bindings = runtime_bindings or {}
-    project_symbols = project_symbols or set()
-
-    # ----------------------------
-    # 1. ROUTE OVERRIDE (STRICT)
-    # ----------------------------
+    # 1. ROUTE OVERRIDE
     if route in priority:
         if route == "project":
             return routes["project"]["output"]
-
         if route == "builtin":
             return routes["builtin"]["output"]
-
         if route == "stdlib":
             return routes["stdlib"]["output"]
-
         if route == "runtime":
             return routes["runtime"]["output"]
 
-    # ----------------------------
     # 2. BUILTIN
-    # ----------------------------
     if name in dir(builtins):
         return routes["builtin"]["output"]
 
-    # ----------------------------
-    # 3. STDLIB (minimal heuristic: dotted import OR known module root)
-    # ----------------------------
-    # direct import style: Path, defaultdict, etc
-    if name in ("Path", "defaultdict", "field"):
+    # 3. STDLIB
+    if (
+        leaf in ("Path", "defaultdict", "field")
+        or name in ("Path", "defaultdict", "field")
+    ):
         return routes["stdlib"]["output"]
 
-    # dotted module imports
     if "." in name:
         root = name.split(".")[0]
         if root in STDLIB_HINTS:
             return routes["stdlib"]["output"]
 
-    # ----------------------------
     # 4. RUNTIME
-    # ----------------------------
     if name in runtime_bindings:
         return routes["runtime"]["output"]
 
-    # ----------------------------
-    # 5. PROJECT
-    # ----------------------------
-    if name in project_symbols:
+    # 5. PROJECT (FIXED)
+    if name in project_symbols or leaf in project_symbols:
         return routes["project"]["output"]
 
-    # ----------------------------
-    # 6. EXTERNAL (qualified)
-    # ----------------------------
+    # 6. EXTERNAL (FIXED COLLAPSE)
     if "." in name:
-        root = name.split(".")[0]
-        return routes["external"]["output"].format(root=root)
+        return routes["external"]["output"]
 
-    # ----------------------------
-    # 7. FALLBACK
-    # ----------------------------
-    return routes["unknown"]["output"]
+    # 7. FALLBACK (FIXED)
+    return "unknown"
