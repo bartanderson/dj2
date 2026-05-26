@@ -65,7 +65,7 @@ class SemanticIdentityBuilder:
         # 3. Project symbol match
         # ----------------------------
         for sym in project_symbols:
-            if sym.split(".")[-1] == leaf:
+            if sym == name or sym.endswith("." + leaf):
                 identity.project_hits.append(sym)
 
                 identity.fqdn = identity.fqdn or sym

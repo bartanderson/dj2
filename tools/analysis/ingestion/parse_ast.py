@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import builtins
 from pathlib import Path
 from typing import List, Optional
 from tools.analysis.ingestion.extract_symbols import extract_symbols
@@ -158,6 +159,13 @@ def _extract_symbol_references(
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             local_symbol_map[node.name] = node.name
 
+    def safe_resolve(module_name: str, raw: str) -> str:
+        # detect poisoned module names (filesystem paths)
+        if ":" in module_name or "\\" in module_name or module_name.startswith("C:"):
+            return raw  # DO NOT propagate filesystem namespace
+
+        return f"{module_name}.{raw}"
+
     class Visitor(ast.NodeVisitor):
 
         def __init__(self):
@@ -187,8 +195,15 @@ def _extract_symbol_references(
                     alias_map.get(raw)
                     or runtime_bindings.get(raw)
                     or local_symbol_map.get(raw)
-                    or f"{module_name}.{raw}"
                 )
+
+                if resolved is None:
+
+                    # builtin calls should remain canonical
+                    if raw in dir(builtins):
+                        resolved = raw
+                    else:
+                        resolved = safe_resolve(module_name, raw)
 
             # ----------------------
             # CASE 2: attribute call
@@ -364,12 +379,16 @@ def parse_ast(
 
     path = Path(file_path)
 
-    module_name = (
-        str(path)
-        .replace("\\", "/")
-        .replace("/", ".")
-        .removesuffix(".py")
-    )
+    normalized_path = str(path).replace("\\", "/")
+
+    if "tools/" in normalized_path:
+        normalized_path = normalized_path.split("tools/", 1)[1]
+        module_name = (
+            "tools."
+            + normalized_path.removesuffix(".py").replace("/", ".")
+        )
+    else:
+        module_name = path.stem
 
     source = _safe_read_file(path)
     if source is None:
@@ -392,12 +411,14 @@ def parse_ast(
     classes = _extract_classes(tree)
     imports, alias_map = _extract_imports(tree)
     known_symbols = global_known_symbols or set()
+    project_symbols = global_known_symbols or set()
+
     symbol_references = _extract_symbol_references(
         tree,
         known_symbols,
         alias_map,
         module_name,
-        known_symbols,   # or project_symbols if that’s the real intended source
+        project_symbols,
     )
     
     mutations = _extract_mutations(tree)
