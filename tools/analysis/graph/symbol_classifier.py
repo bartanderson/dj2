@@ -14,6 +14,7 @@ import builtins
 import sys
 from typing import Literal, Tuple, Dict, Any
 from tools.analysis.graph.symbol_identity import normalize_symbol
+from tools.analysis.contracts.classification_contract import load_classification_contract
 
 BUILTINS = set(dir(builtins))
 STDLIB_PREFIXES = set(sys.stdlib_module_names)
@@ -60,81 +61,90 @@ def module_key2(name: str) -> str:
 def classify_symbol(
     name: str,
     route: str,
-    project_prefixes: list[str],
-    runtime_bindings: dict[str, str] | None = None,
-    project_symbols: set[str] | None = None,
-) -> str:
+    project_prefixes=None,
+    runtime_bindings=None,
+    project_symbols=None,
+):
+    """
+    Contract-driven classifier.
 
-    name = normalize_symbol(name)
-    print("CLASSIFY INPUT:", repr(name), "ROUTE:", route)
+    Rule:
+    - route override is authoritative only if it matches contract priority
+    - otherwise classification falls back to deterministic name analysis
+    """
 
-    runtime_bindings = runtime_bindings or {}
-    project_symbols = {normalize_symbol(s) for s in (project_symbols or set())}
-
-    if not name:
-        return "classification_gap"
-
-    parts = name.split(".")
-    root = parts[0]
-
-    leaf = project_key(name)
-    module = module_key2(name)
-
-    project_leafs = {project_key(s) for s in project_symbols}
-    project_modules = {module_key2(s) for s in project_symbols}
-
-    # ----------------------------
-    # ROUTE TRUSTED LAYER
-    # ----------------------------
-    if route == "project":
-        return "project"
-
-    if route in {"builtin", "stdlib", "runtime"}:
-        return route  # type: ignore
-    
-    # runtime binding override (VERY IMPORTANT)
-    if name in runtime_bindings:
-        return "runtime"
-    # ----------------------------
-    # PROJECT MATCHING
-    # ----------------------------
-    if name in project_symbols:
-        return "project"
-
-    if module in project_modules and len(parts) > 1:
-        return "project"
-
-    if project_prefixes:
-        for p in project_prefixes:
-            if name == p or name.startswith(p + "."):
-                return "project"
-
-    # ----------------------------
-    # SYSTEM CATEGORIES
-    # ----------------------------
-    if root in BUILTINS:
-        return "builtin"
-
-    # stdlib module detection (module-level only)
-    if parts[0] in STDLIB_PREFIXES:
-        return "stdlib"
-
-    # common stdlib symbol-level aliases
-    STD_SYMBOL_HINTS = {
-        "Path": "stdlib",
-        "defaultdict": "stdlib",
-        "field": "stdlib",
+    STDLIB_HINTS = {
+        "pathlib",
+        "collections",
+        "os",
+        "sys",
+        "json",
+        "typing",
     }
 
-    if name in STD_SYMBOL_HINTS:
-        return STD_SYMBOL_HINTS[name]  # type: ignore
+    contract = load_classification_contract()
+    routes = contract.routes
+    priority = contract.rules["route_override_priority"]
 
-    if route == "external":
-        if "." in name:
-            return f"external_lib.{parts[0]}"  # keep, but treat as bucket string, not SymbolClass
-        return "unresolved_qualified_reference"
+    project_prefixes = project_prefixes or []
+    runtime_bindings = runtime_bindings or {}
+    project_symbols = project_symbols or set()
 
     # ----------------------------
-    # FALLBACK
+    # 1. ROUTE OVERRIDE (STRICT)
     # ----------------------------
-    return "unresolved_qualified_reference"
+    if route in priority:
+        if route == "project":
+            return routes["project"]["output"]
+
+        if route == "builtin":
+            return routes["builtin"]["output"]
+
+        if route == "stdlib":
+            return routes["stdlib"]["output"]
+
+        if route == "runtime":
+            return routes["runtime"]["output"]
+
+    # ----------------------------
+    # 2. BUILTIN
+    # ----------------------------
+    if name in dir(builtins):
+        return routes["builtin"]["output"]
+
+    # ----------------------------
+    # 3. STDLIB (minimal heuristic: dotted import OR known module root)
+    # ----------------------------
+    # direct import style: Path, defaultdict, etc
+    if name in ("Path", "defaultdict", "field"):
+        return routes["stdlib"]["output"]
+
+    # dotted module imports
+    if "." in name:
+        root = name.split(".")[0]
+        if root in STDLIB_HINTS:
+            return routes["stdlib"]["output"]
+
+    # ----------------------------
+    # 4. RUNTIME
+    # ----------------------------
+    if name in runtime_bindings:
+        return routes["runtime"]["output"]
+
+    # ----------------------------
+    # 5. PROJECT
+    # ----------------------------
+    if name in project_symbols:
+        return routes["project"]["output"]
+
+    # ----------------------------
+    # 6. EXTERNAL (qualified)
+    # ----------------------------
+    if "." in name:
+        root = name.split(".")[0]
+        return routes["external"]["output"].format(root=root)
+
+    # ----------------------------
+    # 7. FALLBACK
+    # ----------------------------
+    return routes["unknown"]["output"]

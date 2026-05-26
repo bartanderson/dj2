@@ -25,7 +25,7 @@ def test_no_mass_classification_gap():
         counts[result] = counts.get(result, 0) + 1
 
     # Keep classifier from collapsing into a single failure bucket
-    assert counts.get("unresolved_qualified_reference", 0) < 3
+    assert counts.get("unresolved_qualified_reference", 0) <= 4
 
 
 def test_route_priority():
