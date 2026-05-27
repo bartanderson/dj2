@@ -94,6 +94,12 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     if runtime_target is not None:
         return "runtime"
 
+    # 4b. ALIAS (symmetry with runtime resolution)
+    alias_target = env.resolve_alias(leaf)
+
+    if alias_target:
+        return "runtime"
+
     # ----------------------------
     # 5. FALLBACK
     # ----------------------------

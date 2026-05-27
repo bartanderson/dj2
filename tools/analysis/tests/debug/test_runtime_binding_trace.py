@@ -275,6 +275,21 @@ def test_runtime_binding_trace():
         env,
     )
 
+    # ----------------------------
+    # alias/runtime symmetry contract
+    # ----------------------------
+    alias_ids = {i.surface: i for i in identities}
+
+    assert alias_ids["p"].fqdn == "Path", (
+        "runtime resolution failed for 'p'"
+    )
+
+    assert alias_ids["x"].fqdn == (
+        "tools.analysis.context.build_context_bundle.build_context_bundle"
+    ), (
+        "alias/runtime resolution failed for 'x'"
+    )
+
     print("\n================ PIPELINE COMPLETE ================\n")
 
     print("TOTAL RESULTS:", len(results))

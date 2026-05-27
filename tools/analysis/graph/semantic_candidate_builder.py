@@ -49,11 +49,13 @@ class SemanticIdentityBuilder:
         # ----------------------------
         # 2. Alias resolution
         # ----------------------------
+        # alias resolution (parallel signal to runtime)
         alias_target = env.resolve_alias(leaf)
 
         if alias_target:
             fqdn = alias_target
 
+            # only set if runtime did not already define fqdn
             identity.fqdn = identity.fqdn or fqdn
             identity.module = fqdn.split(".")[0] if "." in fqdn else None
 
@@ -61,7 +63,7 @@ class SemanticIdentityBuilder:
 
             identity.alias_hints[leaf] = fqdn
             identity.provenance.append(f"alias_map:{leaf}->{fqdn}")
-
+    
         # ----------------------------
         # 3. Project symbol match
         # ----------------------------
