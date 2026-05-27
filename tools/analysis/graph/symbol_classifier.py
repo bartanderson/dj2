@@ -70,7 +70,10 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     # ----------------------------
     # 1. PROJECT (HARD RULE)
     # ----------------------------
-    if env.is_project_symbol(fqdn) or env.has_project_leaf(leaf):
+    if env.is_project_symbol(fqdn):
+        return "project"
+
+    if env.has_project_leaf(leaf):
         return "project"
 
     # ----------------------------

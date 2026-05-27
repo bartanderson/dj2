@@ -159,6 +159,17 @@ def canonical_symbol(name: str, project_prefixes: list[str] | None = None) -> st
         return name
     return name
 
+# ============================================================
+# PARITY / OBSERVABILITY LAYER (CONTRACT GATE)
+# ============================================================
+# This function is the ONLY place where:
+#   - routing output
+#   - semantic identity reconstruction
+#   - trace observation
+# are compared or combined.
+#
+# This is NOT a production routing path.
+# ============================================================
 def route_symbol_shadow(
     name: str,
     runtime_bindings: dict[str, str] | None = None,
@@ -251,6 +262,14 @@ def route_symbol_shadow(
 
     return result, tracer.get()
 
+
+# ============================================================
+# LEGACY ROUTING ENGINE (DO NOT EXTEND LOGIC)
+# ============================================================
+# This function is the historical routing truth source.
+# It must remain deterministic and structurally stable.
+# All semantic enhancements belong in identity layer or shadow layer.
+# ============================================================
 def _route_symbol_core(
     name: str,
     runtime_bindings: dict[str, str] | None = None,
@@ -442,6 +461,12 @@ def _route_symbol_core(
     routing_result = "unknown"
     return routing_result
 
+# ============================================================
+# PUBLIC ROUTING API (STABLE CONTRACT)
+# ============================================================
+# This is the ONLY supported entrypoint for routing decisions.
+# It must remain a thin wrapper over core routing logic.
+# ============================================================
 def route_symbol(
     name: str,
     runtime_bindings: dict[str, str] | None = None,
