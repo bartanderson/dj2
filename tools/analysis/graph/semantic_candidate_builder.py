@@ -84,7 +84,7 @@ class SemanticIdentityBuilder:
             identity.confidence = 0.05
             identity.provenance.append("no_resolution_signal")
 
-        # project detection MUST NOT mutate identity_type
+        # project detection is observational only
         if identity.fqdn in env.project_symbols or identity.leaf in env.project_symbols:
             identity.project_hits.append(identity.fqdn or identity.leaf)
             identity.confidence = max(identity.confidence, 0.85)

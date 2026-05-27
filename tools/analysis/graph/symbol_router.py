@@ -64,6 +64,7 @@ from tools.analysis.graph.symbol_classifier import normalize_symbol
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
 from tools.analysis.graph.semantic_identity_contract import SemanticIdentityContract
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
 RouteType = Literal[
     "project",
@@ -182,11 +183,15 @@ def route_symbol_shadow(
     # -----------------------------
     builder = SemanticIdentityBuilder()
 
+    env = SymbolEnvironment(
+        alias_map={},
+        runtime_bindings=runtime_bindings or {},
+        project_symbols=project_symbols or set(),
+    )
+
     identity = builder.build(
         name=name,
-        alias_map=runtime_bindings,
-        runtime_bindings=runtime_bindings,
-        project_symbols=project_symbols or set(),
+        env=env,
     )
 
     if identity is None:
