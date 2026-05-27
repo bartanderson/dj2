@@ -1,8 +1,13 @@
 import ast
 
-from tools.analysis.ingestion.parse_ast import _extract_runtime_bindings
-from tools.analysis.ingestion.parse_ast import _extract_symbol_references
+from tools.analysis.ingestion.parse_ast import (
+    _extract_runtime_bindings,
+    _extract_symbol_references,
+    _extract_imports
+)
+
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
+from tools.analysis.graph.symbol_classifier import classify_symbol
 
 
 # ----------------------------
@@ -25,9 +30,16 @@ def handler():
 # ----------------------------
 EXPECTED_RUNTIME_BINDINGS = {
     "p": "Path",
-    "x": "tools.analysis.context.build_context_bundle"
+    "x": (
+        "tools.analysis.context."
+        "build_context_bundle."
+        "build_context_bundle"
+    ),
 }
 
+PROJECT_SYMBOLS = {
+    "tools.analysis.context.build_context_bundle.build_context_bundle",
+}
 
 ALLOWED_LEAF_TYPES = {
     "runtime",
@@ -45,7 +57,23 @@ def run_runtime_binding_stage():
 
     tree = ast.parse(SOURCE)
 
-    bindings = _extract_runtime_bindings(tree)
+    # --------------------------------
+    # canonical alias extraction stage
+    # --------------------------------
+    imports, alias_map = _extract_imports(tree)
+
+    print("\n================ IMPORT / ALIAS STAGE ================\n")
+
+    for k, v in alias_map.items():
+        print(k, "->", v)
+
+    # --------------------------------
+    # runtime binding extraction stage
+    # --------------------------------
+    bindings = _extract_runtime_bindings(
+        tree,
+        alias_map=alias_map,
+    )
 
     print("\n================ STAGE 1: RUNTIME BINDINGS ================\n")
 
@@ -91,12 +119,16 @@ def run_identity_stage(bindings):
 
     identities = []
 
-    for var, target in bindings.items():
+    runtime_bindings = bindings
+
+    for var, target in runtime_bindings.items():
 
         identity = builder.build(
-            target,
+            name=var,                      # variable name is the identity surface
             alias_map={},
-            runtime_bindings=bindings,
+            runtime_bindings={
+                var: target               # preserve correct mapping
+            },
             project_symbols=set(),
         )
 
@@ -141,17 +173,16 @@ def run_identity_stage(bindings):
 # STAGE 3
 # identity → classification verification
 # ----------------------------
-def run_classification_stage(identities):
+def run_classification_stage(identities,bindings):
 
     results = []
 
     for i in identities:
 
         bucket = classify_symbol(
-            name=i.fqdn or i.surface,
-            route="unknown",
-            project_symbols=set(),
-            runtime_bindings=EXPECTED_RUNTIME_BINDINGS,
+            identity=i,
+            project_symbols=PROJECT_SYMBOLS,
+            runtime_bindings=bindings,
         )
 
         results.append((i.surface, bucket))
@@ -186,7 +217,7 @@ def test_runtime_binding_trace():
 
     identities = run_identity_stage(bindings)
 
-    results = run_classification_stage(identities)
+    results = run_classification_stage(identities, bindings)
 
     print("\n================ PIPELINE COMPLETE ================\n")
     print("TOTAL RESULTS:", len(results))

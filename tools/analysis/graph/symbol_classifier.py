@@ -65,60 +65,41 @@ def classify_symbol(
     project_symbols: set[str] | None = None,
     runtime_bindings: dict[str, str] | None = None,
 ):
-    project_symbols = project_symbols or set()
-    runtime_bindings = runtime_bindings or {}
+    leaf = identity.leaf
+    fqdn = identity.fqdn or identity.surface
 
-    name = identity.fqdn or identity.surface
-    leaf = identity.leaf or name.split(".")[-1]
+    # ----------------------------
+    # 1. runtime wins if explicitly tagged OR bound
+    # ----------------------------
+    if identity.identity_type == "runtime" or leaf in runtime_bindings:
+        return "runtime"
 
-    contract = load_classification_contract()
-    routes = contract.routes
-    priority = contract.rules["route_override_priority"]
-
-    STDLIB_HINTS = {
-        "pathlib",
-        "collections",
-        "os",
-        "sys",
-        "json",
-        "typing",
-    }
-
-    # 1. ROUTE OVERRIDE
-    if identity.identity_type in priority:
-        if identity.identity_type == "project":
-            return routes["project"]["output"]
-        if identity.identity_type == "builtin":
-            return routes["builtin"]["output"]
-        if identity.identity_type == "stdlib":
-            return routes["stdlib"]["output"]
-        if identity.identity_type == "runtime":
-            return routes["runtime"]["output"]
-
-    # 2. BUILTIN
+    # ----------------------------
+    # 2. builtin detection (hard gate)
+    # ----------------------------
     import builtins
-    if name in dir(builtins):
-        return routes["builtin"]["output"]
 
-    # 3. STDLIB
-    if leaf in ("Path", "defaultdict", "field") or name in ("Path", "defaultdict", "field"):
-        return routes["stdlib"]["output"]
+    if leaf in dir(builtins):
+        return "builtin"
 
-    if "." in name:
-        root = name.split(".")[0]
-        if root in STDLIB_HINTS:
-            return routes["stdlib"]["output"]
+    # ----------------------------
+    # 3. project match (exact fqdn or leaf match)
+    # ----------------------------
+    if fqdn in project_symbols:
+        return "project"
 
-    # 4. RUNTIME
-    if leaf in runtime_bindings:
-        return routes["runtime"]["output"]
+    if any(sym.split(".")[-1] == leaf for sym in project_symbols):
+        return "project"
 
-    # 5. PROJECT
-    if name in project_symbols or leaf in project_symbols:
-        return routes["project"]["output"]
+    # ----------------------------
+    # 4. stdlib heuristic (minimal + stable)
+    # ----------------------------
+    STDLIB_HINTS = {"os", "sys", "pathlib", "json", "typing", "collections"}
 
-    # 6. EXTERNAL
-    if "." in name:
-        return routes["external"]["output"]
+    if fqdn.split(".")[0] in STDLIB_HINTS:
+        return "stdlib"
 
+    # ----------------------------
+    # 5. fallback
+    # ----------------------------
     return "unknown"

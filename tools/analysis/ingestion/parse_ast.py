@@ -151,7 +151,12 @@ def _extract_symbol_references(
     results = []
     local_symbol_map = {}
 
-    runtime_bindings = _extract_runtime_bindings(tree)
+    runtime_bindings = _extract_runtime_bindings(
+        tree,
+        alias_map={
+            "ctx": "tools.analysis.context",
+        }
+    )
 
     identity_builder = SemanticIdentityBuilder()
 
@@ -445,7 +450,13 @@ def parse_ast(
     )
 
 
-def _extract_runtime_bindings(tree: ast.AST) -> dict[str, str]:
+def _extract_runtime_bindings(
+    tree: ast.AST,
+    alias_map: dict[str, str] | None = None,
+) -> dict[str, str]:
+
+    alias_map = alias_map or {}
+
     bindings = {}
 
     for node in ast.walk(tree):
@@ -471,7 +482,8 @@ def _extract_runtime_bindings(tree: ast.AST) -> dict[str, str]:
                             parts.append(cur.id)
                             bindings[var_name] = ".".join(reversed(parts))
 
-                # NEW: handle attribute assignments (Flask injection, containers, globals)
+                # NEW: handle attribute assignments with alias-aware canonicalization
+                # (Flask injection, containers, globals, imported module aliases)
                 elif isinstance(node.value, ast.Attribute):
                     parts = []
                     cur = node.value
@@ -481,12 +493,17 @@ def _extract_runtime_bindings(tree: ast.AST) -> dict[str, str]:
                         cur = cur.value
 
                     if isinstance(cur, ast.Name):
-                        parts.append(cur.id)
-                        resolved = ".".join(reversed(parts))
+                        root = cur.id
 
-                        # Flask app injection normalization
-                        if resolved == "current_app.world_controller":
-                            resolved = "world.world_controller.WorldController"
+                        # STEP 1: resolve alias FIRST (strict)
+                        base = alias_map.get(root, root)
+
+                        # STEP 2: if base is already canonical module path,
+                        # treat attribute chain as extension of that module
+                        if "." in base:
+                            resolved = base + "." + ".".join(reversed(parts))
+                        else:
+                            resolved = ".".join(reversed(parts + [base]))
 
                         bindings[var_name] = resolved
     return bindings
