@@ -170,7 +170,6 @@ def run_identity_stage(env):
         print(
             i.surface,
             "| fqdn:", i.fqdn,
-            "| type:", i.identity_type,
             "| conf:", round(i.confidence, 3),
         )
 
@@ -180,8 +179,6 @@ def run_identity_stage(env):
     for i in identities:
 
         assert isinstance(i.surface, str)
-
-        assert isinstance(i.identity_type, str)
 
         assert 0.0 <= i.confidence <= 1.0
 

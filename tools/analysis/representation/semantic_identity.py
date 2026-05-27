@@ -12,8 +12,6 @@ class SemanticIdentity:
     fqdn: Optional[str] = None
     module: Optional[str] = None
 
-    identity_type: str = "unknown"  # runtime | project | builtin | unknown
-
     confidence: float = 0.0
     provenance: List[str] = field(default_factory=list)
 

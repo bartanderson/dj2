@@ -119,7 +119,6 @@ def run_identity_stage(refs):
         print(
             i.surface,
             "| fqdn:", i.fqdn,
-            "| type:", i.identity_type,
             "| conf:", round(i.confidence, 3),
         )
 
@@ -132,9 +131,6 @@ def run_identity_stage(refs):
         assert isinstance(i.surface, str)
 
         assert i.leaf == i.surface.split(".")[-1]
-
-        assert i.identity_type is not None
-        assert isinstance(i.identity_type, str)
 
         assert i.fqdn is None or isinstance(i.fqdn, str)
 
@@ -184,7 +180,6 @@ def run_classification_stage(identities):
         results.append({
             "surface": i.surface,
             "fqdn": i.fqdn,
-            "identity_type": i.identity_type,
             "bucket": bucket,
         })
 
