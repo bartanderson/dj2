@@ -41,7 +41,7 @@ class SemanticIdentityBuilder:
             fqdn = runtime_target
 
             identity.fqdn = fqdn
-            identity.identity_type = "runtime"
+            identity.identity_type = "discovered"
             identity.confidence = max(identity.confidence, 0.85)
 
             identity.runtime_hints[leaf] = fqdn

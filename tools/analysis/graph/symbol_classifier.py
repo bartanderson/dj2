@@ -88,7 +88,10 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     # ----------------------------
     # 4. RUNTIME (WEAK SIGNAL)
     # ----------------------------
-    if identity.identity_type == "runtime" or env.resolve_runtime(leaf):
+    runtime_target = env.resolve_runtime(leaf)
+
+    # runtime is ONLY environment-driven, not identity-driven
+    if runtime_target is not None:
         return "runtime"
 
     # ----------------------------

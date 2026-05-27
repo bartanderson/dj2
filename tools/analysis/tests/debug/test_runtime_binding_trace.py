@@ -195,13 +195,11 @@ def run_identity_stage(env):
     # semantic contract
     # ----------------------------
     runtime_identified = any(
-        i.identity_type == "runtime"
+        env.resolve_runtime(i.leaf) is not None
         for i in identities
     )
 
-    assert (
-        runtime_identified
-    ), "expected at least one runtime-resolved identity"
+    assert runtime_identified, "expected at least one runtime-resolved identity"
 
     return identities
 
