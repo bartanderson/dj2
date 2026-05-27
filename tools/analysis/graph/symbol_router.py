@@ -106,19 +106,10 @@ def is_runtime_symbol(
 
     runtime_bindings = runtime_bindings or {}
 
-    parts = name.split(".")
-    root = parts[0]
+    root = name.split(".")[0]
 
     # explicit runtime alias root
     if root in runtime_bindings:
-        return True
-
-    # implicit instance/runtime contexts
-    if root in ("self", "cls", "ctx", "app"):
-        return True
-
-    # synthetic call-chain artifacts
-    if root in ("get", "generate"):
         return True
 
     return False
