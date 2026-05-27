@@ -69,3 +69,15 @@ class SemanticPipelineContract:
         """
         order = SemanticPipelineContract.PRIORITY_ORDER
         return candidate if order.index(candidate) < order.index(current) else current
+
+    @staticmethod
+    def is_project(bucket: str) -> bool:
+        return bucket == "project"
+
+    @staticmethod
+    def is_runtime(bucket: str) -> bool:
+        return bucket == "runtime"
+
+    @staticmethod
+    def is_builtin(bucket: str) -> bool:
+        return bucket == "builtin"

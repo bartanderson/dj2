@@ -4,7 +4,11 @@ from tools.analysis.ingestion.parse_ast import _extract_symbol_references
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.graph.symbol_classifier import classify_symbol
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
+from tools.analysis.contracts.semantic_pipeline_contract import SemanticPipelineContract as Contract
 
+def validate_classification_results(results):
+    for r in results:
+        Contract.validate_bucket(r["bucket"])
 
 # ----------------------------
 # FIXED TEST INPUT (controlled, minimal)
@@ -220,6 +224,7 @@ def run_classification_stage(identities):
             r["bucket"] in ALLOWED_BUCKETS
         ), f"invalid bucket emitted: {r['bucket']}"
 
+    validate_classification_results(results)
     return results
 
 
