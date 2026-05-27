@@ -35,9 +35,3 @@ class SymbolEnvironment:
 
     def is_project_symbol(self, fqdn: str) -> bool:
         return fqdn in self.project_symbols
-
-    def has_project_leaf(self, leaf: str) -> bool:
-        return any(
-            sym.split(".")[-1] == leaf
-            for sym in self.project_symbols
-        )

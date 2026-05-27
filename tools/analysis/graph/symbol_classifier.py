@@ -73,9 +73,6 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     if env.is_project_symbol(fqdn):
         return "project"
 
-    if env.has_project_leaf(leaf):
-        return "project"
-
     # ----------------------------
     # 2. BUILTIN (HARD RULE)
     # ----------------------------
