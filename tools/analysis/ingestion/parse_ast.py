@@ -21,6 +21,9 @@ from tools.analysis.shared.types import (
     MutationEvent,
 )
 from tools.analysis.graph.symbol_resolution import resolve_symbol_identity
+from tools.analysis.representation.symbol_environment import (
+    SymbolEnvironment,
+)
 
 def normalize_symbol(name: str) -> str:
     """
@@ -267,11 +270,15 @@ def _extract_symbol_references(
                 self.generic_visit(node)
                 return
 
+            env = SymbolEnvironment(
+                alias_map=alias_map,
+                runtime_bindings=runtime_bindings,
+                project_symbols=known_symbols,
+            )
+
             identity = identity_builder.build(
-                raw,
-                alias_map,
-                runtime_bindings,
-                known_symbols,
+                name=raw,
+                env=env,
             )
 
             fqdn = identity.fqdn or resolved or raw

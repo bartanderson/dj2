@@ -16,6 +16,7 @@ from typing import Literal, Tuple, Dict, Any
 from tools.analysis.graph.symbol_identity import normalize_symbol
 from tools.analysis.contracts.classification_contract import load_classification_contract
 from tools.analysis.representation.semantic_identity import SemanticIdentity
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
 BUILTINS = set(dir(builtins))
 STDLIB_PREFIXES = set(sys.stdlib_module_names)
@@ -62,8 +63,7 @@ def module_key2(name: str) -> str:
 
 def classify_symbol(
     identity: SemanticIdentity,
-    project_symbols: set[str] | None = None,
-    runtime_bindings: dict[str, str] | None = None,
+    env: SymbolEnvironment,
 ):
     leaf = identity.leaf
     fqdn = identity.fqdn or identity.surface
@@ -71,11 +71,28 @@ def classify_symbol(
     # ----------------------------
     # 1. runtime wins if explicitly tagged OR bound
     # ----------------------------
-    if identity.identity_type == "runtime" or leaf in runtime_bindings:
+    runtime_target = env.resolve_runtime(leaf)
+
+    # ----------------------------
+    # 2. PROJECT ALWAYS WINS
+    # ----------------------------
+    if env.is_project_symbol(fqdn) or env.has_project_leaf(leaf):
+        return "project"
+
+    # ----------------------------
+    # 3. BUILTIN
+    # ----------------------------
+    if leaf in BUILTINS:
+        return "builtin"
+
+    # ----------------------------
+    # 4. RUNTIME (weak signal only)
+    # ----------------------------
+    if identity.identity_type == "runtime" or runtime_target:
         return "runtime"
 
     # ----------------------------
-    # 2. builtin detection (hard gate)
+    # 5. builtin detection (hard gate)
     # ----------------------------
     import builtins
 
@@ -83,16 +100,16 @@ def classify_symbol(
         return "builtin"
 
     # ----------------------------
-    # 3. project match (exact fqdn or leaf match)
+    # 6. project match (exact fqdn or leaf match)
     # ----------------------------
-    if fqdn in project_symbols:
+    if env.is_project_symbol(fqdn):
         return "project"
 
-    if any(sym.split(".")[-1] == leaf for sym in project_symbols):
+    if env.has_project_leaf(leaf):
         return "project"
 
     # ----------------------------
-    # 4. stdlib heuristic (minimal + stable)
+    # 7. stdlib heuristic (minimal + stable)
     # ----------------------------
     STDLIB_HINTS = {"os", "sys", "pathlib", "json", "typing", "collections"}
 
@@ -100,6 +117,6 @@ def classify_symbol(
         return "stdlib"
 
     # ----------------------------
-    # 5. fallback
+    # 8. fallback
     # ----------------------------
     return "unknown"

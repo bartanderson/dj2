@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Set
 from tools.analysis.representation.semantic_identity import SemanticIdentity
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
 
 class SemanticIdentityBuilder:
@@ -21,9 +22,7 @@ class SemanticIdentityBuilder:
     def build(
         self,
         name: str,
-        alias_map: Dict[str, str],
-        runtime_bindings: Dict[str, str],
-        project_symbols: Set[str],
+        env: SymbolEnvironment
     ) -> SemanticIdentity:
 
         leaf = name.split(".")[-1]
@@ -36,8 +35,10 @@ class SemanticIdentityBuilder:
         # ----------------------------
         # 1. Runtime binding (strongest signal)
         # ----------------------------
-        if leaf in runtime_bindings:
-            fqdn = runtime_bindings[leaf]
+        runtime_target = env.resolve_runtime(leaf)
+
+        if runtime_target:
+            fqdn = runtime_target
 
             identity.fqdn = fqdn
             identity.identity_type = "runtime"
@@ -49,8 +50,10 @@ class SemanticIdentityBuilder:
         # ----------------------------
         # 2. Alias resolution
         # ----------------------------
-        if leaf in alias_map:
-            fqdn = alias_map[leaf]
+        alias_target = env.resolve_alias(leaf)
+
+        if alias_target:
+            fqdn = alias_target
 
             identity.fqdn = identity.fqdn or fqdn
             identity.module = fqdn.split(".")[0] if "." in fqdn else None
@@ -64,7 +67,7 @@ class SemanticIdentityBuilder:
         # ----------------------------
         # 3. Project symbol match
         # ----------------------------
-        for sym in project_symbols:
+        for sym in env.project_symbols:
             if sym == name or sym.endswith("." + leaf):
                 identity.project_hits.append(sym)
 
@@ -83,7 +86,7 @@ class SemanticIdentityBuilder:
             identity.confidence = 0.05
             identity.provenance.append("no_resolution_signal")
 
-        if identity.fqdn in project_symbols or identity.leaf in project_symbols:
+        if identity.fqdn in env.project_symbols or identity.leaf in env.project_symbols:
             identity.identity_type = identity.identity_type if identity.identity_type != "unknown" else "project"
             identity.confidence = max(identity.confidence, 0.85)
             identity.provenance.append("project_symbol_hint")

@@ -3,6 +3,7 @@ import ast
 from tools.analysis.ingestion.parse_ast import _extract_symbol_references
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.graph.symbol_classifier import classify_symbol
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
 
 # ----------------------------
@@ -28,6 +29,12 @@ ALIAS_MAP = {
     "build_context_bundle":
         "tools.analysis.context.build_context_bundle.build_context_bundle"
 }
+
+ENV = SymbolEnvironment(
+    alias_map=ALIAS_MAP,
+    runtime_bindings={},
+    project_symbols=PROJECT_SYMBOLS,
+)
 
 ALLOWED_BUCKETS = {
     "project",
@@ -97,12 +104,9 @@ def run_identity_stage(refs):
     for r in refs:
 
         identity = builder.build(
-            r.ir1.surface,
-            alias_map=ALIAS_MAP,
-            runtime_bindings={},
-            project_symbols=PROJECT_SYMBOLS,
+            name=r.ir1.surface,
+            env=ENV,
         )
-
         identities.append(identity)
 
     print("\n================ STAGE 2: IDENTITY OUTPUT ================\n")
@@ -170,8 +174,7 @@ def run_classification_stage(identities):
 
         bucket = classify_symbol(
             identity=i,
-            project_symbols=PROJECT_SYMBOLS,
-            runtime_bindings={},
+            env=ENV,
         )
 
         results.append({
