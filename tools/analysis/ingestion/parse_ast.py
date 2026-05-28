@@ -488,6 +488,14 @@ def _extract_runtime_bindings(
                         if isinstance(cur, ast.Name):
                             parts.append(cur.id)
                             bindings[var_name] = ".".join(reversed(parts))
+                            
+                # NEW: direct imported symbol rebinding
+                elif isinstance(node.value, ast.Name):
+
+                    imported = alias_map.get(node.value.id)
+
+                    if imported:
+                        bindings[var_name] = imported
 
                 # NEW: handle attribute assignments with alias-aware canonicalization
                 # (Flask injection, containers, globals, imported module aliases)

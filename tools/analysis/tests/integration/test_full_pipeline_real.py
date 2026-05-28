@@ -64,3 +64,15 @@ def test_full_pipeline_real(tmp_path):
 
     # Must NOT collapse everything
     assert len(out["bucket_summary"]) > 0
+
+    assert any(
+        e.callee == "requests.get"
+        for e in graph.edges
+    ), "missing external dependency edge"
+
+    assert any(
+        e.callee == "Path"
+        for e in graph.edges
+    ), "missing stdlib dependency edge" 
+
+    assert len(out["bucket_summary"]) > 1, "classification collapsed into single bucket"
