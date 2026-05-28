@@ -64,13 +64,37 @@ def module_key2(name: str) -> str:
 
 def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
 
+    print("ENV SYMBOL COUNT:", len(env.project_symbols))
+    
     leaf = identity.leaf
     fqdn = identity.fqdn or identity.surface
+
+    print("\n[CLASSIFY DEBUG]")
+    print("surface:", identity.surface)
+    print("leaf:", leaf)
+    print("fqdn:", fqdn)
+    print("project_symbols sample:", list(env.project_symbols)[:5])
 
     # ----------------------------
     # 1. PROJECT (HARD RULE)
     # ----------------------------
-    if env.is_project_symbol(fqdn):
+    project_leaf_match = any(
+        leaf == s.split(".")[-1]
+        for s in env.project_symbols
+    )
+
+    is_proj = (
+        env.is_project_symbol(fqdn)
+        or project_leaf_match
+    )
+
+    print("[PROJECT CHECK]")
+    print("fqdn:", fqdn)
+    print("leaf:", leaf)
+    print("project_leaf_match:", project_leaf_match)
+    print("result:", is_proj)
+
+    if is_proj:
         return "project"
 
     # ----------------------------
@@ -88,16 +112,7 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     # ----------------------------
     # 4. RUNTIME (WEAK SIGNAL)
     # ----------------------------
-    runtime_target = env.resolve_runtime(leaf)
-
-    # runtime is ONLY environment-driven, not identity-driven
-    if runtime_target is not None:
-        return "runtime"
-
-    # 4b. ALIAS (symmetry with runtime resolution)
-    alias_target = env.resolve_alias(leaf)
-
-    if alias_target:
+    if identity.resolved_by in ("runtime", "alias"):
         return "runtime"
 
     # ----------------------------

@@ -45,6 +45,7 @@ class SemanticIdentityBuilder:
 
             identity.runtime_hints[leaf] = fqdn
             identity.provenance.append(f"runtime_binding:{leaf}->{fqdn}")
+            identity.resolved_by = "runtime"
 
         # ----------------------------
         # 2. Alias resolution
@@ -63,7 +64,11 @@ class SemanticIdentityBuilder:
 
             identity.alias_hints[leaf] = fqdn
             identity.provenance.append(f"alias_map:{leaf}->{fqdn}")
-    
+
+            if identity.resolved_by is None:
+                identity.resolved_by = "alias"
+
+
         # ----------------------------
         # 3. Project symbol match
         # ----------------------------

@@ -16,6 +16,8 @@
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role
 from tools.analysis.graph.symbol_classifier import classify_symbol
+from tools.analysis.representation.semantic_identity import SemanticIdentity
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
 BUCKET_NORMALIZER = {
     "unresolved_qualified_reference": "classification_gap",
@@ -54,6 +56,18 @@ def build_evaluation_snapshot(
     analysis,
     graph,
 ):
+    print("\n[GROUND CHECK]")
+    print("analysis has project_symbols:", getattr(analysis, "project_symbols", None))
+    print("analysis type:", type(analysis))
+
+    env = getattr(analysis, "env", None)
+
+    if env is None:
+        env = SymbolEnvironment(
+            alias_map=getattr(analysis, "alias_map", {}),
+            runtime_bindings=getattr(analysis, "runtime_bindings", {}),
+            project_symbols=getattr(analysis, "project_symbols", set()),
+        )
 
     # ----------------------------
     # INITIALIZE BUCKETS (ONLY ONCE)
@@ -69,13 +83,18 @@ def build_evaluation_snapshot(
     # ----------------------------
     # SINGLE PASS TRUTH BUILD
     # ----------------------------
+
     for edge in graph.edges:
 
-        bucket = classify_symbol(
-            edge.callee,
-            route="external",
-            project_prefixes=[],
+        identity = SemanticIdentity(
+            surface=edge.callee,
+            leaf=edge.callee.split(".")[-1],
         )
+
+        # reuse analysis-level environment (DO NOT RESET PER EDGE)
+        pass
+
+        bucket = classify_symbol(identity, env)
 
         bucket = BUCKET_NORMALIZER.get(bucket, bucket)
 

@@ -280,10 +280,10 @@ def _route_symbol_core(
     project_prefixes = project_prefixes or []
 
     if trace_collector:
-    trace_collector.record(
-        "runtime_bindings_snapshot",
-        list(runtime_bindings.keys())
-    )
+        trace_collector.record(
+            "runtime_bindings_snapshot",
+            list(runtime_bindings.keys())
+        )
 
     # -------------------------
     # Canonicalization stage

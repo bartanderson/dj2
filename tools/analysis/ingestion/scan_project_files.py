@@ -210,6 +210,9 @@ def scan_project_files(
         analysis.project_symbols = GLOBAL_SYMBOLS
 
         print("PROJECT SYMBOLS:", len(analysis.project_symbols))
+        print("\n[SCAN FINAL CHECK]")
+        print("GLOBAL_SYMBOLS size:", len(GLOBAL_SYMBOLS))
+        print("analysis.project_symbols BEFORE YIELD:", len(analysis.project_symbols))
 
         # -------------------------
         # 4. YIELD

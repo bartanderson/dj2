@@ -22,10 +22,5 @@ def classify_symbol_with_context(
         project_symbols=project_symbols,
     )
 
-    return classify_symbol(
-        name=name,
-        route=route,
-        project_prefixes=project_prefixes,
-        runtime_bindings=runtime_bindings,
-        project_symbols=project_symbols,
-    )
+    identity = builder.build(name, env)
+    return classify_symbol(identity, env)
