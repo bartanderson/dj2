@@ -1,0 +1,57 @@
+# tools\analysis\tests\semantic\test_semantic_identity_runtime.py
+import ast
+
+from tools.analysis.representation.symbol_environment import SymbolEnvironment
+from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
+from tools.analysis.ingestion.parse_ast import (
+    _extract_imports,
+    _extract_runtime_bindings,
+)
+
+
+def build_env(source: str) -> SymbolEnvironment:
+    tree = ast.parse(source)
+
+    _, alias_map = _extract_imports(tree)
+    runtime_bindings = _extract_runtime_bindings(tree, alias_map=alias_map)
+
+    return SymbolEnvironment(
+        alias_map=alias_map,
+        runtime_bindings=runtime_bindings,
+        project_symbols=set(),
+    )
+
+
+def test_runtime_binding_resolves_fqdn():
+    source = """
+from flask import request
+y = request.args
+"""
+
+    env = build_env(source)
+    builder = SemanticIdentityBuilder()
+
+    identity = builder.build("y", env)
+
+    assert identity.fqdn is not None
+    assert identity.resolved_by == "runtime"
+    assert identity.confidence >= 0.85
+    assert "runtime_binding" in "".join(identity.provenance)
+
+
+def test_runtime_binding_consistency():
+    source = """
+from flask import request
+x = request.args
+y = request.args
+"""
+
+    env = build_env(source)
+    builder = SemanticIdentityBuilder()
+
+    x_id = builder.build("x", env)
+    y_id = builder.build("y", env)
+
+    assert x_id.fqdn == y_id.fqdn
+    assert x_id.resolved_by == "runtime"
+    assert y_id.resolved_by == "runtime"

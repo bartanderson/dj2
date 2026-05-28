@@ -1,7 +1,7 @@
 from tools.analysis.graph.project_graph_context import ProjectGraphContext
 from tools.analysis.graph.symbol_classifier import classify_symbol
 from tools.analysis.graph.symbol_router import route_symbol
-
+from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 
 def classify_symbol_with_context(
     name: str,
@@ -22,5 +22,6 @@ def classify_symbol_with_context(
         project_symbols=project_symbols,
     )
 
+    builder = SemanticIdentityBuilder()
     identity = builder.build(name, env)
     return classify_symbol(identity, env)

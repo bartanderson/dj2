@@ -8,6 +8,9 @@ from tools.analysis.run_analysis_pipeline import run_analysis_pipeline
 from tools.analysis.graph.project_graph_context import ProjectGraphContext
 from tools.analysis.graph.context_classification import classify_symbol_with_context
 
+from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
+
+builder = SemanticIdentityBuilder()
 
 def extract_snapshot(output: str):
     marker = "===== EVALUATION SNAPSHOT ====="

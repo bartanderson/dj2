@@ -119,3 +119,61 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
     # 5. FALLBACK
     # ----------------------------
     return "unknown"
+
+# ----------------------------
+# COMPAT LAYER (TEMPORARY)
+# ----------------------------
+
+def classify_symbol_legacy(
+    name,
+    route="unknown",
+    project_prefixes=None,
+    runtime_bindings=None,
+    project_symbols=None,
+):
+    from tools.analysis.representation.symbol_environment import SymbolEnvironment
+
+    env = SymbolEnvironment(
+        alias_map={},
+        runtime_bindings=runtime_bindings or {},
+        project_symbols=project_symbols or set(),
+    )
+
+    identity = SemanticIdentity(
+        surface=name,
+        leaf=name.split(".")[-1],
+    )
+
+    return classify_symbol(identity, env)
+
+# =========================================================
+# LEGACY COMPATIBILITY LAYER (TESTS DEPEND ON THIS)
+# =========================================================
+
+def classify_symbol(
+    name,
+    route="unknown",
+    project_prefixes=None,
+    runtime_bindings=None,
+    project_symbols=None,
+):
+    """
+    Legacy API shim.
+    Converts old pipeline calls → IR1 identity system.
+    """
+
+    from tools.analysis.representation.symbol_environment import SymbolEnvironment
+    from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
+
+    env = SymbolEnvironment(
+        alias_map={},
+        runtime_bindings=runtime_bindings or {},
+        project_symbols=project_symbols or set(),
+    )
+
+    builder = SemanticIdentityBuilder()
+
+    identity = builder.build(name, env)
+
+    # emulate old expected output format
+    return identity.fqdn or identity.leaf

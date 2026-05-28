@@ -68,33 +68,28 @@ class SemanticIdentityBuilder:
             if identity.resolved_by is None:
                 identity.resolved_by = "alias"
 
-
         # ----------------------------
-        # 3. Project symbol match
-        # ----------------------------
-        for sym in env.project_symbols:
-            if sym == name:
-                identity.project_hits.append(sym)
-
-                identity.fqdn = identity.fqdn or sym
-                identity.module = identity.module or ".".join(sym.split(".")[:-1])
-
-                identity.confidence = max(identity.confidence, 0.7)
-
-                identity.provenance.append(f"project_leaf_match:{sym}")
-
-        # ----------------------------
-        # 4. Fallback (observation only)
+        # 3. Fallback (observation only)
         # ----------------------------
 
         if identity.fqdn is None:
             identity.confidence = 0.05
             identity.provenance.append("no_resolution_signal")
 
-        # project detection is observational only
-        if identity.fqdn in env.project_symbols or identity.leaf in env.project_symbols:
-            identity.project_hits.append(identity.fqdn or identity.leaf)
-            identity.confidence = max(identity.confidence, 0.85)
-            identity.provenance.append("project_symbol_hint")
-            
+        # ----------------------------
+        # 4. Project symbol match (corrected)
+        # ----------------------------
+
+        for sym in env.project_symbols:
+            # match against full canonical name OR resolved fqdn
+            if sym == identity.surface or sym == identity.fqdn:
+                identity.project_hits.append(sym)
+
+                # ensure fqdn is always populated for project symbols
+                identity.fqdn = identity.fqdn or sym
+
+                identity.confidence = max(identity.confidence, 0.85)
+                identity.provenance.append(f"project_match:{sym}")
+                break
+
         return identity
