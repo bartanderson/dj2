@@ -1,8 +1,6 @@
-# tools/analysis/graph/semantic_candidate_builder.py
-
-from typing import Dict, List, Set
 from tools.analysis.representation.semantic_identity import SemanticIdentity
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
+from tools.analysis.graph.runtime_resolution import resolve_runtime_symbol
 
 
 class SemanticIdentityBuilder:
@@ -10,19 +8,16 @@ class SemanticIdentityBuilder:
     IR1 construction layer.
 
     PURPOSE:
-    - unify runtime + alias + project signals
-    - produce single coherent identity object per symbol
-
-    NOT RESPONSIBLE FOR:
-    - routing
-    - classification
-    - metrics
+    - unify signals from routing stage
+    - produce coherent semantic identity
+    - DO NOT re-classify routing
     """
 
     def build(
         self,
         name: str,
-        env: SymbolEnvironment
+        env: SymbolEnvironment,
+        route_type: str,   # REQUIRED: authoritative CP3 output
     ) -> SemanticIdentity:
 
         leaf = name.split(".")[-1]
@@ -30,66 +25,38 @@ class SemanticIdentityBuilder:
         identity = SemanticIdentity(
             surface=name,
             leaf=leaf,
+            resolved_by=route_type,   # 👈 single source of truth
         )
 
-        # ----------------------------
-        # 1. Runtime binding (strongest signal)
-        # ----------------------------
-        runtime_target = env.resolve_runtime(leaf)
+        # -------------------------------------------------
+        # 1. Runtime enrichment ONLY (no decision-making)
+        # -------------------------------------------------
+        if route_type == "runtime":
+            runtime_target = resolve_runtime_symbol(name, env.runtime_bindings)
 
-        if runtime_target:
-            fqdn = runtime_target
+            if runtime_target:
+                identity.fqdn = runtime_target
+                identity.confidence = 0.9
+                identity.runtime_hints[leaf] = runtime_target
+                identity.provenance.append(f"runtime:{leaf}->{runtime_target}")
 
-            identity.fqdn = fqdn
-            identity.confidence = max(identity.confidence, 0.85)
+        # -------------------------------------------------
+        # 2. Project enrichment ONLY (no fallback inference)
+        # -------------------------------------------------
+        elif route_type == "project":
+            for sym in env.project_symbols:
+                if sym == name:
+                    identity.fqdn = sym
+                    identity.confidence = 0.9
+                    identity.project_hits.append(sym)
+                    identity.provenance.append(f"project:{sym}")
+                    break
 
-            identity.runtime_hints[leaf] = fqdn
-            identity.provenance.append(f"runtime_binding:{leaf}->{fqdn}")
-            identity.resolved_by = "runtime"
-
-        # ----------------------------
-        # 2. Alias resolution
-        # ----------------------------
-        # alias resolution (parallel signal to runtime)
-        alias_target = env.resolve_alias(leaf)
-
-        if alias_target:
-            fqdn = alias_target
-
-            # only set if runtime did not already define fqdn
-            identity.fqdn = identity.fqdn or fqdn
-            identity.module = fqdn.split(".")[0] if "." in fqdn else None
-
-            identity.confidence = max(identity.confidence, 0.9)
-
-            identity.alias_hints[leaf] = fqdn
-            identity.provenance.append(f"alias_map:{leaf}->{fqdn}")
-
-            if identity.resolved_by is None:
-                identity.resolved_by = "alias"
-
-        # ----------------------------
-        # 3. Fallback (observation only)
-        # ----------------------------
-
-        if identity.fqdn is None:
-            identity.confidence = 0.05
-            identity.provenance.append("no_resolution_signal")
-
-        # ----------------------------
-        # 4. Project symbol match (corrected)
-        # ----------------------------
-
-        for sym in env.project_symbols:
-            # match against full canonical name OR resolved fqdn
-            if sym == identity.surface or sym == identity.fqdn:
-                identity.project_hits.append(sym)
-
-                # ensure fqdn is always populated for project symbols
-                identity.fqdn = identity.fqdn or sym
-
-                identity.confidence = max(identity.confidence, 0.85)
-                identity.provenance.append(f"project_match:{sym}")
-                break
+        # -------------------------------------------------
+        # 3. External / unknown (no guessing)
+        # -------------------------------------------------
+        elif route_type in ("external", "unknown"):
+            identity.confidence = 0.1
+            identity.provenance.append(f"unresolved:{route_type}")
 
         return identity

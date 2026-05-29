@@ -456,11 +456,31 @@ def parse_ast(
         behavioral_contracts=[],  # intentionally deferred or simplified
     )
 
+def _extract_attribute_chains(tree: ast.AST):
+    chains = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            parts = []
+            cur = node
+
+            while isinstance(cur, ast.Attribute):
+                parts.append(cur.attr)
+                cur = cur.value
+
+            if isinstance(cur, ast.Name):
+                parts.append(cur.id)
+
+            full = ".".join(reversed(parts))
+            chains.add(full)
+
+    return chains
 
 def _extract_runtime_bindings(
     tree: ast.AST,
     alias_map: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    print("[EXTRACTOR ENTERED]")
 
     alias_map = alias_map or {}
 
@@ -520,5 +540,10 @@ def _extract_runtime_bindings(
                         else:
                             resolved = ".".join(reversed(parts + [base]))
 
+                        # forward mapping (for completeness)
                         bindings[var_name] = resolved
+
+                        # REVERSE mapping (what router actually needs)
+                        bindings[resolved] = var_name
+    print("[EXTRACTOR EXIT]")
     return bindings
