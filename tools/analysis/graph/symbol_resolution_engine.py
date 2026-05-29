@@ -159,7 +159,8 @@ def resolve_symbol_type(
     project_symbols: set[str] | None = None,
     project_prefixes: list[str] | None = None,
 ) -> RouteType:
-
+    assert runtime_bindings is not None
+    
     if not name:
         return "unknown"
 

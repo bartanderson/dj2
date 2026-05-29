@@ -480,8 +480,6 @@ def _extract_runtime_bindings(
     tree: ast.AST,
     alias_map: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    print("[EXTRACTOR ENTERED]")
-
     alias_map = alias_map or {}
 
     bindings = {}
@@ -545,5 +543,6 @@ def _extract_runtime_bindings(
 
                         # REVERSE mapping (what router actually needs)
                         bindings[resolved] = var_name
-    print("[EXTRACTOR EXIT]")
+
+    assert isinstance(bindings, dict), "runtime bindings must be dict"
     return bindings

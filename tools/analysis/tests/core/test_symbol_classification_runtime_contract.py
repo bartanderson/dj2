@@ -20,10 +20,7 @@ def _ctx(source: str):
         tree,
         alias_map=alias_map
     )
-
-    print("AFTER EXTRACTION:", runtime_bindings)
-    print("EXTRACTOR FUNC:", _extract_runtime_bindings)
-    print("MODULE:", _extract_runtime_bindings.__module__)
+    assert runtime_bindings is not None, "runtime_bindings missing from extractor"
 
     return ProjectGraphContext(
         project_prefixes=["tools.", "engine.", "world."],

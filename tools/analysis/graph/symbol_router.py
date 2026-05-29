@@ -182,6 +182,7 @@ def _route_symbol_core(
     project_prefixes: list[str] | None = None,
     trace_collector=None,
 ) -> RouteType:
+    assert runtime_bindings is not None, "router received None runtime_bindings"
 
     print("\n[ROUTER INPUT]")
     print(" name:", name)
