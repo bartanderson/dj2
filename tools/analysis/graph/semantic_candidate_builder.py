@@ -1,3 +1,5 @@
+# tools\analysis\graph\semantic_candidate_builder.py
+
 from tools.analysis.representation.semantic_identity import SemanticIdentity
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.graph.runtime_resolution import resolve_runtime_symbol
@@ -25,38 +27,36 @@ class SemanticIdentityBuilder:
         identity = SemanticIdentity(
             surface=name,
             leaf=leaf,
-            resolved_by=route_type,   # 👈 single source of truth
+            resolved_by=route_type,   # single source of truth
+            confidence=1.0,           # fixed baseline (no inference here)
         )
 
         # -------------------------------------------------
-        # 1. Runtime enrichment ONLY (no decision-making)
+        # 1. Runtime enrichment (signals only, no scoring)
         # -------------------------------------------------
         if route_type == "runtime":
             runtime_target = resolve_runtime_symbol(name, env.runtime_bindings)
 
             if runtime_target:
                 identity.fqdn = runtime_target
-                identity.confidence = 0.9
                 identity.runtime_hints[leaf] = runtime_target
-                identity.provenance.append(f"runtime:{leaf}->{runtime_target}")
+                identity.provenance.append(
+                    f"runtime:{leaf}->{runtime_target}"
+                )
 
         # -------------------------------------------------
-        # 2. Project enrichment ONLY (no fallback inference)
+        # 2. Project enrichment (signals only, no scoring)
         # -------------------------------------------------
         elif route_type == "project":
-            for sym in env.project_symbols:
-                if sym == name:
-                    identity.fqdn = sym
-                    identity.confidence = 0.9
-                    identity.project_hits.append(sym)
-                    identity.provenance.append(f"project:{sym}")
-                    break
+            if name in env.project_symbols:
+                identity.fqdn = name
+                identity.project_hits.append(name)
+                identity.provenance.append(f"project:{name}")
 
         # -------------------------------------------------
-        # 3. External / unknown (no guessing)
+        # 3. External / unknown (pure labeling only)
         # -------------------------------------------------
         elif route_type in ("external", "unknown"):
-            identity.confidence = 0.1
             identity.provenance.append(f"unresolved:{route_type}")
 
         return identity
