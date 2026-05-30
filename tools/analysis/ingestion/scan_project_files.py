@@ -18,12 +18,10 @@ from tools.analysis.core.pathing import (
     is_within_project_boundary,
 )
 
-
 # -------------------------
 # DEBUG / METRICS
 # -------------------------
 symbol_counts = defaultdict(int)
-
 
 # -------------------------
 # IGNORED DIRECTORIES
@@ -43,9 +41,13 @@ DEFAULT_IGNORED_DIRECTORIES = {
 }
 
 
+# =========================================================
+# FILE DISCOVERY
+# =========================================================
 def should_ignore_path(path: Path, ignored_directory_names: Iterable[str]) -> bool:
     ignored = set(ignored_directory_names)
     return any(part in ignored for part in path.parts)
+
 
 def discover_python_files(
     project_root: str | Path,
@@ -79,47 +81,18 @@ def discover_python_files(
     return sorted(discovered_files)
 
 
-# -------------------------
-# MAIN PIPELINE
-# -------------------------
-def scan_project_files(
-    project_root: str | Path,
-    project_prefixes: list[str],
-    repo_root: str | Path,
-    ignored_directory_names: Iterable[str] | None = None,
-) -> Generator[FileAnalysis, None, None]:
+# =========================================================
+# PASS 1 — GLOBAL SYMBOL COLLECTION
+# =========================================================
+def build_global_symbols(
+    python_files: List[Path],
+    repo_root: Path,
+) -> set[str]:
 
-    project_root = Path(project_root).resolve(strict=True)
-    repo_root = Path(repo_root).resolve()
-    audit = SymbolAudit()
-
-    python_files = discover_python_files(
-        project_root=project_root,
-        ignored_directory_names=ignored_directory_names,
-    )
-
-    python_files = [Path(p).resolve() for p in python_files]
-
-    runtime_bindings = {}  # keep stable for now (no-op but explicit)
-
-    # -------------------------
-    # HARD BOUNDARY FILTER
-    # -------------------------
-    python_files = [
-        p for p in python_files
-        if is_within_project_boundary(p, project_root)
-    ]
-
-    # -------------------------
-    # PASS 1 — GLOBAL SYMBOLS
-    # -------------------------
-    GLOBAL_SYMBOLS: set[str] = set()
+    global_symbols: set[str] = set()
 
     for file_path in python_files:
 
-        # -------------------------
-        # SKIP NON-INFORMATIVE FILES
-        # -------------------------
         if "__pycache__" in str(file_path):
             continue
 
@@ -133,29 +106,11 @@ def scan_project_files(
         except SyntaxError:
             continue
 
-        # -------------------------
-        # CANONICAL MODULE IDENTITY
-        # -------------------------
-        def safe_module_name(file_path: Path, project_root: Path) -> str:
-            file_path = Path(file_path).resolve()
-            project_root = Path(project_root).resolve()
-
-            rel = file_path.as_posix().replace(project_root.as_posix(), "").lstrip("/")
-
-            if not rel.endswith(".py"):
-                return ""
-
-            rel = rel[:-3]  # strip .py
-
-            parts = [p for p in rel.split("/") if p]
-
-            return ".".join(parts)
-        
         module_prefix = module_name_from_file_path(
             file_path=file_path,
             project_root=repo_root,
         )
-                
+
         if not module_prefix:
             continue
 
@@ -166,55 +121,88 @@ def scan_project_files(
         else:
             sym_set = symbols
 
-        # -------------------------
-        # filtering: drop empty or null-like symbol entries
-        # -------------------------
         sym_set = {s for s in sym_set if s}
 
-        if not sym_set:
-            continue
+        global_symbols.update(sym_set)
 
-        GLOBAL_SYMBOLS.update(sym_set)
+    return global_symbols
 
-    # -------------------------
-    # PASS 2 — FULL ANALYSIS
-    # -------------------------
-    PROJECT_SYMBOL_ROOTS = {s.split(".")[-1] for s in GLOBAL_SYMBOLS}
-    
+
+# =========================================================
+# PASS 2 — FULL FILE ANALYSIS
+# =========================================================
+def analyze_files(
+    python_files: List[Path],
+    GLOBAL_SYMBOLS: set[str],
+    runtime_bindings: dict,
+    project_root: Path,
+) -> Generator[FileAnalysis, None, None]:
+
     for file_path in python_files:
 
         normalized_path = normalize_file_path(file_path)
 
-        # -------------------------
-        # 1. PARSE FIRST
-        # -------------------------
         analysis = parse_ast(
             normalized_path,
             global_known_symbols=GLOBAL_SYMBOLS,
             runtime_bindings=runtime_bindings,
         )
 
-        print("\n================ FILE PRODUCER =================")
-        print("file:", normalized_path)
-        print("edges:", getattr(analysis, "graph_edge_count", 0))
-        print("symbols:", len(analysis.symbol_references))
-        project_symbols = getattr(analysis, "project_symbols", None)
-        print("project_symbols:", "not available at scan stage" if project_symbols is None else len(project_symbols))
-
         if analysis is None:
             continue
 
-        # -------------------------
-        # ATTACH GLOBAL PROJECT SYMBOLS
-        # -------------------------
+        # attach global symbol universe
         analysis.project_symbols = GLOBAL_SYMBOLS
 
-        print("PROJECT SYMBOLS:", len(analysis.project_symbols))
-        print("\n[SCAN FINAL CHECK]")
-        print("GLOBAL_SYMBOLS size:", len(GLOBAL_SYMBOLS))
-        print("analysis.project_symbols BEFORE YIELD:", len(analysis.project_symbols))
-
-        # -------------------------
-        # 4. YIELD
-        # -------------------------
         yield analysis
+
+
+# =========================================================
+# MAIN PIPELINE
+# =========================================================
+def scan_project_files(
+    project_root: str | Path,
+    project_prefixes: list[str],
+    repo_root: str | Path,
+    ignored_directory_names: Iterable[str] | None = None,
+) -> Generator[FileAnalysis, None, None]:
+
+    project_root = Path(project_root).resolve(strict=True)
+    repo_root = Path(repo_root).resolve()
+
+    audit = SymbolAudit()
+
+    # -------------------------
+    # DISCOVERY
+    # -------------------------
+    python_files = discover_python_files(
+        project_root=project_root,
+        ignored_directory_names=ignored_directory_names,
+    )
+
+    python_files = [Path(p).resolve() for p in python_files]
+
+    # -------------------------
+    # HARD BOUNDARY FILTER
+    # -------------------------
+    python_files = [
+        p for p in python_files
+        if is_within_project_boundary(p, project_root)
+    ]
+
+    runtime_bindings = {}  # still placeholder for now
+
+    # -------------------------
+    # PASS 1 — GLOBAL SYMBOLS
+    # -------------------------
+    GLOBAL_SYMBOLS = build_global_symbols(python_files, repo_root)
+
+    # -------------------------
+    # PASS 2 — ANALYSIS
+    # -------------------------
+    yield from analyze_files(
+        python_files=python_files,
+        GLOBAL_SYMBOLS=GLOBAL_SYMBOLS,
+        runtime_bindings=runtime_bindings,
+        project_root=project_root,
+    )

@@ -24,6 +24,7 @@ from tools.analysis.graph.symbol_resolution import resolve_symbol_identity
 from tools.analysis.representation.symbol_environment import (
     SymbolEnvironment,
 )
+from tools.analysis.graph.symbol_router import route_symbol 
 
 def normalize_symbol(name: str) -> str:
     """
@@ -276,9 +277,17 @@ def _extract_symbol_references(
                 project_symbols=known_symbols,
             )
 
+            route_type = resolve_symbol_type(
+                name=raw,
+                runtime_bindings=env.runtime_bindings,
+                project_symbols=env.project_symbols,
+                project_prefixes=None,
+            )
+
             identity = identity_builder.build(
                 name=raw,
                 env=env,
+                route_type=route_type,
             )
 
             fqdn = identity.fqdn or resolved or raw

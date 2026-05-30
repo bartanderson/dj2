@@ -61,7 +61,7 @@ def build_stage_context(stage: str, *, edges: int = 0, snapshot_mismatch: bool =
 def run_analysis_pipeline(
     project_root: str | Path,
     database_path: str | Path,
-    project_prefixes: list[str],
+    project_prefixes: list[str] | None = None,
 ) -> dict:
 
     project_root = Path(project_root).resolve()
@@ -200,10 +200,7 @@ if __name__ == "__main__":
 
     raw_root = profiles.get("project_root", ".")
 
-    root_input = args.path if args.path else raw_root
-    analysis_root = resolve_project_root(
-        args.path if args.path else profiles.get("project_root", ".")
-    )
+    analysis_root = resolve_project_root(args.path or raw_root)
 
     Path(args.database).unlink(missing_ok=True)
 
