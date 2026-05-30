@@ -7,7 +7,7 @@ from tools.analysis.ingestion.parse_ast import (
     _extract_imports,
     _extract_runtime_bindings,
 )
-
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
 def build_env(source: str) -> SymbolEnvironment:
     tree = ast.parse(source)
@@ -31,12 +31,25 @@ y = request.args
     env = build_env(source)
     builder = SemanticIdentityBuilder()
 
-    identity = builder.build("y", env)
+    route_type = resolve_symbol_type(
+        name="y",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        "y",
+        env,
+        route_type=route_type,
+    )
 
     assert identity.fqdn is not None
     assert identity.resolved_by == "runtime"
     assert identity.confidence >= 0.85
-    assert "runtime_binding" in "".join(identity.provenance)
+    assert any(
+        p.startswith("runtime:")
+        for p in identity.provenance
+    )
 
 
 def test_runtime_binding_consistency():
@@ -49,8 +62,29 @@ y = request.args
     env = build_env(source)
     builder = SemanticIdentityBuilder()
 
-    x_id = builder.build("x", env)
-    y_id = builder.build("y", env)
+    x_route = resolve_symbol_type(
+        name="x",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    y_route = resolve_symbol_type(
+        name="y",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    x_id = builder.build(
+        "x",
+        env,
+        route_type=x_route,
+    )
+
+    y_id = builder.build(
+        "y",
+        env,
+        route_type=y_route,
+    )
 
     assert x_id.fqdn == y_id.fqdn
     assert x_id.resolved_by == "runtime"

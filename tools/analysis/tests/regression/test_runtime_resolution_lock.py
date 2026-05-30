@@ -8,7 +8,15 @@ from tools.analysis.ingestion.parse_ast import (
     _extract_imports,
     _extract_runtime_bindings,
 )
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
+def build_identity(builder, name, env):
+    route_type = resolve_symbol_type(
+        name=name,
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+    return builder.build(name, env, route_type=route_type)
 
 def test_runtime_resolution_real_lock():
 
@@ -40,8 +48,8 @@ def test_runtime_resolution_real_lock():
     # ----------------------------
     # identities
     # ----------------------------
-    x_identity = builder.build("x", env)
-    y_identity = builder.build("y", env)
+    x_identity = build_identity(builder, "x", env)
+    y_identity = build_identity(builder, "y", env)
 
     # ----------------------------
     # LOCKED ASSERTIONS

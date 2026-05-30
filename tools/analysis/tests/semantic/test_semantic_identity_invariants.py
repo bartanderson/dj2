@@ -2,6 +2,7 @@
 
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
 
 def test_builtin_fallback_behavior():
@@ -13,7 +14,17 @@ def test_builtin_fallback_behavior():
 
     builder = SemanticIdentityBuilder()
 
-    identity = builder.build("print", env)
+    route_type = resolve_symbol_type(
+        name="print",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        "print",
+        env,
+        route_type=route_type,
+    )
 
     assert identity.fqdn is None
     assert identity.confidence == 0.05
@@ -29,7 +40,17 @@ def test_external_symbol_no_false_project():
 
     builder = SemanticIdentityBuilder()
 
-    identity = builder.build("flask.jsonify", env)
+    route_type = resolve_symbol_type(
+        name="flask.jsonify",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        "flask.jsonify",
+        env,
+        route_type=route_type,
+    )
 
     assert "project_symbol_hint" not in identity.provenance
     assert identity.leaf == "jsonify"
@@ -44,7 +65,17 @@ def test_project_does_not_override_runtime():
 
     builder = SemanticIdentityBuilder()
 
-    identity = builder.build("y", env)
+    route_type = resolve_symbol_type(
+        name="y",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        "y",
+        env,
+        route_type=route_type,
+    )
 
     assert identity.resolved_by == "runtime"
     assert identity.fqdn.startswith("flask.request")

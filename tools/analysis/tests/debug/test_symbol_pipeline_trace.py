@@ -5,6 +5,7 @@ from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuil
 from tools.analysis.graph.symbol_classifier import classify_symbol
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.contracts.semantic_pipeline_contract import SemanticPipelineContract as Contract
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
 def validate_classification_results(results):
     for r in results:
@@ -106,10 +107,16 @@ def run_identity_stage(refs):
     identities = []
 
     for r in refs:
+        route_type = resolve_symbol_type(
+            name=r.ir1.surface,
+            runtime_bindings=ENV.runtime_bindings,
+            project_symbols=ENV.project_symbols,
+        )
 
         identity = builder.build(
             name=r.ir1.surface,
             env=ENV,
+            route_type=route_type,
         )
         identities.append(identity)
 

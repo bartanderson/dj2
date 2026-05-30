@@ -2,7 +2,7 @@
 
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
-
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
 def test_project_fqdn_match():
     env = SymbolEnvironment(
@@ -21,7 +21,19 @@ def test_project_fqdn_match():
     print("input name:", "world.game_state.GameState")
     print("leaf:", "GameState")
 
-    identity = builder.build("world.game_state.GameState", env)
+    name = "world.game_state.GameState"
+
+    route_type = resolve_symbol_type(
+        name=name,
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        name,
+        env,
+        route_type=route_type,
+    )
 
     print("\n[DEBUG C - IDENTITY OUTPUT]")
     print("fqdn:", identity.fqdn)
@@ -47,7 +59,17 @@ def test_project_leaf_match():
 
     builder = SemanticIdentityBuilder()
 
-    identity = builder.build("GameState", env)
+    route_type = resolve_symbol_type(
+        name="GameState",
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+
+    identity = builder.build(
+        "GameState",
+        env,
+        route_type=route_type,
+    )
 
     assert identity.leaf == "GameState"
     assert "GameState" in identity.project_hits

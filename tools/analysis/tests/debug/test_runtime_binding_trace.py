@@ -18,6 +18,8 @@ from tools.analysis.representation.symbol_environment import (
 )
 from tools.analysis.contracts.semantic_pipeline_contract import SemanticPipelineContract as Contract
 
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
+
 def validate_classification_results(results):
     for r in results:
         Contract.validate_bucket(r["bucket"])
@@ -155,11 +157,19 @@ def run_identity_stage(env):
 
     identities = []
 
-    for var in env.runtime_bindings:
+    for name in env.runtime_bindings:
+
+
+        route_type = resolve_symbol_type(
+            name=name,
+            runtime_bindings=env.runtime_bindings,
+            project_symbols=env.project_symbols,
+        )
 
         identity = builder.build(
-            name=var,
+            name=name,
             env=env,
+            route_type=route_type,
         )
 
         identities.append(identity)

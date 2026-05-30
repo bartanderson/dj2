@@ -57,15 +57,24 @@ class SemanticIdentityBuilder:
         # -------------------------------------------------
         # enforce deterministic semantic contract baseline
         # -------------------------------------------------
-        if route_type in ("builtin", "stdlib", "unknown"):
+        if route_type in (
+            "builtin",
+            "stdlib",
+            "unknown",
+            "external",
+        ):
             identity.fqdn = None
 
-        elif route_type in ("runtime", "project"):
-            identity.fqdn = None  # may be populated later
+        elif route_type in (
+            "runtime",
+            "project",
+        ):
+            identity.fqdn = None
 
         else:
             raise RuntimeError(
-                f"[INVARIANT VIOLATION] unknown route_type early: {route_type} for {name}"
+                f"[INVARIANT VIOLATION] unknown route_type early: "
+                f"{route_type} for {name}"
             )
 
         # -------------------------------------------------

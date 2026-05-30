@@ -25,6 +25,7 @@ from tools.analysis.representation.symbol_environment import (
     SymbolEnvironment,
 )
 from tools.analysis.graph.symbol_router import route_symbol 
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
 
 def normalize_symbol(name: str) -> str:
     """
@@ -279,10 +280,13 @@ def _extract_symbol_references(
 
             route_type = resolve_symbol_type(
                 name=raw,
-                runtime_bindings=env.runtime_bindings,
-                project_symbols=env.project_symbols,
+                runtime_bindings=env.runtime_bindings or {},
+                project_symbols=env.project_symbols or set(),
                 project_prefixes=None,
             )
+
+            if route_type is None:
+                route_type = "unknown"
 
             identity = identity_builder.build(
                 name=raw,

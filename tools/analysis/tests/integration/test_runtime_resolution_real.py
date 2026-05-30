@@ -14,6 +14,15 @@ from tools.analysis.graph.semantic_candidate_builder import (
 from tools.analysis.representation.symbol_environment import (
     SymbolEnvironment,
 )
+from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
+
+def build_identity(builder, name, env):
+    route_type = resolve_symbol_type(
+        name=name,
+        runtime_bindings=env.runtime_bindings,
+        project_symbols=env.project_symbols,
+    )
+    return builder.build(name, env, route_type=route_type)
 
 
 def test_runtime_resolution_real():
@@ -61,8 +70,8 @@ def test_runtime_resolution_real():
     # -------------------------------------------------
     # Build identities
     # -------------------------------------------------
-    x_identity = builder.build("x", env)
-    y_identity = builder.build("y", env)
+    x_identity = build_identity(builder, "x", env)
+    y_identity = build_identity(builder, "y", env)
 
     print("\nX IDENTITY:")
     print(x_identity)
