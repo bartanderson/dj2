@@ -4,9 +4,17 @@ PASS3 SAMPLE FILE: tools/analysis/tests/core/test_db_utils.py
   "system_coverage": {
     "structural": {
       "covered_tests": [
+        "identity chain preserved",
+        "single integration test discovered",
+        "single test discovered",
         "single test extracted",
+        "single_test_detected",
+        "symbol extraction completed",
+        "symbol extraction performed",
         "symbol identities established",
+        "symbol ordering preserved",
         "symbol_uid assigned for all symbols",
+        "symbols_extracted",
         "test_builtin_fallback_behavior",
         "test_external_symbol_no_false_project",
         "test_id_assigned",

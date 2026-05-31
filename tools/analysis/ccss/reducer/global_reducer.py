@@ -1,3 +1,6 @@
+# tools/analysis/ccss/reducer/global_reducer.py
+
+
 from typing import List, Dict, Any
 from collections import defaultdict, Counter
 import json
@@ -25,23 +28,6 @@ import json
 
 def normalize_set(items):
     return {str(x).strip() for x in items if x is not None}
-
-NOISE_PATTERNS = {
-    "single test discovered",
-    "single_test_detected",
-    "single integration test discovered",
-    "symbol extraction completed",
-    "symbol extraction performed",
-    "symbols_extracted",
-    "identity chain preserved",
-    "symbol ordering preserved"
-}
-
-def filter_structural(items):
-    return {
-        x for x in items
-        if x not in NOISE_PATTERNS
-    }
 
 def reduce_system(pass3_outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
 
@@ -79,8 +65,8 @@ def reduce_system(pass3_outputs: List[Dict[str, Any]]) -> Dict[str, Any]:
         # --------------------
         # STRUCTURAL
         # --------------------
-        structural_covered.update(filter_structural(normalize_set(structural.get("covered", []))))
-        structural_missing.update(filter_structural(normalize_set(structural.get("missing", []))))
+        structural_covered.update(normalize_set(structural.get("covered", [])))
+        structural_missing.update(normalize_set(structural.get("missing", [])))
 
         # --------------------
         # SEMANTIC
