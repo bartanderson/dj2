@@ -1,3 +1,5 @@
+# tools/analysis/tests/debug/test_runtime_binding_trace.py
+
 import ast
 
 from tools.analysis.ingestion.parse_ast import (

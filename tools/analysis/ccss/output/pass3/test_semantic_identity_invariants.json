@@ -1,0 +1,427 @@
+{
+  "file_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py",
+  "pass_1": {
+    "file_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py",
+    "tests": [
+      {
+        "test_name": "test_builtin_fallback_behavior",
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior",
+        "start_line": 8,
+        "end_line": 33,
+        "symbols": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::0",
+            "surface": "SymbolEnvironment",
+            "context": "call",
+            "line": 9
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::1",
+            "surface": "SemanticIdentityBuilder",
+            "context": "call",
+            "line": 15
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::2",
+            "surface": "resolve_symbol_type",
+            "context": "call",
+            "line": 17
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::3",
+            "surface": "builder.build",
+            "context": "call",
+            "line": 23
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::4",
+            "surface": "identity.fqdn",
+            "context": "attribute",
+            "line": 29
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::5",
+            "surface": "identity.confidence",
+            "context": "attribute",
+            "line": 30
+          },
+          {
+            "symbol_index": 6,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::6",
+            "surface": "identity.provenance",
+            "context": "attribute",
+            "line": 31
+          }
+        ]
+      },
+      {
+        "test_name": "test_external_symbol_no_false_project",
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project",
+        "start_line": 34,
+        "end_line": 59,
+        "symbols": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::0",
+            "surface": "SymbolEnvironment",
+            "context": "call",
+            "line": 35
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::1",
+            "surface": "SemanticIdentityBuilder",
+            "context": "call",
+            "line": 41
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::2",
+            "surface": "resolve_symbol_type",
+            "context": "call",
+            "line": 43
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::3",
+            "surface": "builder.build",
+            "context": "call",
+            "line": 49
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::4",
+            "surface": "identity.provenance",
+            "context": "attribute",
+            "line": 55
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::5",
+            "surface": "identity.leaf",
+            "context": "attribute",
+            "line": 56
+          }
+        ]
+      },
+      {
+        "test_name": "test_project_does_not_override_runtime",
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime",
+        "start_line": 60,
+        "end_line": 85,
+        "symbols": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::0",
+            "surface": "SymbolEnvironment",
+            "context": "call",
+            "line": 61
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::1",
+            "surface": "SemanticIdentityBuilder",
+            "context": "call",
+            "line": 67
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::2",
+            "surface": "resolve_symbol_type",
+            "context": "call",
+            "line": 69
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::3",
+            "surface": "builder.build",
+            "context": "call",
+            "line": 75
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::4",
+            "surface": "identity.resolved_by",
+            "context": "attribute",
+            "line": 81
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::5",
+            "surface": "identity.fqdn.startswith",
+            "context": "call",
+            "line": 82
+          }
+        ]
+      }
+    ]
+  },
+  "pass_2": {
+    "file_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py",
+    "tests": [
+      {
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior",
+        "semantic_tags": [
+          "semantic_identity",
+          "builtin_fallback",
+          "confidence_invariant",
+          "provenance_invariant"
+        ],
+        "symbol_annotations": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::0",
+            "surface": "SymbolEnvironment",
+            "fqdn": "tools.analysis.representation.symbol_environment.SymbolEnvironment",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 9
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::1",
+            "surface": "SemanticIdentityBuilder",
+            "fqdn": "tools.analysis.graph.semantic_candidate_builder.SemanticIdentityBuilder",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 15
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::2",
+            "surface": "resolve_symbol_type",
+            "fqdn": "tools.analysis.graph.symbol_resolution_engine.resolve_symbol_type",
+            "role": "runtime",
+            "confidence": 0.95,
+            "line": 17
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::3",
+            "surface": "builder.build",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 23
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::4",
+            "surface": "identity.fqdn",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 29
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::5",
+            "surface": "identity.confidence",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 30
+          },
+          {
+            "symbol_index": 6,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior::6",
+            "surface": "identity.provenance",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 31
+          }
+        ]
+      },
+      {
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project",
+        "semantic_tags": [
+          "semantic_identity",
+          "external_symbol",
+          "project_boundary",
+          "provenance_invariant"
+        ],
+        "symbol_annotations": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::0",
+            "surface": "SymbolEnvironment",
+            "fqdn": "tools.analysis.representation.symbol_environment.SymbolEnvironment",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 35
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::1",
+            "surface": "SemanticIdentityBuilder",
+            "fqdn": "tools.analysis.graph.semantic_candidate_builder.SemanticIdentityBuilder",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 41
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::2",
+            "surface": "resolve_symbol_type",
+            "fqdn": "tools.analysis.graph.symbol_resolution_engine.resolve_symbol_type",
+            "role": "runtime",
+            "confidence": 0.95,
+            "line": 43
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::3",
+            "surface": "builder.build",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 49
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::4",
+            "surface": "identity.provenance",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 55
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project::5",
+            "surface": "identity.leaf",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 56
+          }
+        ]
+      },
+      {
+        "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime",
+        "semantic_tags": [
+          "semantic_identity",
+          "runtime_precedence",
+          "routing_invariant",
+          "resolution_invariant"
+        ],
+        "symbol_annotations": [
+          {
+            "symbol_index": 0,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::0",
+            "surface": "SymbolEnvironment",
+            "fqdn": "tools.analysis.representation.symbol_environment.SymbolEnvironment",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 61
+          },
+          {
+            "symbol_index": 1,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::1",
+            "surface": "SemanticIdentityBuilder",
+            "fqdn": "tools.analysis.graph.semantic_candidate_builder.SemanticIdentityBuilder",
+            "role": "project",
+            "confidence": 1.0,
+            "line": 67
+          },
+          {
+            "symbol_index": 2,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::2",
+            "surface": "resolve_symbol_type",
+            "fqdn": "tools.analysis.graph.symbol_resolution_engine.resolve_symbol_type",
+            "role": "runtime",
+            "confidence": 0.95,
+            "line": 69
+          },
+          {
+            "symbol_index": 3,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::3",
+            "surface": "builder.build",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 75
+          },
+          {
+            "symbol_index": 4,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::4",
+            "surface": "identity.resolved_by",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 81
+          },
+          {
+            "symbol_index": 5,
+            "symbol_uid": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime::5",
+            "surface": "identity.fqdn.startswith",
+            "fqdn": null,
+            "role": "runtime",
+            "confidence": 0.80,
+            "line": 82
+          }
+        ]
+      }
+    ]
+  },
+  "pass_3": {
+    "file_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py",
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_builtin_fallback_behavior",
+            "test_external_symbol_no_false_project",
+            "test_project_does_not_override_runtime"
+          ],
+          "missing": [],
+          "definition": "test presence plus symbol extraction completeness per test_id"
+        },
+        "semantic": {
+          "covered": [
+            "all symbol_uid values received role assignment"
+          ],
+          "missing": [],
+          "definition": "symbol role assignment completeness per symbol_uid"
+        },
+        "runtime": {
+          "covered": [
+            "resolve_symbol_type",
+            "builder.build",
+            "identity runtime assertions"
+          ],
+          "missing": [],
+          "definition": "runtime binding resolution existence per symbol_uid"
+        }
+      },
+      "redundancy": [
+        {
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior",
+          "symbol": "resolve_symbol_type",
+          "occurrences": 1,
+          "scope": "file"
+        },
+        {
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project",
+          "symbol": "resolve_symbol_type",
+          "occurrences": 1,
+          "scope": "file"
+        },
+        {
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime",
+          "symbol": "resolve_symbol_type",
+          "occurrences": 1,
+          "scope": "file"
+        }
+      ],
+      "gaps": []
+    }
+  }
+}

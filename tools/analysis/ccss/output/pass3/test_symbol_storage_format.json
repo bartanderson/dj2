@@ -1,0 +1,422 @@
+{
+  "file_id": "tools/analysis/tests/core/test_symbol_storage_format.py",
+  "pass_1": {
+  "file_id": "tools/analysis/tests/core/test_symbol_storage_format.py",
+  "tests": [
+    {
+      "test_name": "test_symbols_are_stored_as_short_names",
+      "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+      "start_line": 8,
+      "end_line": 29,
+      "symbols": [
+        {
+          "symbol_index": 0,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::0",
+          "surface": "reset_analysis_db",
+          "context": "call",
+          "line": 10
+        },
+        {
+          "symbol_index": 1,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::1",
+          "surface": "db",
+          "context": "assignment",
+          "line": 11
+        },
+        {
+          "symbol_index": 2,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::2",
+          "surface": "create_database",
+          "context": "call",
+          "line": 11
+        },
+        {
+          "symbol_index": 3,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::3",
+          "surface": "DB_PATH",
+          "context": "unknown",
+          "line": 11
+        },
+        {
+          "symbol_index": 4,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::4",
+          "surface": "c",
+          "context": "assignment",
+          "line": 12
+        },
+        {
+          "symbol_index": 5,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::5",
+          "surface": "db",
+          "context": "attribute",
+          "line": 12
+        },
+        {
+          "symbol_index": 6,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::6",
+          "surface": "cursor",
+          "context": "call",
+          "line": 12
+        },
+        {
+          "symbol_index": 7,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::7",
+          "surface": "c",
+          "context": "attribute",
+          "line": 14
+        },
+        {
+          "symbol_index": 8,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::8",
+          "surface": "execute",
+          "context": "call",
+          "line": 14
+        },
+        {
+          "symbol_index": 9,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::9",
+          "surface": "names",
+          "context": "assignment",
+          "line": 19
+        },
+        {
+          "symbol_index": 10,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::10",
+          "surface": "r",
+          "context": "assignment",
+          "line": 19
+        },
+        {
+          "symbol_index": 11,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::11",
+          "surface": "c",
+          "context": "attribute",
+          "line": 19
+        },
+        {
+          "symbol_index": 12,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::12",
+          "surface": "fetchall",
+          "context": "call",
+          "line": 19
+        },
+        {
+          "symbol_index": 13,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::13",
+          "surface": "fully_qualified",
+          "context": "assignment",
+          "line": 21
+        },
+        {
+          "symbol_index": 14,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::14",
+          "surface": "n",
+          "context": "assignment",
+          "line": 22
+        },
+        {
+          "symbol_index": 15,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::15",
+          "surface": "names",
+          "context": "unknown",
+          "line": 22
+        },
+        {
+          "symbol_index": 16,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::16",
+          "surface": "fully_qualified",
+          "context": "unknown",
+          "line": 26
+        },
+        {
+          "symbol_index": 17,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::17",
+          "surface": "join",
+          "context": "call",
+          "line": 28
+        },
+        {
+          "symbol_index": 18,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::18",
+          "surface": "fully_qualified",
+          "context": "unknown",
+          "line": 28
+        },
+        {
+          "symbol_index": 19,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::19",
+          "surface": "db",
+          "context": "attribute",
+          "line": 30
+        },
+        {
+          "symbol_index": 20,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::20",
+          "surface": "close",
+          "context": "call",
+          "line": 30
+        }
+      ]
+    }
+  ]
+},
+  "pass_2": {
+  "file_id": "tools/analysis/tests/core/test_symbol_storage_format.py",
+  "tests": [
+    {
+      "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+      "semantic_tags": [
+        "persistence",
+        "database",
+        "storage_format",
+        "symbol_normalization",
+        "regression_guard"
+      ],
+      "symbol_annotations": [
+        {
+          "symbol_index": 0,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::0",
+          "surface": "reset_analysis_db",
+          "fqdn": "tools.analysis.tests.core.test_db_utils.reset_analysis_db",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 10
+        },
+        {
+          "symbol_index": 1,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::1",
+          "surface": "db",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 11
+        },
+        {
+          "symbol_index": 2,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::2",
+          "surface": "create_database",
+          "fqdn": "tools.analysis.persistence.persist_file_analysis.create_database",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 11
+        },
+        {
+          "symbol_index": 3,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::3",
+          "surface": "DB_PATH",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.95,
+          "line": 11
+        },
+        {
+          "symbol_index": 4,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::4",
+          "surface": "c",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 12
+        },
+        {
+          "symbol_index": 5,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::5",
+          "surface": "db",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 12
+        },
+        {
+          "symbol_index": 6,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::6",
+          "surface": "cursor",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 12
+        },
+        {
+          "symbol_index": 7,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::7",
+          "surface": "c",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 14
+        },
+        {
+          "symbol_index": 8,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::8",
+          "surface": "execute",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 14
+        },
+        {
+          "symbol_index": 9,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::9",
+          "surface": "names",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 19
+        },
+        {
+          "symbol_index": 10,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::10",
+          "surface": "r",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 19
+        },
+        {
+          "symbol_index": 11,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::11",
+          "surface": "c",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 19
+        },
+        {
+          "symbol_index": 12,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::12",
+          "surface": "fetchall",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 19
+        },
+        {
+          "symbol_index": 13,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::13",
+          "surface": "fully_qualified",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 21
+        },
+        {
+          "symbol_index": 14,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::14",
+          "surface": "n",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 22
+        },
+        {
+          "symbol_index": 15,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::15",
+          "surface": "names",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 22
+        },
+        {
+          "symbol_index": 16,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::16",
+          "surface": "fully_qualified",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 26
+        },
+        {
+          "symbol_index": 17,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::17",
+          "surface": "join",
+          "fqdn": "builtins.str.join",
+          "role": "builtin",
+          "confidence": 0.7,
+          "line": 28
+        },
+        {
+          "symbol_index": 18,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::18",
+          "surface": "fully_qualified",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 28
+        },
+        {
+          "symbol_index": 19,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::19",
+          "surface": "db",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 1.0,
+          "line": 30
+        },
+        {
+          "symbol_index": 20,
+          "symbol_uid": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names::20",
+          "surface": "close",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 30
+        }
+      ]
+    }
+  ]
+},
+  "pass_3": {
+  "file_id": "tools/analysis/tests/core/test_symbol_storage_format.py",
+  "coverage": {
+    "axes": {
+      "structural": {
+        "covered": [
+          "single_test_detected",
+          "test_id_assigned",
+          "symbols_extracted"
+        ],
+        "missing": [],
+        "definition": "test presence plus symbol extraction completeness per test_id"
+      },
+      "semantic": {
+        "covered": [
+          "all_symbol_uids_annotated",
+          "all_roles_assigned",
+          "all_confidence_values_assigned"
+        ],
+        "missing": [],
+        "definition": "symbol role assignment completeness per symbol_uid"
+      },
+      "runtime": {
+        "covered": [
+          "runtime_symbols_identified"
+        ],
+        "missing": [],
+        "definition": "runtime binding resolution existence per symbol_uid"
+      }
+    },
+    "redundancy": [
+      {
+        "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+        "symbol": "db",
+        "occurrences": 4,
+        "scope": "test"
+      },
+      {
+        "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+        "symbol": "c",
+        "occurrences": 3,
+        "scope": "test"
+      },
+      {
+        "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+        "symbol": "fully_qualified",
+        "occurrences": 3,
+        "scope": "test"
+      }
+    ],
+    "gaps": []
+  }
+}
+}

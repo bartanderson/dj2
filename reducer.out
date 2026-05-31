@@ -1,0 +1,201 @@
+PASS3 INPUT COUNT: 8
+PASS3 SAMPLE FILE: tools/analysis/tests/core/test_db_utils.py
+{
+  "system_coverage": {
+    "structural": {
+      "covered_tests": [
+        "single test extracted",
+        "symbol identities established",
+        "symbol_uid assigned for all symbols",
+        "test_builtin_fallback_behavior",
+        "test_external_symbol_no_false_project",
+        "test_id_assigned",
+        "test_project_does_not_override_runtime",
+        "test_runtime_binding_trace",
+        "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_external_symbol_contract",
+        "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_project_symbol_contract",
+        "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_runtime_binding_contract"
+      ],
+      "missing_tests": []
+    },
+    "semantic": {
+      "covered_symbols": [
+        "SemanticIdentityBuilder",
+        "_ctx",
+        "all symbol_uid values received role assignment",
+        "all symbols assigned confidence values",
+        "all symbols assigned roles",
+        "all_confidence_values_assigned",
+        "all_roles_assigned",
+        "all_symbol_uids_annotated",
+        "builtin symbol classification",
+        "builtin symbol resolution",
+        "helper function identification",
+        "identity-builder participation",
+        "project symbol classification",
+        "project symbol resolution",
+        "route_symbol",
+        "runtime helper identification",
+        "semantic tagging",
+        "tools.analysis.graph.semantic_candidate_builder.SemanticIdentityBuilder",
+        "tools.analysis.graph.symbol_classifier.classify_symbol",
+        "tools.analysis.ingestion.parse_ast._extract_runtime_bindings"
+      ],
+      "missing_symbols": [
+        "complete annotation coverage for every extracted symbol_uid",
+        "confidence_boundary_validation_edge_assertions",
+        "fully_qualified_runtime_binding_resolution_edge_cases"
+      ]
+    },
+    "runtime": {
+      "covered": [
+        "alias map propagation",
+        "builder.build",
+        "confidence threshold validation",
+        "flask.external fallback classification path",
+        "fqdn equivalence assertion",
+        "identity propagation validation",
+        "identity runtime assertions",
+        "p",
+        "project function references identified",
+        "provenance existence assertion",
+        "request.args runtime binding resolution",
+        "resolve_symbol_type",
+        "runtime binding extraction",
+        "runtime identity construction",
+        "runtime resolution target validation",
+        "runtime variables identified",
+        "runtime_symbols_identified",
+        "x"
+      ],
+      "missing": [
+        "malformed runtime binding resolution",
+        "partial alias resolution ambiguity cases"
+      ]
+    }
+  },
+  "redundancy": [
+    {
+      "symbol": "db",
+      "test_id": "tools/analysis/tests/core/test_reference_extraction_integrity.py::test_reference_extraction_has_no_excessive_duplicates",
+      "occurrences": 3
+    },
+    {
+      "symbol": "project_prefixes",
+      "test_id": "tools/analysis/tests/core/test_reference_extraction_integrity.py::test_reference_extraction_has_no_excessive_duplicates",
+      "occurrences": 2
+    },
+    {
+      "symbol": "DB_PATH",
+      "test_id": "tools/analysis/tests/core/test_reference_extraction_integrity.py::test_reference_extraction_has_no_excessive_duplicates",
+      "occurrences": 2
+    },
+    {
+      "symbol": "rows",
+      "test_id": "tools/analysis/tests/core/test_reference_extraction_integrity.py::test_reference_extraction_has_no_excessive_duplicates",
+      "occurrences": 2
+    },
+    {
+      "symbol": "_extract_imports",
+      "test_id": "tools/analysis/tests/debug/test_runtime_binding_trace.py::test_runtime_binding_trace",
+      "occurrences": 1
+    },
+    {
+      "symbol": "build_identity",
+      "test_id": "tools/analysis/tests/regression/test_runtime_resolution_lock.py::test_runtime_resolution_real_lock",
+      "occurrences": 2
+    },
+    {
+      "symbol": "env",
+      "test_id": "tools/analysis/tests/regression/test_runtime_resolution_lock.py::test_runtime_resolution_real_lock",
+      "occurrences": 3
+    },
+    {
+      "symbol": "print",
+      "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+      "occurrences": 8
+    },
+    {
+      "symbol": "build_identity",
+      "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+      "occurrences": 2
+    },
+    {
+      "symbol": "resolve_symbol_type",
+      "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_builtin_fallback_behavior",
+      "occurrences": 1
+    },
+    {
+      "symbol": "resolve_symbol_type",
+      "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_external_symbol_no_false_project",
+      "occurrences": 1
+    },
+    {
+      "symbol": "resolve_symbol_type",
+      "test_id": "tools/analysis/tests/semantic/test_semantic_identity_invariants.py::test_project_does_not_override_runtime",
+      "occurrences": 1
+    },
+    {
+      "symbol": "ctx",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_runtime_binding_contract",
+      "occurrences": 4
+    },
+    {
+      "symbol": "route_symbol",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_project_symbol_contract",
+      "occurrences": 3
+    },
+    {
+      "symbol": "route_symbol",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_external_symbol_contract",
+      "occurrences": 2
+    },
+    {
+      "symbol": "db",
+      "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+      "occurrences": 4
+    },
+    {
+      "symbol": "c",
+      "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+      "occurrences": 3
+    },
+    {
+      "symbol": "fully_qualified",
+      "test_id": "tools/analysis/tests/core/test_symbol_storage_format.py::test_symbols_are_stored_as_short_names",
+      "occurrences": 3
+    }
+  ],
+  "gaps": [
+    {
+      "gap_type": "semantic",
+      "test_id": "tools/analysis/tests/regression/test_runtime_resolution_lock.py::test_runtime_resolution_real_lock",
+      "symbol_uid": null,
+      "description": "semantic annotation coverage is partial rather than exhaustive across extracted symbols"
+    },
+    {
+      "gap_type": "semantic",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_runtime_binding_contract",
+      "symbol_uid": null,
+      "description": "no explicit assertion coverage for confidence boundary enforcement (0.0\u20131.0 validation not tested here)"
+    },
+    {
+      "gap_type": "runtime",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_project_symbol_contract",
+      "symbol_uid": null,
+      "description": "project symbol resolution path not tested for partial prefix matches or ambiguous symbol overlap"
+    },
+    {
+      "gap_type": "runtime",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_external_symbol_contract",
+      "symbol_uid": null,
+      "description": "external resolution fallback path lacks negative-case validation (unknown namespace ambiguity)"
+    },
+    {
+      "gap_type": "structural",
+      "test_id": "tools/analysis/tests/core/test_symbol_classification_runtime_contract.py::test_runtime_binding_contract",
+      "symbol_uid": null,
+      "description": "duplicate ctx attribute usage not normalized into single semantic unit (noise in extraction layer)"
+    }
+  ]
+}

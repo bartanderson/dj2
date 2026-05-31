@@ -1,0 +1,373 @@
+{
+  "file_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py",
+  "pass_1": {
+  "file_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py",
+  "tests": [
+    {
+      "test_name": "test_runtime_resolution_real",
+      "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+      "start_line": 25,
+      "end_line": 92,
+      "symbols": [
+        {
+          "symbol_index": 0,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::0",
+          "surface": "open",
+          "context": "call",
+          "line": 32
+        },
+        {
+          "symbol_index": 1,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::1",
+          "surface": "fixture",
+          "context": "assignment",
+          "line": 32
+        },
+        {
+          "symbol_index": 2,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::2",
+          "surface": "f",
+          "context": "assignment",
+          "line": 32
+        },
+        {
+          "symbol_index": 3,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::3",
+          "surface": "read",
+          "context": "call",
+          "line": 33
+        },
+        {
+          "symbol_index": 4,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::4",
+          "surface": "source",
+          "context": "assignment",
+          "line": 33
+        },
+        {
+          "symbol_index": 5,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::5",
+          "surface": "ast",
+          "context": "attribute",
+          "line": 35
+        },
+        {
+          "symbol_index": 6,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::6",
+          "surface": "parse",
+          "context": "call",
+          "line": 35
+        },
+        {
+          "symbol_index": 7,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::7",
+          "surface": "tree",
+          "context": "assignment",
+          "line": 35
+        },
+        {
+          "symbol_index": 8,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::8",
+          "surface": "_extract_imports",
+          "context": "call",
+          "line": 40
+        },
+        {
+          "symbol_index": 9,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::9",
+          "surface": "imports",
+          "context": "assignment",
+          "line": 40
+        },
+        {
+          "symbol_index": 10,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::10",
+          "surface": "alias_map",
+          "context": "assignment",
+          "line": 40
+        },
+        {
+          "symbol_index": 11,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::11",
+          "surface": "print",
+          "context": "call",
+          "line": 42
+        },
+        {
+          "symbol_index": 12,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::12",
+          "surface": "print",
+          "context": "call",
+          "line": 43
+        },
+        {
+          "symbol_index": 13,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::13",
+          "surface": "_extract_runtime_bindings",
+          "context": "call",
+          "line": 48
+        },
+        {
+          "symbol_index": 14,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::14",
+          "surface": "runtime_bindings",
+          "context": "assignment",
+          "line": 48
+        },
+        {
+          "symbol_index": 15,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::15",
+          "surface": "print",
+          "context": "call",
+          "line": 53
+        },
+        {
+          "symbol_index": 16,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::16",
+          "surface": "print",
+          "context": "call",
+          "line": 54
+        },
+        {
+          "symbol_index": 17,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::17",
+          "surface": "SymbolEnvironment",
+          "context": "call",
+          "line": 59
+        },
+        {
+          "symbol_index": 18,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::18",
+          "surface": "env",
+          "context": "assignment",
+          "line": 59
+        },
+        {
+          "symbol_index": 19,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::19",
+          "surface": "set",
+          "context": "call",
+          "line": 62
+        },
+        {
+          "symbol_index": 20,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::20",
+          "surface": "SemanticIdentityBuilder",
+          "context": "call",
+          "line": 65
+        },
+        {
+          "symbol_index": 21,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::21",
+          "surface": "builder",
+          "context": "assignment",
+          "line": 65
+        },
+        {
+          "symbol_index": 22,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::22",
+          "surface": "build_identity",
+          "context": "call",
+          "line": 70
+        },
+        {
+          "symbol_index": 23,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::23",
+          "surface": "x_identity",
+          "context": "assignment",
+          "line": 70
+        },
+        {
+          "symbol_index": 24,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::24",
+          "surface": "build_identity",
+          "context": "call",
+          "line": 71
+        },
+        {
+          "symbol_index": 25,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::25",
+          "surface": "y_identity",
+          "context": "assignment",
+          "line": 71
+        },
+        {
+          "symbol_index": 26,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::26",
+          "surface": "print",
+          "context": "call",
+          "line": 73
+        },
+        {
+          "symbol_index": 27,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::27",
+          "surface": "print",
+          "context": "call",
+          "line": 74
+        },
+        {
+          "symbol_index": 28,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::28",
+          "surface": "print",
+          "context": "call",
+          "line": 76
+        },
+        {
+          "symbol_index": 29,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::29",
+          "surface": "print",
+          "context": "call",
+          "line": 77
+        },
+        {
+          "symbol_index": 30,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::30",
+          "surface": "x_identity",
+          "context": "attribute",
+          "line": 83
+        },
+        {
+          "symbol_index": 31,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::31",
+          "surface": "y_identity",
+          "context": "attribute",
+          "line": 86
+        }
+      ]
+    }
+  ]
+},
+  "pass_2": {
+  "file_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py",
+  "tests": [
+    {
+      "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+      "semantic_tags": [
+        "runtime_resolution",
+        "runtime_binding_extraction",
+        "identity_construction",
+        "alias_resolution",
+        "integration_test",
+        "fqdn_consistency"
+      ],
+      "symbol_annotations": [
+        {
+          "symbol_index": 0,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::0",
+          "surface": "open",
+          "fqdn": "builtins.open",
+          "role": "builtin",
+          "confidence": 1.0,
+          "line": 32
+        },
+        {
+          "symbol_index": 8,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::8",
+          "surface": "_extract_imports",
+          "fqdn": "tools.analysis.ingestion.parse_ast._extract_imports",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 40
+        },
+        {
+          "symbol_index": 13,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::13",
+          "surface": "_extract_runtime_bindings",
+          "fqdn": "tools.analysis.ingestion.parse_ast._extract_runtime_bindings",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 48
+        },
+        {
+          "symbol_index": 17,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::17",
+          "surface": "SymbolEnvironment",
+          "fqdn": "tools.analysis.representation.symbol_environment.SymbolEnvironment",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 59
+        },
+        {
+          "symbol_index": 20,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::20",
+          "surface": "SemanticIdentityBuilder",
+          "fqdn": "tools.analysis.graph.semantic_candidate_builder.SemanticIdentityBuilder",
+          "role": "project",
+          "confidence": 1.0,
+          "line": 65
+        },
+        {
+          "symbol_index": 22,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::22",
+          "surface": "build_identity",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 70
+        },
+        {
+          "symbol_index": 24,
+          "symbol_uid": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real::24",
+          "surface": "build_identity",
+          "fqdn": null,
+          "role": "runtime",
+          "confidence": 0.9,
+          "line": 71
+        }
+      ]
+    }
+  ]
+},
+  "pass_3": {
+  "file_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py",
+  "coverage": {
+    "axes": {
+      "structural": {
+        "covered": [
+          "single integration test discovered",
+          "symbol extraction completed",
+          "identity chain preserved"
+        ],
+        "missing": [],
+        "definition": "test presence plus symbol extraction completeness per test_id"
+      },
+      "semantic": {
+        "covered": [
+          "project symbol resolution",
+          "builtin symbol resolution",
+          "runtime helper identification",
+          "identity-builder participation"
+        ],
+        "missing": [],
+        "definition": "symbol role assignment completeness per symbol_uid"
+      },
+      "runtime": {
+        "covered": [
+          "runtime binding extraction",
+          "alias map propagation",
+          "runtime identity construction",
+          "fqdn equivalence assertion",
+          "provenance existence assertion"
+        ],
+        "missing": [],
+        "definition": "runtime binding resolution existence per symbol_uid"
+      }
+    },
+    "redundancy": [
+      {
+        "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+        "symbol": "print",
+        "occurrences": 8,
+        "scope": "test"
+      },
+      {
+        "test_id": "tools/analysis/tests/integration/test_runtime_resolution_real.py::test_runtime_resolution_real",
+        "symbol": "build_identity",
+        "occurrences": 2,
+        "scope": "test"
+      }
+    ],
+    "gaps": []
+  }
+}
+}
