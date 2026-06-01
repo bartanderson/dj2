@@ -1,0 +1,23 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_db_utils.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [],
+          "missing": []
+        }
+      },
+      "redundancy": [],
+      "gaps": []
+    }
+  }
+}

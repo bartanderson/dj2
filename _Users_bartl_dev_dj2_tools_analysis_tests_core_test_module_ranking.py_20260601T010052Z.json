@@ -1,0 +1,109 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_module_ranking.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_module_ranking_basic"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "GraphBuilder",
+            "add_reference",
+            "gb",
+            "isinstance",
+            "len",
+            "rank_modules",
+            "ranked",
+            "str",
+            "top_module",
+            "top_score"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "GraphBuilder",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 1
+        },
+        {
+          "symbol": "add_reference",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 3
+        },
+        {
+          "symbol": "gb",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 5
+        },
+        {
+          "symbol": "isinstance",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 1
+        },
+        {
+          "symbol": "len",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 1
+        },
+        {
+          "symbol": "rank_modules",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 1
+        },
+        {
+          "symbol": "ranked",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 4
+        },
+        {
+          "symbol": "str",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 1
+        },
+        {
+          "symbol": "top_module",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 2
+        },
+        {
+          "symbol": "top_score",
+          "test_id": "test_module_ranking_basic",
+          "occurrences": 2
+        }
+      ],
+      "gaps": []
+    }
+  }
+}

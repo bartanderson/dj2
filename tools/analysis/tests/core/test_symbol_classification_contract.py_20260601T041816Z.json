@@ -1,0 +1,254 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_symbol_classification_contract.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_symbol_classification_and_graph_contract"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "DB_PATH",
+            "append",
+            "bad",
+            "c",
+            "close",
+            "create_database",
+            "cursor",
+            "d",
+            "db",
+            "duplicates",
+            "endswith",
+            "execute",
+            "fetchall",
+            "fetchone",
+            "invalid",
+            "leaf",
+            "name",
+            "r",
+            "refs",
+            "reset_analysis_db",
+            "rows",
+            "split",
+            "startswith",
+            "symbols",
+            "unresolved"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "36",
+            "37",
+            "38",
+            "39",
+            "4",
+            "40",
+            "41",
+            "42",
+            "43",
+            "44",
+            "45",
+            "46",
+            "47",
+            "48",
+            "49",
+            "5",
+            "50",
+            "51",
+            "52",
+            "53",
+            "54",
+            "55",
+            "56",
+            "57",
+            "58",
+            "59",
+            "6",
+            "60",
+            "61",
+            "62",
+            "63",
+            "64",
+            "65",
+            "66",
+            "67",
+            "68",
+            "69",
+            "7",
+            "70",
+            "71",
+            "72",
+            "73",
+            "74",
+            "75",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "DB_PATH",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "append",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 2
+        },
+        {
+          "symbol": "bad",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 3
+        },
+        {
+          "symbol": "c",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 11
+        },
+        {
+          "symbol": "close",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "create_database",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "cursor",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "d",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 3
+        },
+        {
+          "symbol": "db",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 5
+        },
+        {
+          "symbol": "duplicates",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 2
+        },
+        {
+          "symbol": "endswith",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "execute",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 5
+        },
+        {
+          "symbol": "fetchall",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 4
+        },
+        {
+          "symbol": "fetchone",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "invalid",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 4
+        },
+        {
+          "symbol": "leaf",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 2
+        },
+        {
+          "symbol": "name",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 5
+        },
+        {
+          "symbol": "r",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 10
+        },
+        {
+          "symbol": "refs",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 2
+        },
+        {
+          "symbol": "reset_analysis_db",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "rows",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 2
+        },
+        {
+          "symbol": "split",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "startswith",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 1
+        },
+        {
+          "symbol": "symbols",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 3
+        },
+        {
+          "symbol": "unresolved",
+          "test_id": "test_symbol_classification_and_graph_contract",
+          "occurrences": 4
+        }
+      ],
+      "gaps": []
+    }
+  }
+}

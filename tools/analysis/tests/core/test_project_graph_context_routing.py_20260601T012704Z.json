@@ -1,0 +1,85 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_project_graph_context_routing.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_route_symbol_with_context_project",
+            "test_route_symbol_with_context_runtime"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "ProjectGraphContext",
+            "ctx",
+            "result",
+            "route_symbol_with_context"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "ProjectGraphContext",
+          "test_id": "test_route_symbol_with_context_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "ProjectGraphContext",
+          "test_id": "test_route_symbol_with_context_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "ctx",
+          "test_id": "test_route_symbol_with_context_project",
+          "occurrences": 2
+        },
+        {
+          "symbol": "ctx",
+          "test_id": "test_route_symbol_with_context_runtime",
+          "occurrences": 2
+        },
+        {
+          "symbol": "result",
+          "test_id": "test_route_symbol_with_context_project",
+          "occurrences": 2
+        },
+        {
+          "symbol": "result",
+          "test_id": "test_route_symbol_with_context_runtime",
+          "occurrences": 2
+        },
+        {
+          "symbol": "route_symbol_with_context",
+          "test_id": "test_route_symbol_with_context_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "route_symbol_with_context",
+          "test_id": "test_route_symbol_with_context_runtime",
+          "occurrences": 1
+        }
+      ],
+      "gaps": []
+    }
+  }
+}

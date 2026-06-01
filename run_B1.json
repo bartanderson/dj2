@@ -1,0 +1,281 @@
+{
+  "file_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "SemanticIdentityBuilder",
+            "any",
+            "build",
+            "build_env",
+            "builder",
+            "confidence",
+            "env",
+            "fqdn",
+            "identity",
+            "p",
+            "project_symbols",
+            "provenance",
+            "resolve_symbol_type",
+            "resolved_by",
+            "route_type",
+            "runtime_bindings",
+            "source",
+            "startswith",
+            "x_id",
+            "x_route",
+            "y_id",
+            "y_route"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::29",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::30",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::31",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::32",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::33",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::34",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::35",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::36",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::37",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::38",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::39",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::40",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::41",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::42",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::43",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::44",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::45",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::46",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::47",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::48",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::49",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::50",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::51",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::52",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::53",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::54",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::55",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::56",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::57",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::58",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::59",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::60",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::61",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::62",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::63",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency::64",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::0",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::1",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::10",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::11",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::12",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::13",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::14",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::15",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::16",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::17",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::18",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::19",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::2",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::20",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::21",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::22",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::23",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::24",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::25",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::26",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::27",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::28",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::3",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::4",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::5",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::6",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::7",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::8",
+            "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn::9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "SemanticIdentityBuilder",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SemanticIdentityBuilder",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "any",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "build",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build_env",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build_env",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "builder",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 3
+        },
+        {
+          "symbol": "builder",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 2
+        },
+        {
+          "symbol": "confidence",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "env",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 7
+        },
+        {
+          "symbol": "env",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 4
+        },
+        {
+          "symbol": "fqdn",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "fqdn",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "identity",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 5
+        },
+        {
+          "symbol": "p",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 2
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "provenance",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolve_symbol_type",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "resolve_symbol_type",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolved_by",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "resolved_by",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "route_type",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 2
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "source",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "source",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 2
+        },
+        {
+          "symbol": "startswith",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_resolves_fqdn",
+          "occurrences": 1
+        },
+        {
+          "symbol": "x_id",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 3
+        },
+        {
+          "symbol": "x_route",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        },
+        {
+          "symbol": "y_id",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 3
+        },
+        {
+          "symbol": "y_route",
+          "test_id": "tools/analysis/tests/semantic/test_semantic_identity_runtime.py::test_runtime_binding_consistency",
+          "occurrences": 2
+        }
+      ],
+      "gaps": []
+    }
+  }
+}
