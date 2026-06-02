@@ -1,0 +1,78 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_graph_analytics.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_graph_top_callees_and_callers"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "GraphBuilder",
+            "add_reference",
+            "gb",
+            "top_callees",
+            "top_callers"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "GraphBuilder",
+          "test_id": "test_graph_top_callees_and_callers",
+          "occurrences": 1
+        },
+        {
+          "symbol": "add_reference",
+          "test_id": "test_graph_top_callees_and_callers",
+          "occurrences": 4
+        },
+        {
+          "symbol": "gb",
+          "test_id": "test_graph_top_callees_and_callers",
+          "occurrences": 7
+        },
+        {
+          "symbol": "top_callees",
+          "test_id": "test_graph_top_callees_and_callers",
+          "occurrences": 4
+        },
+        {
+          "symbol": "top_callers",
+          "test_id": "test_graph_top_callees_and_callers",
+          "occurrences": 3
+        }
+      ],
+      "gaps": []
+    }
+  },
+  "fingerprint": "fd360a11b9a422382c7292b6561db3026cc4ea5ce2b8ec6ee80bbc2d17c74001"
+}

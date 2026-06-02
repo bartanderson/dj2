@@ -1,0 +1,74 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_project_graph_context.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_project_graph_context_defaults"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "ProjectGraphContext",
+            "ctx",
+            "project_prefixes",
+            "project_symbols",
+            "runtime_bindings",
+            "set"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "ProjectGraphContext",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 1
+        },
+        {
+          "symbol": "ctx",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 4
+        },
+        {
+          "symbol": "project_prefixes",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 1
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 1
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 1
+        },
+        {
+          "symbol": "set",
+          "test_id": "test_project_graph_context_defaults",
+          "occurrences": 1
+        }
+      ],
+      "gaps": []
+    }
+  },
+  "fingerprint": "c92d98b4ea8490cb01cca5e817ab222197d4fbd1a65a99546b3e74886ff36967"
+}

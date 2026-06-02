@@ -1,0 +1,71 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_graph_builder_contract.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_graph_builder_basic_edges"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "GraphBuilder",
+            "add_reference",
+            "callees_of",
+            "callers_of",
+            "gb"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "GraphBuilder",
+          "test_id": "test_graph_builder_basic_edges",
+          "occurrences": 1
+        },
+        {
+          "symbol": "add_reference",
+          "test_id": "test_graph_builder_basic_edges",
+          "occurrences": 3
+        },
+        {
+          "symbol": "callees_of",
+          "test_id": "test_graph_builder_basic_edges",
+          "occurrences": 1
+        },
+        {
+          "symbol": "callers_of",
+          "test_id": "test_graph_builder_basic_edges",
+          "occurrences": 1
+        },
+        {
+          "symbol": "gb",
+          "test_id": "test_graph_builder_basic_edges",
+          "occurrences": 6
+        }
+      ],
+      "gaps": []
+    }
+  },
+  "fingerprint": "ca192ecad4bac0d404720d6576b9a6daabb2f7f3ffb87afe9b7cb9943b3b4701"
+}

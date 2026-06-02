@@ -1,0 +1,304 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/semantic/test_semantic_identity_invariants.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_builtin_fallback_behavior",
+            "test_external_symbol_no_false_project",
+            "test_project_does_not_override_runtime"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "SemanticIdentityBuilder",
+            "SymbolEnvironment",
+            "build",
+            "builder",
+            "confidence",
+            "env",
+            "fqdn",
+            "identity",
+            "leaf",
+            "project_symbols",
+            "provenance",
+            "resolve_symbol_type",
+            "resolved_by",
+            "route_type",
+            "runtime_bindings",
+            "set",
+            "startswith"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "22",
+            "23",
+            "24",
+            "25",
+            "26",
+            "27",
+            "28",
+            "29",
+            "3",
+            "30",
+            "31",
+            "32",
+            "33",
+            "34",
+            "35",
+            "36",
+            "37",
+            "38",
+            "39",
+            "4",
+            "40",
+            "41",
+            "42",
+            "43",
+            "44",
+            "45",
+            "46",
+            "47",
+            "48",
+            "49",
+            "5",
+            "50",
+            "51",
+            "52",
+            "53",
+            "54",
+            "55",
+            "56",
+            "57",
+            "58",
+            "59",
+            "6",
+            "60",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "SemanticIdentityBuilder",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SemanticIdentityBuilder",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SemanticIdentityBuilder",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SymbolEnvironment",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SymbolEnvironment",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "SymbolEnvironment",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "build",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "builder",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 2
+        },
+        {
+          "symbol": "builder",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 2
+        },
+        {
+          "symbol": "builder",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 2
+        },
+        {
+          "symbol": "confidence",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "env",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 4
+        },
+        {
+          "symbol": "env",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 4
+        },
+        {
+          "symbol": "env",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 4
+        },
+        {
+          "symbol": "fqdn",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "fqdn",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "identity",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 4
+        },
+        {
+          "symbol": "identity",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 3
+        },
+        {
+          "symbol": "identity",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 3
+        },
+        {
+          "symbol": "leaf",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "project_symbols",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "provenance",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "provenance",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolve_symbol_type",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolve_symbol_type",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolve_symbol_type",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "resolved_by",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "route_type",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 2
+        },
+        {
+          "symbol": "route_type",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 2
+        },
+        {
+          "symbol": "route_type",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 2
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "test_external_symbol_no_false_project",
+          "occurrences": 1
+        },
+        {
+          "symbol": "runtime_bindings",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        },
+        {
+          "symbol": "set",
+          "test_id": "test_builtin_fallback_behavior",
+          "occurrences": 1
+        },
+        {
+          "symbol": "startswith",
+          "test_id": "test_project_does_not_override_runtime",
+          "occurrences": 1
+        }
+      ],
+      "gaps": []
+    }
+  },
+  "fingerprint": "f57bc3d0f941564207c544865f51efbf06645bc38b3bacbb71ade9f3d138514a"
+}

@@ -5,18 +5,29 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.graph.module_resolution import normalize_file_path
 
-from tools.analysis.graph.edge_semantics import classify_edge_semantics
+def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
+    cursor.execute("""
+    INSERT INTO symbols (
+        file_path,
+        symbol_type,
+        name,
+        line_number,
+        signature
+    )
+    VALUES (?, ?, ?, ?, ?)
+    """, (file_path, symbol_type, name, line_number, signature))
 
-from collections import defaultdict
-
-def _identity_symbol(name: str) -> str:
-    if not name:
-        return name
-    return name.split(".")[-1]   # LAST segment = correct stable identity
+def run_sql(connection: sqlite3.Connection, query: str):
+    """
+    Debug utility ONLY.
+    Centralized SQL execution so we don't scatter ad-hoc scripts.
+    """
+    cursor = connection.cursor()
+    cursor.execute(query)
+    return cursor.fetchall()
 
 def initialize_database(connection: sqlite3.Connection) -> None:
     cursor = connection.cursor()
@@ -118,6 +129,55 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS contract_violations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT,
+        contract_name TEXT,
+        layer TEXT,
+        severity TEXT,
+        message TEXT,
+        observed_value TEXT,
+        expected_value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    connection.commit()
+
+
+def create_indexes(connection: sqlite3.Connection, include_composite: bool = True) -> None:
+    """Add performance indexes to an existing database."""
+    cursor = connection.cursor()
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_functions_file_path ON functions(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_functions_name ON functions(name);",
+        "CREATE INDEX IF NOT EXISTS idx_classes_file_path ON classes(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(name);",
+        "CREATE INDEX IF NOT EXISTS idx_imports_file_path ON imports(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_imports_module ON imports(module);",
+        "CREATE INDEX IF NOT EXISTS idx_contracts_file_path ON behavioral_contracts(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_contracts_function_name ON behavioral_contracts(function_name);",
+        "CREATE INDEX IF NOT EXISTS idx_mutations_file_path ON mutations(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_file_edges_from_file ON file_edges(from_file);",
+        "CREATE INDEX IF NOT EXISTS idx_file_edges_to_module ON file_edges(to_module);",
+        "CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);",
+        "CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(symbol_type);",
+        "CREATE INDEX IF NOT EXISTS idx_symref_caller ON symbol_references(caller);",
+        "CREATE INDEX IF NOT EXISTS idx_symref_callee ON symbol_references(callee);",
+        "CREATE INDEX IF NOT EXISTS idx_symref_file_path ON symbol_references(file_path);",
+        "CREATE INDEX IF NOT EXISTS idx_symref_bucket ON symbol_references(bucket);",
+        "CREATE INDEX IF NOT EXISTS idx_contract_violations ON contract_violations(id);",
+    ]
+    if include_composite:
+        indexes.extend([
+            "CREATE INDEX IF NOT EXISTS idx_functions_file_name ON functions(file_path, name);",
+            "CREATE INDEX IF NOT EXISTS idx_classes_file_name ON classes(file_path, name);",
+            "CREATE INDEX IF NOT EXISTS idx_symbols_file_name ON symbols(file_path, name);",
+        ])
+    for sql in indexes:
+        cursor.execute(sql)
     connection.commit()
 
 
@@ -135,6 +195,15 @@ def persist_file_analysis(
     cursor = connection.cursor()
 
     analysis.file_path = normalize_file_path(analysis.file_path)
+
+
+    # =========================
+    # DEBUG (pre-persist inspection)
+    # =========================
+    print("\n[PERSIST START]")
+    print("file:", analysis.file_path)
+    print("symbol_refs:", len(analysis.symbol_references))
+
 
     # -------------------------
     # FILE
@@ -325,45 +394,62 @@ def persist_file_analysis(
             mutation.raw_expression,
         ))
 
+    # -------------------------
+    # SYMBOL REFERENCES
+    # -------------------------
+    cursor.execute(
+        "DELETE FROM symbol_references WHERE file_path = ?",
+        (analysis.file_path,),
+    )
+
+    for ref in analysis.symbol_references:
+        cursor.execute("""
+        INSERT INTO symbol_references (
+            file_path,
+            caller,
+            callee,
+            line_number,
+            bucket,
+            edge_role
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            analysis.file_path,
+            ref.caller,
+            ref.callee,
+            ref.line_number,
+            getattr(ref, "bucket", None),
+            getattr(ref, "edge_role", None),
+        ))
+
+    print("[PERSIST MID] symbol_references inserted (in-memory):",
+          len(analysis.symbol_references))
+
     connection.commit()
+
+    # DB is now source of truth
+    cursor.execute(
+        "SELECT COUNT(*) FROM symbol_references WHERE file_path = ?",
+        (analysis.file_path,)
+    )
+
+    db_count = cursor.fetchone()[0]
+
+    print("\n[PERSIST END]")
+    print("file:", analysis.file_path)
+    print("db_rows:", db_count)
+    print("in_memory:", len(analysis.symbol_references))
+    print("match:", db_count == len(analysis.symbol_references))
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)
 
     if database_path.exists():
-        print("\n" + "=" * 80)
-        print("⚠️  WARNING: Existing database detected")
-        print(f"📁 Path: {database_path}")
-        print("\nIf results look wrong:")
-        print("1. delete the DB file manually")
-        print("2. rerun pipeline")
-        print("=" * 80 + "\n")
-
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+        database_path.unlink()
+        print(f"[RESET DB] {database_path}")
 
     connection = sqlite3.connect(str(database_path))
     initialize_database(connection)
+    create_indexes(connection)
 
     return connection
-
-
-def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
-    cursor.execute("""
-    INSERT INTO symbols (
-        file_path,
-        symbol_type,
-        name,
-        line_number,
-        signature
-    )
-    VALUES (?, ?, ?, ?, ?)
-    """, (file_path, symbol_type, name, line_number, signature))
-
-def run_sql(connection: sqlite3.Connection, query: str):
-    """
-    Debug utility ONLY.
-    Centralized SQL execution so we don't scatter ad-hoc scripts.
-    """
-    cursor = connection.cursor()
-    cursor.execute(query)
-    return cursor.fetchall()

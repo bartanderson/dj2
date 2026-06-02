@@ -1,0 +1,105 @@
+{
+  "file_id": "C:/Users/bartl/dev/dj2/tools/analysis/tests/core/test_module_cycles.py",
+  "pass_3": {
+    "coverage": {
+      "axes": {
+        "structural": {
+          "covered": [
+            "test_cycle_detection"
+          ],
+          "missing": []
+        },
+        "semantic": {
+          "covered": [
+            "GraphBuilder",
+            "add_reference",
+            "cycle",
+            "cycles",
+            "find_module_cycles",
+            "flat",
+            "gb",
+            "len",
+            "n"
+          ],
+          "missing": []
+        },
+        "runtime": {
+          "covered": [
+            "0",
+            "1",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "2",
+            "20",
+            "21",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "missing": []
+        }
+      },
+      "redundancy": [
+        {
+          "symbol": "GraphBuilder",
+          "test_id": "test_cycle_detection",
+          "occurrences": 1
+        },
+        {
+          "symbol": "add_reference",
+          "test_id": "test_cycle_detection",
+          "occurrences": 3
+        },
+        {
+          "symbol": "cycle",
+          "test_id": "test_cycle_detection",
+          "occurrences": 2
+        },
+        {
+          "symbol": "cycles",
+          "test_id": "test_cycle_detection",
+          "occurrences": 3
+        },
+        {
+          "symbol": "find_module_cycles",
+          "test_id": "test_cycle_detection",
+          "occurrences": 1
+        },
+        {
+          "symbol": "flat",
+          "test_id": "test_cycle_detection",
+          "occurrences": 4
+        },
+        {
+          "symbol": "gb",
+          "test_id": "test_cycle_detection",
+          "occurrences": 5
+        },
+        {
+          "symbol": "len",
+          "test_id": "test_cycle_detection",
+          "occurrences": 1
+        },
+        {
+          "symbol": "n",
+          "test_id": "test_cycle_detection",
+          "occurrences": 2
+        }
+      ],
+      "gaps": []
+    }
+  },
+  "fingerprint": "83070523c392c523cd5541a3f195c630ba031c6d620d456e327162ef3e765c7c"
+}
