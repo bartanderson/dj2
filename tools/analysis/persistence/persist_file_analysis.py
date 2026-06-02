@@ -6,7 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 from tools.analysis.shared.types import FileAnalysis
-from tools.analysis.graph.module_resolution import normalize_file_path
+from tools.analysis.core.pathing import normalize_file_path
 
 def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
     cursor.execute("""
@@ -143,6 +143,17 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS contract_drift_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_name TEXT,
+    classification TEXT,
+    layer TEXT,
+    count INTEGER,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+   """)
+
     connection.commit()
 
 
@@ -169,6 +180,8 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         "CREATE INDEX IF NOT EXISTS idx_symref_file_path ON symbol_references(file_path);",
         "CREATE INDEX IF NOT EXISTS idx_symref_bucket ON symbol_references(bucket);",
         "CREATE INDEX IF NOT EXISTS idx_contract_violations ON contract_violations(id);",
+        "CREATE INDEX IF NOT EXISTS idx_contract_drift_name ON contract_drift_history(contract_name);",
+        "CREATE INDEX IF NOT EXISTS idx_contract_drift_time ON contract_drift_history(timestamp);"
     ]
     if include_composite:
         indexes.extend([

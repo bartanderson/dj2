@@ -10,7 +10,6 @@ from collections import defaultdict
 from tools.analysis.ingestion.extract_symbols import extract_symbols
 from tools.analysis.ingestion.parse_ast import parse_ast
 from tools.analysis.shared.types import FileAnalysis
-from tools.analysis.graph.module_resolution import normalize_file_path
 from tools.analysis.audit.symbol_audit import SymbolAudit
 from tools.analysis.core.pathing import (
     normalize_file_path,

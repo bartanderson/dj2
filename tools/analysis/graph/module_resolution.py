@@ -4,21 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
-
-
-def normalize_file_path(path: str | Path) -> str:
-    """
-    Convert a filesystem path into a canonical normalized form.
-
-    Rules:
-    - absolute
-    - resolved
-    - forward slashes
-    - deterministic
-    """
-
-    return str(Path(path).resolve()).replace("\\", "/")
-
+from tools.analysis.core.pathing import normalize_file_path
 
 def module_name_from_file_path(
     file_path: str | Path,

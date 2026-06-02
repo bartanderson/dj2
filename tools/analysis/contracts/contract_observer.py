@@ -103,14 +103,19 @@ def evaluate_file_contracts(
     # -----------------------------------------
     graph_contract = contracts["graph_builder_deterministic_output"]
 
-    if graph is None or not getattr(graph, "edges", None):
+    edge_count = len(getattr(graph, "edges", []))
+    symbol_count = len(sym_refs)
+
+    if symbol_count > 0 and edge_count == 0:
         violations.append(
             ContractViolation(
                 contract_name=graph_contract.name,
                 layer=graph_contract.layer,
                 file_path=file_path,
-                message="GraphBuilder produced no edges",
+                message="GraphBuilder produced no edges despite symbol references",
                 severity=graph_contract.violation_type,
+                observed_value=edge_count,
+                expected_value=symbol_count,
             )
         )
 

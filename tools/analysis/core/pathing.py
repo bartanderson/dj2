@@ -108,3 +108,12 @@ def is_within_project_boundary(
     project_root = Path(project_root).resolve()
 
     return str(file_path).startswith(str(project_root))
+
+def normalize_file_identity(path: str | Path) -> str:
+    """
+    Canonical identity for a file across ALL system layers.
+
+    This is the ONLY function allowed to define file identity semantics
+    for ingestion, graph, persistence, and inspection layers.
+    """
+    return normalize_file_path(path)

@@ -18,7 +18,13 @@ from tools.analysis.reducer.reduce import reduce
 from tools.analysis.classification.classify_references import classify_references
 from tools.analysis.contracts.load_contract import load_system_contract
 from tools.analysis.contracts.contract_validator import ContractRuntimeValidator
-from tools.analysis.contracts.contract_observer import (evaluate_file_contracts, summarize_reports,)
+from tools.analysis.contracts.contract_observer import (evaluate_file_contracts, summarize_reports)
+from tools.analysis.inspection.system_shape import (
+    generate_system_shape,
+    format_system_shape,
+)
+from tools.analysis.validation.system_validator import SystemValidator
+from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
 
 @dataclass
 class PipelineContext:
@@ -151,7 +157,35 @@ def run_analysis_pipeline(
                     bucket=ref.bucket or "unknown",
                 )
 
+            print(
+                "[GRAPH BUILD]",
+                analysis.file_path,
+                "symbol_refs=",
+                len(analysis.symbol_references),
+                "graph_edges=",
+                len(builder.edges),
+            )
+
+            if len(builder.edges) == 0:
+                print(
+                    "[GRAPH DEBUG]",
+                    "refs_with_bucket=",
+                    sum(
+                        1
+                        for r in analysis.symbol_references
+                        if getattr(r, "bucket", None)
+                    ),
+                )
+
             graph = builder.build()
+
+            if len(graph.edges) == 0:
+                print(
+                    "[ZERO EDGE FILE]",
+                    analysis.file_path,
+                    "symbol_refs=",
+                    len(analysis.symbol_references),
+                )
 
             # --------------------------
             # CONTRACT OBSERVATION (A)
@@ -181,6 +215,107 @@ def run_analysis_pipeline(
 
             persist_contract_violations(connection, report)
 
+            # -------------------------------------------------
+            # 🆕 CONTRACT DRIFT CLASSIFICATION PASS
+            # -------------------------------------------------
+            from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
+
+            drift_classifier = ContractDriftClassifier()
+            drift_input = all_reports + [report]
+            drift_signals = drift_classifier.classify(drift_input)
+
+            # -----------------------------------------
+            # 🆕 DRIFT PERSISTENCE LAYER
+            # -----------------------------------------
+            cursor = connection.cursor()
+
+            for s in drift_signals:
+
+                cursor.execute("""
+                    INSERT INTO contract_drift_history (
+                        contract_name,
+                        classification,
+                        layer,
+                        count
+                    ) VALUES (?, ?, ?, ?)
+                """, (
+                    s.contract_name,
+                    s.classification,
+                    s.layer,
+                    s.count,
+                ))
+
+            connection.commit()
+
+            # -----------------------------------------
+            # 🆕 CONTRACT HEALTH AGGREGATION PASS
+            # -----------------------------------------
+            from tools.analysis.contracts.contract_health_aggregator import ContractHealthAggregator
+
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT contract_name, classification, layer, count
+                FROM contract_drift_history
+            """)
+
+            rows = [
+                {
+                    "contract_name": r[0],
+                    "classification": r[1],
+                    "layer": r[2],
+                    "count": r[3],
+                }
+                for r in cursor.fetchall()
+            ]
+
+            health_agg = ContractHealthAggregator()
+            health = health_agg.aggregate(rows)
+
+            print("\n[CONTRACT HEALTH SUMMARY]")
+            for h in health:
+                print(
+                    f"- {h.contract_name} | "
+                    f"stability={h.stability_score} | "
+                    f"trend={h.trend_direction} | "
+                    f"obs={h.total_observations}"
+                )
+
+
+            # -----------------------------------------
+            # 🆕 CONTRACT LIFECYCLE PASS
+            # -----------------------------------------
+            from tools.analysis.contracts.contract_lifecycle import ContractLifecycleController
+
+            lifecycle_controller = ContractLifecycleController()
+
+            lifecycle_states = lifecycle_controller.evaluate(health)
+
+            print("\n[CONTRACT LIFECYCLE STATES]")
+            for l in lifecycle_states:
+                print(
+                    f"- {l.contract_name} | "
+                    f"{l.state} | "
+                    f"{l.recommendation}"
+                )
+
+
+            print("[DRIFT INPUT SIZE]", len(drift_input))
+            print("[CURRENT REPORT HAS VIOLATIONS]", len(report.violations))
+
+            # -----------------------------------------
+            # OBSERVABILITY OUTPUT
+            # -----------------------------------------
+            if drift_signals:
+                print("\n[CONTRACT DRIFT SIGNALS]")
+                for s in drift_signals:
+                    print(
+                        f"- {s.contract_name} | "
+                        f"{s.classification} | "
+                        f"count={s.count} | "
+                        f"{s.layer}"
+                    )
+
             all_reports.append(report)
 
             if report.violations:
@@ -204,6 +339,25 @@ def run_analysis_pipeline(
                 build_stage_context("metrics", edges=len(graph.edges)),
             )
 
+            validator = SystemValidator(strict=False)
+
+            validation = validator.validate(
+                analysis=analysis,
+                graph=graph,
+                contract_report=report,
+                db_snapshot=db_snapshot,
+            )
+
+            if not validation.ok:
+                print("\n[VALIDATION ERRORS]")
+                for e in validation.errors:
+                    print(" -", e)
+
+            if validation.warnings:
+                print("\n[VALIDATION WARNINGS]")
+                for w in validation.warnings:
+                    print(" -", w)
+
         # --------------------------
         # REDUCER
         # --------------------------
@@ -221,12 +375,11 @@ def run_analysis_pipeline(
         # --------------------------
         # SYSTEM UNDERSTANDING LAYER
         # --------------------------
-        from tools.analysis.inspection.system_shape import generate_system_shape
-
         system_shape = generate_system_shape(connection)
 
         print("\n[SYSTEM SHAPE]")
         print(system_shape)
+        print(format_system_shape(system_shape))
 
         # --------------------------
         # GLOBAL INVARIANTS

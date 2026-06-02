@@ -41,6 +41,10 @@ class GraphBuilder:
 
         self.seen.add(key)
 
+        # DEBUG TRACE: ensure ingestion is reaching GraphBuilder
+        # (safe no-op in production if logging disabled later)
+        # print(f"[GB] {caller} -> {callee} @ {line_number} [{bucket}]")
+
         self.edges.append(
             GraphEdge(
                 caller=caller,
@@ -74,13 +78,6 @@ class GraphBuilder:
             e.callee
             for e in self.edges
             if e.caller == caller
-        }
-
-    def callers_of(self, callee: str):
-        return {
-            e.caller
-            for e in self.edges
-            if e.callee == callee
         }
 
     def adjacency(self):
