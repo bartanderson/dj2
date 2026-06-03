@@ -1,6 +1,26 @@
 # tools/analysis/truth/query_executor.py
 
 from tools.analysis.truth.query_ast import Select, Filter, Combine
+from dataclasses import dataclass
+from typing import Any
+
+from tools.analysis.truth.views import (
+    StructureView,
+    StabilityView,
+    IntegrityView,
+    SystemSummaryView,
+)
+
+@dataclass
+class ViewResult:
+    view: str
+    data: Any
+    
+@dataclass
+class FilterResult:
+    key: str
+    op: str
+    value: Any
 
 class QueryExecutor:
 
@@ -25,32 +45,40 @@ class QueryExecutor:
         raise ValueError(f"Invalid query node: {type(query)}")
 
     def _select(self, q: Select):
-        return self.views[q.view]
+
+        if q.view not in self.views:
+            raise ValueError(f"Unknown view: {q.view}")
+
+        return ViewResult(
+            view=q.view,
+            data=self.views[q.view]
+        )
 
     def _combine(self, a, b):
 
-        left_name = a["name"] if isinstance(a, dict) and "name" in a else None
-        right_name = b["name"] if isinstance(b, dict) and "name" in b else None
+        left_name = self._resolve_view_name(a)
+        right_name = self._resolve_view_name(b)
 
         if self.registry is not None:
             if not self.registry.validate_combine(left_name, right_name):
                 raise ValueError(f"Invalid semantic combine: {left_name} + {right_name}")
 
         return {
+            "type": "COMBINE",
             "left": a,
             "right": b,
+            "meta": {
+                "left_view": left_name,
+                "right_view": right_name,
+            }
         }
 
     def _filter(self, f: Filter):
-        # deterministic filter pass-through (applied post-view)
-
-        return {
-            "filter": {
-                "key": f.key,
-                "op": f.op,
-                "value": f.value,
-            }
-        }
+        return FilterResult(
+            key=f.key,
+            op=f.op,
+            value=f.value,
+        )
 
 class QuerySemanticsRegistry:
 

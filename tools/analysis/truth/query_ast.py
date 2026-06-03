@@ -10,7 +10,6 @@ from typing import Optional, Union, Any
 @dataclass(frozen=True)
 class Select:
     view: str  # STRUCTURE | STABILITY | INTEGRITY | SUMMARY | SUBSYSTEM
-    metric: str | None = None
 
 ## 2.3 FILTER NODE
 

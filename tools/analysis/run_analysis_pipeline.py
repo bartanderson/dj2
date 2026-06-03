@@ -445,11 +445,11 @@ def run_analysis_pipeline(
         print("\n[SMOKE TEST - TRUTH QUERY LAYER]")
 
         test_queries = [
-            Select("STRUCTURE", None),
-            Select("STABILITY", None),
-            Select("INTEGRITY", None),
-            Select("SUMMARY", None),
-            Select("SUBSYSTEM", None),
+            Select("STRUCTURE"),
+            Select("STABILITY"),
+            Select("INTEGRITY"),
+            Select("SUMMARY"),
+            Select("SUBSYSTEM"),
         ]
 
         for q in test_queries:
