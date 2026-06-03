@@ -26,6 +26,16 @@ from tools.analysis.inspection.system_shape import (
 from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
 
+from tools.analysis.truth.query_executor import QueryExecutor
+from tools.analysis.truth.query_ast import Select
+from tools.analysis.truth.views import (
+    build_structure_view,
+    build_stability_view,
+    build_integrity_view,
+    build_system_summary_view,
+)
+from tools.analysis.truth.subsystem_view import build_subsystem_view
+
 @dataclass
 class PipelineContext:
     project_root: Path
@@ -382,6 +392,34 @@ def run_analysis_pipeline(
         print(format_system_shape(system_shape))
 
         # --------------------------
+        # TRUTH VIEW BUILDING
+        # --------------------------
+
+        structure_view = build_structure_view(graph)
+        stability_view = build_stability_view(all_reports, drift_signals if 'drift_signals' in locals() else [])
+        integrity_view = build_integrity_view(validation, db_snapshot, graph)
+        summary_view = build_system_summary_view(
+            reduced,
+            report,
+            processed_count,
+        )
+        subsystem_view = build_subsystem_view(graph)
+
+        print("\n[OBSERVABILITY - SUBSYSTEM VIEW]")
+        for name, data in subsystem_view["subsystems"].items():
+            print(f"- {name} | modules={len(data['modules'])} | edges={data['edge_count']}")
+
+        views = {
+            "STRUCTURE": structure_view,
+            "STABILITY": stability_view,
+            "INTEGRITY": integrity_view,
+            "SUMMARY": summary_view,
+            "SUBSYSTEM": subsystem_view,
+        }
+        
+        executor = QueryExecutor(views=views)
+
+        # --------------------------
         # GLOBAL INVARIANTS
         # --------------------------
         validator.validate_stage(
@@ -407,6 +445,20 @@ def run_analysis_pipeline(
 
         print("\n[CONTRACT SUMMARY]")
         print(summarize_reports(all_reports))
+
+        print("\n[SMOKE TEST - TRUTH QUERY LAYER]")
+
+        test_queries = [
+            Select("STRUCTURE"),
+            Select("STABILITY"),
+            Select("INTEGRITY"),
+            Select("SUMMARY"),
+        ]
+
+        for q in test_queries:
+            result = executor.execute(q)
+            print("\n---", q.view, "---")
+            print(result)
 
         return {
             "snapshots": snapshots,
