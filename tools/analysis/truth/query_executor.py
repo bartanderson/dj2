@@ -1,36 +1,49 @@
 # tools/analysis/truth/query_executor.py
 
-from tools.analysis.truth.query_ast import Select, Filter, Combine
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
-from tools.analysis.truth.views import (
-    StructureView,
-    StabilityView,
-    IntegrityView,
-    SystemSummaryView,
-)
+from tools.analysis.truth.query_ast import Select, Filter, Combine
+
+
+# -------------------------
+# RESULT TYPES (grounded)
+# -------------------------
 
 @dataclass
 class ViewResult:
     view: str
     data: Any
-    
+
+
 @dataclass
 class FilterResult:
     key: str
     op: str
     value: Any
 
+
 @dataclass
 class CombineResult:
     left: Any
     right: Any
 
+
+@dataclass
+class QueryResult:
+    view: str
+    metric: Optional[str]
+    data: Any
+
+
+# -------------------------
+# EXECUTOR
+# -------------------------
+
 class QueryExecutor:
 
     def __init__(self, views: dict, registry=None):
-        self.views = views  # injected deterministic truth objects
+        self.views = views
         self.registry = registry
 
     def execute(self, query):
@@ -49,63 +62,62 @@ class QueryExecutor:
 
         raise ValueError(f"Invalid query node: {type(query)}")
 
+    # -------------------------
+    # SELECT (deterministic projection)
+    # -------------------------
+
     def _select(self, q: Select):
 
         view = self.views[q.view]
 
-        # no metric → full object
+        # full view
         if q.metric is None:
-            return view
+            return QueryResult(
+                view=q.view,
+                metric=None,
+                data=view
+            )
 
-        # dataclass projection
+        # attribute projection
         if hasattr(view, q.metric):
-            return getattr(view, q.metric)
+            return QueryResult(
+                view=q.view,
+                metric=q.metric,
+                data=getattr(view, q.metric),
+            )
 
-        # dict projection fallback (subsystem safe)
+        # dict projection
         if isinstance(view, dict):
-            return view.get(q.metric)
+            return QueryResult(
+                view=q.view,
+                metric=q.metric,
+                data=view.get(q.metric),
+            )
 
         raise ValueError(
             f"Metric '{q.metric}' not resolvable for view '{q.view}'"
         )
 
+    # -------------------------
+    # COMBINE (pure structural join)
+    # -------------------------
+
     def _combine(self, a, b):
-        return CombineResult(left=a, right=b)
+
+        # deterministic wrapper only
+        return CombineResult(
+            left=a,
+            right=b,
+        )
+
+    # -------------------------
+    # FILTER (pure descriptor node)
+    # -------------------------
 
     def _filter(self, f: Filter):
+
         return FilterResult(
             key=f.key,
             op=f.op,
             value=f.value,
         )
-
-class QuerySemanticsRegistry:
-
-    VALID_COMBINES = {
-        ("STRUCTURE", "STABILITY"),
-        ("STRUCTURE", "INTEGRITY"),
-        ("SUMMARY", "STABILITY"),
-        ("SUBSYSTEM", "STRUCTURE"),
-    }
-
-    VALID_FILTER_KEYS = {
-        "STRUCTURE": {"edges", "callee", "caller"},
-        "STABILITY": {"stable_contracts", "unstable_contracts"},
-        "SUBSYSTEM": {"modules", "edge_count"},
-    }
-
-    def validate_combine(self, left, right):
-        return (left, right) in self.VALID_COMBINES or (right, left) in self.VALID_COMBINES
-
-    def validate_filter_key(self, view: str, key: str):
-        allowed = self.VALID_FILTER_KEYS.get(view, set())
-        return key in allowed
-
-    def validate_metric(self, view: str, metric: str | None):
-
-        if metric is None:
-            return True
-
-        allowed = self.VALID_FILTER_KEYS.get(view, set())
-
-        return metric in allowed

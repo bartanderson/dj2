@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from tools.analysis.truth.query_ast import Select, Filter, Combine
-from tools.analysis.truth.query_executor import QuerySemanticsRegistry
 
 
 @dataclass
@@ -18,6 +17,37 @@ class QueryPlan:
         "SUMMARY": {"edge_count", "file_count", "metrics"},
         "SUBSYSTEM": {"subsystems"},
     }
+
+class QuerySemanticsRegistry:
+
+    VALID_COMBINES = {
+        ("STRUCTURE", "STABILITY"),
+        ("STRUCTURE", "INTEGRITY"),
+        ("SUMMARY", "STABILITY"),
+        ("SUBSYSTEM", "STRUCTURE"),
+    }
+
+    VALID_FILTER_KEYS = {
+        "STRUCTURE": {"edges", "callee", "caller"},
+        "STABILITY": {"stable_contracts", "unstable_contracts"},
+        "SUBSYSTEM": {"modules", "edge_count"},
+    }
+
+    def validate_combine(self, left, right):
+        return (
+            (left, right) in self.VALID_COMBINES
+            or (right, left) in self.VALID_COMBINES
+        )
+
+    def validate_filter_key(self, view: str, key: str):
+        allowed = self.VALID_FILTER_KEYS.get(view, set())
+        return key in allowed
+
+    def validate_metric(self, view: str, metric: str | None):
+        if metric is None:
+            return True
+        allowed = self.VALID_FILTER_KEYS.get(view, set())
+        return metric in allowed
 
 class QueryPlanner:
 
@@ -62,7 +92,8 @@ class QueryPlanner:
             return Combine(left=left, right=right)
 
         if isinstance(query, Filter):
-            return self._validate_filter(query)
+            # attach filter node to AST (do not flatten)
+            return query
 
         raise ValueError(f"Invalid query node: {type(query)}")
 

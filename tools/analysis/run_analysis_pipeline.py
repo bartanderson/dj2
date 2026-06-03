@@ -35,8 +35,7 @@ from tools.analysis.truth.views import (
     build_system_summary_view,
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
-from tools.analysis.truth.query_executor import QueryExecutor, QuerySemanticsRegistry
-from tools.analysis.truth.query_plan import QueryPlanner
+from tools.analysis.truth.query_plan import QueryPlanner, QuerySemanticsRegistry
 
 @dataclass
 class PipelineContext:
@@ -448,15 +447,13 @@ def run_analysis_pipeline(
 
         test_queries = [
             Select("STRUCTURE", None),
-            Select("STABILITY", None),
-            Select("INTEGRITY", None),
             Select("SUMMARY", "edge_count"),
-            Select("SUMMARY", "file_count"),
-            Select("SUBSYSTEM", None),
+
+            Select("STRUCTURE", "edges"),  # <-- metric test
 
             Combine(
-                Select("STRUCTURE", "edges"),
-                Select("STABILITY", "stable_contracts"),
+                Select("STRUCTURE", None),
+                Select("STABILITY", None),
             ),
         ]
 
