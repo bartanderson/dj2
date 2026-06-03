@@ -405,10 +405,6 @@ def run_analysis_pipeline(
         )
         subsystem_view = build_subsystem_view(graph)
 
-        print("\n[OBSERVABILITY - SUBSYSTEM VIEW]")
-        for name, data in subsystem_view["subsystems"].items():
-            print(f"- {name} | modules={len(data['modules'])} | edges={data['edge_count']}")
-
         views = {
             "STRUCTURE": structure_view,
             "STABILITY": stability_view,
