@@ -22,6 +22,11 @@ class FilterResult:
     op: str
     value: Any
 
+@dataclass
+class CombineResult:
+    left: Any
+    right: Any
+
 class QueryExecutor:
 
     def __init__(self, views: dict, registry=None):
@@ -65,11 +70,7 @@ class QueryExecutor:
         )
 
     def _combine(self, a, b):
-
-        return {
-            "left": a,
-            "right": b,
-        }
+        return CombineResult(left=a, right=b)
 
     def _filter(self, f: Filter):
         return FilterResult(
