@@ -46,31 +46,29 @@ class QueryExecutor:
 
     def _select(self, q: Select):
 
-        if q.view not in self.views:
-            raise ValueError(f"Unknown view: {q.view}")
+        view = self.views[q.view]
 
-        return ViewResult(
-            view=q.view,
-            data=self.views[q.view]
+        # no metric → full object
+        if q.metric is None:
+            return view
+
+        # dataclass projection
+        if hasattr(view, q.metric):
+            return getattr(view, q.metric)
+
+        # dict projection fallback (subsystem safe)
+        if isinstance(view, dict):
+            return view.get(q.metric)
+
+        raise ValueError(
+            f"Metric '{q.metric}' not resolvable for view '{q.view}'"
         )
 
     def _combine(self, a, b):
 
-        left_name = self._resolve_view_name(a)
-        right_name = self._resolve_view_name(b)
-
-        if self.registry is not None:
-            if not self.registry.validate_combine(left_name, right_name):
-                raise ValueError(f"Invalid semantic combine: {left_name} + {right_name}")
-
         return {
-            "type": "COMBINE",
             "left": a,
             "right": b,
-            "meta": {
-                "left_view": left_name,
-                "right_view": right_name,
-            }
         }
 
     def _filter(self, f: Filter):
@@ -101,3 +99,12 @@ class QuerySemanticsRegistry:
     def validate_filter_key(self, view: str, key: str):
         allowed = self.VALID_FILTER_KEYS.get(view, set())
         return key in allowed
+
+    def validate_metric(self, view: str, metric: str | None):
+
+        if metric is None:
+            return True
+
+        allowed = self.VALID_FILTER_KEYS.get(view, set())
+
+        return metric in allowed

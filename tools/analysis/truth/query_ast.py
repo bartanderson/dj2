@@ -9,7 +9,8 @@ from typing import Optional, Union, Any
 
 @dataclass(frozen=True)
 class Select:
-    view: str  # STRUCTURE | STABILITY | INTEGRITY | SUMMARY | SUBSYSTEM
+    view: str          # STRUCTURE | STABILITY | INTEGRITY | SUMMARY | SUBSYSTEM
+    metric: Optional[str] = None  # optional projection field
 
 ## 2.3 FILTER NODE
 

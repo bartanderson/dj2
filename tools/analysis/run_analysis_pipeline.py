@@ -27,7 +27,7 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
 
 from tools.analysis.truth.query_executor import QueryExecutor
-from tools.analysis.truth.query_ast import Select
+from tools.analysis.truth.query_ast import Select, Combine
 from tools.analysis.truth.views import (
     build_structure_view,
     build_stability_view,
@@ -35,6 +35,8 @@ from tools.analysis.truth.views import (
     build_system_summary_view,
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
+from tools.analysis.truth.query_executor import QueryExecutor, QuerySemanticsRegistry
+from tools.analysis.truth.query_plan import QueryPlanner
 
 @dataclass
 class PipelineContext:
@@ -445,16 +447,29 @@ def run_analysis_pipeline(
         print("\n[SMOKE TEST - TRUTH QUERY LAYER]")
 
         test_queries = [
-            Select("STRUCTURE"),
-            Select("STABILITY"),
-            Select("INTEGRITY"),
-            Select("SUMMARY"),
-            Select("SUBSYSTEM"),
+            Select("STRUCTURE", None),
+            Select("STABILITY", None),
+            Select("INTEGRITY", None),
+            Select("SUMMARY", "edge_count"),
+            Select("SUMMARY", "file_count"),
+            Select("SUBSYSTEM", None),
+
+            Combine(
+                Select("STRUCTURE", "edges"),
+                Select("STABILITY", "stable_contracts"),
+            ),
         ]
 
+        planner = QueryPlanner(QuerySemanticsRegistry())
+
         for q in test_queries:
-            result = executor.execute(q)
-            print("\n---", q.view, "---")
+            plan = planner.plan(q)
+            result = executor.execute(plan.root)
+
+            print("\n--- QUERY ---")
+            print(q)
+
+            print("\n--- RESULT ---")
             print(result)
 
         return {
