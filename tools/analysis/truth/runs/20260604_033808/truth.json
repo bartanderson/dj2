@@ -1,0 +1,12 @@
+[
+  {
+    "name": "summary_edges",
+    "passed": false,
+    "actual": {
+      "view": "SUMMARY",
+      "metric": "edge_count",
+      "data": 2764
+    },
+    "expected": 2764
+  }
+]

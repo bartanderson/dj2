@@ -123,8 +123,7 @@ def run_validation(planner, executor, registry):
     conn = sqlite3.connect("C:_Users_bartl_dev_dj2_tools.old.db")
 
     db_edge_count = conn.execute("""
-        SELECT COUNT(DISTINCT caller || '|' || callee || '|' || line_number)
-        FROM symbol_references
+        SELECT COUNT(*) FROM symbol_references
     """).fetchone()[0]
 
     conn.close()
@@ -175,7 +174,7 @@ def run_validation(planner, executor, registry):
 
         results["truth"].append({
             "name": name,
-            "passed": actual == expected,
+            "passed": actual.data == expected,
             "actual": actual,
             "expected": expected,
         })
@@ -278,8 +277,7 @@ def run_analysis_pipeline(
             builder = GraphBuilder()
 
             for ref in analysis.symbol_references:
-                if not ref.bucket:
-                    continue
+                bucket = ref.bucket if ref.bucket is not None else "unknown"
                 builder.add_reference(
                     caller=ref.caller,
                     callee=ref.callee,

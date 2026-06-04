@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 from tools.analysis.graph.symbol_classifier import project_key
 
-
 @dataclass
 class GraphEdge:
     caller: str
@@ -34,17 +33,6 @@ class GraphBuilder:
         self.bucket_counts = defaultdict(int)
 
     def add_reference(self, caller: str, callee: str, line_number: int, bucket: str):
-        key = (caller, callee, line_number)
-
-        if key in self.seen:
-            return
-
-        self.seen.add(key)
-
-        # DEBUG TRACE: ensure ingestion is reaching GraphBuilder
-        # (safe no-op in production if logging disabled later)
-        # print(f"[GB] {caller} -> {callee} @ {line_number} [{bucket}]")
-
         self.edges.append(
             GraphEdge(
                 caller=caller,
