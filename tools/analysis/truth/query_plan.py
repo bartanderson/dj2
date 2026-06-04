@@ -80,6 +80,9 @@ class QueryPlanner:
             return self._validate_select(query)
 
         if isinstance(query, Combine):
+            # FLAT ONLY CONTRACT (temporary but explicit)
+            if isinstance(query.left, Combine) or isinstance(query.right, Combine):
+                raise ValueError("Nested Combine not supported (flat-only query surface)")
             left = self._validate(query.left)
             right = self._validate(query.right)
 

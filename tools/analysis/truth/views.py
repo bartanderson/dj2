@@ -93,7 +93,7 @@ class SystemSummaryView:
 
 def build_system_summary_view(reduced, metrics, file_count: int) -> SystemSummaryView:
     return SystemSummaryView(
-        edge_count=reduced.get("edges", 0),
+        edge_count=reduced.get("edge_activity_total", 0),
         file_count=file_count,
         metrics=metrics,
     )

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import os
-import json
+import orjson
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from tools.analysis.load_config_profiles import (load_analysis_profiles, build_profile_prefixes)
@@ -27,7 +28,7 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
 
 from tools.analysis.truth.query_executor import QueryExecutor
-from tools.analysis.truth.query_ast import Select, Combine
+from tools.analysis.truth.query_ast import Select, Filter, Combine
 from tools.analysis.truth.views import (
     build_structure_view,
     build_stability_view,
@@ -36,6 +37,40 @@ from tools.analysis.truth.views import (
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.truth.query_plan import QueryPlanner, QuerySemanticsRegistry
+
+def normalize_for_orjson(obj):
+    from dataclasses import is_dataclass, asdict
+
+    if is_dataclass(obj):
+        return normalize_for_orjson(asdict(obj))
+
+    if isinstance(obj, dict):
+        return {k: normalize_for_orjson(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple)):
+        return [normalize_for_orjson(x) for x in obj]
+
+    if isinstance(obj, set):
+        return [normalize_for_orjson(x) for x in obj]
+
+    return obj
+    
+def write_artifacts(results):
+    run_dir = Path("tools/analysis/truth/runs") / time.strftime("%Y%m%d_%H%M%S")
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    payloads = {
+        "truth.json": results["truth"],
+        "surface.json": results["surface"],
+        "summary.json": {"passed": results["passed"]},
+    }
+
+    for filename, data in payloads.items():
+        clean = normalize_for_orjson(data)
+
+        (run_dir / filename).write_bytes(
+            orjson.dumps(clean, option=orjson.OPT_INDENT_2)
+        )
 
 @dataclass
 class PipelineContext:
@@ -79,7 +114,91 @@ def build_stage_context(stage: str, *, edges: int = 0, snapshot_mismatch: bool =
     }
     return context
 
-# tools/analysis/run_analysis_pipeline.py
+def run_validation(planner, executor, registry):
+    import sqlite3
+
+    # --------------------------------------------------
+    # SOURCE OF TRUTH (DB)
+    # --------------------------------------------------
+    conn = sqlite3.connect("C:_Users_bartl_dev_dj2_tools.old.db")
+
+    db_edge_count = conn.execute("""
+        SELECT COUNT(DISTINCT caller || '|' || callee || '|' || line_number)
+        FROM symbol_references
+    """).fetchone()[0]
+
+    conn.close()
+
+    # --------------------------------------------------
+    # TRUTH TESTS (STRICT CORRECTNESS)
+    # --------------------------------------------------
+    truth = [
+        (
+            "summary_edges",
+            Select("SUMMARY", "edge_count"),
+            db_edge_count,
+        ),
+    ]
+
+    # --------------------------------------------------
+    # SURFACE TESTS (SUPPORTED QUERY SPACE ONLY)
+    # --------------------------------------------------
+    surface = [
+        Select("STRUCTURE", None),
+        Select("STRUCTURE", "edges"),
+        Select("SUMMARY", "edge_count"),
+        Select("STABILITY", None),
+        Select("SUBSYSTEM", None),
+
+        Combine(
+            Select("STRUCTURE", None),
+            Select("STABILITY", None),
+        ),
+
+        Filter("edges", "eq", "print"),
+    ]
+
+    # --------------------------------------------------
+    # EXECUTION RESULTS
+    # --------------------------------------------------
+    results = {
+        "truth": [],
+        "surface": [],
+    }
+
+    # --------------------------
+    # truth validation
+    # --------------------------
+    for name, query, expected in truth:
+        plan = planner.plan(query)
+        actual = executor.execute(plan.root)
+
+        results["truth"].append({
+            "name": name,
+            "passed": actual == expected,
+            "actual": actual,
+            "expected": expected,
+        })
+
+    # --------------------------
+    # surface execution
+    # --------------------------
+    for query in surface:
+        plan = planner.plan(query)
+        results["surface"].append(executor.execute(plan.root))
+
+    # --------------------------------------------------
+    # FINAL SUMMARY (SINGLE SOURCE SIGNAL)
+    # --------------------------------------------------
+    results["passed"] = all(t["passed"] for t in results["truth"])
+
+    # --------------------------
+    # ARTIFACT OUTPUT LAYER
+    # --------------------------
+
+    write_artifacts(results)
+
+    return results
 
 def run_analysis_pipeline(
     project_root: str | Path,
@@ -376,11 +495,11 @@ def run_analysis_pipeline(
 
         validator.validate_stage(
             "reducer",
-            build_stage_context("reducer", edges=reduced.get("edges", 0)),
+            build_stage_context("reducer", edges=reduced.get("edge_activity_total", 0)),
         )
 
-        assert reduced["edges"] > 0 or len(file_analyses) == 0, (
-            "Pipeline produced no edges (graph construction failure or empty dataset)"
+        assert reduced["edge_activity_total"] > 0 or len(file_analyses) == 0, (
+            "Pipeline produced no edge activity (graph construction failure or empty dataset)"
         )
 
         # --------------------------
@@ -423,7 +542,7 @@ def run_analysis_pipeline(
             "global",
             build_stage_context(
                 "global",
-                edges=reduced.get("edges", 0),
+                edges=reduced.get("edge_activity_total", 0),
                 classification_called_in_persistence=False,
                 no_cross_layer_logic=True,
             ),
@@ -443,31 +562,42 @@ def run_analysis_pipeline(
         print("\n[CONTRACT SUMMARY]")
         print(summarize_reports(all_reports))
 
-        print("\n[SMOKE TEST - TRUTH QUERY LAYER]")
+        # print("\n[SMOKE TEST - TRUTH QUERY LAYER]")
 
-        test_queries = [
-            Select("STRUCTURE", None),
-            Select("SUMMARY", "edge_count"),
+        # test_queries = [
+        #     Select("STRUCTURE", None),
+        #     Select("SUMMARY", "edge_count"),
 
-            Select("STRUCTURE", "edges"),  # <-- metric test
+        #     Select("STRUCTURE", "edges"),  # <-- metric test
 
-            Combine(
-                Select("STRUCTURE", None),
-                Select("STABILITY", None),
-            ),
-        ]
+        #     Combine(
+        #         Select("STRUCTURE", None),
+        #         Select("STABILITY", None),
+        #     ),
+        # ]
+        registry = QuerySemanticsRegistry()
+        planner = QueryPlanner(registry)
+        results = run_validation(planner, executor, registry)
 
-        planner = QueryPlanner(QuerySemanticsRegistry())
+        print("\n[TRUTH VALIDATION RESULTS]")
 
-        for q in test_queries:
-            plan = planner.plan(q)
-            result = executor.execute(plan.root)
+        for entry in results["truth"]:
+            name = entry["name"]
+            ok = entry["passed"]
+            value = entry["actual"]
 
-            print("\n--- QUERY ---")
-            print(q)
+        print("\n[SURFACE OUTPUT COUNT]")
+        print(len(results["surface"]))
 
-            print("\n--- RESULT ---")
-            print(result)
+        # for q in test_queries:
+        #     plan = planner.plan(q)
+        #     result = executor.execute(plan.root)
+
+        #     print("\n--- QUERY ---")
+        #     print(q)
+
+        #     print("\n--- RESULT ---")
+        #     print(result)
 
         return {
             "snapshots": snapshots,
