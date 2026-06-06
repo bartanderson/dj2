@@ -37,6 +37,7 @@ from tools.analysis.truth.views import (
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.truth.query_plan import QueryPlanner, QuerySemanticsRegistry
+from tools.analysis.graph.reachability_stage import build_reachability_view
 
 def normalize_for_orjson(obj):
     from dataclasses import is_dataclass, asdict
@@ -272,6 +273,7 @@ def run_analysis_pipeline(
         # --------------------------
         snapshots = []
         last_snapshot = None
+        project_builder = GraphBuilder() # for each runs graph accumulation
 
         for analysis in file_analyses:
             builder = GraphBuilder()
@@ -282,7 +284,14 @@ def run_analysis_pipeline(
                     caller=ref.caller,
                     callee=ref.callee,
                     line_number=ref.line_number,
-                    bucket=ref.bucket or "unknown",
+                    bucket=bucket,
+                )
+
+                project_builder.add_reference(
+                    caller=ref.caller,
+                    callee=ref.callee,
+                    line_number=ref.line_number,
+                    bucket=bucket,
                 )
 
             print(
@@ -512,7 +521,6 @@ def run_analysis_pipeline(
         # --------------------------
         # TRUTH VIEW BUILDING
         # --------------------------
-
         structure_view = build_structure_view(graph)
         stability_view = build_stability_view(all_reports, drift_signals if 'drift_signals' in locals() else [])
         integrity_view = build_integrity_view(validation, db_snapshot, graph)
@@ -522,6 +530,34 @@ def run_analysis_pipeline(
             processed_count,
         )
         subsystem_view = build_subsystem_view(graph)
+        project_graph = project_builder.build()
+        print(
+            "[PROJECT GRAPH INPUT]",
+            len(project_builder.edges)
+        )
+        print(
+            "[PROJECT GRAPH OUTPUT]",
+            len(project_graph.edges)
+        )
+        total_refs = 0
+
+        for analysis in file_analyses:
+            total_refs += len(analysis.symbol_references)
+
+        print("[TOTAL SYMBOL REFS]", total_refs)
+        reachability_view = build_reachability_view(
+            project_graph,
+            compute_transitive=True
+        )
+        print("\n[REACHABILITY TRANSITIVE SAMPLE]")
+
+        for k, v in list(reachability_view.impacted.items())[:5]:
+            print(k, "=>", len(v))
+            
+        print(
+            "reachability_nodes=",
+            len(reachability_view.forward)
+        )
 
         views = {
             "STRUCTURE": structure_view,
@@ -529,6 +565,7 @@ def run_analysis_pipeline(
             "INTEGRITY": integrity_view,
             "SUMMARY": summary_view,
             "SUBSYSTEM": subsystem_view,
+            "REACHABILITY": reachability_view,
         }
         
         executor = QueryExecutor(views=views)
