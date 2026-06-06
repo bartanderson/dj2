@@ -17,6 +17,8 @@ from tools.analysis.engine.structural_parity_diff import (
 
 from tools.analysis.persistence.persist_file_analysis import initialize_database
 from tools.analysis.engine.engine_snapshot import EngineSnapshotBuilder
+from tools.analysis.engine.engine_snapshot_diff import diff_snapshots, print_snapshot_diff
+from tools.analysis.engine.engine_evaluation_snapshot import EngineEvaluationSnapshotBuilder
 
 # ----------------------------
 # SINGLE SOURCE OF TRUTH
@@ -108,14 +110,17 @@ class EngineRunner:
         # ==================================================
         # 7. SNAPSHOT
         # ==================================================
-        snapshot_builder = EngineSnapshotBuilder()
+        system_shape = {"stub": True}
+        structure_view = {"stub": True}
+        stability_view = {"stub": True}
+        integrity_view = {"stub": True}
+        subsystem_view = {"stub": True}
+
+        snapshot_builder = EngineEvaluationSnapshotBuilder()
+
         snapshot = snapshot_builder.build(
-            ingestion=ingestion,
-            graph={
-                "graph": graph,
-                "edge_count": edge_count,
-            },
-            facts=facts,
+            file_analyses=file_analyses,
+            graph=graph,
         )
 
         return EngineResult(
@@ -140,7 +145,7 @@ if __name__ == "__main__":
     print("RUNNING ENGINE TEST")
 
     # IMPORTANT: matches your real target root (tools.old)
-    corpus = type("C", (), {"root_path": "tools.old"})()
+    corpus = type("C", (), {"root_path": "tools"})()
     project_prefixes = []
     repo_root = "."
 
@@ -177,3 +182,38 @@ if __name__ == "__main__":
     )
 
     print_structural_diff(diff)
+
+    pipeline_snapshot = None  # TEMP placeholder for now
+
+    diff = diff_snapshots(
+        engine_snapshot=result.snapshot,
+        pipeline_snapshot=pipeline_snapshot,
+    )
+
+    print_snapshot_diff(diff)
+
+    from tools.analysis.engine.pipeline_inventory import (
+        build_pipeline_inventory,
+        print_pipeline_inventory,
+    )
+    inventory = build_pipeline_inventory(
+        result.ingestion["file_analyses"]
+    )
+
+    print_pipeline_inventory(inventory)
+
+    from tools.analysis.engine.pipeline_dependency_tracer import (
+        trace_pipeline_dependencies,
+        print_pipeline_report,
+    )
+
+    index = {
+        a.file_path: {
+            "imports": getattr(a, "imports", []),
+            "calls": getattr(a, "calls", []),
+        }
+        for a in result.ingestion["file_analyses"]
+    }
+
+    report = trace_pipeline_dependencies(index)
+    print_pipeline_report(report)  
