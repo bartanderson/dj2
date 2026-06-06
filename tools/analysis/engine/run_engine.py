@@ -2,12 +2,27 @@
 
 from dataclasses import dataclass
 from typing import Any, Dict
+import sqlite3
 
 from tools.analysis.ingestion.scan_project_files import scan_project_files
 from tools.analysis.classification.classify_references import classify_references
 from tools.analysis.persistence.persist_file_analysis import persist_file_analysis
 from tools.analysis.graph.graph_builder import GraphBuilder
+
 from tools.analysis.engine.parity_check import run_parity_check, print_parity_report
+from tools.analysis.engine.structural_parity_diff import (
+    run_structural_diff,
+    print_structural_diff,
+)
+
+from tools.analysis.persistence.persist_file_analysis import initialize_database
+from tools.analysis.engine.engine_snapshot import EngineSnapshotBuilder
+
+# ----------------------------
+# SINGLE SOURCE OF TRUTH
+# ----------------------------
+DB_PATH = "tools.analysis.data.analysis.db"
+
 
 @dataclass
 class EngineResult:
@@ -83,22 +98,25 @@ class EngineRunner:
         }
 
         # ==================================================
-        # 6. SNAPSHOT (minimal parity view)
-        # ==================================================
-        snapshot = {
-            "file_count": processed_count,
-            "symbol_ref_count": symbol_ref_count,
-            "edge_count": edge_count,
-        }
-
-        # ==================================================
-        # 7. INGESTION RESULT (PARITY LAYER)
+        # 7. INGESTION RESULT
         # ==================================================
         ingestion = {
             "file_analyses": file_analyses,
             "processed_count": processed_count,
             "total_symbol_refs": symbol_ref_count,
         }
+        # ==================================================
+        # 7. SNAPSHOT
+        # ==================================================
+        snapshot_builder = EngineSnapshotBuilder()
+        snapshot = snapshot_builder.build(
+            ingestion=ingestion,
+            graph={
+                "graph": graph,
+                "edge_count": edge_count,
+            },
+            facts=facts,
+        )
 
         return EngineResult(
             ingestion=ingestion,
@@ -113,8 +131,15 @@ class EngineRunner:
 
 if __name__ == "__main__":
 
+    # ----------------------------
+    # DB TARGETS (explicit roles)
+    # ----------------------------
+    ENGINE_DB = "tools.analysis.data.analysis.db"
+    LEGACY_DB = "_Users_bartl_dev_dj2_tools.old.db"
+
     print("RUNNING ENGINE TEST")
 
+    # IMPORTANT: matches your real target root (tools.old)
     corpus = type("C", (), {"root_path": "tools.old"})()
     project_prefixes = []
     repo_root = "."
@@ -127,9 +152,12 @@ if __name__ == "__main__":
         repo_root=repo_root,
         connection=None,
     )
-    # save db
+
+    # ----------------------------
+    # PARITY CHECK
+    # ----------------------------
     parity = run_parity_check(
-        db_path="tools/analysis/data/analysis.db",
+        db_path=LEGACY_DB,
         engine_result=result,
     )
 
@@ -137,3 +165,15 @@ if __name__ == "__main__":
     print("Files:", result.facts["file_count"])
     print("Symbols:", result.facts["symbol_ref_count"])
     print("Edges:", result.facts["edge_count"])
+
+    print_parity_report(parity)
+
+    # ----------------------------
+    # STRUCTURAL DIFF
+    # ----------------------------
+    diff = run_structural_diff(
+        db_path=LEGACY_DB,
+        file_analyses=result.ingestion["file_analyses"],
+    )
+
+    print_structural_diff(diff)
