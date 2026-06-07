@@ -19,6 +19,8 @@ from tools.analysis.persistence.persist_file_analysis import initialize_database
 from tools.analysis.engine.engine_snapshot import EngineSnapshotBuilder
 from tools.analysis.engine.engine_snapshot_diff import diff_snapshots, print_snapshot_diff
 from tools.analysis.engine.engine_evaluation_snapshot import EngineEvaluationSnapshotBuilder
+from tools.analysis.engine.snapshot_stub import build_snapshot_stub
+from tools.analysis.engine.pipeline_inventory import build_pipeline_inventory, print_pipeline_inventory
 
 # ----------------------------
 # SINGLE SOURCE OF TRUTH
@@ -145,7 +147,7 @@ if __name__ == "__main__":
     print("RUNNING ENGINE TEST")
 
     # IMPORTANT: matches your real target root (tools.old)
-    corpus = type("C", (), {"root_path": "tools"})()
+    corpus = type("C", (), {"root_path": "tools.old"})()
     project_prefixes = []
     repo_root = "."
 
@@ -158,24 +160,32 @@ if __name__ == "__main__":
         connection=None,
     )
 
-    # ----------------------------
-    # PARITY CHECK
-    # ----------------------------
+    # -----------------------------------
+    # ENGINE SNAPSHOT (derived from facts)
+    # -----------------------------------
+    engine_snapshot = {
+        "file_count": result.facts["file_count"],
+        "symbol_ref_count": result.facts["symbol_ref_count"],
+        "edge_count": result.facts["edge_count"],
+    }
+
+    print("\n=== ENGINE SNAPSHOT ===")
+    for k, v in engine_snapshot.items():
+        print(f"{k}: {v}")
+
+    # -----------------------------------
+    # PARITY CHECK (DB vs ENGINE)
+    # -----------------------------------
     parity = run_parity_check(
         db_path=LEGACY_DB,
         engine_result=result,
     )
 
-    print("\n=== DONE ===")
-    print("Files:", result.facts["file_count"])
-    print("Symbols:", result.facts["symbol_ref_count"])
-    print("Edges:", result.facts["edge_count"])
-
     print_parity_report(parity)
 
-    # ----------------------------
-    # STRUCTURAL DIFF
-    # ----------------------------
+    # -----------------------------------
+    # STRUCTURAL DIFF (DB vs ENGINE GRAPH)
+    # -----------------------------------
     diff = run_structural_diff(
         db_path=LEGACY_DB,
         file_analyses=result.ingestion["file_analyses"],
@@ -183,37 +193,17 @@ if __name__ == "__main__":
 
     print_structural_diff(diff)
 
-    pipeline_snapshot = None  # TEMP placeholder for now
+    # ===================================
+    # PIPELINE REPRESENTATION LAYER
+    # ===================================
 
-    diff = diff_snapshots(
-        engine_snapshot=result.snapshot,
-        pipeline_snapshot=pipeline_snapshot,
-    )
-
-    print_snapshot_diff(diff)
-
-    from tools.analysis.engine.pipeline_inventory import (
-        build_pipeline_inventory,
-        print_pipeline_inventory,
-    )
     inventory = build_pipeline_inventory(
         result.ingestion["file_analyses"]
     )
 
-    print_pipeline_inventory(inventory)
-
-    from tools.analysis.engine.pipeline_dependency_tracer import (
-        trace_pipeline_dependencies,
-        print_pipeline_report,
+    pipeline_snapshot = build_snapshot_stub(
+        inventory=inventory,
+        db_totals=engine_snapshot,
     )
 
-    index = {
-        a.file_path: {
-            "imports": getattr(a, "imports", []),
-            "calls": getattr(a, "calls", []),
-        }
-        for a in result.ingestion["file_analyses"]
-    }
-
-    report = trace_pipeline_dependencies(index)
-    print_pipeline_report(report)  
+    print_pipeline_inventory(inventory)
