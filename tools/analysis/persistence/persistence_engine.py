@@ -202,6 +202,7 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         "CREATE INDEX IF NOT EXISTS idx_graph_edges_bucket ON graph_edges(bucket);",
         "CREATE INDEX IF NOT EXISTS idx_graph_edges_line ON graph_edges(line_number);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_canonical ON symbols(canonical_id);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(symbol_type);",
         "CREATE INDEX IF NOT EXISTS idx_symref_caller ON symbol_references(caller);",
