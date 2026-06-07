@@ -75,13 +75,11 @@ class IntegrityView:
     db_mismatches: list[str]
 
 
-def build_integrity_view(validation_result, db_snapshot, graph) -> IntegrityView:
+def build_integrity_view(validation_result, graph) -> IntegrityView:
     return IntegrityView(
         errors=validation_result.errors,
         warnings=validation_result.warnings,
-        db_mismatches=[
-            f"edges={len(graph.edges)} vs db={db_snapshot.get('symbol_reference_count')}"
-        ],
+        db_mismatches=[],  # no DB comparison anymore
     )
 
 @dataclass

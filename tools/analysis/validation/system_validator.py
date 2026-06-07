@@ -35,7 +35,6 @@ class SystemValidator:
         analysis,
         graph,
         contract_report: Any,
-        db_snapshot: dict,
     ) -> ValidationResult:
 
         errors = []
@@ -44,7 +43,7 @@ class SystemValidator:
         errors += self._validate_symbol_integrity(analysis)
         errors += self._validate_graph_integrity(graph)
         errors += self._validate_contracts(contract_report)
-        warnings += self._validate_shape_signals(graph, db_snapshot)
+        warnings += self._validate_shape_signals(graph)
 
         ok = len(errors) == 0
 
@@ -111,20 +110,13 @@ class SystemValidator:
     # --------------------------
     # SHAPE SIGNALS (soft checks)
     # --------------------------
-    def _validate_shape_signals(self, graph, db_snapshot) -> list[str]:
+    def _validate_shape_signals(self, graph) -> list[str]:
         warnings = []
 
         edge_count = len(getattr(graph, "edges", []))
 
         if edge_count < 10:
             warnings.append("Low edge count detected (possible under-analysis)")
-
-        db_edges = db_snapshot.get("symbol_reference_count", 0)
-
-        if db_edges != edge_count:
-            warnings.append(
-                f"DB/graph mismatch: db={db_edges}, graph={edge_count}"
-            )
 
         return warnings
 

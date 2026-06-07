@@ -1,4 +1,5 @@
-# tools/analysis/persistence/persist_file_analysis.py
+# tools/analysis/persistence/persistence_engine.py
+
 
 from __future__ import annotations
 
@@ -8,17 +9,30 @@ from pathlib import Path
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.core.pathing import normalize_file_path
 
+def ensure_schema(connection):
+    initialize_database(connection)
+
 def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
+    canonical_id = f"{file_path}:{symbol_type}:{name}:{line_number}"
+
     cursor.execute("""
     INSERT INTO symbols (
         file_path,
         symbol_type,
         name,
         line_number,
-        signature
+        signature,
+        canonical_id
     )
-    VALUES (?, ?, ?, ?, ?)
-    """, (file_path, symbol_type, name, line_number, signature))
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        file_path,
+        symbol_type,
+        name,
+        line_number,
+        signature,
+        canonical_id
+    ))
 
 def run_sql(connection: sqlite3.Connection, query: str):
     """
@@ -101,8 +115,18 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS file_edges (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        from_file TEXT,
-        to_module TEXT
+        from_file TEXT NOT NULL,
+        to_module TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS graph_edges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        caller TEXT,
+        callee TEXT,
+        line_number INTEGER,
+        bucket TEXT
     )
     """)
 
@@ -113,8 +137,9 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         symbol_type TEXT,
         name TEXT,
         line_number INTEGER,
-        signature TEXT
-    )
+        signature TEXT,
+        canonical_id TEXT UNIQUE
+        )
     """)
 
     cursor.execute("""
@@ -172,6 +197,10 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         "CREATE INDEX IF NOT EXISTS idx_mutations_file_path ON mutations(file_path);",
         "CREATE INDEX IF NOT EXISTS idx_file_edges_from_file ON file_edges(from_file);",
         "CREATE INDEX IF NOT EXISTS idx_file_edges_to_module ON file_edges(to_module);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_caller ON graph_edges(caller);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_callee ON graph_edges(callee);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_bucket ON graph_edges(bucket);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_line ON graph_edges(line_number);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_type ON symbols(symbol_type);",
@@ -466,3 +495,95 @@ def create_database(database_path: str | Path) -> sqlite3.Connection:
     create_indexes(connection)
 
     return connection
+
+
+
+# ==================================================
+# PUBLIC ENTRY POINT (ONLY FUNCTION CALLED OUTSIDE)
+# ==================================================
+def persist_all(connection, file_analyses, graph, project_prefixes):
+    """
+    Single persistence orchestrator.
+
+    ALL DB writes must flow through here.
+    """
+
+    # -----------------------------------------
+    # 1. SCHEMA GUARANTEE (MUST BE FIRST)
+    # -----------------------------------------
+    ensure_schema(connection)
+
+    cursor = connection.cursor()
+
+    # -----------------------------------------
+    # 2. OPTIONAL DEBUG (safe after schema exists)
+    # -----------------------------------------
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    )
+    print("[DB TABLES]", cursor.fetchall())
+
+    # -----------------------------------------
+    # 3. SNAPSHOT (SAFE NOW)
+    # -----------------------------------------
+    cursor.execute("SELECT COUNT(*) FROM symbol_references")
+    db_total = cursor.fetchone()[0]
+
+    db_snapshot = {
+        "symbol_reference_count": db_total
+    }
+
+    # -----------------------------------------
+    # 4. PERSIST FILE LAYER
+    # -----------------------------------------
+    _persist_file_analysis(connection, file_analyses, project_prefixes)
+
+    # -----------------------------------------
+    # 5. PERSIST GRAPH LAYER
+    # -----------------------------------------
+    _persist_graph_edges(connection, graph)
+
+
+# ==================================================
+# FILE / SYMBOL PERSISTENCE (LEGACY BUT CONTAINED)
+# ==================================================
+def _persist_file_analysis(connection, file_analyses, project_prefixes):
+    """
+    Keeps existing behavior but centralized.
+    """
+    cursor = connection.cursor()
+
+    for analysis in file_analyses:
+        persist_file_analysis(connection, analysis, project_prefixes)
+
+
+# ==================================================
+# GRAPH EDGE PERSISTENCE (TRUTH LAYER)
+# ==================================================
+def _persist_graph_edges(connection, graph):
+    cursor = connection.cursor()
+
+    # -----------------------------------------
+    # GRAPH TABLE RESET (NOT file_edges)
+    # -----------------------------------------
+    cursor.execute("DELETE FROM graph_edges")
+
+    # -----------------------------------------
+    # INSERT CALL GRAPH
+    # -----------------------------------------
+    for edge in getattr(graph, "edges", []):
+        cursor.execute("""
+        INSERT INTO graph_edges (
+            caller,
+            callee,
+            line_number,
+            bucket
+        ) VALUES (?, ?, ?, ?)
+        """, (
+            edge.caller,
+            edge.callee,
+            edge.line_number,
+            getattr(edge, "bucket", "unknown"),
+        ))
+
+    connection.commit()
