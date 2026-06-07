@@ -21,6 +21,10 @@ from tools.analysis.engine.engine_snapshot_diff import diff_snapshots, print_sna
 from tools.analysis.engine.engine_evaluation_snapshot import EngineEvaluationSnapshotBuilder
 from tools.analysis.engine.snapshot_stub import build_snapshot_stub
 from tools.analysis.engine.pipeline_inventory import build_pipeline_inventory, print_pipeline_inventory
+from tools.analysis.truth.views import build_structure_view
+from tools.analysis.truth.views import build_stability_view
+from tools.analysis.truth.views import build_integrity_view
+from tools.analysis.validation.system_validator import SystemValidator
 
 # ----------------------------
 # SINGLE SOURCE OF TRUTH
@@ -34,7 +38,7 @@ class EngineResult:
     graph: Any
     facts: Dict[str, Any]
     snapshot: Dict[str, Any]
-
+    reduced: Any | None = None
 
 class EngineRunner:
 
@@ -102,7 +106,7 @@ class EngineRunner:
         }
 
         # ==================================================
-        # 7. INGESTION RESULT
+        # 6. INGESTION RESULT
         # ==================================================
         ingestion = {
             "file_analyses": file_analyses,
@@ -112,11 +116,66 @@ class EngineRunner:
         # ==================================================
         # 7. SNAPSHOT
         # ==================================================
+        # ----------------------------
+        # FANOUT STATE INITIALIZATION
+        # ----------------------------
+        all_reports = []
+        drift_signals = []
+
+        # ----------------------------
+        # VALIDATION STAGE (ENGINE CONSOLIDATION)
+        # ----------------------------
+        if connection is not None:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM symbol_references")
+            db_total = cursor.fetchone()[0]
+        else:
+            db_total = 0
+
+        db_snapshot = {
+            "symbol_reference_count": db_total
+        }
+
+        validation_errors = []
+
+        validator = SystemValidator(strict=False)
+
+        for analysis in file_analyses:
+            errors = validator.validate(
+                analysis=analysis,
+                graph=graph,
+                contract_report=None,
+                db_snapshot=db_snapshot,
+            )
+
+            if hasattr(errors, "errors"):
+                validation_errors.extend(errors.errors)
+            elif isinstance(errors, list):
+                validation_errors.extend(errors)
+
+        validation = type(
+            "ValidationResult",
+            (),
+            {
+                "ok": len(validation_errors) == 0,
+                "errors": validation_errors,
+                "warnings": [],
+            },
+        )()
+
         system_shape = {"stub": True}
-        structure_view = {"stub": True}
-        stability_view = {"stub": True}
-        integrity_view = {"stub": True}
+        structure_view = build_structure_view(graph)
+        stability_view = build_stability_view(all_reports, drift_signals)
+        integrity_view = build_integrity_view(validation, db_snapshot, graph)
         subsystem_view = {"stub": True}
+
+        print("\n=== STRUCTURE VIEW CHECK ===")
+        print(len(getattr(structure_view, "edges", structure_view)))
+        print("\n=== STABILITY VIEW CHECK ===")
+        print(stability_view)
+        print("\n=== INTEGRITY VIEW CHECK ===")
+        print(integrity_view)
+
 
         snapshot_builder = EngineEvaluationSnapshotBuilder()
 
@@ -124,6 +183,16 @@ class EngineRunner:
             file_analyses=file_analyses,
             graph=graph,
         )
+
+        # ----------------------------
+        # REDUCTION (FIRST FANOUT MODULE)
+        # ----------------------------
+        from tools.analysis.reducer.reduce import reduce
+
+        reduced = reduce([snapshot])
+
+        print("\n=== REDUCE CHECK ===")
+        print(reduced)
 
         return EngineResult(
             ingestion=ingestion,
@@ -133,6 +202,7 @@ class EngineRunner:
             },
             facts=facts,
             snapshot=snapshot,
+            reduced=reduced,
         )
 
 
