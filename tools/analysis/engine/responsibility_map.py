@@ -1,4 +1,4 @@
-# tools/analysis/engine/pipeline_inventory.py
+# tools/analysis/engine/responsibility_map.py
 
 from collections import defaultdict
 
@@ -40,7 +40,7 @@ ROLE_PATTERNS = {
 }
 
 
-def detect_roles(file_analysis):
+def detect_file_roles(file_analysis):
 
     text = " ".join([
         getattr(file_analysis, "file_path", ""),
@@ -61,14 +61,14 @@ def detect_roles(file_analysis):
     return roles
 
 
-def build_pipeline_inventory(file_analyses):
+def build_responsibility_map(file_analyses):
 
     files = []
     totals = defaultdict(int)
 
     for analysis in file_analyses:
 
-        roles = detect_roles(analysis)
+        roles = detect_file_roles(analysis)
 
         for role_name, enabled in roles.items():
             if enabled:
@@ -92,20 +92,28 @@ def build_pipeline_inventory(file_analyses):
     }
 
 
-def print_pipeline_inventory(inventory):
+def print_responsibility_map(snapshot):
 
-    print("\n=== PIPELINE RESPONSIBILITY INVENTORY ===\n")
+    engine = snapshot["engine"]
+    responsibility = snapshot["responsibility"]
 
-    for role_name in sorted(inventory["totals"]):
+    print("\n=== RESPONSIBILITY MAP ===\n")
+
+    for role_name in sorted(responsibility["totals"]):
         print(
             f"{role_name}: "
-            f"{inventory['totals'][role_name]}"
+            f"{responsibility['totals'][role_name]}"
         )
 
-    print("\nTOP FILES\n")
+    print("\n=== ENGINE TOTALS ===\n")
+
+    for k in ["file_count", "symbol_reference_count", "edge_count"]:
+        print(f"{k}: {engine.get(k, 0)}")
+
+    print("\n=== FILE BREAKDOWN ===\n")
 
     ranked = sorted(
-        inventory["files"],
+        responsibility["files"],
         key=lambda x: -x["edge_count"],
     )
 
@@ -113,8 +121,7 @@ def print_pipeline_inventory(inventory):
 
         active_roles = [
             role
-            for role, enabled
-            in row["roles"].items()
+            for role, enabled in row["roles"].items()
             if enabled
         ]
 

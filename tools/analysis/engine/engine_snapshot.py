@@ -36,7 +36,7 @@ class EngineSnapshotBuilder:
 
         metrics = {
             "file_count": facts["file_count"],
-            "symbol_ref_count": facts["symbol_ref_count"],
+            "symbol_reference_count": facts["symbol_reference_count"],
             "edge_count": edge_count,
         }
 

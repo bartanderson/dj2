@@ -544,18 +544,78 @@ def persist_all(connection, file_analyses, graph, project_prefixes):
     # -----------------------------------------
     _persist_graph_edges(connection, graph)
 
+# ==================================================
+# --- SYMBOL IDENTITY LAYER (NEW) ---
+# ==================================================
+
+def make_canonical_id(file_path, symbol_type, name, line_number):
+    return f"{file_path}:{symbol_type}:{name}:{line_number}"
 
 # ==================================================
 # FILE / SYMBOL PERSISTENCE (LEGACY BUT CONTAINED)
 # ==================================================
 def _persist_file_analysis(connection, file_analyses, project_prefixes):
-    """
-    Keeps existing behavior but centralized.
-    """
     cursor = connection.cursor()
 
     for analysis in file_analyses:
+
+        # existing legacy persistence
         persist_file_analysis(connection, analysis, project_prefixes)
+
+        # 🔥 THIS WAS MISSING
+        for ref in analysis.symbol_references:
+
+            caller_id = make_canonical_id(
+                analysis.file_path,
+                "caller",
+                ref.caller,
+                ref.line_number
+            )
+
+            callee_id = make_canonical_id(
+                analysis.file_path,
+                "callee",
+                ref.callee,
+                ref.line_number
+            )
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO symbols (
+                    file_path,
+                    symbol_type,
+                    name,
+                    line_number,
+                    signature,
+                    canonical_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                analysis.file_path,
+                "caller",
+                ref.caller,
+                ref.line_number,
+                getattr(ref, "signature", ""),
+                caller_id
+            ))
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO symbols (
+                    file_path,
+                    symbol_type,
+                    name,
+                    line_number,
+                    signature,
+                    canonical_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                analysis.file_path,
+                "callee",
+                ref.callee,
+                ref.line_number,
+                "",
+                callee_id
+            ))
 
 
 # ==================================================

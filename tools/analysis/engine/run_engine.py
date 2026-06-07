@@ -16,8 +16,8 @@ from tools.analysis.engine.structural_parity_diff import (
 from tools.analysis.engine.engine_snapshot import EngineSnapshotBuilder
 from tools.analysis.engine.engine_snapshot_diff import diff_snapshots, print_snapshot_diff
 from tools.analysis.engine.engine_evaluation_snapshot import EngineEvaluationSnapshotBuilder
-from tools.analysis.engine.snapshot_stub import build_snapshot_stub
-from tools.analysis.engine.pipeline_inventory import build_pipeline_inventory, print_pipeline_inventory
+from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
+from tools.analysis.engine.responsibility_map import build_responsibility_map, print_responsibility_map
 from tools.analysis.truth.views import build_structure_view
 from tools.analysis.truth.views import build_stability_view
 from tools.analysis.truth.views import build_integrity_view
@@ -84,10 +84,14 @@ class EngineRunner:
             for a in file_analyses
         ]
 
+        symbol_reference_count = sum(
+            len(a.symbol_references) for a in file_analyses
+        )
+
         ingestion = {
             "file_analyses": file_analyses,
             "processed_count": processed_count,
-            "total_symbol_refs": sum(len(a.symbol_references) for a in file_analyses),
+            "symbol_reference_count": symbol_reference_count,
         }
 
         # ==================================================
@@ -116,6 +120,17 @@ class EngineRunner:
         graph = builder.build()
         edge_count = len(getattr(graph, "edges", []))
 
+        print("\n=== SYMBOL REFERENCE SANITY CHECK ===")
+
+        sample = file_analyses[:3]
+
+        for a in sample:
+            print(a.file_path)
+            print("  symbol_references:", len(a.symbol_references))
+
+        print("TOTAL symbol refs:", sum(len(a.symbol_references) for a in file_analyses))
+        print("EDGE COUNT:", edge_count)
+
         persist_all(
             connection=connection,
             file_analyses=file_analyses,
@@ -125,7 +140,7 @@ class EngineRunner:
 
         facts = {
             "file_count": processed_count,
-            "symbol_ref_count": ingestion["total_symbol_refs"],
+            "symbol_reference_count": ingestion["symbol_reference_count"],
             "edge_count": edge_count,
         }
 
@@ -233,7 +248,7 @@ if __name__ == "__main__":
     # -----------------------------------
     engine_snapshot = {
         "file_count": result.facts["file_count"],
-        "symbol_ref_count": result.facts["symbol_ref_count"],
+        "symbol_reference_count": result.facts["symbol_reference_count"],
         "edge_count": result.facts["edge_count"],
     }
 
@@ -245,13 +260,13 @@ if __name__ == "__main__":
     # PIPELINE REPRESENTATION LAYER
     # ===================================
 
-    inventory = build_pipeline_inventory(
+    responsibility_map = build_responsibility_map(
         result.ingestion["file_analyses"]
     )
 
-    pipeline_snapshot = build_snapshot_stub(
-        inventory=inventory,
+    responsibility_snapshot = build_responsibility_snapshot(
+        responsibility_map=responsibility_map,
         db_totals=engine_snapshot,
     )
 
-    print_pipeline_inventory(inventory)
+    print_responsibility_map(responsibility_snapshot)
