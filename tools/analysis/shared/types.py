@@ -3,8 +3,7 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Literal
 
-from tools.analysis.identity.ir1 import IR1Symbol
-
+from tools.analysis.identity.symbol_identity import SymbolIdentity
 
 
 
@@ -80,7 +79,7 @@ class SymbolReference:
     line_number: int
 
     # A → B bridge field (non-breaking addition)
-    ir1: Optional[IR1Symbol] = None
+    identity: Optional[SymbolIdentity] = None
 
     bucket: Optional[str] = None
 

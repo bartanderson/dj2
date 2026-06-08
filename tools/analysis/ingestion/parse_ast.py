@@ -7,7 +7,7 @@ import builtins
 from pathlib import Path
 from typing import List, Optional
 from tools.analysis.ingestion.extract_symbols import extract_symbols
-from tools.analysis.identity.ir1 import IR1Symbol
+from tools.analysis.identity.symbol_identity import SymbolIdentity
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 
 from tools.analysis.shared.types import (
@@ -26,7 +26,6 @@ from tools.analysis.representation.symbol_environment import (
 )
 from tools.analysis.graph.symbol_router import route_symbol 
 from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
-from tools.analysis.identity.symbol_identity import normalize_symbol
 
 # ----------------------------
 # Helpers (pure AST extraction)
@@ -58,7 +57,7 @@ def _extract_imports(
                     )
                 )
 
-                local_name = alias.asname or alias.name.split(".")[-1]
+                local_name = alias.asname or alias.name
                 alias_map[local_name] = module_name
 
         elif isinstance(node, ast.ImportFrom):
@@ -286,15 +285,11 @@ def _extract_symbol_references(
 
             fqdn = identity.fqdn or resolved or raw
 
-            ir1 = IR1Symbol(
+            identity = SymbolIdentity(
                 surface=raw,
-                normalized=raw.split(".")[-1],
+                normalized = raw,
                 fqdn=fqdn,
-                module=(
-                    fqdn.split(".")[0]
-                    if fqdn and "." in fqdn
-                    else None
-                ),
+                module=fqdn,
                 kind=(
                     "runtime"
                     if raw in runtime_bindings
@@ -310,7 +305,7 @@ def _extract_symbol_references(
 
             results.append((
                 self.current_function,
-                ir1,
+                identity,
                 node.lineno,
             ))
 
@@ -323,11 +318,11 @@ def _extract_symbol_references(
     return [
         SymbolReference(
             caller=caller,
-            callee=ir1.fqdn or ir1.surface,
+            callee=identity.fqdn or identity.surface,
             line_number=lineno,
-            ir1=ir1,
+            identity=identity,
         )
-        for (caller, ir1, lineno) in results
+        for (caller, identity, lineno) in results
     ]
 
 
