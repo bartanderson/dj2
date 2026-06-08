@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 import sqlite3
+from pathlib import Path
 
 from tools.analysis.ingestion.scan_project_files import scan_project_files
 from tools.analysis.classification.classify_references import classify_references
@@ -24,6 +25,7 @@ from tools.analysis.truth.views import build_integrity_view
 from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.graph.reachability_stage import build_reachability_view
 from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
+from tools.analysis.engine.db_resolver import resolve_analysis_db_path
 
 @dataclass
 class ContractReport:
@@ -225,22 +227,39 @@ if __name__ == "__main__":
     # ----------------------------
     # DB TARGETS (explicit roles)
     # ----------------------------
-    ENGINE_DB = "tools.analysis.data.analysis.db"
 
     print("RUNNING ENGINE TEST")
-
-    # IMPORTANT: matches your real target root (tools.old)
-    corpus = type("C", (), {"root_path": "tools.old"})()
     project_prefixes = []
     repo_root = "."
 
+    #ENGINE_DB = "tools.analysis.data.analysis.db"
+
+    import tkinter as tk 
+    from tkinter import filedialog
+
+    root = tk.Tk()
+
+    root.withdraw() # hide the empty window
+
+    # select analysis target path
+    selected_target = filedialog.askdirectory(initialdir=Path(__file__).parent) 
+    
+    corpus = type(
+        "Corpus",
+        (),
+        {"root_path": selected_target},
+    )()
+ 
+    db_path = resolve_analysis_db_path(corpus.root_path) # path selected normalized with _ + .db
+    print(f"Target: {corpus.root_path}")
+    print(f"Database: {db_path}")
     runner = EngineRunner()
 
     result = runner.run(
         corpus=corpus,
         project_prefixes=project_prefixes,
         repo_root=repo_root,
-        connection=sqlite3.connect(ENGINE_DB),
+        connection=sqlite3.connect(db_path),
     )
 
     # -----------------------------------

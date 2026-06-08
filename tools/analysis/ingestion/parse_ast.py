@@ -7,7 +7,7 @@ import builtins
 from pathlib import Path
 from typing import List, Optional
 from tools.analysis.ingestion.extract_symbols import extract_symbols
-from tools.analysis.ir.ir1 import IR1Symbol
+from tools.analysis.identity.ir1 import IR1Symbol
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 
 from tools.analysis.shared.types import (

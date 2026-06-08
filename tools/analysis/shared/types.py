@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Literal
 
-from tools.analysis.ir.ir1 import IR1Symbol
+from tools.analysis.identity.ir1 import IR1Symbol
 
 
 

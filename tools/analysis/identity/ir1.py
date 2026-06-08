@@ -1,4 +1,4 @@
-# tools/analysis/ir/ir1.py
+# tools/analysis/identity/ir1.py
 
 from dataclasses import dataclass
 from typing import Optional, Literal, List

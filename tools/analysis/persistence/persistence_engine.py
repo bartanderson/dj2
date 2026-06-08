@@ -8,6 +8,7 @@ import sqlite3
 from pathlib import Path
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.core.pathing import normalize_file_path
+from tools.analysis.identity.canonical_identity import edge_identity
 
 def ensure_schema(connection):
     initialize_database(connection)
@@ -123,10 +124,16 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS graph_edges (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        /* semantic identity layer (NEW PRIMARY MODEL) */
+        source_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+
+        /* legacy observational trace (optional but useful) */
         caller TEXT,
         callee TEXT,
-        line_number INTEGER,
-        bucket TEXT
+
+        line_number INTEGER
     )
     """)
 
@@ -197,9 +204,10 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         "CREATE INDEX IF NOT EXISTS idx_mutations_file_path ON mutations(file_path);",
         "CREATE INDEX IF NOT EXISTS idx_file_edges_from_file ON file_edges(from_file);",
         "CREATE INDEX IF NOT EXISTS idx_file_edges_to_module ON file_edges(to_module);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_source_id ON graph_edges(source_id);",
+        "CREATE INDEX IF NOT EXISTS idx_graph_edges_target_id ON graph_edges(target_id);",
         "CREATE INDEX IF NOT EXISTS idx_graph_edges_caller ON graph_edges(caller);",
         "CREATE INDEX IF NOT EXISTS idx_graph_edges_callee ON graph_edges(callee);",
-        "CREATE INDEX IF NOT EXISTS idx_graph_edges_bucket ON graph_edges(bucket);",
         "CREATE INDEX IF NOT EXISTS idx_graph_edges_line ON graph_edges(line_number);",
         "CREATE INDEX IF NOT EXISTS idx_symbols_file_path ON symbols(file_path);",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_symbols_canonical ON symbols(canonical_id);",
@@ -633,18 +641,21 @@ def _persist_graph_edges(connection, graph):
     # INSERT CALL GRAPH
     # -----------------------------------------
     for edge in getattr(graph, "edges", []):
+        source_id, target_id = edge_identity(edge.caller, edge.callee)
         cursor.execute("""
         INSERT INTO graph_edges (
+            source_id,
+            target_id,
             caller,
             callee,
-            line_number,
-            bucket
-        ) VALUES (?, ?, ?, ?)
+            line_number
+        ) VALUES (?, ?, ?, ?, ?)
         """, (
+            source_id,
+            target_id,
             edge.caller,
             edge.callee,
-            edge.line_number,
-            getattr(edge, "bucket", "unknown"),
+            getattr(edge, "line_number", None)
         ))
 
     connection.commit()
