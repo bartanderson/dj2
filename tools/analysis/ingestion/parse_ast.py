@@ -26,17 +26,7 @@ from tools.analysis.representation.symbol_environment import (
 )
 from tools.analysis.graph.symbol_router import route_symbol 
 from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
-
-def normalize_symbol(name: str) -> str:
-    """
-    Collapse fully-qualified runtime/attribute symbols
-    into classification-level identity.
-    """
-    if not name:
-        return name
-
-    # keep last segment for dotted access chains
-    return name.split(".")[-1]
+from tools.analysis.identity.symbol_identity import normalize_symbol
 
 # ----------------------------
 # Helpers (pure AST extraction)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections import defaultdict
-from tools.analysis.graph.symbol_classifier import project_key
+from tools.analysis.identity.symbol_identity import project_key
 
 @dataclass
 class GraphEdge:

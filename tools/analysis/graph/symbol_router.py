@@ -51,7 +51,7 @@ from __future__ import annotations
 from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
-from tools.analysis.graph.symbol_classifier import normalize_symbol
+from tools.analysis.identity.symbol_identity import normalize_symbol
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
 from tools.analysis.graph.semantic_identity_contract import SemanticIdentityContract

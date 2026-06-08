@@ -2,7 +2,7 @@ import ast
 
 from tools.analysis.ingestion.parse_ast import _extract_symbol_references
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
-from tools.analysis.graph.symbol_classifier import classify_symbol
+from tools.analysis.identity.symbol_identity import classify_symbol
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.contracts.semantic_pipeline_contract import SemanticPipelineContract as Contract
 from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type

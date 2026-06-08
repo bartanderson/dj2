@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 
 from tools.analysis.graph.symbol_resolution import resolve_symbol_identity
-from tools.analysis.graph.symbol_identity import normalize_symbol
+from tools.analysis.identity.symbol_identity import normalize_symbol, resolve_symbol_identity
 
 # =========================================================
 # FILE IDENTITY (single source of truth)

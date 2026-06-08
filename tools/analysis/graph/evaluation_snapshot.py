@@ -15,7 +15,7 @@
 
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role
-from tools.analysis.graph.symbol_classifier import classify_symbol
+from tools.analysis.identity.symbol_identity import classify_symbol
 from tools.analysis.representation.semantic_identity import SemanticIdentity
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 

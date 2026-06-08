@@ -13,7 +13,7 @@ from __future__ import annotations
 import builtins
 import sys
 from typing import Literal, Tuple, Dict, Any
-from tools.analysis.graph.symbol_identity import normalize_symbol
+from tools.analysis.identity.symbol_identity import normalize_symbol, resolve_symbol_identity
 from tools.analysis.contracts.classification_contract import load_classification_contract
 from tools.analysis.representation.semantic_identity import SemanticIdentity
 from tools.analysis.representation.symbol_environment import SymbolEnvironment

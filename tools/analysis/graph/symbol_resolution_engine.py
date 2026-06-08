@@ -7,7 +7,7 @@ import sys
 
 from typing import Literal
 
-from tools.analysis.graph.symbol_classifier import normalize_symbol
+from tools.analysis.identity.symbol_identity import normalize_symbol
 
 
 RouteType = Literal[
