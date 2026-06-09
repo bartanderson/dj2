@@ -3,6 +3,7 @@
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
+from tools.analysis.engine.run_engine import EngineResult
 
 
 @dataclass
@@ -14,15 +15,16 @@ class HealthReport:
     warnings: list
 
 
-def compute_health(snapshot: dict[str, Any]) -> HealthReport:
-    symbol_refs = snapshot.get("symbol_reference_count", 0)
-    edge_count = snapshot.get("edge_count", 0)
-    file_count = snapshot.get("file_count", 0)
+def compute_health(result: EngineResult) -> HealthReport:
+    facts = result.facts
+
+    symbol_refs = facts.get("symbol_reference_count", 0)
+    edge_count = facts.get("edge_count", 0)
+    file_count = facts.get("file_count", 0)
 
     bucket_counts = Counter()
 
-    # optional defensive parsing
-    for r in snapshot.get("results", []):
+    for r in getattr(result.snapshot, "results", []):
         bucket = r.get("bucket", "unknown")
         bucket_counts[bucket] += 1
 
