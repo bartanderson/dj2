@@ -2,7 +2,8 @@ import ast
 
 from tools.analysis.ingestion.parse_ast import _extract_symbol_references
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
-from tools.analysis.identity.symbol_identity import classify_symbol
+from tools.analysis.classification.classify_references import classify_symbol
+from tools.analysis.identity.symbol_identity import SymbolIdentity
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 from tools.analysis.contracts.semantic_pipeline_contract import SemanticPipelineContract as Contract
 from tools.analysis.graph.symbol_resolution_engine import resolve_symbol_type
@@ -73,7 +74,7 @@ def run_ast_stage():
     print("\n================ STAGE 1: AST OUTPUT ================\n")
 
     for r in refs:
-        print(r.ir1.surface, "->", r.ir1.fqdn)
+        print(r.identity.surface, "->", r.identity.fqdn)
 
     # ----------------------------
     # structural invariants
@@ -84,14 +85,14 @@ def run_ast_stage():
 
     for r in refs:
 
-        assert r.ir1.surface is not None
-        assert isinstance(r.ir1.surface, str)
+        assert r.identity.surface is not None
+        assert isinstance(r.identity.surface, str)
 
-        assert r.ir1.normalized is not None
-        assert isinstance(r.ir1.normalized, str)
+        assert r.identity.normalized is not None
+        assert isinstance(r.identity.normalized, str)
 
-        assert r.ir1.provenance is not None
-        assert isinstance(r.ir1.provenance, list)
+        assert r.identity.provenance is not None
+        assert isinstance(r.identity.provenance, list)
 
     return refs
 
@@ -108,13 +109,13 @@ def run_identity_stage(refs):
 
     for r in refs:
         route_type = resolve_symbol_type(
-            name=r.ir1.surface,
+            name=r.identity.surface,
             runtime_bindings=ENV.runtime_bindings,
             project_symbols=ENV.project_symbols,
         )
 
         identity = builder.build(
-            name=r.ir1.surface,
+            name=r.identity.surface,
             env=ENV,
             route_type=route_type,
         )
@@ -153,7 +154,7 @@ def run_identity_stage(refs):
     # cross-stage integrity
     # ----------------------------
     ref_surfaces = {
-        r.ir1.surface
+        r.identity.surface
         for r in refs
     }
 
