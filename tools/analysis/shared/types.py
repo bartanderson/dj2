@@ -71,7 +71,7 @@ class SymbolReference:
     """
     Bridge representation:
     - preserves legacy string-based routing (callee)
-    - optionally carries IR1 identity for future pipeline stages
+    - optionally carries SymbolIdentity for future pipeline stages
     """
 
     caller: str

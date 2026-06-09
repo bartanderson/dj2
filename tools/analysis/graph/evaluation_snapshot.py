@@ -3,7 +3,7 @@
 # MODULE: snapshot
 # OWNED: TRUE
 #
-# CONTRACT (LOCKED v2 - IR1 aligned snapshot layer)
+# CONTRACT (LOCKED v2 - SymbolIdentity aligned snapshot layer)
 #
 # - Consumes classified edges (post-routing stage)
 # - Aggregates bucket results across file-level snapshots
@@ -11,7 +11,7 @@
 #
 # DOES NOT OWN
 # - classification (moved to classify_references)
-# - identity reconstruction (IR1 responsibility)
+# - identity reconstruction (SymbolIdentity responsibility)
 
 from collections import defaultdict
 from tools.analysis.graph.semantic_roles import classify_semantic_role

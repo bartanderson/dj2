@@ -42,7 +42,7 @@
       "file": "tools.analysis.graph.semantic_identity_builder",
       "status": "ACTIVE",
 
-      "role": "IR1 identity synthesis layer (OBSERVATION + CONSOLIDATION ONLY)",
+      "role": "SymbolIdentity synthesis layer (OBSERVATION + CONSOLIDATION ONLY)",
 
       "inputs": {
         "file_analysis": "FileAnalysis",
@@ -223,7 +223,7 @@
         "no_graph_construction": true,
         "no_snapshot_generation": true,
         "must_accept_flattened_symbols_only": true,
-        "must_not_receive_ir1_or_shadow_objects": true
+        "must_not_receive_SymbolIdentity_or_shadow_objects": true
       }
     },
 

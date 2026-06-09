@@ -4,15 +4,15 @@
 # MODULE: contract
 # OWNED: TRUE
 #
-# CONTRACT (LOCKED v2 - IR1 integrated validation layer)
+# CONTRACT (LOCKED v2 - SymbolIdentity integrated validation layer)
 #
 # ROLE:
 # - runtime validation of pipeline invariants across:
-#     IR1 → classification → snapshot → metrics
+#     SymbolIdentity → classification → snapshot → metrics
 #
 # ENSURES:
-# - IR1 objects are structurally valid SemanticIdentity instances
-# - classification consumes but does not mutate IR1
+# - SymbolIdentity objects are structurally valid SymbolIdentity instances
+# - classification consumes but does not mutate SymbolIdentity
 # - snapshot only aggregates post-classification outputs
 #
 # STRICT RULES:

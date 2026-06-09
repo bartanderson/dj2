@@ -7,7 +7,7 @@ from tools.analysis.graph.runtime_resolution import resolve_runtime_symbol
 
 class SemanticIdentityBuilder:
     """
-    IR1 construction layer.
+    SymbolIdentity construction layer.
 
     PURPOSE:
     - unify signals from routing stage (CP3)

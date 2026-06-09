@@ -3,33 +3,33 @@
 # MODULE: classification
 # OWNED: TRUE
 #
-# CONTRACT (LOCKED v3 - IR1-aware classification boundary)
+# CONTRACT (LOCKED v3 - SymbolIdentity-aware classification boundary)
 #
 # PURPOSE
-# - Assign bucket labels to SymbolReference edges after IR1 reconstruction exists
+# - Assign bucket labels to SymbolReference edges after SymbolIdentity reconstruction exists
 #
 # RESPONSIBILITY
-# - Consume IR1 (SemanticIdentity) or resolved symbol strings
+# - Consume SymbolIdentity or resolved symbol strings
 # - Apply deterministic routing via symbol_router.route_symbol
 # - Emit bucket classification:
 #     project | runtime | builtin | stdlib | external | unknown
 #
 # STRICT BOUNDARIES
-# - Does NOT perform semantic reconstruction (IR1 owns this)
+# - Does NOT perform semantic reconstruction (SymbolIdentity owns this)
 # - Does NOT compute identity resolution
 # - Does NOT use SemanticCandidateBuilder or identity inference logic
-# - Does NOT mutate IR1 objects
+# - Does NOT mutate SymbolIdentity objects
 #
 # PIPELINE POSITION
 # FileAnalysis ingestion pipeline:
 #
-#   IR1 semantic_identity_reconstruction
+#   SymbolIdentity semantic reconstruction
 #       → produces SemanticIdentity (single resolved representation)
 #
 #   classify_references (THIS MODULE)
 #       → assigns deterministic routing buckets only
 #       → does NOT perform identity reconstruction
-#       → consumes IR1 + runtime context only
+#       → consumes SymbolIdentity + runtime context only
 #
 #   GraphBuilder
 #       → builds structural call/reference graph
@@ -38,7 +38,7 @@
 #       → aggregates final analytical view (read-only)
 #
 # IMPORTANT ARCHITECTURAL NOTE
-# - IR1 is authoritative identity source
+# - SymbolIdentity is authoritative identity source
 # - CP2.5 remains observational only
 # - routing is deterministic decision layer only
 #

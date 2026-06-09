@@ -7,7 +7,7 @@ for the analysis pipeline.
 It includes:
 
 - AST ingestion contracts
-- IR1 semantic identity contracts
+- SymbolIdentity semantic identity contracts
 - classification contracts
 - snapshot contracts
 - validation contracts
@@ -16,11 +16,11 @@ It must NOT contain:
 - runtime execution logic
 - graph mutation logic
 - routing logic
-- identity reconstruction algorithms (IR1 lives outside contracts)
+- identity reconstruction algorithms (SymbolIdentity lives outside contracts)
 
 CONTRACT LAYERS:
 - AST (observation)
-- IR1 (semantic identity reconstruction)
+- SymbolIdentity (semantic identity reconstruction)
 - classification (deterministic routing)
 - snapshot (aggregation)
 - metrics (global reduction)
