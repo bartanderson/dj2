@@ -1,7 +1,5 @@
 # tools/analysis/identity/symbol_identity.py
 
-# tools/analysis/identity/symbol_identity.py
-
 from dataclasses import dataclass
 from typing import Optional, Literal, List
 

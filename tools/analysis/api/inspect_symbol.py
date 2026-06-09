@@ -1,7 +1,7 @@
 # tools/analysis/api/inspect_symbol.py
 
 from tools.analysis.graph.symbol_router import route_symbol
-from tools.analysis.identity.symbol_identity import classify_symbol
+from tools.analysis.graph.symbol_classifier import classify_symbol
 from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
 from tools.analysis.representation.symbol_environment import SymbolEnvironment
 
