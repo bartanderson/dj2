@@ -26,6 +26,10 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.graph.reachability_stage import build_reachability_view
 from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
+from tools.analysis.api.query_graph import neighbors, depends_on, used_by
+from tools.analysis.api.query_patterns import impact, surface, context
+
+ENABLE_FAULTS = False  # hard off for now
 
 @dataclass
 class ContractReport:
@@ -134,14 +138,16 @@ class EngineRunner:
                 )
 
         graph = builder.build()
-        
-        from tools.analysis.observability.fault_injector import (
-            inject_edge_drop,
-            inject_classification_drift,
-        )
+        from tools.analysis.api.query_graph import neighbors, depends_on, used_by
 
-        graph = inject_edge_drop(graph, rate=0.1)
-        file_analyses = inject_classification_drift(file_analyses, rate=0.1)
+        if ENABLE_FAULTS:
+            from tools.analysis.observability.fault_injector import (
+                inject_edge_drop,
+                inject_classification_drift,
+            )
+
+            graph = inject_edge_drop(graph, rate=0.1)
+            file_analyses = inject_classification_drift(file_analyses, rate=0.1)
 
         edge_count = len(getattr(graph, "edges", []))
 
@@ -321,6 +327,24 @@ if __name__ == "__main__":
     print("\n=== ENGINE SNAPSHOT ===")
     for k, v in engine_snapshot.items():
         print(f"{k}: {v}")
+
+
+    sample_symbol = None
+    
+    graph = result.graph["graph"]
+
+    if hasattr(graph, "edges") and graph.edges:
+        sample_symbol = graph.edges[0].caller
+
+    if sample_symbol:
+        print("\n=== QUERY SURFACE SMOKE TEST ===")
+        print("neighbors:", neighbors(graph, sample_symbol))
+        print("forward:", depends_on(graph, sample_symbol, depth=1)[:5])
+        print("reverse:", used_by(graph, sample_symbol, depth=1)[:5])
+        print("\n=== QUERY PATTERN TEST ===")
+        print("impact:", impact(graph, sample_symbol)[:5])
+        print("surface:", surface(graph, sample_symbol)[:5])
+        print("context:", context(graph, sample_symbol))
 
     # ===================================
     # PIPELINE REPRESENTATION LAYER

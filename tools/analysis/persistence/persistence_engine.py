@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 from tools.analysis.shared.types import FileAnalysis
 from tools.analysis.core.pathing import normalize_file_path
-from tools.analysis.identity.canonical_identity import edge_identity
+from tools.analysis.identity.edge_identity import edge_identity
 
 def ensure_schema(connection):
     initialize_database(connection)
