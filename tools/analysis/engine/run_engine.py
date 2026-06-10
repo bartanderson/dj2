@@ -63,7 +63,7 @@ class EngineResult:
 
 class EngineRunner:
 
-    def run(self, corpus, project_prefixes, repo_root, connection=None):
+    def run(self, corpus, project_prefixes, repo_root, connection=None, chaos_mode: bool = False):
 
         # ==================================================
         # PHASE 0: INGESTION
@@ -75,6 +75,20 @@ class EngineRunner:
                 repo_root,
             )
         )
+
+        # ----------------------------
+        # CHAOS MODE (controlled fault injection)
+        # ----------------------------
+        if chaos_mode:
+            print("\n=== CHAOS MODE ACTIVE ===")
+
+            # 1. drop half the files
+            file_analyses = file_analyses[: max(1, len(file_analyses) // 2)]
+
+            # 2. corrupt bucket metadata slightly
+            for a in file_analyses:
+                for r in getattr(a, "symbol_references", []):
+                    r.bucket = "unknown"
 
         if not file_analyses:
             raise RuntimeError("Engine ingestion produced no analyses")
@@ -120,7 +134,40 @@ class EngineRunner:
                 )
 
         graph = builder.build()
+        
+        from tools.analysis.observability.fault_injector import (
+            inject_edge_drop,
+            inject_classification_drift,
+        )
+
+        graph = inject_edge_drop(graph, rate=0.1)
+        file_analyses = inject_classification_drift(file_analyses, rate=0.1)
+
         edge_count = len(getattr(graph, "edges", []))
+
+        # Obeservability begin
+        from tools.analysis.observability.signal_contract import prune_signals
+        from tools.analysis.observability.instruments import (
+            ingestion_instrument,
+            graph_instrument,
+            classification_instrument,
+        )
+
+        signals = []
+
+        signals += ingestion_instrument(file_analyses)
+        signals += graph_instrument(graph)
+        signals += classification_instrument(file_analyses)
+
+        signals = prune_signals(signals)
+
+        print("\n=== OBSERVABILITY SIGNALS ===")
+
+        for s in signals:
+            print(
+                f"{s.stage} | {s.signal_class} | {s.name} = {s.value}"
+            )
+        # Obeservability end
 
         print("\n=== SYMBOL REFERENCE SANITY CHECK ===")
 

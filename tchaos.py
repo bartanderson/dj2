@@ -16,6 +16,7 @@ def run():
         project_prefixes=[],
         repo_root=".",
         connection=sqlite3.connect(":memory:"),
+        chaos_mode=True,   # 👈 toggle this
     )
 
     report = compute_health(result)

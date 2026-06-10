@@ -38,11 +38,11 @@
       }
     },
 
-    "semantic_identity_reconstruction": {
-      "file": "tools.analysis.graph.semantic_identity_builder",
+    "identity_resolution_layer": {
+      "file": "tools.analysis.graph.semantic_candidate_builder",
       "status": "ACTIVE",
 
-      "role": "SymbolIdentity synthesis layer (OBSERVATION + CONSOLIDATION ONLY)",
+      "role": "Resolves symbol identity from ingestion signals into unified identity objects",
 
       "inputs": {
         "file_analysis": "FileAnalysis",
@@ -52,14 +52,13 @@
       },
 
       "outputs": {
-        "semantic_identity_map": "Dict[str, SemanticIdentity]"
+        "identity_map": "Dict[str, Identity]"
       },
 
       "invariants": {
         "must_not_classify": true,
         "must_not_route": true,
-        "must_not_mutate_ast": true,
-        "must_only_consolidate_identity_signals": true
+        "must_only_resolve_identity": true
       }
     },
 
@@ -192,7 +191,7 @@
     "pipeline": {
       "stages": [
       "ingestion",
-      "semantic_identity_reconstruction",
+      "identity_resolution_layer",
       "classification",
       "graph_build",
       "snapshot",

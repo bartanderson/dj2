@@ -1,0 +1,976 @@
+IMPORT DEBUG: [(None, 'os'), (None, 're')]
+ALIAS MAP: {'os': 'os', 're': 're'}
+SYMBOL REFERENCES: 2
+IMPORT DEBUG: []
+ALIAS MAP: {'defaultdict': 'collections.defaultdict'}
+SYMBOL REFERENCES: 5
+IMPORT DEBUG: []
+ALIAS MAP: {'dataclass': 'dataclasses.dataclass', 'Any': 'typing.Any', 'Dict': 'typing.Dict'}
+SYMBOL REFERENCES: 1
+IMPORT DEBUG: []
+ALIAS MAP: {'asdict': 'dataclasses.asdict', 'is_dataclass': 'dataclasses.is_dataclass', 'Any': 'typing.Any', 'Dict': 'typing.Dict'}
+SYMBOL REFERENCES: 29
+IMPORT DEBUG: []
+ALIAS MAP: {'Dict': 'typing.Dict', 'Any': 'typing.Any'}
+SYMBOL REFERENCES: 7
+IMPORT DEBUG: []
+ALIAS MAP: {'defaultdict': 'collections.defaultdict', 'dataclass': 'dataclasses.dataclass', 'Any': 'typing.Any'}
+SYMBOL REFERENCES: 47
+IMPORT DEBUG: []
+ALIAS MAP: {'defaultdict': 'collections.defaultdict'}
+SYMBOL REFERENCES: 16
+IMPORT DEBUG: []
+ALIAS MAP: {'Dict': 'typing.Dict', 'Any': 'typing.Any'}
+SYMBOL REFERENCES: 3
+IMPORT DEBUG: [(None, 'sqlite3'), ('tk', 'tkinter')]
+ALIAS MAP: {'dataclass': 'dataclasses.dataclass', 'Any': 'typing.Any', 'Dict': 'typing.Dict', 'sqlite3': 'sqlite3', 'Path': 'pathlib.Path', 'scan_project_files': 'tools.analysis.ingestion.scan_project_files.scan_project_files', 'classify_references': 'tools.analysis.classification.classify_references.classify_references', 'GraphBuilder': 'tools.analysis.graph.graph_builder.GraphBuilder', 'run_structural_diff': 'tools.analysis.engine.structural_parity_diff.run_structural_diff', 'print_structural_diff': 'tools.analysis.engine.structural_parity_diff.print_structural_diff', 'EngineSnapshotBuilder': 'tools.analysis.engine.engine_snapshot.EngineSnapshotBuilder', 'diff_snapshots': 'tools.analysis.engine.engine_snapshot_diff.diff_snapshots', 'print_snapshot_diff': 'tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'EngineEvaluationSnapshotBuilder': 'tools.analysis.engine.engine_evaluation_snapshot.EngineEvaluationSnapshotBuilder', 'build_responsibility_snapshot': 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'build_responsibility_map': 'tools.analysis.engine.responsibility_map.build_responsibility_map', 'print_responsibility_map': 'tools.analysis.engine.responsibility_map.print_responsibility_map', 'build_structure_view': 'tools.analysis.truth.views.build_structure_view', 'build_stability_view': 'tools.analysis.truth.views.build_stability_view', 'build_integrity_view': 'tools.analysis.truth.views.build_integrity_view', 'SystemValidator': 'tools.analysis.validation.system_validator.SystemValidator', 'build_reachability_view': 'tools.analysis.graph.reachability_stage.build_reachability_view', 'persist_all': 'tools.analysis.persistence.persistence_engine.persist_all', 'initialize_database': 'tools.analysis.persistence.persistence_engine.initialize_database', 'resolve_analysis_db_path': 'tools.analysis.engine.db_resolver.resolve_analysis_db_path', 'tk': 'tkinter', 'filedialog': 'tkinter.filedialog', 'reduce': 'tools.analysis.reducer.reduce.reduce'}
+SYMBOL REFERENCES: 61
+IMPORT DEBUG: [(None, 'sqlite3')]
+ALIAS MAP: {'sqlite3': 'sqlite3', 'dataclass': 'dataclasses.dataclass', 'Any': 'typing.Any'}
+SYMBOL REFERENCES: 28
+
+=== CHAOS MODE ACTIVE ===
+
+[ROUTER INPUT]
+ name: re.sub
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[ROUTER INPUT]
+ name: re.sub
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='re.sub', normalized='re.sub', root='re', leaf='sub', has_dots=True, depth=2, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: re.sub
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[ROUTER INPUT]
+ name: re.sub
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='re.sub', normalized='re.sub', root='re', leaf='sub', has_dots=True, depth=2, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: collections.defaultdict
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[ROUTER INPUT]
+ name: collections.defaultdict
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='collections.defaultdict', normalized='collections.defaultdict', root='collections', leaf='defaultdict', has_dots=True, depth=2, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: getattr
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: getattr
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='getattr', normalized='getattr', root='getattr', leaf='getattr', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: sorted
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: sorted
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='sorted', normalized='sorted', root='sorted', leaf='sorted', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: tools.analysis.engine.engine_snapshot.EngineSnapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: tools.analysis.engine.engine_snapshot.EngineSnapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='tools.analysis.engine.engine_snapshot.EngineSnapshot', normalized='tools.analysis.engine.engine_snapshot.EngineSnapshot', root='tools', leaf='EngineSnapshot', has_dots=True, depth=5, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: dataclasses.is_dataclass
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[ROUTER INPUT]
+ name: dataclasses.is_dataclass
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='dataclasses.is_dataclass', normalized='dataclasses.is_dataclass', root='dataclasses', leaf='is_dataclass', has_dots=True, depth=2, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='_normalize', normalized='_normalize', root='_normalize', leaf='_normalize', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: dataclasses.asdict
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[ROUTER INPUT]
+ name: dataclasses.asdict
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] stdlib
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='dataclasses.asdict', normalized='dataclasses.asdict', root='dataclasses', leaf='asdict', has_dots=True, depth=2, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='isinstance', normalized='isinstance', root='isinstance', leaf='isinstance', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='_normalize', normalized='_normalize', root='_normalize', leaf='_normalize', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='isinstance', normalized='isinstance', root='isinstance', leaf='isinstance', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='_normalize', normalized='_normalize', root='_normalize', leaf='_normalize', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='isinstance', normalized='isinstance', root='isinstance', leaf='isinstance', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: sorted
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: sorted
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='sorted', normalized='sorted', root='sorted', leaf='sorted', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: list
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: list
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='list', normalized='list', root='list', leaf='list', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='_normalize', normalized='_normalize', root='_normalize', leaf='_normalize', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: _normalize
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='_normalize', normalized='_normalize', root='_normalize', leaf='_normalize', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='isinstance', normalized='isinstance', root='isinstance', leaf='isinstance', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: isinstance
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='isinstance', normalized='isinstance', root='isinstance', leaf='isinstance', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: set
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: set
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='set', normalized='set', root='set', leaf='set', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: set
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: set
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='set', normalized='set', root='set', leaf='set', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: walk
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: walk
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='walk', normalized='walk', root='walk', leaf='walk', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: walk
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: walk
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='walk', normalized='walk', root='walk', leaf='walk', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: print
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='print', normalized='print', root='print', leaf='print', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='int', normalized='int', root='int', leaf='int', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='int', normalized='int', root='int', leaf='int', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='int', normalized='int', root='int', leaf='int', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: int
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='int', normalized='int', root='int', leaf='int', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: normalize_snapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: normalize_snapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='normalize_snapshot', normalized='normalize_snapshot', root='normalize_snapshot', leaf='normalize_snapshot', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: normalize_snapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[ROUTER INPUT]
+ name: normalize_snapshot
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] project
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='normalize_snapshot', normalized='normalize_snapshot', root='normalize_snapshot', leaf='normalize_snapshot', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[ROUTER INPUT]
+ name: len
+ runtime_bindings: {}
+ project_symbols sample: ['tools.analysis.engine.engine_snapshot_diff.print_snapshot_diff', 'tools.analysis.engine.responsibility_snapshot.build_responsibility_snapshot', 'tools.analysis.engine.db_resolver.resolve_analysis_db_path']
+[RUNTIME CHECK] False
+[RESOLVE RESULT] None
+[ROUTE DECISION] builtin
+
+[SEMANTIC OBSERVATION]
+SemanticObservation(surface='len', normalized='len', root='len', leaf='len', has_dots=False, depth=1, runtime_root_hit=False, project_leaf_hit=False, runtime_bound=False, builtin_match=False, stdlib_match=False, project_match=False, routing_result=None, provenance_stage='cp25', candidates=[], metadata={})
+
+=== SYMBOL REFERENCE SANITY CHECK ===
+C:/Users/bartl/dev/dj2/tools/analysis/engine/db_resolver.py
+  symbol_references: 2
+C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_evaluation_snapshot.py
+  symbol_references: 5
+C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot.py
+  symbol_references: 1
+TOTAL symbol refs: 44
+EDGE COUNT: 44
+[DB TABLES] [('files',), ('functions',), ('sqlite_sequence',), ('classes',), ('imports',), ('behavioral_contracts',), ('mutations',), ('file_edges',), ('graph_edges',), ('symbols',), ('symbol_references',), ('contract_violations',), ('contract_drift_history',)]
+
+[PERSIST START]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/db_resolver.py
+symbol_refs: 2
+[PERSIST MID] symbol_references inserted (in-memory): 2
+
+[PERSIST END]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/db_resolver.py
+db_rows: 2
+in_memory: 2
+match: True
+
+[PERSIST START]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_evaluation_snapshot.py
+symbol_refs: 5
+[PERSIST MID] symbol_references inserted (in-memory): 5
+
+[PERSIST END]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_evaluation_snapshot.py
+db_rows: 5
+in_memory: 5
+match: True
+
+[PERSIST START]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot.py
+symbol_refs: 1
+[PERSIST MID] symbol_references inserted (in-memory): 1
+
+[PERSIST END]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot.py
+db_rows: 1
+in_memory: 1
+match: True
+
+[PERSIST START]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot_diff.py
+symbol_refs: 29
+[PERSIST MID] symbol_references inserted (in-memory): 29
+
+[PERSIST END]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot_diff.py
+db_rows: 29
+in_memory: 29
+match: True
+
+[PERSIST START]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/parity_contract.py
+symbol_refs: 7
+[PERSIST MID] symbol_references inserted (in-memory): 7
+
+[PERSIST END]
+file: C:/Users/bartl/dev/dj2/tools/analysis/engine/parity_contract.py
+db_rows: 7
+in_memory: 7
+match: True
+
+[REDUCE STEP] 0
+snapshot id: file_0
+incoming values:
+  edge_activity: 44
+  gap: 44
+  builtin: 0
+  project: 0
+fold:
+  before: (0, 0, 0)
+  after: (44, 44, 0)
+
+FINAL REDUCED STATE
+edge_activity_total: 44
+gap: 44
+builtin: 0
+================================================================================
+
+[STEP 6 - FINAL INVARIANT CHECK]
+
+=== STRUCTURE VIEW CHECK ===
+44
+
+=== STABILITY VIEW CHECK ===
+StabilityView(stable_contracts=['C:/Users/bartl/dev/dj2/tools/analysis/engine/db_resolver.py', 'C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_evaluation_snapshot.py', 'C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot.py', 'C:/Users/bartl/dev/dj2/tools/analysis/engine/engine_snapshot_diff.py', 'C:/Users/bartl/dev/dj2/tools/analysis/engine/parity_contract.py'], unstable_contracts=[], drift_signals=[])
+
+=== INTEGRITY VIEW CHECK ===
+IntegrityView(errors=[], warnings=[], db_mismatches=[])
+
+=== REDUCE CHECK ===
+{'edge_activity_total': 44, 'gap': 44, 'builtin': 0}
+
+=== SYSTEM HEALTH REPORT ===
+
+files: 5
+symbol_refs: 44
+edges: 44
+
+--- BUCKETS ---
+
+--- WARNINGS ---
+OK
