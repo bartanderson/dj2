@@ -1,6 +1,6 @@
 # tools/analysis/api/engine_query.py
 
-from tools.analysis.api.query_graph import context, surface, impact
+from tools.analysis.api.query_graph import context, surface, influence
 
 
 def engine_query(graph, symbol: str, depth: int = 1):
@@ -14,5 +14,5 @@ def engine_query(graph, symbol: str, depth: int = 1):
         "symbol": symbol,
         "context": context(graph, symbol),
         "surface": surface(graph, symbol, depth=depth),
-        "impact": impact(graph, symbol, depth=depth),
+        "influence": influence(graph, symbol, depth=depth),
     }

@@ -26,7 +26,7 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.graph.reachability_stage import build_reachability_view
 from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
-from tools.analysis.api.query_graph import context, surface, impact
+from tools.analysis.api.query_graph import context, surface, influence
 from tools.analysis.api.engine_query import engine_query
 
 
@@ -348,7 +348,7 @@ if __name__ == "__main__":
         print("symbol:", query_result["symbol"])
         print("context:", query_result["context"])
         print("surface:", query_result["surface"][:10])
-        print("impact:", query_result["impact"][:10])
+        print("influence:", query_result["influence"][:10])
 
 
     # ===================================

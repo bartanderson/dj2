@@ -66,10 +66,10 @@ def surface(graph: Any, symbol: str, depth: int = 1) -> List[str]:
 
 
 # =========================================================
-# IMPACT (reverse dependency)
+# INFLUENCE (reverse dependency)
 # =========================================================
 
-def impact(graph: Any, symbol: str, depth: int = 1) -> List[str]:
+def influence(graph: Any, symbol: str, depth: int = 1) -> List[str]:
     _, reverse = _build_index(graph)
 
     visited = set()
@@ -91,11 +91,3 @@ def impact(graph: Any, symbol: str, depth: int = 1) -> List[str]:
                 queue.append((nxt, d + 1))
 
     return sorted(result)
-
-
-# =========================================================
-# ALIASES (optional backward compatibility)
-# =========================================================
-
-depends_on = surface
-used_by = impact
