@@ -28,6 +28,8 @@ from tools.analysis.persistence.persistence_engine import persist_all, initializ
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
 from tools.analysis.api.query_graph import context, surface, influence
 from tools.analysis.api.engine_query import engine_query
+from tools.analysis.engine.invariants import run_integrity_check
+
 
 
 ENABLE_FAULTS = False  # hard off for now
@@ -234,6 +236,9 @@ class EngineRunner:
         )
         subsystem_view = {"stub": True}
 
+        print("\n=== INTEGRITY VIEW CHECK ===")
+        print(run_integrity_check(graph, facts))
+
         # ==================================================
         # PHASE 4: SNAPSHOT + REDUCTION
         # ==================================================
@@ -259,7 +264,6 @@ class EngineRunner:
 
         print("\n=== REDUCE CHECK ===")
         print(reduced)
-
         # ==================================================
         # RETURN
         # ==================================================

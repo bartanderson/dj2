@@ -4,6 +4,10 @@ import sqlite3
 import sys
 from typing import List, Tuple
 
+from tools.analysis.oracle.semantic_graph import SemanticGraphView
+
+sg = SemanticGraphView(self.oracle.conn)
+edges = sg.edges()
 
 # =========================================================
 # DB ORACLE CORE
