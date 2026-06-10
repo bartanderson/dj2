@@ -29,6 +29,7 @@ from tools.analysis.engine.db_resolver import resolve_analysis_db_path
 from tools.analysis.api.query_graph import context, surface, influence
 from tools.analysis.api.engine_query import engine_query
 from tools.analysis.engine.invariants import run_integrity_check
+from tools.analysis.api.query_discovery import list_symbols, find_symbols, find_files
 
 
 
@@ -264,6 +265,13 @@ class EngineRunner:
 
         print("\n=== REDUCE CHECK ===")
         print(reduced)
+
+        print("\n=== DISCOVERY SURFACE TEST ===")
+
+        print("symbols sample:", list_symbols(graph, 10))
+        print("find analysis:", find_symbols(graph, "analysis"))
+        print("find ingestion:", find_symbols(graph, "ingestion"))
+        print("files sample:", find_files(graph, "tools", 10))
         # ==================================================
         # RETURN
         # ==================================================
