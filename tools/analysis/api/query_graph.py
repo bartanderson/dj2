@@ -1,27 +1,33 @@
 # tools/analysis/api/query_graph.py
 
 from collections import defaultdict, deque
+from typing import Any, Dict, List
+
 
 # =========================================================
-# CORE GRAPH QUERY SURFACE
+# INTERNAL INDEX BUILDER (STRUCTURAL ONLY)
 # =========================================================
+
+def _edges(graph):
+    return getattr(graph, "edges", [])
+
 
 def _build_index(graph):
     forward = defaultdict(set)
     reverse = defaultdict(set)
 
-    for e in getattr(graph, "edges", []):
+    for e in _edges(graph):
         forward[e.caller].add(e.callee)
         reverse[e.callee].add(e.caller)
 
     return forward, reverse
 
 
-# ---------------------------------------------------------
-# 1. NEIGHBORHOOD (local structural context)
-# ---------------------------------------------------------
+# =========================================================
+# CONTEXT (was neighbors)
+# =========================================================
 
-def neighbors(graph, symbol: str):
+def context(graph: Any, symbol: str) -> Dict[str, Any]:
     forward, reverse = _build_index(graph)
 
     return {
@@ -31,11 +37,11 @@ def neighbors(graph, symbol: str):
     }
 
 
-# ---------------------------------------------------------
-# 2. FORWARD DEPENDENCY (what this symbol touches)
-# ---------------------------------------------------------
+# =========================================================
+# SURFACE (forward dependency)
+# =========================================================
 
-def depends_on(graph, symbol: str, depth: int = 1):
+def surface(graph: Any, symbol: str, depth: int = 1) -> List[str]:
     forward, _ = _build_index(graph)
 
     visited = set()
@@ -59,11 +65,11 @@ def depends_on(graph, symbol: str, depth: int = 1):
     return sorted(result)
 
 
-# ---------------------------------------------------------
-# 3. REVERSE DEPENDENCY (impact surface)
-# ---------------------------------------------------------
+# =========================================================
+# IMPACT (reverse dependency)
+# =========================================================
 
-def used_by(graph, symbol: str, depth: int = 1):
+def impact(graph: Any, symbol: str, depth: int = 1) -> List[str]:
     _, reverse = _build_index(graph)
 
     visited = set()
@@ -85,3 +91,11 @@ def used_by(graph, symbol: str, depth: int = 1):
                 queue.append((nxt, d + 1))
 
     return sorted(result)
+
+
+# =========================================================
+# ALIASES (optional backward compatibility)
+# =========================================================
+
+depends_on = surface
+used_by = impact

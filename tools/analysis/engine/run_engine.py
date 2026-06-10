@@ -26,8 +26,9 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.graph.reachability_stage import build_reachability_view
 from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
-from tools.analysis.api.query_graph import neighbors, depends_on, used_by
-from tools.analysis.api.query_patterns import impact, surface, context
+from tools.analysis.api.query_graph import context, surface, impact
+from tools.analysis.api.engine_query import engine_query
+
 
 ENABLE_FAULTS = False  # hard off for now
 
@@ -138,7 +139,6 @@ class EngineRunner:
                 )
 
         graph = builder.build()
-        from tools.analysis.api.query_graph import neighbors, depends_on, used_by
 
         if ENABLE_FAULTS:
             from tools.analysis.observability.fault_injector import (
@@ -308,20 +308,21 @@ if __name__ == "__main__":
     print(f"Database: {db_path}")
     runner = EngineRunner()
 
-    result = runner.run(
+    engine_result = runner.run(
         corpus=corpus,
         project_prefixes=project_prefixes,
         repo_root=repo_root,
         connection=sqlite3.connect(db_path),
     )
-
+    print("RESULT TYPE:", type(engine_result))
+    print("RESULT KEYS:", engine_result.keys() if isinstance(engine_result, dict) else None)
     # -----------------------------------
     # ENGINE SNAPSHOT (derived from facts)
     # -----------------------------------
     engine_snapshot = {
-        "file_count": result.facts["file_count"],
-        "symbol_reference_count": result.facts["symbol_reference_count"],
-        "edge_count": result.facts["edge_count"],
+        "file_count": engine_result.facts["file_count"],
+        "symbol_reference_count": engine_result.facts["symbol_reference_count"],
+        "edge_count": engine_result.facts["edge_count"],
     }
 
     print("\n=== ENGINE SNAPSHOT ===")
@@ -329,29 +330,35 @@ if __name__ == "__main__":
         print(f"{k}: {v}")
 
 
-    sample_symbol = None
-    
-    graph = result.graph["graph"]
 
-    if hasattr(graph, "edges") and graph.edges:
+    graph = engine_result.graph["graph"] if isinstance(engine_result.graph, dict) else engine_result.graph
+
+    print("\n=== QUERY LAYER SELF-CHECK ===")
+
+    sample_symbol = None
+
+    if graph.edges:
         sample_symbol = graph.edges[0].caller
 
     if sample_symbol:
-        print("\n=== QUERY SURFACE SMOKE TEST ===")
-        print("neighbors:", neighbors(graph, sample_symbol))
-        print("forward:", depends_on(graph, sample_symbol, depth=1)[:5])
-        print("reverse:", used_by(graph, sample_symbol, depth=1)[:5])
-        print("\n=== QUERY PATTERN TEST ===")
-        print("impact:", impact(graph, sample_symbol)[:5])
-        print("surface:", surface(graph, sample_symbol)[:5])
-        print("context:", context(graph, sample_symbol))
+        print("\n=== ENGINE QUERY SURFACE TEST ===")
+
+        query_result = engine_query(graph, sample_symbol, depth=2)
+
+        print("symbol:", query_result["symbol"])
+        print("context:", query_result["context"])
+        print("surface:", query_result["surface"][:10])
+        print("impact:", query_result["impact"][:10])
+
 
     # ===================================
     # PIPELINE REPRESENTATION LAYER
     # ===================================
+    print("DEBUG RESULT TYPE BEFORE INGESTION ACCESS:", type(query_result))
+    print("DEBUG RESULT VALUE:", query_result)
 
     responsibility_map = build_responsibility_map(
-        result.ingestion["file_analyses"]
+        engine_result.ingestion["file_analyses"]
     )
 
     responsibility_snapshot = build_responsibility_snapshot(
