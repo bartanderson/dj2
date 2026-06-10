@@ -30,6 +30,8 @@ from tools.analysis.api.query_graph import context, surface, influence
 from tools.analysis.api.engine_query import engine_query
 from tools.analysis.engine.invariants import run_integrity_check
 from tools.analysis.api.query_discovery import list_symbols, find_symbols, find_files
+from tools.analysis.api.oracle_router import route_query
+from tools.analysis.api.query_discovery import find_symbols
 
 
 
@@ -272,6 +274,24 @@ class EngineRunner:
         print("find analysis:", find_symbols(graph, "analysis"))
         print("find ingestion:", find_symbols(graph, "ingestion"))
         print("files sample:", find_files(graph, "tools", 10))
+
+        print("\n=== ORACLE ROUTER TEST ===")
+
+        queries = [
+            "what depends on resolve_analysis_db_path",
+            "show ingestion surface",
+            "what affects engine snapshot",
+        ]
+
+        for q in queries:
+            result = route_query(q, graph, find_symbols)
+
+            print("\nQUERY:", q)
+            print("intent:", result.intent)
+            print("seeds:", result.seed_symbols[:5])
+            print("expanded:", result.expanded_symbols[:5])
+            print("plan:", result.execution_plan)
+                    
         # ==================================================
         # RETURN
         # ==================================================

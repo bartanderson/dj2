@@ -31,19 +31,47 @@ def list_symbols(graph: Any, limit: int = 100) -> List[str]:
 # SIMPLE SYMBOL SEARCH (TEXT MATCH ONLY)
 # =========================================================
 
-def find_symbols(graph: Any, text: str, limit: int = 50) -> List[str]:
+def find_symbols(graph, text: str, limit: int = 50):
     """
-    Naive substring match over symbol universe.
+    Deterministic scoring-based symbol retrieval.
+    No embeddings. No ML. Just structure + overlap.
     """
 
-    text = text.lower()
-    results = []
+    text_tokens = set(
+        text.lower()
+        .replace("_", " ")
+        .replace(".", " ")
+        .split()
+    )
+
+    scored = []
 
     for sym in list_symbols(graph, limit=10_000):
-        if text in sym.lower():
-            results.append(sym)
 
-    return results[:limit]
+        sym_tokens = sym.lower().replace(".", " ").replace("_", " ").split()
+
+        # -------------------------------------------------
+        # SIGNAL 1: TOKEN OVERLAP
+        # -------------------------------------------------
+        overlap = len(text_tokens.intersection(sym_tokens))
+
+        # -------------------------------------------------
+        # SIGNAL 2: DIRECT SUBSTRING BOOST
+        # -------------------------------------------------
+        substring = 1 if text.lower() in sym.lower() else 0
+
+        # -------------------------------------------------
+        # FINAL SCORE
+        # -------------------------------------------------
+        score = overlap + substring
+
+        if score > 0:
+            scored.append((score, sym))
+
+    # sort by strength of match
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    return [sym for _, sym in scored[:limit]]
 
 
 # =========================================================
