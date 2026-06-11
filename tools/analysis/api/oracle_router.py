@@ -160,10 +160,7 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
     expand_result = _route_expand(graph, seeds, intent)
 
     expanded = expand_result["nodes"]
-
-    expanded = _apply_intent_weights(expanded, intent, graph, seeds)
-
-    primitives = _select_primitives(intent)
+    expansion_trace = expand_result["trace"]
 
     # -------------------------------------------------
     # TRACE (canonical, single source of truth)
@@ -172,11 +169,12 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
         "seeds": seeds,
         "intent": intent,
         "expanded": expanded,
-        "expansion_trace": expand_result.get("trace", {}),
+        "expansion_trace": expansion_trace,
     }
 
     filtered = _prune(graph, expanded, seeds)
 
+    primitives = _select_primitives(intent)
     plan = _build_plan(filtered, primitives, trace)
 
     # -------------------------------------------------
@@ -251,74 +249,56 @@ def _route_expand(graph, seeds, intent):
     forward, reverse = _build_index(graph)
 
     visited = set()
-    expanded: Dict[str, Dict[str, Any]] = {}
+    expanded = set()
 
-    # -------------------------------------------------
-    # INTENT SHAPING (single control point)
-    # -------------------------------------------------
-    if intent == "surface_query":
-        forward_depth = 2
-        reverse_enabled = False
+    trace = {
+        "seed_paths": {},   # node -> reasons
+        "edges": {}         # parent -> children
+    }
 
-    elif intent == "impact_query":
-        forward_depth = 1
-        reverse_enabled = True
-
-    elif intent == "reverse_query":
-        forward_depth = 1
-        reverse_enabled = True
-
-    else:
-        forward_depth = 1
-        reverse_enabled = True
-
-    def add(node: str, reason: str):
+    def add(node, reason, source=None):
         if not node:
             return
 
         if node not in visited:
             visited.add(node)
-            expanded[node] = {
-                "symbol": node,
-                "reasons": [reason],
-            }
-        else:
-            expanded[node]["reasons"].append(reason)
+            expanded.add(node)
 
-    def expand_forward(node, depth):
+        trace["seed_paths"].setdefault(node, []).append(reason)
+
+        if source:
+            trace["edges"].setdefault(source, []).append(node)
+
+    def expand_forward(node, depth=1):
         if depth <= 0:
             return
 
         for n in forward.get(node, []):
-            add(n, f"forward_depth_{depth}_from:{node}")
+            add(n, f"forward:{node}", source=node)
             expand_forward(n, depth - 1)
 
     def expand_reverse(node):
         for n in reverse.get(node, []):
-            add(n, f"reverse_from:{node}")
+            add(n, f"reverse:{node}", source=node)
 
-    # -------------------------------------------------
-    # SEED SEEDING + CONTROLLED EXPANSION
-    # -------------------------------------------------
     for s in seeds:
         add(s, "seed")
-        expand_forward(s, forward_depth)
 
-        if reverse_enabled:
+        # forward (1-hop)
+        if intent in ("general_query", "surface_query", "context_query"):
+            expand_forward(s, depth=1)
+
+        # 2-hop forward (only for surface/general)
+        if intent in ("surface_query", "general_query"):
+            for n in forward.get(s, []):
+                for n2 in forward.get(n, []):
+                    add(n2, f"forward_2hop:{n}", source=n)
+
+        # reverse (impact)
+        if intent in ("impact_query", "general_query"):
             expand_reverse(s)
 
-    # -------------------------------------------------
-    # TRACE (EXPLAINABILITY HOOK)
-    # -------------------------------------------------
-    trace = {
-        "seeds": seeds,
-        "intent": intent,
-        "forward_depth": forward_depth,
-        "reverse_enabled": reverse_enabled,
-    }
-
     return {
-        "nodes": list(expanded.keys()),
-        "trace": trace,
-        "node_reasons": expanded,
+        "nodes": list(expanded),
+        "trace": trace
     }
