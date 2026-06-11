@@ -6,9 +6,6 @@ from typing import List, Tuple
 
 from tools.analysis.oracle.semantic_graph import SemanticGraphView
 
-sg = SemanticGraphView(self.oracle.conn)
-edges = sg.edges()
-
 # =========================================================
 # DB ORACLE CORE
 # =========================================================
@@ -17,6 +14,11 @@ class DBOracle:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
+        self.sg = SemanticGraphView(self.conn)
+
+
+    def edges(self):
+        return self.sg.edges
 
     # -----------------------------
     # GRAPH EDGE QUERIES

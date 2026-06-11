@@ -9,7 +9,7 @@ from typing import Any, List
 # SYMBOL LISTING (GLOBAL TRUTH SURFACE)
 # =========================================================
 
-def list_symbols(graph: Any, limit: int = 100) -> List[str]:
+def list_symbols(graph: Any) -> List[str]:
     """
     Returns raw symbol universe from graph edges.
     """
@@ -24,7 +24,7 @@ def list_symbols(graph: Any, limit: int = 100) -> List[str]:
         if getattr(e, "callee", None):
             symbols.add(e.callee)
 
-    return sorted(symbols)[:limit]
+    return sorted(symbols)
 
 
 # =========================================================
@@ -46,7 +46,7 @@ def find_symbols(graph, text: str, limit: int = 50):
 
     scored = []
 
-    for sym in list_symbols(graph, limit=10_000):
+    for sym in list_symbols(graph):
 
         sym_tokens = sym.lower().replace(".", " ").replace("_", " ").split()
 
@@ -65,11 +65,16 @@ def find_symbols(graph, text: str, limit: int = 50):
         # -------------------------------------------------
         score = overlap + substring
 
-        if score > 0:
+        if score >= 0:
             scored.append((score, sym))
 
     # sort by strength of match
     scored.sort(reverse=True, key=lambda x: x[0])
+
+    print("\n=== SYMBOL DEBUG ===")
+    all_syms = list_symbols(graph)
+    print("total symbols:", len(all_syms))
+    print("sample:", all_syms[:20])
 
     return [sym for _, sym in scored[:limit]]
 

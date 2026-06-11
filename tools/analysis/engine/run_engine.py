@@ -270,7 +270,7 @@ class EngineRunner:
 
         print("\n=== DISCOVERY SURFACE TEST ===")
 
-        print("symbols sample:", list_symbols(graph, 10))
+        print("symbols sample:", list_symbols(graph)[:10])
         print("find analysis:", find_symbols(graph, "analysis"))
         print("find ingestion:", find_symbols(graph, "ingestion"))
         print("files sample:", find_files(graph, "tools", 10))
