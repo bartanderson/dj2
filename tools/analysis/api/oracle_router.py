@@ -19,6 +19,25 @@ class RouteResult:
     raw_query: str
 
 
+def _is_valid_symbol(sym: str) -> bool:
+    # rejects runtime / python noise / structural artifacts
+    if not sym:
+        return False
+
+    if sym.startswith("<"):
+        return False
+
+    noise = {
+        "run", "len", "print", "getattr", "set", "int", "str",
+        "any", "all", "dict", "list"
+    }
+
+    if sym in noise:
+        return False
+
+    return True
+
+
 # =========================================================
 # INTENT DETECTION (LIGHTWEIGHT, NOT "AI")
 # =========================================================
@@ -67,8 +86,12 @@ def _expand(graph, symbols: List[str]) -> List[str]:
 
     for e in edges:
         if e.caller in symbols or e.callee in symbols:
-            expanded.add(e.caller)
-            expanded.add(e.callee)
+
+            if _is_valid_symbol(e.caller):
+                expanded.add(e.caller)
+
+            if _is_valid_symbol(e.callee):
+                expanded.add(e.callee)
 
     return sorted(expanded)
 
@@ -123,7 +146,13 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     primitives = _select_primitives(intent)
 
-    plan = _build_plan(expanded, primitives)
+    filtered = _prune(graph, expanded, seeds)
+
+    plan = _build_plan(filtered, primitives)
+
+    print("\n=== SYMBOL QUALITY CHECK ===")
+    print("raw expanded:", len(expanded))
+    print("final pruned:", len(_prune(graph, expanded, seeds)))
 
     return RouteResult(
         intent=intent,
@@ -132,3 +161,53 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
         execution_plan=plan,
         raw_query=text,
     )
+
+def _score_symbol(symbol: str, seeds: List[str], graph) -> float:
+    """
+    Deterministic relevance score.
+    """
+
+    score = 0.0
+
+    # -------------------------------------------------
+    # 1. DIRECT SEED MATCH BOOST
+    # -------------------------------------------------
+    if symbol in seeds:
+        score += 5.0
+
+    # -------------------------------------------------
+    # 2. NAME OVERLAP WITH SEEDS
+    # -------------------------------------------------
+    for s in seeds:
+        if s.split(".")[-1] in symbol:
+            score += 2.0
+
+    # -------------------------------------------------
+    # 3. GRAPH CONNECTIVITY SIGNAL
+    # -------------------------------------------------
+    edges = getattr(graph, "edges", [])
+
+    degree = 0
+    for e in edges:
+        if e.caller == symbol or e.callee == symbol:
+            degree += 1
+
+    score += min(degree * 0.1, 3.0)
+
+    return score
+
+def _prune(graph, symbols: List[str], seeds: List[str], limit: int = 40) -> List[str]:
+    """
+    Keeps only the most relevant execution nodes.
+    """
+
+    scored = []
+
+    for sym in symbols:
+        score = _score_symbol(sym, seeds, graph)
+        scored.append((score, sym))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    return [s for _, s in scored[:limit]]
+
