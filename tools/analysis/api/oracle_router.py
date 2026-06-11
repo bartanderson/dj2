@@ -150,7 +150,7 @@ def _apply_intent_weights(symbols, intent, graph, seeds):
 
     # placeholder scoring pass (keep simple for now)
     return symbols
-    
+
 def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     intent = _detect_intent(text)
@@ -253,31 +253,65 @@ def _route_expand(graph, seeds, intent):
     visited = set()
     expanded = set()
 
+    # -------------------------------------------------
+    # INTENT SHAPING (single control point)
+    # -------------------------------------------------
+    if intent == "surface_query":
+        forward_depth = 2
+        reverse_enabled = False
+
+    elif intent == "impact_query":
+        forward_depth = 1
+        reverse_enabled = True
+
+    elif intent == "reverse_query":
+        forward_depth = 1
+        reverse_enabled = True
+
+    else:  # general_query
+        forward_depth = 1
+        reverse_enabled = True
+
     def add(node):
         if node and node not in visited:
             visited.add(node)
             expanded.add(node)
 
+    def expand_forward(node, depth):
+        if depth <= 0:
+            return
+
+        for n in forward.get(node, []):
+            add(n)
+            expand_forward(n, depth - 1)
+
+    def expand_reverse(node):
+        for n in reverse.get(node, []):
+            add(n)
+
+    # -------------------------------------------------
+    # SEED SEEDING + CONTROLLED EXPANSION
+    # -------------------------------------------------
     for s in seeds:
         add(s)
 
-        if intent in ("general_query", "surface_query", "context_query"):
-            for n in forward.get(s, []):
-                add(n)
+        expand_forward(s, forward_depth)
 
-        if intent in ("surface_query", "general_query"):
-            for n in forward.get(s, []):
-                for n2 in forward.get(n, []):
-                    add(n2)
+        if reverse_enabled:
+            expand_reverse(s)
 
-        if intent in ("impact_query", "general_query"):
-            for n in reverse.get(s, []):
-                add(n)
+    # -------------------------------------------------
+    # TRACE (EXPLAINABILITY HOOK)
+    # -------------------------------------------------
+    trace = {
+        "seeds": seeds,
+        "intent": intent,
+        "forward_depth": forward_depth,
+        "reverse_enabled": reverse_enabled,
+        "expanded_count": len(expanded),
+    }
 
     return {
-        "nodes": list(expanded),
-        "trace": {
-            "seeds": seeds,
-            "intent": intent
-        }
+        "nodes": sorted(expanded),
+        "trace": trace
     }
