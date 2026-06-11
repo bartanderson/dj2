@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from tools.analysis.api.query_graph import _build_index
 
 # =========================================================
 # ROUTE RESULT CONTRACT (STABLE OUTPUT SHAPE)
@@ -142,7 +143,7 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     seeds = _seed_symbols(text, graph, find_symbols_fn)
 
-    expanded = _expand(graph, seeds)
+    expanded = _route_expand(graph, seeds, intent)
 
     primitives = _select_primitives(intent)
 
@@ -211,3 +212,35 @@ def _prune(graph, symbols: List[str], seeds: List[str], limit: int = 40) -> List
 
     return [s for _, s in scored[:limit]]
 
+
+def _route_expand(graph, seeds, intent):
+    forward, reverse = _build_index(graph)
+
+    visited = set()
+    expanded = set()
+
+    def add(node):
+        if node and node not in visited:
+            visited.add(node)
+            expanded.add(node)
+
+    for s in seeds:
+        add(s)
+
+        # CONTEXT = direct neighbors
+        if intent in ("general_query", "surface_query", "context_query"):
+            for n in forward.get(s, []):
+                add(n)
+
+        # SURFACE = 2-hop forward
+        if intent in ("surface_query", "general_query"):
+            for n in forward.get(s, []):
+                for n2 in forward.get(n, []):
+                    add(n2)
+
+        # IMPACT = reverse dependencies
+        if intent in ("impact_query", "general_query"):
+            for n in reverse.get(s, []):
+                add(n)
+
+    return list(expanded)
