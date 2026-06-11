@@ -137,7 +137,20 @@ def _build_plan(symbols: List[str], primitives: List[str], trace: Dict[str, Any]
 # =========================================================
 # MAIN ROUTER ENTRYPOINT
 # =========================================================
+def _apply_intent_weights(symbols, intent, graph, seeds):
+    # phase 1: score, don’t branch
+    # phase 2: filter, don’t expand
 
+    weights = {
+        "surface_query": {"reverse": 0.2},
+        "impact_query": {"forward": 0.3},
+        "reverse_query": {"forward": 0.2},
+        "general_query": {"all": 0.7},
+    }
+
+    # placeholder scoring pass (keep simple for now)
+    return symbols
+    
 def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     intent = _detect_intent(text)
@@ -148,19 +161,27 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     expanded = expand_result["nodes"]
 
+    expanded = _apply_intent_weights(expanded, intent, graph, seeds)
+
     primitives = _select_primitives(intent)
 
+    # -------------------------------------------------
+    # TRACE (canonical, single source of truth)
+    # -------------------------------------------------
     trace = {
         "seeds": seeds,
         "intent": intent,
         "expanded": expanded,
-        "expansion_trace": expand_result.get("trace", {})
+        "expansion_trace": expand_result.get("trace", {}),
     }
 
     filtered = _prune(graph, expanded, seeds)
 
     plan = _build_plan(filtered, primitives, trace)
 
+    # -------------------------------------------------
+    # DEBUG / OBSERVABILITY (safe, non-invasive)
+    # -------------------------------------------------
     print("\n=== ROUTE METRICS ===")
     print("intent:", intent)
     print("seed_count:", len(seeds))
@@ -240,18 +261,15 @@ def _route_expand(graph, seeds, intent):
     for s in seeds:
         add(s)
 
-        # CONTEXT = direct neighbors
         if intent in ("general_query", "surface_query", "context_query"):
             for n in forward.get(s, []):
                 add(n)
 
-        # SURFACE = 2-hop forward
         if intent in ("surface_query", "general_query"):
             for n in forward.get(s, []):
                 for n2 in forward.get(n, []):
                     add(n2)
 
-        # IMPACT = reverse dependencies
         if intent in ("impact_query", "general_query"):
             for n in reverse.get(s, []):
                 add(n)
@@ -259,9 +277,7 @@ def _route_expand(graph, seeds, intent):
     return {
         "nodes": list(expanded),
         "trace": {
-            "seed_inputs": list(seeds),
-            "forward_hits": [],   # optional later
-            "reverse_hits": [],   # optional later
-            "intent": intent,
+            "seeds": seeds,
+            "intent": intent
         }
     }
