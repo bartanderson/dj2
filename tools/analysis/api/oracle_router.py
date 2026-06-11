@@ -122,14 +122,15 @@ def _select_primitives(intent: str) -> List[str]:
 # EXECUTION PLAN BUILDER
 # =========================================================
 
-def _build_plan(symbols: List[str], primitives: List[str]) -> Dict[str, Any]:
+def _build_plan(symbols: List[str], primitives: List[str], trace: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Produces deterministic execution structure
+    Deterministic execution structure + explainability trace
     """
 
     return {
         "symbols": symbols,
         "primitives": primitives,
+        "trace": trace or {}
     }
 
 
@@ -147,13 +148,21 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     primitives = _select_primitives(intent)
 
+    trace = {
+        "seeds": seeds,
+        "intent": intent,
+        "expanded": expanded,
+    }
+
     filtered = _prune(graph, expanded, seeds)
 
-    plan = _build_plan(filtered, primitives)
+    plan = _build_plan(filtered, primitives, trace)
 
-    print("\n=== SYMBOL QUALITY CHECK ===")
-    print("raw expanded:", len(expanded))
-    print("final pruned:", len(_prune(graph, expanded, seeds)))
+    print("\n=== ROUTE TRACE ===")
+    print("intent:", intent)
+    print("seed_count:", len(seeds))
+    print("expanded_count:", len(expanded))
+    print("final_count:", len(filtered))
 
     return RouteResult(
         intent=intent,
