@@ -251,7 +251,7 @@ def _route_expand(graph, seeds, intent):
     forward, reverse = _build_index(graph)
 
     visited = set()
-    expanded = set()
+    expanded: Dict[str, Dict[str, Any]] = {}
 
     # -------------------------------------------------
     # INTENT SHAPING (single control point)
@@ -268,33 +268,40 @@ def _route_expand(graph, seeds, intent):
         forward_depth = 1
         reverse_enabled = True
 
-    else:  # general_query
+    else:
         forward_depth = 1
         reverse_enabled = True
 
-    def add(node):
-        if node and node not in visited:
+    def add(node: str, reason: str):
+        if not node:
+            return
+
+        if node not in visited:
             visited.add(node)
-            expanded.add(node)
+            expanded[node] = {
+                "symbol": node,
+                "reasons": [reason],
+            }
+        else:
+            expanded[node]["reasons"].append(reason)
 
     def expand_forward(node, depth):
         if depth <= 0:
             return
 
         for n in forward.get(node, []):
-            add(n)
+            add(n, f"forward_depth_{depth}_from:{node}")
             expand_forward(n, depth - 1)
 
     def expand_reverse(node):
         for n in reverse.get(node, []):
-            add(n)
+            add(n, f"reverse_from:{node}")
 
     # -------------------------------------------------
     # SEED SEEDING + CONTROLLED EXPANSION
     # -------------------------------------------------
     for s in seeds:
-        add(s)
-
+        add(s, "seed")
         expand_forward(s, forward_depth)
 
         if reverse_enabled:
@@ -308,10 +315,10 @@ def _route_expand(graph, seeds, intent):
         "intent": intent,
         "forward_depth": forward_depth,
         "reverse_enabled": reverse_enabled,
-        "expanded_count": len(expanded),
     }
 
     return {
-        "nodes": sorted(expanded),
-        "trace": trace
+        "nodes": list(expanded.keys()),
+        "trace": trace,
+        "node_reasons": expanded,
     }
