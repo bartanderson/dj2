@@ -144,7 +144,9 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     seeds = _seed_symbols(text, graph, find_symbols_fn)
 
-    expanded = _route_expand(graph, seeds, intent)
+    expand_result = _route_expand(graph, seeds, intent)
+
+    expanded = expand_result["nodes"]
 
     primitives = _select_primitives(intent)
 
@@ -152,17 +154,19 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
         "seeds": seeds,
         "intent": intent,
         "expanded": expanded,
+        "expansion_trace": expand_result.get("trace", {})
     }
 
     filtered = _prune(graph, expanded, seeds)
 
     plan = _build_plan(filtered, primitives, trace)
 
-    print("\n=== ROUTE TRACE ===")
+    print("\n=== ROUTE METRICS ===")
     print("intent:", intent)
     print("seed_count:", len(seeds))
     print("expanded_count:", len(expanded))
-    print("final_count:", len(filtered))
+    print("filtered_count:", len(filtered))
+    print("removed_count:", len(expanded) - len(filtered))
 
     return RouteResult(
         intent=intent,
@@ -252,4 +256,12 @@ def _route_expand(graph, seeds, intent):
             for n in reverse.get(s, []):
                 add(n)
 
-    return list(expanded)
+    return {
+        "nodes": list(expanded),
+        "trace": {
+            "seed_inputs": list(seeds),
+            "forward_hits": [],   # optional later
+            "reverse_hits": [],   # optional later
+            "intent": intent,
+        }
+    }
