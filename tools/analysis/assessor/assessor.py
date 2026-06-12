@@ -20,7 +20,7 @@ class Assessor:
 
             # NEW assessor capabilities (now actually executed)
             "validation": self.validate_graph(),
-            "snapshot": self.build_evaluation_snapshot(),
+            "snapshot": self.build_snapshot(),
         }
 
     def snapshot(self):
@@ -110,21 +110,6 @@ class Assessor:
             "errors": errors
         }
 
-    def evaluation_snapshot(self):
-        graph = self.snapshot().edges
-
-        node_degree = {}
-
-        for e in graph:
-            node_degree[e.caller] = node_degree.get(e.caller, 0) + 1
-            node_degree[e.callee] = node_degree.get(e.callee, 0) + 1
-
-        return {
-            "node_degree": node_degree,
-            "total_nodes": len(node_degree),
-            "total_edges": len(graph)
-        }
-
     def structural_diff(self, engine_edges, db_edges):
         engine_set = set((e.caller, e.callee) for e in engine_edges)
         db_set = set((e.caller, e.callee) for e in db_edges)
@@ -159,67 +144,41 @@ class Assessor:
             "edge_count": len(graph)
         }
 
-    def build_evaluation_snapshot(self):
-        
-        graph = self.snapshot()
+    def build_snapshot(self):
+        graph = self.oracle.get_snapshot_graph().edges
 
+        node_degree = {}
         bucket_summary = {
             "project": 0,
             "builtin": 0,
             "classification_gap": 0,
         }
 
-        node_degree = defaultdict(int)
+        for e in graph:
+            node_degree[e.caller] = node_degree.get(e.caller, 0) + 1
+            node_degree[e.callee] = node_degree.get(e.callee, 0) + 1
 
-        # ---------------------------------------
-        # EDGE WALK (must match pipeline semantics)
-        # ---------------------------------------
-        for edge in graph.edges:
-
-            bucket = getattr(edge, "bucket", None)
-
+            bucket = getattr(e, "bucket", None)
             if bucket not in bucket_summary:
                 bucket = "classification_gap"
-
             bucket_summary[bucket] += 1
 
-            node_degree[edge.caller] += 1
-            node_degree[edge.callee] += 1
+        ranked = sorted(node_degree.items(), key=lambda x: -x[1])
+        top_nodes = ranked[:10]
+        high_fanout = [(n, d) for n, d in top_nodes if d > 3]
 
-        # ---------------------------------------
-        # TOP NODES (mirror exact pipeline logic)
-        # ---------------------------------------
-        ranked_nodes = [
-            (node, degree)
-            for node, degree in node_degree.items()
-        ]
-
-        top_nodes_by_degree = sorted(
-            ranked_nodes,
-            key=lambda x: -x[1]
-        )[:10]
-
-        high_fanout_nodes = [
-            (n, d)
-            for n, d in top_nodes_by_degree
-            if d > 3
-        ]
-
-        # ---------------------------------------
-        # SNAPSHOT (STRICT CONTRACT)
-        # ---------------------------------------
         return {
             "file_count": self.oracle.file_count(),
-            "edge_count": len(graph.edges),
+            "edge_count": len(graph),
             "bucket_summary": bucket_summary,
             "graph_insights": {
-                "top_nodes_by_degree": top_nodes_by_degree,
+                "top_nodes_by_degree": top_nodes,
             },
             "structural_signals": {
-                "high_fanout_nodes": high_fanout_nodes,
+                "high_fanout_nodes": high_fanout,
             },
+            "node_degree": node_degree,
         }
-
 # ---------------------------------------------------------
 # ENTRYPOINT
 # ---------------------------------------------------------
