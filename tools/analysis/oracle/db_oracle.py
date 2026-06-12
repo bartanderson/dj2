@@ -16,6 +16,10 @@ class DBOracle:
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
 
+    # -----------------------------
+    # SEMANTIC EDGES
+    # -----------------------------
+
     def get_semantic_edges(self):
         cur = self.conn.cursor()
 
@@ -36,6 +40,18 @@ class DBOracle:
             )
             for r in rows
         ]
+
+    # -----------------------------
+    # FILE COUNT (FIXED LOCATION)
+    # -----------------------------
+
+    def file_count(self) -> int:
+        cur = self.conn.cursor()
+        return cur.execute("""
+            SELECT COUNT(DISTINCT file_path)
+            FROM symbol_references
+            WHERE file_path IS NOT NULL
+        """).fetchone()[0]
 
     # -----------------------------
     # GRAPH EDGE QUERIES
