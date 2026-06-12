@@ -244,6 +244,21 @@ def influence(graph: Any, symbol: str, depth: int = 1) -> List[str]:
 
     return sorted(result)
 
+
+def engine_query(graph, symbol: str, depth: int = 1):
+    """
+    Single deterministic reasoning surface over the graph.
+
+    This is the ONLY supported external query abstraction.
+    """
+
+    return {
+        "symbol": symbol,
+        "context": context(graph, symbol),
+        "surface": surface(graph, symbol, depth=depth),
+        "influence": influence(graph, symbol, depth=depth),
+    }
+
 # =========================================================
 # CLI INTERFACE
 # =========================================================

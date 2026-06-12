@@ -26,8 +26,7 @@ from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.graph.reachability_stage import build_reachability_view
 from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
-from tools.analysis.oracle.db_oracle import context, surface, influence
-from tools.analysis.api.engine_query import engine_query
+from tools.analysis.oracle.db_oracle import context, surface, influence, engine_query
 from tools.analysis.engine.invariants import run_integrity_check
 from tools.analysis.api.query_discovery import list_symbols, find_symbols, find_files
 from tools.analysis.api.oracle_router import route_query
