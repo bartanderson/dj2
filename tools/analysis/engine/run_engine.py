@@ -4,71 +4,54 @@ from dataclasses import dataclass
 from typing import Any, Dict
 import sqlite3
 from pathlib import Path
-
 from tools.analysis.ingestion.scan_project_files import scan_project_files
 from tools.analysis.classification.classify_references import classify_references
 from tools.analysis.graph.graph_builder import GraphBuilder
-
-from tools.analysis.engine.structural_parity_diff import (
-    run_structural_diff,
-    print_structural_diff,
-)
-
-from tools.analysis.engine.engine_snapshot import EngineSnapshotBuilder
-from tools.analysis.engine.engine_snapshot_diff import diff_snapshots, print_snapshot_diff
-from tools.analysis.engine.engine_evaluation_snapshot import EngineEvaluationSnapshotBuilder
-from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
-from tools.analysis.engine.responsibility_map import build_responsibility_map, print_responsibility_map
-from tools.analysis.truth.views import build_structure_view
-from tools.analysis.truth.views import build_stability_view
-from tools.analysis.truth.views import build_integrity_view
-from tools.analysis.validation.system_validator import SystemValidator
-from tools.analysis.graph.reachability_stage import build_reachability_view
-from tools.analysis.persistence.persistence_engine import persist_all, initialize_database
+from tools.analysis.persistence.persistence_engine import persist_all
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
-from tools.analysis.oracle.db_oracle import context, surface, influence, engine_query
-from tools.analysis.engine.invariants import run_integrity_check
-from tools.analysis.api.query_discovery import list_symbols, find_symbols, find_files
-from tools.analysis.api.oracle_router import route_query
-from tools.analysis.api.query_discovery import find_symbols
-
-
 
 ENABLE_FAULTS = False  # hard off for now
 
-@dataclass
-class ContractReport:
-    file_path: str
-    violations: list
-    ok: bool
+from pathlib import Path
 
-class ValidationResultShim:
-    def __init__(self, errors):
-        self.errors = errors
-        self.warnings = []
-        self.ok = len(errors) == 0
+_LOG_FILE = None
+_LOG_ENABLED = True
 
+def enable_log(db_path: str, enabled: bool = True):
+    """
+    Turns logging on/off.
+    Log file is always:
+        engine.db -> engine.txt
+    """
+    global _LOG_FILE, _LOG_ENABLED
 
-def evaluate_file_contracts(file_path, file_analysis, graph):
-    return ContractReport(
-        file_path=file_path,
-        violations=[],
-        ok=True,
-    )
+    _LOG_ENABLED = enabled
 
-# ----------------------------
-# SINGLE SOURCE OF TRUTH
-# ----------------------------
-DB_PATH = "tools.analysis.data.analysis.db"
+    if not enabled:
+        return
 
+    log_path = Path(db_path).with_suffix(".txt")
+    _LOG_FILE = open(log_path, "a", encoding="utf-8")
+
+def log_dbg(*args):
+    if not _LOG_ENABLED or _LOG_FILE is None:
+        return
+
+    _LOG_FILE.write(" ".join(str(a) for a in args) + "\n")
+
+def close_log():
+    global _LOG_FILE
+    if _LOG_FILE:
+        _LOG_FILE.close()
+        _LOG_FILE = None
 
 @dataclass
 class EngineResult:
     ingestion: Any
     graph: Any
     facts: Dict[str, Any]
-    snapshot: Dict[str, Any]
-    reduced: Any | None = None
+    # snapshot: Dict[str, Any]
+    # reduced: Any | None = None
 
 class EngineRunner:
 
@@ -119,10 +102,10 @@ class EngineRunner:
             "symbol_reference_count": symbol_reference_count,
         }
 
-        # ==================================================
-        # PHASE 0.5: GLOBAL INIT (MUST EXIST BEFORE ANYTHING ELSE)
-        # ==================================================
-        validator = SystemValidator(strict=False)
+        # # ==================================================
+        # # PHASE 0.5: GLOBAL INIT (MUST EXIST BEFORE ANYTHING ELSE)
+        # # ==================================================
+        # validator = SystemValidator(strict=False)
 
         all_reports = []
         drift_signals = []
@@ -197,114 +180,6 @@ class EngineRunner:
             project_prefixes=project_prefixes,
         )
 
-        facts = {
-            "file_count": processed_count,
-            "symbol_reference_count": ingestion["symbol_reference_count"],
-            "edge_count": edge_count,
-        }
-
-        # ==================================================
-        # PHASE 2: PER-FILE ANALYSIS (CONTRACT + VALIDATION)
-        # ==================================================
-        for analysis in file_analyses:
-
-            report = evaluate_file_contracts(
-                file_path=analysis.file_path,
-                file_analysis=analysis,
-                graph=graph,
-            )
-
-            all_reports.append(report)
-
-            validation = validator.validate(
-                analysis=analysis,
-                graph=graph,
-                contract_report=report,
-            )
-
-            if hasattr(validation, "errors"):
-                validation_errors.extend(validation.errors)
-
-        validation_summary = ValidationResultShim(validation_errors)
-
-        # ==================================================
-        # PHASE 3: VIEWS (READ-ONLY DERIVATION)
-        # ==================================================
-        structure_view = build_structure_view(graph)
-        stability_view = build_stability_view(all_reports, drift_signals)
-        integrity_view = build_integrity_view(
-            validation_summary,
-            graph
-        )
-        subsystem_view = {"stub": True}
-
-        print("\n=== INTEGRITY VIEW CHECK ===")
-        print(run_integrity_check(graph, facts))
-
-        # ==================================================
-        # PHASE 4: SNAPSHOT + REDUCTION
-        # ==================================================
-        snapshot = EngineEvaluationSnapshotBuilder().build(
-            file_analyses=file_analyses,
-            graph=graph,
-        )
-
-        from tools.analysis.reducer.reduce import reduce
-        reduced = reduce([snapshot])
-
-        # ==================================================
-        # OPTIONAL DEBUG OUTPUT (KEEP OR REMOVE LATER)
-        # ==================================================
-        print("\n=== STRUCTURE VIEW CHECK ===")
-        print(len(getattr(structure_view, "edges", structure_view)))
-
-        print("\n=== STABILITY VIEW CHECK ===")
-        print(stability_view)
-
-        print("\n=== INTEGRITY VIEW CHECK ===")
-        print(integrity_view)
-
-        print("\n=== REDUCE CHECK ===")
-        print(reduced)
-
-        print("\n=== DISCOVERY SURFACE TEST ===")
-
-        print("symbols sample:", list_symbols(graph)[:10])
-        print("find analysis:", find_symbols(graph, "analysis"))
-        print("find ingestion:", find_symbols(graph, "ingestion"))
-        print("files sample:", find_files(graph, "tools", 10))
-
-        print("\n=== ORACLE ROUTER TEST ===")
-
-        queries = [
-            "what depends on resolve_analysis_db_path",
-            "show ingestion surface",
-            "what affects engine snapshot",
-        ]
-
-        for q in queries:
-            result = route_query(q, graph, find_symbols)
-
-            print("\nQUERY:", q)
-            print("intent:", result.intent)
-            print("seeds:", result.seed_symbols[:5])
-            print("expanded:", result.expanded_symbols[:5])
-            print("plan:", result.execution_plan)
-                    
-        # ==================================================
-        # RETURN
-        # ==================================================
-        return EngineResult(
-            ingestion=ingestion,
-            graph={
-                "graph": graph,
-                "edge_count": edge_count,
-            },
-            facts=facts,
-            snapshot=snapshot,
-            reduced=reduced,
-        )
-
 
 if __name__ == "__main__":
 
@@ -335,66 +210,23 @@ if __name__ == "__main__":
     )()
  
     db_path = resolve_analysis_db_path(corpus.root_path) # path selected normalized with _ + .db
-    print(f"Target: {corpus.root_path}")
-    print(f"Database: {db_path}")
+    enable_log(db_path, enabled=True)   # <- toggle here
+
+    log_dbg("ENGINE START")
+    log_dbg("Target:", corpus.root_path)
+    log_dbg("DB:", db_path)
+    log_dbg("LOG FILE:", str(Path(db_path).with_suffix(".txt")))
     runner = EngineRunner()
 
-    engine_result = runner.run(
+    runner.run(
         corpus=corpus,
         project_prefixes=project_prefixes,
         repo_root=repo_root,
         connection=sqlite3.connect(db_path),
     )
-    print("RESULT TYPE:", type(engine_result))
-    print("RESULT KEYS:", engine_result.keys() if isinstance(engine_result, dict) else None)
-    # -----------------------------------
-    # ENGINE SNAPSHOT (derived from facts)
-    # -----------------------------------
-    engine_snapshot = {
-        "file_count": engine_result.facts["file_count"],
-        "symbol_reference_count": engine_result.facts["symbol_reference_count"],
-        "edge_count": engine_result.facts["edge_count"],
-    }
-
-    print("\n=== ENGINE SNAPSHOT ===")
-    for k, v in engine_snapshot.items():
-        print(f"{k}: {v}")
+    print("\nAnalysis complete.")
+    print("Database:", db_path)
 
 
 
-    graph = engine_result.graph["graph"] if isinstance(engine_result.graph, dict) else engine_result.graph
 
-    print("\n=== QUERY LAYER SELF-CHECK ===")
-
-    sample_symbol = None
-
-    if graph.edges:
-        sample_symbol = graph.edges[0].caller
-
-    if sample_symbol:
-        print("\n=== ENGINE QUERY SURFACE TEST ===")
-
-        query_result = engine_query(graph, sample_symbol, depth=2)
-
-        print("symbol:", query_result["symbol"])
-        print("context:", query_result["context"])
-        print("surface:", query_result["surface"][:10])
-        print("influence:", query_result["influence"][:10])
-
-
-    # ===================================
-    # PIPELINE REPRESENTATION LAYER
-    # ===================================
-    print("DEBUG RESULT TYPE BEFORE INGESTION ACCESS:", type(query_result))
-    print("DEBUG RESULT VALUE:", query_result)
-
-    responsibility_map = build_responsibility_map(
-        engine_result.ingestion["file_analyses"]
-    )
-
-    responsibility_snapshot = build_responsibility_snapshot(
-        responsibility_map=responsibility_map,
-        db_totals=engine_snapshot,
-    )
-
-    print_responsibility_map(responsibility_snapshot)

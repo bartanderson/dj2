@@ -61,18 +61,6 @@ class Assessor:
     def snapshot(self):
         return self.oracle.get_snapshot_graph()
 
-    def neighbors(self, symbol: str):
-        return self.oracle.neighbors(symbol)
-
-    def surface(self, symbol: str, depth: int = 1):
-        return self.oracle.surface(symbol, depth)
-
-    def influence(self, symbol: str, depth: int = 1):
-        return self.oracle.influence(symbol, depth)
-
-    def semantic(self):
-        return self.oracle.get_semantic_edges()
-
     def degree(self):
         edges = self.oracle.get_snapshot_graph().edges
 
