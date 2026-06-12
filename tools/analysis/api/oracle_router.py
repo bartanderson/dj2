@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from tools.analysis.api.query_graph import _build_index
+from tools.analysis.oracle.db_oracle import _build_index
 
 # =========================================================
 # ROUTE RESULT CONTRACT (STABLE OUTPUT SHAPE)

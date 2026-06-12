@@ -1,6 +1,6 @@
 # tools/analysis/api/query_reasoning.py
 
-from tools.analysis.api.query_graph import (
+from tools.analysis.oracle.db_oracle import (
     context,
     surface,
     influence

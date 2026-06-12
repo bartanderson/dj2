@@ -1,6 +1,6 @@
 # tools/analysis/api/engine_query.py
 
-from tools.analysis.api.query_graph import context, surface, influence
+from tools.analysis.oracle.db_oracle import context, surface, influence
 
 
 def engine_query(graph, symbol: str, depth: int = 1):
