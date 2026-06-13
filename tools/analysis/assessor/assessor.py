@@ -205,15 +205,8 @@ class Assessor:
 
     # =====================================================
     # SEED DISCOVERY
-    # 
     # =====================================================
 
-    # def query(self, text: str):
-    #     return route_query(
-    #         text,
-    #         self.snapshot(),
-    #         self.oracle.discover_seed_symbols,
-    #     )
     def query(self, text: str):
         return route_query(
             text,
