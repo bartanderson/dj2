@@ -153,7 +153,8 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     intent = _detect_intent(text)
 
-    seeds = _seed_symbols(text, graph, find_symbols_fn)
+    #seeds = _seed_symbols(text, graph, find_symbols_fn)
+    seeds = find_symbols_fn(text, limit=20)
 
     expand_result = _route_expand(graph, seeds, intent)
 
