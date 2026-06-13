@@ -51,9 +51,10 @@
 from tools.analysis.graph.project_graph_context import ProjectGraphContext
 from tools.analysis.graph.symbol_router import route_symbol
 from tools.analysis.graph.symbol_router import route_symbol_shadow
+from tools.analysis.engine.engine_logger import EngineLogger
 
 
-def classify_references(analysis, project_prefixes):
+def classify_references(analysis, project_prefixes, logger=None):
     ctx = ProjectGraphContext(
         project_prefixes=project_prefixes,
         project_symbols=getattr(analysis, "project_symbols", None) or set(),
@@ -89,10 +90,10 @@ def classify_references(analysis, project_prefixes):
         # ---------------------------------------
         # 3. OPTIONAL DIVERGENCE LOG (SAFE)
         # ---------------------------------------
-        if shadow_route != route:
-            print("\n[ROUTE DIVERGENCE]")
-            print("  symbol:", ref.callee)
-            print("  prod:", route)
-            print("  shadow:", shadow_route)
+        if shadow_route != route and logger:
+            logger.write("\n[ROUTE DIVERGENCE]")
+            logger.write("  symbol:", ref.callee)
+            logger.write("  prod:", route)
+            logger.write("  shadow:", shadow_route)
 
     return analysis

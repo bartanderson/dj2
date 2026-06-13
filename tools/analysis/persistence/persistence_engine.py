@@ -241,6 +241,7 @@ def persist_file_analysis(
     connection: sqlite3.Connection,
     analysis,
     project_prefixes,
+    logger=None
 ) -> None:
 
     cursor = connection.cursor()
@@ -251,9 +252,9 @@ def persist_file_analysis(
     # =========================
     # DEBUG (pre-persist inspection)
     # =========================
-    print("\n[PERSIST START]")
-    print("file:", analysis.file_path)
-    print("symbol_refs:", len(analysis.symbol_references))
+    logger and logger.write("\n[PERSIST START]")
+    logger and logger.write("file:", analysis.file_path)
+    logger and logger.write("symbol_refs:", len(analysis.symbol_references))
 
 
     # -------------------------
@@ -473,7 +474,7 @@ def persist_file_analysis(
             getattr(ref, "edge_role", None),
         ))
 
-    print("[PERSIST MID] symbol_references inserted (in-memory):",
+    logger and logger.write("[PERSIST MID] symbol_references inserted (in-memory):",
           len(analysis.symbol_references))
 
     connection.commit()
@@ -486,18 +487,18 @@ def persist_file_analysis(
 
     db_count = cursor.fetchone()[0]
 
-    print("\n[PERSIST END]")
-    print("file:", analysis.file_path)
-    print("db_rows:", db_count)
-    print("in_memory:", len(analysis.symbol_references))
-    print("match:", db_count == len(analysis.symbol_references))
+    logger and logger.write("\n[PERSIST END]")
+    logger and logger.write("file:", analysis.file_path)
+    logger and logger.write("db_rows:", db_count)
+    logger and logger.write("in_memory:", len(analysis.symbol_references))
+    logger and logger.write("match:", db_count == len(analysis.symbol_references))
 
 def create_database(database_path: str | Path) -> sqlite3.Connection:
     database_path = Path(database_path)
 
     if database_path.exists():
         database_path.unlink()
-        print(f"[RESET DB] {database_path}")
+        logger and logger.write(f"[RESET DB] {database_path}")
 
     connection = sqlite3.connect(str(database_path))
     initialize_database(connection)
@@ -510,7 +511,7 @@ def create_database(database_path: str | Path) -> sqlite3.Connection:
 # ==================================================
 # PUBLIC ENTRY POINT (ONLY FUNCTION CALLED OUTSIDE)
 # ==================================================
-def persist_all(connection, file_analyses, graph, project_prefixes):
+def persist_all(connection, file_analyses, graph, project_prefixes, logger=None):
     """
     Single persistence orchestrator.
 
@@ -530,7 +531,7 @@ def persist_all(connection, file_analyses, graph, project_prefixes):
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     )
-    print("[DB TABLES]", cursor.fetchall())
+    logger and logger.write("[DB TABLES]", cursor.fetchall())
 
     # -----------------------------------------
     # 3. SNAPSHOT (SAFE NOW)

@@ -9,41 +9,10 @@ from tools.analysis.classification.classify_references import classify_reference
 from tools.analysis.graph.graph_builder import GraphBuilder
 from tools.analysis.persistence.persistence_engine import persist_all
 from tools.analysis.engine.db_resolver import resolve_analysis_db_path
+from tools.analysis.engine.engine_logger import EngineLogger
 
 ENABLE_FAULTS = False  # hard off for now
-
-from pathlib import Path
-
-_LOG_FILE = None
-_LOG_ENABLED = True
-
-def enable_log(db_path: str, enabled: bool = True):
-    """
-    Turns logging on/off.
-    Log file is always:
-        engine.db -> engine.txt
-    """
-    global _LOG_FILE, _LOG_ENABLED
-
-    _LOG_ENABLED = enabled
-
-    if not enabled:
-        return
-
-    log_path = Path(db_path).with_suffix(".txt")
-    _LOG_FILE = open(log_path, "a", encoding="utf-8")
-
-def log_dbg(*args):
-    if not _LOG_ENABLED or _LOG_FILE is None:
-        return
-
-    _LOG_FILE.write(" ".join(str(a) for a in args) + "\n")
-
-def close_log():
-    global _LOG_FILE
-    if _LOG_FILE:
-        _LOG_FILE.close()
-        _LOG_FILE = None
+enable_logging = False  # <- single flag
 
 @dataclass
 class EngineResult:
@@ -54,8 +23,10 @@ class EngineResult:
     # reduced: Any | None = None
 
 class EngineRunner:
+    def __init__(self, logger=None):
+        self.logger = logger
 
-    def run(self, corpus, project_prefixes, repo_root, connection=None, chaos_mode: bool = False):
+    def run(self, corpus, project_prefixes, repo_root, connection=None, chaos_mode: bool = False, enable_logging: bool = False):
 
         # ==================================================
         # PHASE 0: INGESTION
@@ -71,8 +42,8 @@ class EngineRunner:
         # ----------------------------
         # CHAOS MODE (controlled fault injection)
         # ----------------------------
-        if chaos_mode:
-            print("\n=== CHAOS MODE ACTIVE ===")
+        if chaos_mode and self.logger:
+            self.logger.write("\n=== CHAOS MODE ACTIVE ===")
 
             # 1. drop half the files
             file_analyses = file_analyses[: max(1, len(file_analyses) // 2)]
@@ -88,7 +59,7 @@ class EngineRunner:
         processed_count = len(file_analyses)
 
         file_analyses = [
-            classify_references(a, project_prefixes)
+            classify_references(a, project_prefixes,logger=self.logger)
             for a in file_analyses
         ]
 
@@ -154,24 +125,24 @@ class EngineRunner:
 
         signals = prune_signals(signals)
 
-        print("\n=== OBSERVABILITY SIGNALS ===")
+        logger.write("\n=== OBSERVABILITY SIGNALS ===")
 
         for s in signals:
-            print(
+            logger.write(
                 f"{s.stage} | {s.signal_class} | {s.name} = {s.value}"
             )
         # Obeservability end
 
-        print("\n=== SYMBOL REFERENCE SANITY CHECK ===")
+        logger.write("\n=== SYMBOL REFERENCE SANITY CHECK ===")
 
         sample = file_analyses[:3]
 
         for a in sample:
-            print(a.file_path)
-            print("  symbol_references:", len(a.symbol_references))
+            logger.write(a.file_path)
+            logger.write("  symbol_references:", len(a.symbol_references))
 
-        print("TOTAL symbol refs:", sum(len(a.symbol_references) for a in file_analyses))
-        print("EDGE COUNT:", edge_count)
+        logger.write(f"TOTAL symbol refs: {sum(len(a.symbol_references) for a in file_analyses)}")
+        logger.write("EDGE COUNT:", edge_count)
 
         persist_all(
             connection=connection,
@@ -187,11 +158,9 @@ if __name__ == "__main__":
     # DB TARGETS (explicit roles)
     # ----------------------------
 
-    print("RUNNING ENGINE TEST")
+    print("Begin analysis.")
     project_prefixes = []
     repo_root = "."
-
-    #ENGINE_DB = "tools.analysis.data.analysis.db"
 
     import tkinter as tk 
     from tkinter import filedialog
@@ -210,13 +179,15 @@ if __name__ == "__main__":
     )()
  
     db_path = resolve_analysis_db_path(corpus.root_path) # path selected normalized with _ + .db
-    enable_log(db_path, enabled=True)   # <- toggle here
 
-    log_dbg("ENGINE START")
-    log_dbg("Target:", corpus.root_path)
-    log_dbg("DB:", db_path)
-    log_dbg("LOG FILE:", str(Path(db_path).with_suffix(".txt")))
-    runner = EngineRunner()
+    log_path = Path(db_path).with_suffix(".log")
+    logger = EngineLogger(enabled=enable_logging, path=log_path)
+
+    logger.write("ENGINE START")
+    logger.write("Target:", corpus.root_path)
+    logger.write("DB:", db_path)
+    logger.write("LOG FILE:", str(Path(db_path).with_suffix(".txt")))
+    runner = EngineRunner(logger=logger)
 
     runner.run(
         corpus=corpus,
@@ -224,9 +195,6 @@ if __name__ == "__main__":
         repo_root=repo_root,
         connection=sqlite3.connect(db_path),
     )
+    logger.flush()
     print("\nAnalysis complete.")
-    print("Database:", db_path)
-
-
-
-
+    print("Database saved at:", db_path)
