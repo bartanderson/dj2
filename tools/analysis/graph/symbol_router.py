@@ -2,6 +2,27 @@
 
 from __future__ import annotations
 
+# ---------------------------------------------------
+# ARCHIVED DESIGN NOTES
+# ---------------------------------------------------
+
+# CP2.5 SEMANTIC OBSERVATION LAYER (DEPRECATED)
+
+# This layer has been removed from execution.
+
+# It previously handled:
+# - lexical decomposition of symbols
+# - semantic observation objects
+# - pre-routing interpretation hints
+
+# It has been replaced by:
+
+# SEED DISCOVERY LAYER
+# - DB-backed symbol lookup
+# - no semantic interpretation
+# - no identity reconstruction
+# - router receives only candidate seeds
+
 # CP2.5 SEMANTIC OBSERVATION LAYER (TRACE-ONLY)
 # -------------------------------------------------
 # PURPOSE:
@@ -52,15 +73,12 @@ from tools.analysis.graph.project_graph_context import (
     ProjectGraphContext,
 )
 from tools.analysis.identity.symbol_identity import normalize_symbol
-from tools.analysis.graph.semantic_candidate_builder import SemanticIdentityBuilder
-from tools.analysis.graph.route_trace import (TraceCollector, SemanticObservation, SemanticCandidate)
-from tools.analysis.graph.semantic_identity_contract import SemanticIdentityContract
-from tools.analysis.representation.symbol_environment import SymbolEnvironment
-from tools.analysis.graph.symbol_resolution_engine import is_runtime_symbol, resolve_runtime_binding
-
+from tools.analysis.graph.route_trace import TraceCollector
 from tools.analysis.graph.symbol_resolution_engine import (
     RouteType,
     resolve_symbol_type,
+    is_runtime_symbol,
+    resolve_runtime_binding,
 )
 
 # ============================================================
@@ -92,78 +110,6 @@ def route_symbol_shadow(
         project_prefixes=project_prefixes,
         trace_collector=tracer,
     )
-
-    # -----------------------------
-    # 2. SEMANTIC RECONSTRUCTION (POST-HOC ONLY)
-    # -----------------------------
-    builder = SemanticIdentityBuilder()
-
-    env = SymbolEnvironment(
-        alias_map={},
-        runtime_bindings=runtime_bindings or {},
-        project_symbols=project_symbols or set(),
-    )
-
-    identity = builder.build(
-        name=name,
-        env=env,
-        route_type=result,
-    )
-
-    if identity is None:
-        identity = type("EmptyIdentity", (), {
-            "fqdn": None,
-            "confidence": 0.0,
-            "surface": name,
-            "leaf": name.split(".")[-1],
-            "module": None,
-        })()
-
-    sico = SemanticIdentityContract(
-        surface=name,
-        normalized=normalize_symbol(name),
-        leaf=name.split(".")[-1],
-        root=name.split(".")[0],
-        depth=len(name.split(".")),
-
-        routing_result=result,
-
-        identity=(
-            {
-                "fqdn": identity.fqdn,
-                "confidence": identity.confidence,
-                "surface": identity.surface,
-                "leaf": identity.leaf,
-                "module": identity.module,
-            }
-            if identity is not None else None
-        ),
-
-        candidates=[
-            {
-                "fqdn": identity.fqdn,
-                "confidence": identity.confidence,
-                "surface": getattr(identity, "surface", name),
-                "leaf": getattr(identity, "leaf", name.split(".")[-1]),
-                "module": getattr(identity, "module", None),
-            }
-        ] if identity is not None else [],
-
-        observation=(
-            {
-                k: getattr(tracer.trace.semantic_observation, k)
-                for k in tracer.trace.semantic_observation.__slots__
-            }
-            if tracer.trace.semantic_observation is not None
-            else None
-        )
-    )
-    tracer.trace.semantic_identity = sico
-
-
-
-    print("\n[SEMANTIC OBSERVATION]")
-    print(tracer.trace.semantic_observation)
 
     return result, tracer.get()
 
@@ -202,25 +148,6 @@ def _route_symbol_core(
     # TRACE LAYER ONLY
     # -------------------------------------------------
     if trace_collector:
-
-        normalized = normalize_symbol(name)
-        leaf = normalized.split(".")[-1]
-        root = normalized.split(".")[0]
-
-        observation = SemanticObservation(
-            surface=name,
-            normalized=normalized,
-            leaf=leaf,
-            root=root,
-            has_dots=("." in normalized),
-            depth=len(normalized.split(".")),
-            runtime_root_hit=(
-                root in (runtime_bindings or {})
-            ),
-            project_leaf_hit=False,
-        )
-
-        trace_collector.trace.semantic_observation = observation
 
         trace_collector.record(
             "resolved_route",

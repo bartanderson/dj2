@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from tools.analysis.oracle.db_oracle import _build_index
-
 # =========================================================
 # ROUTE RESULT CONTRACT (STABLE OUTPUT SHAPE)
 # =========================================================
@@ -246,7 +244,14 @@ def _prune(graph, symbols: List[str], seeds: List[str], limit: int = 40) -> List
 
 
 def _route_expand(graph, seeds, intent):
-    forward, reverse = _build_index(graph)
+    edges = getattr(graph, "edges", [])
+
+    forward = {}
+    reverse = {}
+
+    for e in edges:
+        forward.setdefault(e.caller, set()).add(e.callee)
+        reverse.setdefault(e.callee, set()).add(e.caller)
 
     visited = set()
     expanded = set()
@@ -281,22 +286,53 @@ def _route_expand(graph, seeds, intent):
         for n in reverse.get(node, []):
             add(n, f"reverse:{node}", source=node)
 
+    intent_budget = {
+        "surface_query": {
+            "forward_depth": 1,
+            "reverse": False,
+            "two_hop": False,
+        },
+        "impact_query": {
+            "forward_depth": 0,
+            "reverse": True,
+            "two_hop": False,
+        },
+        "reverse_query": {
+            "forward_depth": 0,
+            "reverse": True,
+            "two_hop": False,
+        },
+        "general_query": {
+            "forward_depth": 1,
+            "reverse": True,
+            "two_hop": False,
+        },
+    }
+
+    budget = intent_budget.get(intent, intent_budget["general_query"])
+
     for s in seeds:
         add(s, "seed")
 
-        # forward (1-hop)
-        if intent in ("general_query", "surface_query", "context_query"):
-            expand_forward(s, depth=1)
+        # -------------------------
+        # FORWARD EXPANSION
+        # -------------------------
+        if budget["forward_depth"] >= 1:
+            expand_forward(s, depth=budget["forward_depth"])
 
-        # 2-hop forward (only for surface/general)
-        if intent in ("surface_query", "general_query"):
+        # -------------------------
+        # REVERSE EXPANSION
+        # -------------------------
+        if budget["reverse"]:
+            expand_reverse(s)
+
+        # -------------------------
+        # 2-HOP (DISABLED FOR NOW)
+        # -------------------------
+        if budget["two_hop"]:
             for n in forward.get(s, []):
                 for n2 in forward.get(n, []):
                     add(n2, f"forward_2hop:{n}", source=n)
-
-        # reverse (impact)
-        if intent in ("impact_query", "general_query"):
-            expand_reverse(s)
 
     return {
         "nodes": list(expanded),
