@@ -65,7 +65,7 @@ def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
     Step 1: map query → candidate symbols
     """
 
-    candidates = find_symbols_fn(graph, text, limit=20)
+    candidates = find_symbols_fn(text, limit=20)
 
     return candidates
 

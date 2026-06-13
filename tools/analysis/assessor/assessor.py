@@ -10,11 +10,6 @@ from tools.analysis.truth.views import (
     build_integrity_view,
 )
 from tools.analysis.reducer.reduce import reduce
-from tools.analysis.api.query_discovery import (
-    list_symbols as _list_symbols,
-    find_symbols as _find_symbols,
-    find_files as _find_files,
-)
 from tools.analysis.api.oracle_router import route_query
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
@@ -207,28 +202,18 @@ class Assessor:
             },
             "node_degree": node_degree,
         }
-    # =====================================================
-    # DISCOVERY SURFACE
-    # (was called directly against the in-memory graph in
-    # run_engine's __main__ "DISCOVERY SURFACE TEST" block)
-    # =====================================================
-
-    def list_symbols(self):
-        return _list_symbols(self.snapshot())
-
-    def find_symbols(self, text: str, limit: int = 50):
-        return _find_symbols(self.snapshot(), text, limit)
-
-    def find_files(self, text: str, limit: int = 50):
-        return _find_files(self.snapshot(), text, limit)
 
     # =====================================================
-    # ORACLE ROUTER
-    # (was run_engine's "ORACLE ROUTER TEST" block)
+    # SEED DISCOVERY
+    # 
     # =====================================================
 
     def query(self, text: str):
-        return route_query(text, self.snapshot(), _find_symbols)
+        return route_query(
+            text,
+            self.snapshot(),
+            self.oracle.discover_seed_symbols,
+        )
 
     # =====================================================
     # STRUCTURE VIEW (run_engine Phase 3)
@@ -365,11 +350,13 @@ class Assessor:
             "integrity_view": self.integrity_view(),
             "responsibility": self.responsibility_snapshot(),
             "run_integrity_check": self.run_integrity_check(),
-            "symbols_sample": self.list_symbols()[:10],
         }
 
         if sample_queries:
-            report["queries"] = {q: self.query(q) for q in sample_queries}
+            report["queries"] = {
+                q: self.query(q)
+                for q in sample_queries
+            }
 
         return report
 

@@ -50,6 +50,8 @@ def find_symbols(graph, text: str, limit: int = 50):
 
         sym_tokens = sym.lower().replace(".", " ").replace("_", " ").split()
 
+        leaf = sym.split(".")[-1].lower()
+
         # -------------------------------------------------
         # SIGNAL 1: TOKEN OVERLAP
         # -------------------------------------------------
@@ -63,9 +65,11 @@ def find_symbols(graph, text: str, limit: int = 50):
         # -------------------------------------------------
         # FINAL SCORE
         # -------------------------------------------------
-        score = overlap + substring
+        exact_leaf = 5 if leaf in text.lower() else 0
 
-        if score >= 0:
+        score = overlap + substring + exact_leaf
+
+        if score > 0:
             scored.append((score, sym))
 
     # sort by strength of match

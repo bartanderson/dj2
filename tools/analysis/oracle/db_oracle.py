@@ -15,6 +15,7 @@ class DBOracle:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
+        self.db_path = db_path
 
     # -----------------------------
     # SEMANTIC EDGES
@@ -234,6 +235,52 @@ class DBOracle:
             })
 
         return dict(files)
+
+    # =====================================================
+    # SEED DISCOVERY (DB-OWNED, NO EXTERNAL MODULE)
+    # =====================================================
+    def discover_seed_symbols(self, text: str, limit: int = 50) -> list[str]:
+        graph = self.get_snapshot_graph()
+        edges = graph.edges
+
+        text_tokens = set(
+            text.lower()
+            .replace("_", " ")
+            .replace(".", " ")
+            .split()
+        )
+
+        scored = []
+
+        for e in edges:
+            for sym in (e.caller, e.callee):
+                if not sym:
+                    continue
+
+                sym_tokens = sym.lower().replace(".", " ").replace("_", " ").split()
+
+                overlap = len(text_tokens & set(sym_tokens))
+                substring = 1 if text.lower() in sym.lower() else 0
+
+                score = overlap + substring
+
+                if score > 0:
+                    scored.append((score, sym))
+
+        scored.sort(reverse=True, key=lambda x: x[0])
+
+        seen = set()
+        out = []
+
+        for _, s in scored:
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+
+            if len(out) >= limit:
+                break
+
+        return out
 
 # not class functions here...
 
