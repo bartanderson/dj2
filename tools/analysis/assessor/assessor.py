@@ -10,7 +10,6 @@ from tools.analysis.truth.views import (
     build_integrity_view,
 )
 from tools.analysis.reducer.reduce import reduce
-from tools.analysis.api.oracle_router import route_query
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
 
@@ -204,15 +203,16 @@ class Assessor:
         }
 
     # =====================================================
-    # SEED DISCOVERY
+    # QUERY (via QuerySession — single lifecycle object)
     # =====================================================
-
+    def session(self) -> "QuerySession":
+        """Return a fresh QuerySession bound to this oracle."""
+        from tools.analysis.assessor.query_session import QuerySession
+        return QuerySession(self.oracle)
+    
     def query(self, text: str):
-        return route_query(
-            text,
-            self.snapshot(),
-            self.oracle.discover_seed_symbols,
-        )
+        """Execute a single query. Returns QuerySessionResult."""
+        return self.session().execute(text)
 
     # =====================================================
     # STRUCTURE VIEW (run_engine Phase 3)
@@ -355,8 +355,9 @@ class Assessor:
         }
 
         if sample_queries:
+            session = self.session()
             report["queries"] = {
-                q: self.query(q)
+                q: session.execute(q).summary()
                 for q in sample_queries
             }
 
