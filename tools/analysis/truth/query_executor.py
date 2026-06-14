@@ -70,6 +70,10 @@ class QueryExecutor:
 
         view = self.views[q.view]
 
+        # APPLY FILTER EARLY (before projection)
+        if q.filter:
+            view = self._apply_filter(view, q.filter)
+
         # full view
         if q.metric is None:
             return QueryResult(
@@ -121,3 +125,22 @@ class QueryExecutor:
             op=f.op,
             value=f.value,
         )
+
+    def _apply_filter(self, data, f: Filter):
+
+        key, op, value = f.key, f.op, f.value
+
+        if isinstance(data, dict):
+            if op == "==":
+                return data if data.get(key) == value else None
+            return data
+
+        if isinstance(data, list):
+            if op == "==":
+                return [x for x in data if x.get(key) == value]
+            if op == ">":
+                return [x for x in data if x.get(key, 0) > value]
+            if op == "<":
+                return [x for x in data if x.get(key, 0) < value]
+
+        return data

@@ -11,6 +11,7 @@ from typing import Optional, Union, Any
 class Select:
     view: str          # STRUCTURE | STABILITY | INTEGRITY | SUMMARY | SUBSYSTEM
     metric: Optional[str] = None  # optional projection field
+    filter: Optional["Filter"] = None
 
 ## 2.3 FILTER NODE
 

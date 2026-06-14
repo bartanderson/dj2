@@ -72,12 +72,14 @@ class QueryPlanner:
 
     def _validate_filter(self, f: Filter):
 
-        # optional: enforce registry rules here
-        if not self.registry.validate_filter_key("STRUCTURE", f.key):
-            # NOTE: in real version you'd route by view context
-            pass
+        # validate key exists in any view (light-touch safety for now)
+        for view_keys in self.registry.VALID_FILTER_KEYS.values():
+            if f.key in view_keys:
+                return f
 
+        # allow unknown keys (we are intentionally permissive at this stage)
         return f
+
 
     def _validate(self, query):
 
@@ -86,23 +88,40 @@ class QueryPlanner:
             if isinstance(query.left, Combine) or isinstance(query.right, Combine):
                 raise ValueError("Nested Combine not supported (flat-only AST)")
 
-            left_view = self._extract_view(query.left)
-            right_view = self._extract_view(query.right)
+            # STEP 1: validate children first (same as before)
+            left = self._validate(query.left)
+            right = self._validate(query.right)
+
+            # STEP 2: extract views for combine validation
+            left_view = self._extract_view(left)
+            right_view = self._extract_view(right)
 
             if not self.registry.validate_combine(left_view, right_view):
                 raise ValueError(f"Invalid combine: ({left_view}, {right_view})")
 
-            left = self._validate(query.left)
-            right = self._validate(query.right)
-
+            # STEP 3: NEW — enforce filter scoping rule
+            # Filters are NOT allowed to exist at top-level inside Combine branches
             if isinstance(left, Filter) or isinstance(right, Filter):
-                raise ValueError("Combine cannot directly include Filter-only branches")
+                raise ValueError("Filter must be attached to a Select node")
 
             return Combine(left=left, right=right)
+
+
+        if isinstance(query, Filter):
+            # NEW — explicit validation path for Filter nodes
+            # ensures Filters are never floating unvalidated
+            return self._validate_filter(query)
+
+
+        # pass-through for Select (unchanged behavior assumed elsewhere)
+        return query
 
     def _validate_select(self, q: Select):
 
         if q.view not in QueryPlan.VALID_METRICS:
+            # NEW: validate filter if attached
+            if q.filter:
+                self._validate_filter(q.filter)
             raise ValueError(f"Unknown view: {q.view}")
 
         if q.metric is None:
