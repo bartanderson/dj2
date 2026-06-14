@@ -71,28 +71,9 @@ def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
 
 
 # =========================================================
-# GRAPH EXPANSION STRATEGY (BASIC V1)
+# GRAPH EXPANSION STRATEGY
+# NOTE: _expand() removed — route_query uses _route_expand() directly
 # =========================================================
-
-def _expand(graph, symbols: List[str]) -> List[str]:
-    """
-    Step 2: expand symbol set using local edges
-    """
-
-    expanded = set(symbols)
-
-    edges = getattr(graph, "edges", [])
-
-    for e in edges:
-        if e.caller in symbols or e.callee in symbols:
-
-            if _is_valid_symbol(e.caller):
-                expanded.add(e.caller)
-
-            if _is_valid_symbol(e.callee):
-                expanded.add(e.callee)
-
-    return sorted(expanded)
 
 
 # =========================================================
@@ -280,32 +261,44 @@ def _route_expand(graph, seeds, intent):
             return
 
         for n in forward.get(node, []):
+            if not _is_valid_symbol(n):
+                continue
             add(n, f"forward:{node}", source=node)
             expand_forward(n, depth - 1)
 
-    def expand_reverse(node):
+    def expand_reverse(node, depth=1):
+        if depth <= 0:
+            return
+
         for n in reverse.get(node, []):
+            if not _is_valid_symbol(n):
+                continue
             add(n, f"reverse:{node}", source=node)
+            expand_reverse(n, depth - 1)
 
     intent_budget = {
         "surface_query": {
             "forward_depth": 1,
             "reverse": False,
+            "reverse_depth": 0,
             "two_hop": False,
         },
         "impact_query": {
             "forward_depth": 0,
             "reverse": True,
+            "reverse_depth": 2,
             "two_hop": False,
         },
         "reverse_query": {
             "forward_depth": 0,
             "reverse": True,
+            "reverse_depth": 2,
             "two_hop": False,
         },
         "general_query": {
             "forward_depth": 1,
             "reverse": True,
+            "reverse_depth": 1,
             "two_hop": False,
         },
     }
@@ -325,7 +318,7 @@ def _route_expand(graph, seeds, intent):
         # REVERSE EXPANSION
         # -------------------------
         if budget["reverse"]:
-            expand_reverse(s)
+            expand_reverse(s, depth=budget["reverse_depth"])
 
         # -------------------------
         # 2-HOP (DISABLED FOR NOW)

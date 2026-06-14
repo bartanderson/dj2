@@ -75,11 +75,6 @@ def find_symbols(graph, text: str, limit: int = 50):
     # sort by strength of match
     scored.sort(reverse=True, key=lambda x: x[0])
 
-    print("\n=== SYMBOL DEBUG ===")
-    all_syms = list_symbols(graph)
-    print("total symbols:", len(all_syms))
-    print("sample:", all_syms[:20])
-
     return [sym for _, sym in scored[:limit]]
 
 
