@@ -131,6 +131,12 @@ def _apply_intent_weights(symbols, intent, graph, seeds):
     return symbols
 
 def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
+    """
+    Seed authority contract:
+    find_symbols_fn MUST be DBOracle.discover_seed_symbols.
+    Graph-based seed injection (query_discovery.find_symbols) is no
+    longer a valid call site — seeds must come from DB truth only.
+    """
 
     intent = _detect_intent(text)
 
