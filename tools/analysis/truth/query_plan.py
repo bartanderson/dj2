@@ -28,7 +28,7 @@ class QuerySemanticsRegistry:
     }
 
     VALID_FILTER_KEYS = {
-        "STRUCTURE": {"edges", "callee", "caller"},
+        "STRUCTURE": {"edges", "callee", "caller", "hotspots"},
         "STABILITY": {"stable_contracts", "unstable_contracts"},
         "SUBSYSTEM": {"modules", "edge_count"},
     }

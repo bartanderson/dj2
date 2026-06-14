@@ -125,24 +125,25 @@ class EngineRunner:
 
         signals = prune_signals(signals)
 
-        logger.write("\n=== OBSERVABILITY SIGNALS ===")
+        if self.logger:
+            self.logger.write("\n=== OBSERVABILITY SIGNALS ===")
 
-        for s in signals:
-            logger.write(
-                f"{s.stage} | {s.signal_class} | {s.name} = {s.value}"
-            )
-        # Obeservability end
+            for s in signals:
+                self.logger.write(
+                    f"{s.stage} | {s.signal_class} | {s.name} = {s.value}"
+                )
 
-        logger.write("\n=== SYMBOL REFERENCE SANITY CHECK ===")
+        if self.logger:
+            self.logger.write("\n=== SYMBOL REFERENCE SANITY CHECK ===")
 
-        sample = file_analyses[:3]
+            sample = file_analyses[:3]
 
-        for a in sample:
-            logger.write(a.file_path)
-            logger.write("  symbol_references:", len(a.symbol_references))
+            for a in sample:
+                self.logger.write(a.file_path)
+                self.logger.write(f"  symbol_references: {len(a.symbol_references)}")
 
-        logger.write(f"TOTAL symbol refs: {sum(len(a.symbol_references) for a in file_analyses)}")
-        logger.write("EDGE COUNT:", edge_count)
+            self.logger.write(f"TOTAL symbol refs: {sum(len(a.symbol_references) for a in file_analyses)}")
+            self.logger.write(f"EDGE COUNT: {edge_count}")
 
         persist_all(
             connection=connection,

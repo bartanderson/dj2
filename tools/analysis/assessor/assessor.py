@@ -219,7 +219,10 @@ class Assessor:
     # =====================================================
 
     def structure_view(self):
-        return build_structure_view(self.snapshot())
+        return build_structure_view(
+            self.snapshot(),
+            builtin_symbols=self.oracle.builtin_symbols(),
+        )
 
     # =====================================================
     # DB-DERIVED CONTRACT REPORTS

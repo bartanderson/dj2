@@ -167,6 +167,35 @@ class DBOracle:
             bucket_counts=bucket_counts
         )
 
+    def builtin_symbols(self) -> set:
+        """
+        Returns the set of all symbols that appear exclusively as builtins
+        in symbol_references. A symbol is considered builtin if every
+        reference to it (as caller or callee) is bucket='builtin'.
+        Used by build_structure_view to exclude builtins from hotspot ranking.
+        """
+        cur = self.conn.cursor()
+
+        rows = cur.execute("""
+            SELECT symbol, MIN(bucket) as min_bucket, MAX(bucket) as max_bucket
+            FROM (
+                SELECT caller as symbol, bucket FROM symbol_references
+                    WHERE caller IS NOT NULL
+                UNION ALL
+                SELECT callee as symbol, bucket FROM symbol_references
+                    WHERE callee IS NOT NULL
+            )
+            GROUP BY symbol
+        """).fetchall()
+
+        builtins = set()
+
+        for r in rows:
+            if r["min_bucket"] == "builtin" and r["max_bucket"] == "builtin":
+                builtins.add(r["symbol"])
+
+        return builtins
+
     def snapshot(self):
         return self.get_snapshot_graph()
 

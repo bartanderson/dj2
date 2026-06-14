@@ -13,7 +13,7 @@ class StructureView:
     hotspots: list[tuple[str, int]]  # (module, degree)
 
 
-def build_structure_view(graph: Any) -> StructureView:
+def build_structure_view(graph: Any, builtin_symbols: set = None) -> StructureView:
     edges = [(e.caller, e.callee) for e in graph.edges]
 
     adjacency = {}
@@ -25,8 +25,17 @@ def build_structure_view(graph: Any) -> StructureView:
         degree_count[caller] = degree_count.get(caller, 0) + 1
         degree_count[callee] = degree_count.get(callee, 0) + 1
 
+    # Exclude builtin symbols from hotspot ranking.
+    # Builtins (print, len, getattr, etc.) dominate degree counts by volume
+    # but carry no semantic signal about project structure.
+    # edges/adjacency are left intact — structural truth is not modified.
+    if builtin_symbols:
+        ranked = {k: v for k, v in degree_count.items() if k not in builtin_symbols}
+    else:
+        ranked = degree_count
+
     hotspots = sorted(
-        degree_count.items(),
+        ranked.items(),
         key=lambda x: x[1],
         reverse=True
     )
