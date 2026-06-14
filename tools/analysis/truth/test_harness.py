@@ -2,7 +2,7 @@
 
 from tools.analysis.truth.query_executor import QueryExecutor
 from tools.analysis.truth.query_plan import QueryPlanner
-from tools.analysis.truth.query_executor import QuerySemanticsRegistry
+from tools.analysis.truth.query_plan import QuerySemanticsRegistry
 from tools.analysis.truth.query_ast import Select, Combine
 
 

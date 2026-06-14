@@ -61,9 +61,14 @@ class QueryPlanner:
     def _extract_view(self, q):
         if isinstance(q, Select):
             return q.view
-        if hasattr(q, "view"):
-            return q.view
-        return "UNKNOWN"
+
+        if isinstance(q, Combine):
+            raise ValueError("Cannot extract view from Combine during validation")
+
+        if isinstance(q, Filter):
+            raise ValueError("Cannot extract view from Filter during validation")
+
+        raise ValueError(f"Unknown AST node type: {type(q)}")
 
     def _validate_filter(self, f: Filter):
 
@@ -76,29 +81,24 @@ class QueryPlanner:
 
     def _validate(self, query):
 
-        if isinstance(query, Select):
-            return self._validate_select(query)
-
         if isinstance(query, Combine):
-            # FLAT ONLY CONTRACT (temporary but explicit)
+
             if isinstance(query.left, Combine) or isinstance(query.right, Combine):
-                raise ValueError("Nested Combine not supported (flat-only query surface)")
+                raise ValueError("Nested Combine not supported (flat-only AST)")
+
+            left_view = self._extract_view(query.left)
+            right_view = self._extract_view(query.right)
+
+            if not self.registry.validate_combine(left_view, right_view):
+                raise ValueError(f"Invalid combine: ({left_view}, {right_view})")
+
             left = self._validate(query.left)
             right = self._validate(query.right)
 
-            if not self.registry.validate_combine(
-                self._extract_view(left),
-                self._extract_view(right),
-            ):
-                raise ValueError("Invalid combine in plan stage")
+            if isinstance(left, Filter) or isinstance(right, Filter):
+                raise ValueError("Combine cannot directly include Filter-only branches")
 
             return Combine(left=left, right=right)
-
-        if isinstance(query, Filter):
-            # attach filter node to AST (do not flatten)
-            return query
-
-        raise ValueError(f"Invalid query node: {type(query)}")
 
     def _validate_select(self, q: Select):
 
