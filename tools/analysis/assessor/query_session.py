@@ -56,8 +56,10 @@ class QuerySessionResult:
     def seed_explanation(self) -> str:
         if not self.seeds:
             return "No seeds found for query."
-        return f"Query '{self.raw_query}' matched {len(self.seeds)} seed(s): {', '.join(self.seeds[:5])}"
-
+        return (
+            f"Query '{self.raw_query}' matched {len(self.seeds)} seed(s): "
+            f"{', '.join(self.seeds[:5])}"
+        )
     def expansion_explanation(self) -> str:
         added = [s for s in self.expanded if s not in self.seeds]
         return (
@@ -73,6 +75,19 @@ class QuerySessionResult:
             "seed_count": len(self.seeds),
             "expanded_count": len(self.expanded),
         }
+
+    def seed_paths(self) -> Dict[str, Any]:
+        """Which graph paths were followed to reach each seed."""
+        return self.reasoning.get("seed_paths", {})
+
+    def expansion_edges(self) -> Dict[str, Any]:
+        """Edge-level trace of how expansion propagated from seeds."""
+        return self.reasoning.get("edges", {})
+
+    def node_reasons(self) -> Dict[str, str]:
+        """Per-node explanation of why each expanded symbol was included."""
+        trace = self.expansion_trace
+        return trace.get("node_reasons", {})
 
     def summary(self) -> Dict[str, Any]:
         return {

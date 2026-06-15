@@ -268,33 +268,88 @@ class DBOracle:
     # =====================================================
     # SEED DISCOVERY (DB-OWNED, NO EXTERNAL MODULE)
     # =====================================================
-    def discover_seed_symbols(self, text: str, limit: int = 50):
-        graph = self.get_snapshot_graph()
-        edges = graph.edges
+    def discover_seed_symbols(self, text: str, limit: int = 50) -> list:
+        """
+        DB-backed seed discovery. Seeds are drawn from symbol_references
+        (not graph_edges) so bucket filtering is available.
 
+        Scoring:
+          +2  exact symbol name match (case-insensitive)
+          +2  substring match where query is contained in symbol
+          +1  per overlapping token (tokenized on . _ and whitespace)
+
+        Minimum score of 2 required — single loose token matches
+        (e.g. 'show' matching matplotlib.pyplot.show) are excluded.
+
+        Builtins are never seeds regardless of score.
+        """
+        cur = self.conn.cursor()
+
+        rows = cur.execute("""
+            SELECT DISTINCT caller as symbol, bucket FROM symbol_references
+                WHERE caller IS NOT NULL
+            UNION
+            SELECT DISTINCT callee as symbol, bucket FROM symbol_references
+                WHERE callee IS NOT NULL
+        """).fetchall()
+
+        text_lower = text.lower()
         text_tokens = set(
-            text.lower()
+            text_lower()
             .replace("_", " ")
             .replace(".", " ")
             .split()
         )
 
+        # short/generic tokens that match too broadly as standalone signals
+        # (these still count when combined with other matches)
+        WEAK_TOKENS = {"on", "in", "at", "to", "of", "is", "a", "an",
+                       "the", "for", "with", "from", "by", "or", "and"}
+
+        signal_tokens = {t for t in text_tokens if t not in WEAK_TOKENS}
+
         scored = []
+        seen_sym = set()
 
-        for e in edges:
-            for sym in (e.caller, e.callee):
-                if not sym:
-                    continue
+        for r in rows:
+            sym = r["symbol"]
+            bucket = r["bucket"]
 
-                sym_tokens = sym.lower().replace(".", " ").replace("_", " ").split()
+            if bucket == "builtin":
+                continue
 
-                overlap = len(text_tokens & set(sym_tokens))
-                substring = 1 if text.lower() in sym.lower() else 0
+            if sym in seen_sym:
+                continue
+            seen_sym.add(sym)
 
-                score = overlap + substring
+            sym_lower = sym.lower()
+            sym_tokens = set(
+                sym_lower
+                .replace(".", " ")
+                .replace("_", " ")
+                .split()
+            )
 
-                if score > 0:
-                    scored.append((score, sym))
+            score = 0
+
+            # exact match — highest confidence
+            if text_lower == sym_lower:
+                score += 4
+
+            # query text is a substring of the symbol
+            if text_lower in sym_lower:
+                score += 3
+            # symbol tail (last segment) contains the full query
+            sym_tail = sym_lower.split(".")[-1]
+            if text_lower in sym_tail:
+                score += 2
+
+            # token overlap — weighted by token length (longer = more specific)
+            for tok in signal_tokens & sym_tokens:
+                score += 1 + (1 if len(tok) > 5 else 0)
+
+            if score >= 2:
+                scored.append((score, sym))
 
         scored.sort(reverse=True, key=lambda x: x[0])
 
