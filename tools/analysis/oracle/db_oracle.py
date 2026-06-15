@@ -295,7 +295,7 @@ class DBOracle:
 
         text_lower = text.lower()
         text_tokens = set(
-            text_lower()
+            text_lower
             .replace("_", " ")
             .replace(".", " ")
             .split()
