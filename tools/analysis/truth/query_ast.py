@@ -9,23 +9,31 @@ from typing import Optional, Union, Any
 
 @dataclass(frozen=True)
 class Select:
-    view: str          # STRUCTURE | STABILITY | INTEGRITY | SUMMARY | SUBSYSTEM
-    metric: Optional[str] = None  # optional projection field
+    view: str
+    metric: Optional[str] = None
     filter: Optional["Filter"] = None
 
-## 2.3 FILTER NODE
+    def __init__(self, view: str, metric: Optional[str] = None, filter: Optional["Filter"] = None):
+        object.__setattr__(self, "view", view)
+        object.__setattr__(self, "metric", metric)
+        object.__setattr__(self, "filter", filter)
 
+## 2.3 FILTER (SELECT MODIFIER ONLY — NOT A ROOT NODE)
+##
+## Filter is not executable on its own.
+## It only exists as Select.filter and is applied during execution.
+## This is part of the deterministic model (no standalone predicate nodes).
 @dataclass(frozen=True)
 class Filter:
     key: str
     op: str
     value: Any
 
-# Examples:
-
-# module == "tools.analysis"
-# edge_count > 10
-# contract == "graph_builder_deterministic_output"
+# Examples (applied as Select modifiers only):
+#
+# Select("STRUCTURE", filter=Filter("caller", "==", "tools.analysis"))
+# Select("STRUCTURE", filter=Filter("edges", ">", 10))
+# Select("INTEGRITY", filter=Filter("errors", ">", 0))
 
 ## 2.4 COMBINATION NODE
 

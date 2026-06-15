@@ -57,8 +57,8 @@ class QueryExecutor:
                 self.execute(query.right),
             )
 
-        if isinstance(query, Filter):
-            return self._filter(query)
+        # Filter is not a root node in deterministic-model.
+        # It only exists inside Select.
 
         raise ValueError(f"Invalid query node: {type(query)}")
 
@@ -117,14 +117,6 @@ class QueryExecutor:
     # -------------------------
     # FILTER (pure descriptor node)
     # -------------------------
-
-    def _filter(self, f: Filter):
-
-        return FilterResult(
-            key=f.key,
-            op=f.op,
-            value=f.value,
-        )
 
     def _apply_filter(self, data, f: Filter):
 

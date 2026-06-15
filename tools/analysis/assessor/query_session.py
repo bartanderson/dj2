@@ -72,6 +72,8 @@ class QuerySessionResult:
         return {
             "query": self.raw_query,
             "intent": self.intent,
+            "seeds": self.seeds,
+            "expanded": self.expanded,
             "seed_explanation": self.seed_explanation(),
             "expansion_explanation": self.expansion_explanation(),
             "intent_mapping_trace": self.intent_mapping_trace(),
@@ -120,8 +122,8 @@ class QuerySession:
         result = QuerySessionResult(
             raw_query=text,
             intent=route_result.intent,
-            seeds=route_result.seed_symbols,
-            expanded=route_result.expanded_symbols,
+            seeds=route_result.execution_plan.get("seeds", []),
+            expanded=route_result.execution_plan.get("nodes", []),
             expansion_trace=expansion_trace,
             primitives=route_result.execution_plan.get("primitives", []),
             execution_plan=route_result.execution_plan,

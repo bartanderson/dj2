@@ -142,8 +142,18 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
 
     #seeds = _seed_symbols(text, graph, find_symbols_fn)
     seeds = find_symbols_fn(text, limit=20)
+    print("\n[DEBUG SEED SOURCE]")
+    print(type(seeds), seeds[:10] if hasattr(seeds, "__len__") else seeds)
 
     expand_result = _route_expand(graph, seeds, intent)
+
+    print("\n[DEBUG SEEDS INPUT]")
+    print(seeds)
+
+    print("\n[DEBUG EXPANSION RAW]")
+    print("seeds:", seeds)
+    print("nodes:", expand_result["nodes"])
+    print("trace_size:", len(expand_result["trace"]["seed_paths"]))
 
     expanded = expand_result["nodes"]
     expansion_trace = expand_result["trace"]

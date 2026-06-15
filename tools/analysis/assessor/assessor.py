@@ -12,6 +12,7 @@ from tools.analysis.truth.views import (
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
+from tools.analysis.truth.resolver import resolve_field, resolve_list_field
 
 
 # =========================================================
@@ -356,10 +357,18 @@ class Assessor:
 
         if sample_queries:
             session = self.session()
-            report["queries"] = {
-                q: session.execute(q).summary()
-                for q in sample_queries
-            }
+            # report["queries"] = {
+            #     q: session.execute(q).summary()
+            #     for q in sample_queries
+            # }
+            report["queries"] = {}
+
+            for q in sample_queries:
+                raw = session.execute(q)
+
+                summary = raw.summary()
+
+                report["queries"][q] = summary
 
         return report
 
@@ -409,12 +418,17 @@ def main():
     print(report["run_integrity_check"])
 
     print("\n=== ORACLE ROUTER ===")
+
     for q, res in report["queries"].items():
         print("\nQUERY:", q)
-        print("intent:", res.intent)
-        print("seeds:", res.seed_symbols[:5])
-        print("expanded:", res.expanded_symbols[:5])
 
+        print("intent:", resolve_field(res, "intent"))
+
+        seeds = resolve_list_field(res, "seed_symbols")
+        expanded = resolve_list_field(res, "expanded_symbols")
+
+        print("seeds:", seeds[:5])
+        print("expanded:", expanded[:5])
 
 if __name__ == "__main__":
     main()

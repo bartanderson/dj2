@@ -70,18 +70,10 @@ class QueryPlanner:
 
         raise ValueError(f"Unknown AST node type: {type(q)}")
 
-    def _validate_filter(self, f: Filter):
-
-        # validate key exists in any view (light-touch safety for now)
-        for view_keys in self.registry.VALID_FILTER_KEYS.values():
-            if f.key in view_keys:
-                return f
-
-        # allow unknown keys (we are intentionally permissive at this stage)
-        return f
-
-
     def _validate(self, query):
+
+        if isinstance(query, Filter):
+            raise ValueError("Filter cannot be a root query node in deterministic-model")
 
         if isinstance(query, Combine):
 
@@ -106,33 +98,33 @@ class QueryPlanner:
 
             return Combine(left=left, right=right)
 
-
-        if isinstance(query, Filter):
-            # NEW — explicit validation path for Filter nodes
-            # ensures Filters are never floating unvalidated
-            return self._validate_filter(query)
-
-
+        if isinstance(query, Select):
+            return self._validate_select(query)
+    
         # pass-through for Select (unchanged behavior assumed elsewhere)
         return query
 
     def _validate_select(self, q: Select):
 
         if q.view not in QueryPlan.VALID_METRICS:
-            # NEW: validate filter if attached
-            if q.filter:
-                self._validate_filter(q.filter)
             raise ValueError(f"Unknown view: {q.view}")
 
-        if q.metric is None:
-            return q
+        if q.metric is not None:
+            allowed = QueryPlan.VALID_METRICS[q.view]
+            if q.metric not in allowed:
+                raise ValueError(
+                    f"Invalid metric '{q.metric}' for view '{q.view}'"
+                )
 
-        allowed = QueryPlan.VALID_METRICS[q.view]
+        # FILTER VALIDATION (NOW INLINE, DETERMINISTIC)
 
-        if q.metric not in allowed:
-            raise ValueError(
-                f"Invalid metric '{q.metric}' for view '{q.view}'"
-            )
+        if q.filter is not None:
+            allowed = self.registry.VALID_FILTER_KEYS.get(q.view, set())
+
+            if q.filter.key not in allowed:
+                raise ValueError(
+                    f"Invalid filter key '{q.filter.key}' for view '{q.view}'"
+                )
 
         return q
 
