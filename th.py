@@ -14,7 +14,7 @@ from tools.analysis.truth.query_ast import Select, Combine
 from tools.analysis.truth.test_harness import TruthTestHarness
 
 
-oracle = DBOracle("C_Users_bartl_dev_dj2_tools_analysis_engine.db")
+oracle = DBOracle("C_Users_bartl_dev_dj2_tools.db")
 assessor = Assessor(oracle)
 
 views = {

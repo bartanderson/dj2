@@ -71,5 +71,5 @@ def run(db_path: str):
 
 if __name__ == "__main__":
     db_path = sys.argv[1] if len(sys.argv) > 1 else \
-        "C_Users_bartl_dev_dj2_tools_analysis_engine.db"
+        "C_Users_bartl_dev_dj2_tools.db"
     run(db_path)

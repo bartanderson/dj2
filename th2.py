@@ -178,7 +178,7 @@ def run(oracle, assessor, session):
 
 
 if __name__ == "__main__":
-    oracle  = DBOracle("C_Users_bartl_dev_dj2_tools_analysis_engine.db")
+    oracle  = DBOracle("C_Users_bartl_dev_dj2_tools.db")
     assessor = Assessor(oracle)
     session  = QuerySession(oracle)
 
