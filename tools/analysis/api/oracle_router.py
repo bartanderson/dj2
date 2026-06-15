@@ -157,6 +157,10 @@ def route_query(text: str, graph, find_symbols_fn, logger=None) -> RouteResult:
         "intent": intent,
         "expanded": expanded,
         "expansion_trace": expansion_trace,
+        # promote key reasoning surfaces to top level for QuerySessionResult
+        "seed_paths": expansion_trace.get("seed_paths", {}),
+        "node_reasons": expansion_trace.get("node_reasons", {}),
+        "edges": expansion_trace.get("edges", {}),
     }
 
     filtered = _prune(graph, expanded, seeds)
@@ -328,13 +332,30 @@ def _route_expand(graph, seeds, intent):
         if budget["reverse"]:
             expand_reverse(s, depth=budget["reverse_depth"])
 
-        # -------------------------
-        # 2-HOP (DISABLED FOR NOW)
-        # -------------------------
-        if budget["two_hop"]:
-            for n in forward.get(s, []):
-                for n2 in forward.get(n, []):
-                    add(n2, f"forward_2hop:{n}", source=n)
+    # -------------------------
+    # NODE REASONS
+    # Derive human-readable per-node explanation from seed_paths.
+    # seed_paths[node] = list of raw reasons e.g. ["seed"], ["forward:X", "reverse:Y"]
+    # node_reasons[node] = single readable string summarising inclusion reason
+    # -------------------------
+    node_reasons = {}
+
+    for node, reasons in trace["seed_paths"].items():
+        if "seed" in reasons:
+            node_reasons[node] = "direct seed match"
+        else:
+            forward_sources = [r.split(":", 1)[1] for r in reasons if r.startswith("forward:")]
+            reverse_sources = [r.split(":", 1)[1] for r in reasons if r.startswith("reverse:")]
+
+            parts = []
+            if forward_sources:
+                parts.append(f"reachable from {', '.join(forward_sources[:2])}")
+            if reverse_sources:
+                parts.append(f"depends on {', '.join(reverse_sources[:2])}")
+
+            node_reasons[node] = "; ".join(parts) if parts else "included via traversal"
+
+    trace["node_reasons"] = node_reasons
 
     return {
         "nodes": list(expanded),
