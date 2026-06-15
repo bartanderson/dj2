@@ -25,6 +25,7 @@ class QuerySemanticsRegistry:
         ("STRUCTURE", "INTEGRITY"),
         ("SUMMARY", "STABILITY"),
         ("SUBSYSTEM", "STRUCTURE"),
+        ("STABILITY", "INTEGRITY"),
     }
 
     VALID_FILTER_KEYS = {
@@ -127,4 +128,3 @@ class QueryPlanner:
                 )
 
         return q
-
