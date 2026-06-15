@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
 
 # =========================================================
@@ -30,19 +32,23 @@ class QuerySessionResult:
     raw_query: str
     intent: str
 
+    # reproducibility
+    session_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    queried_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
     # seeds (DB-authoritative)
-    seeds: List[str]
+    seeds: List[str] = field(default_factory=list)
 
     # expansion
-    expanded: List[str]
-    expansion_trace: Dict[str, Any]
+    expanded: List[str] = field(default_factory=list)
+    expansion_trace: Dict[str, Any] = field(default_factory=dict)
 
     # execution
-    primitives: List[str]
-    execution_plan: Dict[str, Any]
+    primitives: List[str] = field(default_factory=list)
+    execution_plan: Dict[str, Any] = field(default_factory=dict)
 
     # graph snapshot facts at query time
-    snapshot_edge_count: int
+    snapshot_edge_count: int = 0
 
     # reasoning surface (human + AI readable)
     reasoning: Dict[str, Any] = field(default_factory=dict)
@@ -70,6 +76,8 @@ class QuerySessionResult:
 
     def summary(self) -> Dict[str, Any]:
         return {
+            "session_id": self.session_id,
+            "queried_at": self.queried_at,
             "query": self.raw_query,
             "intent": self.intent,
             "seeds": self.seeds,
@@ -91,14 +99,19 @@ class QuerySession:
 
     Usage:
         session = QuerySession(oracle)
-        result = session.execute("what depends on resolve_analysis_db_path")
+        result = session.run_query("what depends on resolve_analysis_db_path")
         print(result.summary())
-        print(result.seed_explanation())
+
+    For observability:
+        session = QuerySession(oracle, logger=print)
+        result = session.run_query("what depends on X")
     """
 
-    def __init__(self, oracle):
+    def __init__(self, oracle, logger: Optional[Callable] = None):
         self.oracle = oracle
-        self._graph = None  # bound once per session on first execute
+        self.logger = logger
+        self._graph = None
+        self._history: List[QuerySessionResult] = []
 
     def _bind_snapshot(self):
         """Bind the graph snapshot once at query time — not at construction."""
@@ -115,6 +128,7 @@ class QuerySession:
             text,
             graph,
             self.oracle.discover_seed_symbols,
+            logger=self.logger,
         )
 
         expansion_trace = route_result.execution_plan.get("trace", {})
@@ -134,7 +148,22 @@ class QuerySession:
             },
         )
 
+        self._history.append(result)
         return result
+
+    def replay(self, result: QuerySessionResult) -> QuerySessionResult:
+        """
+        Re-run a prior query against the same bound snapshot.
+        Produces a new QuerySessionResult with a fresh session_id and
+        queried_at — allowing diff comparison against the original.
+        Snapshot is NOT re-fetched; determinism is guaranteed by the
+        bound graph state.
+        """
+        return self.run_query(result.raw_query)
+
+    def history(self) -> List[QuerySessionResult]:
+        """All results produced by this session in execution order."""
+        return list(self._history)
 
     def run_batch(self, queries: List[str]) -> Dict[str, QuerySessionResult]:
         """

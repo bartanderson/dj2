@@ -130,12 +130,15 @@ def _apply_intent_weights(symbols, intent, graph, seeds):
     # placeholder scoring pass (keep simple for now)
     return symbols
 
-def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
+def route_query(text: str, graph, find_symbols_fn, logger=None) -> RouteResult:
     """
     Seed authority contract:
     find_symbols_fn MUST be DBOracle.discover_seed_symbols.
     Graph-based seed injection (query_discovery.find_symbols) is no
     longer a valid call site — seeds must come from DB truth only.
+
+    logger: optional callable(str) for observability output.
+    Pass None (default) for silent operation.
     """
 
     intent = _detect_intent(text)
@@ -164,14 +167,15 @@ def route_query(text: str, graph, find_symbols_fn) -> RouteResult:
     plan = _build_plan(filtered, primitives, trace)
 
     # -------------------------------------------------
-    # DEBUG / OBSERVABILITY (safe, non-invasive)
+    # OBSERVABILITY (logger-gated — silent by default)
     # -------------------------------------------------
-    print("\n=== ROUTE METRICS ===")
-    print("intent:", intent)
-    print("seed_count:", len(seeds))
-    print("expanded_count:", len(expanded))
-    print("filtered_count:", len(filtered))
-    print("removed_count:", len(expanded) - len(filtered))
+    if logger:
+        logger(f"\n=== ROUTE METRICS ===")
+        logger(f"intent: {intent}")
+        logger(f"seed_count: {len(seeds)}")
+        logger(f"expanded_count: {len(expanded)}")
+        logger(f"filtered_count: {len(filtered)}")
+        logger(f"removed_count: {len(expanded) - len(filtered)}")
 
     return RouteResult(
         intent=intent,
