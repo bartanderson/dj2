@@ -12,7 +12,6 @@ from tools.analysis.truth.views import (
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
-from tools.analysis.truth.resolver import resolve_field, resolve_list_field
 
 
 # =========================================================
@@ -213,7 +212,7 @@ class Assessor:
     
     def query(self, text: str):
         """Execute a single query. Returns QuerySessionResult."""
-        return self.session().execute(text)
+        return self.session().run_query(text)
 
     # =====================================================
     # STRUCTURE VIEW (run_engine Phase 3)
@@ -357,17 +356,11 @@ class Assessor:
 
         if sample_queries:
             session = self.session()
-            # report["queries"] = {
-            #     q: session.execute(q).summary()
-            #     for q in sample_queries
-            # }
             report["queries"] = {}
 
             for q in sample_queries:
-                raw = session.execute(q)
-
+                raw = session.run_query(q)
                 summary = raw.summary()
-
                 report["queries"][q] = summary
 
         return report
@@ -421,14 +414,9 @@ def main():
 
     for q, res in report["queries"].items():
         print("\nQUERY:", q)
-
-        print("intent:", resolve_field(res, "intent"))
-
-        seeds = resolve_list_field(res, "seed_symbols")
-        expanded = resolve_list_field(res, "expanded_symbols")
-
-        print("seeds:", seeds[:5])
-        print("expanded:", expanded[:5])
+        print("intent:", res["intent"])
+        print("seeds:", res["seeds"][:5])
+        print("expanded:", res["expanded"][:5])
 
 if __name__ == "__main__":
     main()

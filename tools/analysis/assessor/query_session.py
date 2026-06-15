@@ -106,7 +106,7 @@ class QuerySession:
             self._graph = self.oracle.get_snapshot_graph()
         return self._graph
 
-    def execute(self, text: str) -> QuerySessionResult:
+    def run_query(self, text: str) -> QuerySessionResult:
         from tools.analysis.api.oracle_router import route_query
 
         graph = self._bind_snapshot()
@@ -122,8 +122,8 @@ class QuerySession:
         result = QuerySessionResult(
             raw_query=text,
             intent=route_result.intent,
-            seeds=route_result.execution_plan.get("seeds", []),
-            expanded=route_result.execution_plan.get("nodes", []),
+            seeds=route_result.seed_symbols,
+            expanded=route_result.expanded_symbols,
             expansion_trace=expansion_trace,
             primitives=route_result.execution_plan.get("primitives", []),
             execution_plan=route_result.execution_plan,
@@ -136,10 +136,10 @@ class QuerySession:
 
         return result
 
-    def execute_batch(self, queries: List[str]) -> Dict[str, QuerySessionResult]:
+    def run_batch(self, queries: List[str]) -> Dict[str, QuerySessionResult]:
         """
         Execute multiple queries against the same bound snapshot.
         Snapshot is bound on the first query and reused — deterministic
         across the batch.
         """
-        return {q: self.execute(q) for q in queries}
+        return {q: self.run_query(q) for q in queries}
