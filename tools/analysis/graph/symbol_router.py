@@ -130,13 +130,6 @@ def _route_symbol_core(
 ) -> RouteType:
     assert runtime_bindings is not None, "router received None runtime_bindings"
 
-    print("\n[ROUTER INPUT]")
-    print(" name:", name)
-    print(" runtime_bindings:", runtime_bindings)
-    print(" project_symbols sample:", list(project_symbols or [])[:3])
-    print("[RUNTIME CHECK]", is_runtime_symbol(name, runtime_bindings))
-    print("[RESOLVE RESULT]", resolve_runtime_binding(name, runtime_bindings))
-
     result = resolve_symbol_type(
         name=name,
         runtime_bindings=runtime_bindings,
@@ -156,7 +149,6 @@ def _route_symbol_core(
                 "route": result,
             },
         )
-    print("[ROUTE DECISION]", result)
     return result
 
 # ============================================================

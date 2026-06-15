@@ -83,8 +83,6 @@ def _extract_imports(
 
                 alias_map[local_name] = canonical_name
 
-    print("IMPORT DEBUG:", [(a.asname, a.name) for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names])
-
     return imports, alias_map
 
 
@@ -313,8 +311,6 @@ def _extract_symbol_references(
 
     Visitor().visit(tree)
 
-    print("ALIAS MAP:", alias_map)
-
     return [
         SymbolReference(
             caller=caller,
@@ -432,8 +428,6 @@ def parse_ast(
     )
     
     mutations = _extract_mutations(tree)
-
-    print("SYMBOL REFERENCES:", len(symbol_references))
 
     return FileAnalysis(
         file_path=str(path).replace("\\", "/"),

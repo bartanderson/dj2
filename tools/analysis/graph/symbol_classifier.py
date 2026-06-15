@@ -63,17 +63,9 @@ def module_key2(name: str) -> str:
 # ----------------------------
 
 def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
-
-    print("ENV SYMBOL COUNT:", len(env.project_symbols))
     
     leaf = identity.leaf
     fqdn = identity.fqdn or identity.surface
-
-    print("\n[CLASSIFY DEBUG]")
-    print("surface:", identity.surface)
-    print("leaf:", leaf)
-    print("fqdn:", fqdn)
-    print("project_symbols sample:", list(env.project_symbols)[:5])
 
     # ----------------------------
     # 1. PROJECT (HARD RULE)
@@ -87,12 +79,6 @@ def classify_symbol(identity: SemanticIdentity, env: SymbolEnvironment):
         env.is_project_symbol(fqdn)
         or project_leaf_match
     )
-
-    print("[PROJECT CHECK]")
-    print("fqdn:", fqdn)
-    print("leaf:", leaf)
-    print("project_leaf_match:", project_leaf_match)
-    print("result:", is_proj)
 
     if is_proj:
         return "project"

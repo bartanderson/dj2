@@ -56,10 +56,6 @@ def build_evaluation_snapshot(
     analysis,
     graph,
 ):
-    print("\n[GROUND CHECK]")
-    print("analysis has project_symbols:", getattr(analysis, "project_symbols", None))
-    print("analysis type:", type(analysis))
-
     env = getattr(analysis, "env", None)
 
     if env is None:
