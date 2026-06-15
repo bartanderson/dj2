@@ -270,17 +270,33 @@ class DBOracle:
     # =====================================================
     def discover_seed_symbols(self, text: str, limit: int = 50) -> list:
         """
-        DB-backed seed discovery. Seeds are drawn from symbol_references
+        Primary seed discovery — combines token-based and semantic (embedding)
+        results when sentence-transformers is available, falls back to
+        token-only otherwise.
+
+        Token results lead (high precision on exact terminology).
+        Semantic results follow (conceptual reach for queries with no
+        token overlap). Duplicates are removed preserving order.
+        """
+        try:
+            import numpy as np
+            from tools.analysis.oracle.embedding_model import embed_text
+            return self._discover_combined(text, limit)
+        except ImportError:
+            return self._discover_token(text, limit)
+
+    def _discover_token(self, text: str, limit: int = 50) -> list:
+        """
+        Token-based seed discovery. Seeds are drawn from symbol_references
         (not graph_edges) so bucket filtering is available.
 
         Scoring:
-          +2  exact symbol name match (case-insensitive)
-          +2  substring match where query is contained in symbol
-          +1  per overlapping token (tokenized on . _ and whitespace)
+          +4  exact symbol name match (case-insensitive)
+          +3  query text is a substring of the symbol
+          +2  symbol tail (last segment) contains the full query
+          +1  per overlapping signal token (longer tokens weighted +1 extra)
 
-        Minimum score of 2 required — single loose token matches
-        (e.g. 'show' matching matplotlib.pyplot.show) are excluded.
-
+        Minimum score of 2 required — single loose token matches excluded.
         Builtins are never seeds regardless of score.
         """
         cur = self.conn.cursor()
@@ -301,8 +317,6 @@ class DBOracle:
             .split()
         )
 
-        # short/generic tokens that match too broadly as standalone signals
-        # (these still count when combined with other matches)
         WEAK_TOKENS = {"on", "in", "at", "to", "of", "is", "a", "an",
                        "the", "for", "with", "from", "by", "or", "and"}
 
@@ -332,19 +346,16 @@ class DBOracle:
 
             score = 0
 
-            # exact match — highest confidence
             if text_lower == sym_lower:
                 score += 4
 
-            # query text is a substring of the symbol
             if text_lower in sym_lower:
                 score += 3
-            # symbol tail (last segment) contains the full query
+
             sym_tail = sym_lower.split(".")[-1]
             if text_lower in sym_tail:
                 score += 2
 
-            # token overlap — weighted by token length (longer = more specific)
             for tok in signal_tokens & sym_tokens:
                 score += 1 + (1 if len(tok) > 5 else 0)
 
@@ -365,6 +376,136 @@ class DBOracle:
                 break
 
         return out
+
+    def _discover_combined(self, text: str, limit: int = 50) -> list:
+        """
+        Combined token + semantic seed discovery.
+
+        Token results come first (high precision).
+        Semantic results follow (conceptual reach).
+        Duplicates removed preserving order.
+        Total capped at limit.
+        """
+        token_results = self._discover_token(text, limit)
+        semantic_results = self.discover_seed_symbols_semantic(text, limit)
+
+        seen = set()
+        combined = []
+
+        for sym in token_results + semantic_results:
+            if sym not in seen:
+                seen.add(sym)
+                combined.append(sym)
+            if len(combined) >= limit:
+                break
+
+        return combined
+
+    # =====================================================
+    # EMBEDDING-BASED SEED DISCOVERY
+    #
+    # Semantic alternative to discover_seed_symbols().
+    # Uses all-MiniLM-L6-v2 (384-dim) to embed query text
+    # and all project symbols, then ranks by cosine similarity.
+    #
+    # Advantages over token-based:
+    #   - Finds "character state persistence" → persist_character_state
+    #     even with no token overlap
+    #   - Immune to token stop-word issues
+    #   - Degrades gracefully: falls back to token-based if model unavailable
+    #
+    # The embedding index is built once and cached in self._embedding_index.
+    # Call build_embedding_index() to pre-warm; discover_seed_symbols_semantic()
+    # builds it lazily on first call.
+    # =====================================================
+
+    def build_embedding_index(self) -> int:
+        """
+        Build the in-memory embedding index over all non-builtin symbols.
+        Returns the number of symbols indexed.
+        Called lazily by discover_seed_symbols_semantic() on first use,
+        or explicitly to pre-warm before a batch of queries.
+        """
+        import numpy as np
+        from tools.analysis.oracle.embedding_model import embed_symbol
+
+        cur = self.conn.cursor()
+
+        rows = cur.execute("""
+            SELECT DISTINCT caller as symbol, bucket FROM symbol_references
+                WHERE caller IS NOT NULL
+            UNION
+            SELECT DISTINCT callee as symbol, bucket FROM symbol_references
+                WHERE callee IS NOT NULL
+        """).fetchall()
+
+        symbols = []
+        vectors = []
+
+        for r in rows:
+            if r["bucket"] == "builtin":
+                continue
+            sym = r["symbol"]
+            if sym in {s for s, _ in symbols}:
+                continue
+            vec = embed_symbol(sym)
+            symbols.append((sym, r["bucket"]))
+            vectors.append(vec)
+
+        if vectors:
+            self._embedding_index = {
+                "symbols": symbols,
+                "matrix": np.stack(vectors),   # (N, 384)
+            }
+        else:
+            self._embedding_index = {"symbols": [], "matrix": None}
+
+        return len(symbols)
+
+    def discover_seed_symbols_semantic(
+        self,
+        text: str,
+        limit: int = 20,
+        min_score: float = 0.25,
+    ) -> list:
+        """
+        Embedding-based seed discovery. Ranks all non-builtin symbols
+        by cosine similarity to the query text.
+
+        min_score: minimum similarity threshold (0.0-1.0).
+                   0.25 works well for all-MiniLM-L6-v2 — below this
+                   similarity is essentially noise.
+
+        Falls back to discover_seed_symbols() (token-based) if the
+        sentence-transformers package is not installed.
+        """
+        try:
+            import numpy as np
+            from tools.analysis.oracle.embedding_model import embed_text
+        except ImportError:
+            return self.discover_seed_symbols(text, limit)
+
+        # lazy build
+        if not hasattr(self, "_embedding_index") or self._embedding_index is None:
+            self.build_embedding_index()
+
+        index = self._embedding_index
+
+        if not index["symbols"] or index["matrix"] is None:
+            return self.discover_seed_symbols(text, limit)
+
+        query_vec = embed_text(text)                        # (384,)
+        scores = index["matrix"] @ query_vec               # (N,) cosine similarity
+
+        ranked = sorted(
+            zip(scores, [s for s, _ in index["symbols"]]),
+            reverse=True,
+        )
+
+        return [
+            sym for score, sym in ranked
+            if score >= min_score
+        ][:limit]
 
 # not class functions here...
 
