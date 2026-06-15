@@ -187,3 +187,38 @@ class QuerySession:
         across the batch.
         """
         return {q: self.run_query(q) for q in queries}
+
+    def run_algebra(self, text: str, views: dict) -> dict:
+        """
+        Full pipeline: natural language → oracle expansion + algebra result.
+
+        Steps:
+          1. run_query() — oracle router gives intent + expansion trace
+          2. compile_query(intent) — maps intent → AST via query compiler
+          3. QueryExecutor.execute() — runs AST against provided views
+
+        Returns a dict with both the oracle result and the algebra result
+        so callers can see the expansion trace AND the structured view output
+        side by side.
+
+        views: dict of {view_name: view_object} — same format as TruthTestHarness
+        """
+        from tools.analysis.truth.query_compiler import compile_and_explain
+        from tools.analysis.truth.query_executor import QueryExecutor
+
+        oracle_result = self.run_query(text)
+
+        compiled = compile_and_explain(oracle_result.intent)
+        plan = compiled["plan"]
+
+        executor = QueryExecutor(views=views)
+        algebra_result = executor.execute(plan.root)
+
+        return {
+            "text": text,
+            "intent": oracle_result.intent,
+            "oracle": oracle_result,
+            "compiled_ast": compiled["ast"],
+            "compiler_explanation": compiled["explanation"],
+            "algebra_result": algebra_result,
+        }
