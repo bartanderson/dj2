@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from tools.analysis.oracle.symbol_noise import is_noise_symbol
+
 # =========================================================
 # ROUTE RESULT CONTRACT (STABLE OUTPUT SHAPE)
 # =========================================================
@@ -18,23 +20,17 @@ class RouteResult:
     raw_query: str
 
 
-def _is_valid_symbol(sym: str) -> bool:
-    # rejects runtime / python noise / structural artifacts
-    if not sym:
-        return False
+def _is_valid_symbol(sym: str, builtin_symbols=frozenset()) -> bool:
+    """
+    Rejects runtime / python noise / structural artifacts.
 
-    if sym.startswith("<"):
-        return False
-
-    noise = {
-        "run", "len", "print", "getattr", "set", "int", "str",
-        "any", "all", "dict", "list"
-    }
-
-    if sym in noise:
-        return False
-
-    return True
+    builtin_symbols is the DB-authoritative set from
+    DBOracle.builtin_symbols() (bucket == "builtin" in symbol_references).
+    This is the SAME classification seed discovery uses to exclude
+    builtins — there is no separate hardcoded noise list anymore, so
+    expansion-time and discovery-time filtering cannot drift apart.
+    """
+    return not is_noise_symbol(sym, builtin_symbols)
 
 
 # =========================================================
@@ -116,27 +112,18 @@ def _build_plan(symbols: List[str], primitives: List[str], trace: Dict[str, Any]
 # =========================================================
 # MAIN ROUTER ENTRYPOINT
 # =========================================================
-def _apply_intent_weights(symbols, intent, graph, seeds):
-    # phase 1: score, don’t branch
-    # phase 2: filter, don’t expand
-
-    weights = {
-        "surface_query": {"reverse": 0.2},
-        "impact_query": {"forward": 0.3},
-        "reverse_query": {"forward": 0.2},
-        "general_query": {"all": 0.7},
-    }
-
-    # placeholder scoring pass (keep simple for now)
-    return symbols
-
-def route_query(text: str, graph, find_symbols_fn, logger=None) -> RouteResult:
+def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=None) -> RouteResult:
     """
     Seed authority contract:
     find_symbols_fn MUST be DBOracle.discover_seed_symbols, seeds must come from DB truth only.
 
     logger: optional callable(str) for observability output.
     Pass None (default) for silent operation.
+
+    builtin_symbols: DB-authoritative builtin set (DBOracle.builtin_symbols()).
+    Callers should always pass this; expansion-time noise filtering relies
+    on it instead of a hardcoded word list. Defaults to empty set if omitted
+    (expansion still filters accessor-chain noise, just not builtins).
     """
 
     intent = _detect_intent(text)
@@ -144,7 +131,7 @@ def route_query(text: str, graph, find_symbols_fn, logger=None) -> RouteResult:
     #seeds = _seed_symbols(text, graph, find_symbols_fn)
     seeds = find_symbols_fn(text, limit=20)
 
-    expand_result = _route_expand(graph, seeds, intent)
+    expand_result = _route_expand(graph, seeds, intent, builtin_symbols=builtin_symbols or frozenset())
 
     expanded = expand_result["nodes"]
     expansion_trace = expand_result["trace"]
@@ -237,7 +224,7 @@ def _prune(graph, symbols: List[str], seeds: List[str], limit: int = 40) -> List
     return [s for _, s in scored[:limit]]
 
 
-def _route_expand(graph, seeds, intent):
+def _route_expand(graph, seeds, intent, builtin_symbols=frozenset()):
     edges = getattr(graph, "edges", [])
 
     forward = {}
@@ -273,7 +260,7 @@ def _route_expand(graph, seeds, intent):
             return
 
         for n in forward.get(node, []):
-            if not _is_valid_symbol(n):
+            if not _is_valid_symbol(n, builtin_symbols):
                 continue
             add(n, f"forward:{node}", source=node)
             expand_forward(n, depth - 1)
@@ -283,7 +270,7 @@ def _route_expand(graph, seeds, intent):
             return
 
         for n in reverse.get(node, []):
-            if not _is_valid_symbol(n):
+            if not _is_valid_symbol(n, builtin_symbols):
                 continue
             add(n, f"reverse:{node}", source=node)
             expand_reverse(n, depth - 1)

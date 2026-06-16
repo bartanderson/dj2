@@ -186,6 +186,23 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     );
    """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS query_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        raw_query TEXT,
+        intent TEXT,
+        queried_at TEXT,
+        seeds TEXT,
+        expanded TEXT,
+        primitives TEXT,
+        snapshot_edge_count INTEGER,
+        reasoning TEXT,
+        self_model TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     connection.commit()
 
 
@@ -219,7 +236,9 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         "CREATE INDEX IF NOT EXISTS idx_symref_bucket ON symbol_references(bucket);",
         "CREATE INDEX IF NOT EXISTS idx_contract_violations ON contract_violations(id);",
         "CREATE INDEX IF NOT EXISTS idx_contract_drift_name ON contract_drift_history(contract_name);",
-        "CREATE INDEX IF NOT EXISTS idx_contract_drift_time ON contract_drift_history(timestamp);"
+        "CREATE INDEX IF NOT EXISTS idx_contract_drift_time ON contract_drift_history(timestamp);",
+        "CREATE INDEX IF NOT EXISTS idx_query_sessions_session_id ON query_sessions(session_id);",
+        "CREATE INDEX IF NOT EXISTS idx_query_sessions_queried_at ON query_sessions(queried_at);"
     ]
     if include_composite:
         indexes.extend([

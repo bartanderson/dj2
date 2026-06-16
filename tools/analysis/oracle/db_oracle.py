@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 from collections import defaultdict, deque
 from tools.analysis.graph.graph_builder import GraphEdge, GraphBundle
 from tools.analysis.oracle.edge_semantics import interpret_edge
+from tools.analysis.oracle.symbol_noise import is_accessor_chain_noise
 
 # =========================================================
 # DB ORACLE CORE
@@ -336,15 +337,11 @@ class DBOracle:
                 continue
             seen_sym.add(sym)
 
-            # Filter accessor-chain symbols: segments containing 'self', 'cursor',
-            # 'cls', or 'ctx' indicate a runtime accessor path recorded by the
-            # symbol extractor, not a meaningful query target.
-            # e.g. "surface.self.oracle", "cursor.self.oracle.conn", "get.self.reasoning"
-            # Also filter single-letter loop-variable chains like "split.i.surface".
-            sym_segments = sym.lower().split(".")
-            if any(seg in ("self", "cursor", "cls", "ctx") for seg in sym_segments):
-                continue
-            if len(sym_segments) >= 3 and any(len(seg) <= 2 for seg in sym_segments[1:-1]):
+            # Accessor-chain noise (e.g. "cursor.self.oracle.conn",
+            # "split.i.surface") — canonical definition lives in
+            # symbol_noise.py so expansion-time filtering (oracle_router)
+            # stays in sync with discovery-time filtering.
+            if is_accessor_chain_noise(sym):
                 continue
 
             sym_lower = sym.lower()

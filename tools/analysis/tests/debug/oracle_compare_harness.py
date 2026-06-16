@@ -26,6 +26,7 @@ class OracleCompareHarness:
             question,
             graph,
             self.oracle.discover_seed_symbols,
+            builtin_symbols=self.oracle.builtin_symbols(),
         )
 
         print("\n--- ORACLE ROUTER ---")

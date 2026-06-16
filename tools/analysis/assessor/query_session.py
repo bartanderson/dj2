@@ -4,6 +4,10 @@
 # not just the intent label. (2) self_model wiring (import + field +
 # to_dict key + populate in run_query) came from Bart's ChatGPT-assisted
 # commit 2004302 — Claude fixed the import path bug, see system_self_model.py.
+# (3) history is now durable: every run_query() also persists its result
+# to the query_sessions table (best-effort — a persistence failure never
+# blocks a query result). self._history remains the fast in-memory path;
+# the DB is now the source of truth across process restarts.
 #
 # QuerySession — the first true oracle runtime object.
 #
@@ -26,6 +30,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuilder
+from tools.analysis.oracle.persist_query_session import persist_query_session
+from tools.analysis.persistence.persistence_engine import ensure_schema
 
 
 # =========================================================
@@ -138,6 +144,12 @@ class QuerySession:
         self._graph = None
         self._history: List[QuerySessionResult] = []
 
+        try:
+            ensure_schema(self.oracle.conn)
+        except Exception as e:
+            if self.logger:
+                self.logger(f"[QuerySession] schema check failed (non-fatal): {e}")
+
     def _bind_snapshot(self):
         """Bind the graph snapshot once at query time — not at construction."""
         if self._graph is None:
@@ -154,6 +166,7 @@ class QuerySession:
             graph,
             self.oracle.discover_seed_symbols,
             logger=self.logger,
+            builtin_symbols=self.oracle.builtin_symbols(),
         )
 
         expansion_trace = route_result.execution_plan.get("trace", {})
@@ -177,6 +190,16 @@ class QuerySession:
         )
 
         self._history.append(result)
+
+        try:
+            persist_query_session(self.oracle.conn, result)
+        except Exception as e:
+            # Persistence is best-effort logging, not part of the query
+            # contract — a DB write failure must never invalidate a
+            # successfully computed result.
+            if self.logger:
+                self.logger(f"[QuerySession] failed to persist session {result.session_id}: {e}")
+
         return result
 
     def replay(self, result: QuerySessionResult) -> QuerySessionResult:
