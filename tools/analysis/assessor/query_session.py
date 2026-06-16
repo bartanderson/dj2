@@ -208,7 +208,7 @@ class QuerySession:
 
         oracle_result = self.run_query(text)
 
-        compiled = compile_and_explain(oracle_result.intent)
+        compiled = compile_and_explain(oracle_result.intent, text=text)
         plan = compiled["plan"]
 
         executor = QueryExecutor(views=views)

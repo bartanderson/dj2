@@ -347,7 +347,44 @@ def _extract_mutations(tree: ast.AST) -> List[MutationEvent]:
     return mutations
 
 
+def _calculate_complexity(node: ast.FunctionDef) -> int:
+    """Cyclomatic complexity: 1 + branches."""
+    complexity = 1
+    for subnode in ast.walk(node):
+        if isinstance(subnode, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
+            complexity += 1
+        elif isinstance(subnode, ast.BoolOp):
+            complexity += len(subnode.values) - 1
+    return complexity
+
+
 def _extract_behavioral_contracts(tree: ast.AST) -> List[BehavioralContract]:
+    """
+    Extract behavioral contracts from function docstrings and AST structure.
+
+    Produces:
+      - description from first docstring line
+      - side_effects inferred from docstring patterns
+      - raises extracted from Raises: section
+      - testable_behaviors tagged from docstring + AST signals
+      - complexity_score (cyclomatic)
+
+    Only emits a contract when there is something meaningful to say
+    (description, side effects, testable behaviors, or complexity > 3).
+    """
+    import re
+
+    SIDE_EFFECT_PATTERNS = [
+        (r'(?:updates?|modifies?|changes?|sets?)\s+(?:the\s+)?(\w+)', 'mutates {}'),
+        (r'(?:saves?|persists?|stores?)\s+(?:to|into)?\s+(\w+)',      'saves to {}'),
+        (r'(?:creates?|initializes?|builds?)\s+(?:a\s+)?(?:new\s+)?(\w+)', 'creates {}'),
+        (r'(?:sends?|emits?|triggers?)\s+(?:a\s+)?(\w+)',             'sends {}'),
+        (r'(?:clears?|resets?|removes?)\s+(?:the\s+)?(\w+)',          'clears {}'),
+    ]
+
+    AI_CALLS     = {'generate_text', 'generate_structured_data', 'generate_embedding'}
+    DB_CALLS     = {'execute', 'commit', 'fetchone', 'fetchall'}
+
     contracts: List[BehavioralContract] = []
 
     for node in ast.walk(tree):
@@ -355,18 +392,76 @@ def _extract_behavioral_contracts(tree: ast.AST) -> List[BehavioralContract]:
             continue
 
         doc = ast.get_docstring(node) or ""
+        complexity = _calculate_complexity(node)
 
-        contracts.append(
-            BehavioralContract(
-                function_name=node.name,
-                line_number=node.lineno,
-                description=(doc.split("\n")[0].strip() if doc else ""),
-                side_effects=[],
-                raises=[],
-                testable_behaviors=[],
-                complexity_score=0,
+        description = doc.split("\n")[0].strip()[:150] if doc else ""
+        side_effects: List[str] = []
+        raises: List[str] = []
+        testable_behaviors: List[str] = []
+
+        # --- docstring signals ---
+        if doc:
+            doc_lower = doc.lower()
+
+            for pattern, template in SIDE_EFFECT_PATTERNS:
+                for match in re.finditer(pattern, doc_lower):
+                    effect = template.format(match.group(1))
+                    if effect not in side_effects:
+                        side_effects.append(effect)
+
+            if 'raises:' in doc_lower or 'raises ' in doc_lower:
+                raise_section = re.search(
+                    r'raises:?\s*(.+?)(?:\n\n|\Z)', doc_lower, re.DOTALL
+                )
+                if raise_section:
+                    exceptions = re.findall(
+                        r'\b([A-Z][a-zA-Z]*(?:Error|Exception))\b',
+                        raise_section.group(1)
+                    )
+                    raises = list(set(exceptions))
+
+            if 'example' in doc_lower or '>>>' in doc:
+                testable_behaviors.append('has_doctest_examples')
+            if 'returns' in doc_lower:
+                testable_behaviors.append('verifiable_return_value')
+            if raises:
+                testable_behaviors.append('exception_conditions')
+            if side_effects:
+                testable_behaviors.append('state_change_verification')
+
+        # --- AST signals ---
+        for subnode in ast.walk(node):
+            if isinstance(subnode, ast.Call) and isinstance(subnode.func, ast.Attribute):
+                attr = subnode.func.attr
+                if attr in AI_CALLS and 'ai_dependency_mock_required' not in testable_behaviors:
+                    testable_behaviors.append('ai_dependency_mock_required')
+                if attr in DB_CALLS and 'database_interaction' not in testable_behaviors:
+                    testable_behaviors.append('database_interaction')
+
+            if isinstance(subnode, ast.Assign):
+                targets = subnode.targets
+                if (
+                    targets
+                    and isinstance(targets[0], ast.Attribute)
+                    and isinstance(targets[0].value, ast.Name)
+                    and targets[0].value.id in ('self', 'cls')
+                    and 'internal_state_change' not in testable_behaviors
+                ):
+                    testable_behaviors.append('internal_state_change')
+
+        # only emit when there is something useful to say
+        if description or side_effects or testable_behaviors or complexity > 3:
+            contracts.append(
+                BehavioralContract(
+                    function_name=node.name,
+                    line_number=node.lineno,
+                    description=description,
+                    side_effects=side_effects,
+                    raises=raises,
+                    testable_behaviors=testable_behaviors,
+                    complexity_score=complexity,
+                )
             )
-        )
 
     return contracts
 
@@ -445,7 +540,7 @@ def parse_ast(
 
         runtime_bindings=runtime_bindings,
 
-        behavioral_contracts=[],  # intentionally deferred or simplified
+        behavioral_contracts=_extract_behavioral_contracts(tree),
     )
 
 def _extract_attribute_chains(tree: ast.AST):
