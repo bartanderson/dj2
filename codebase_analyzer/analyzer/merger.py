@@ -25,3 +25,5 @@ class MergeAnalyzer:
 ## CURRENT SYSTEM ARCHITECTURE
 ```json
 ${current_system}
+```
+"""
