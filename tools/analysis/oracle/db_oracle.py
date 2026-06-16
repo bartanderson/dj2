@@ -336,6 +336,17 @@ class DBOracle:
                 continue
             seen_sym.add(sym)
 
+            # Filter accessor-chain symbols: segments containing 'self', 'cursor',
+            # 'cls', or 'ctx' indicate a runtime accessor path recorded by the
+            # symbol extractor, not a meaningful query target.
+            # e.g. "surface.self.oracle", "cursor.self.oracle.conn", "get.self.reasoning"
+            # Also filter single-letter loop-variable chains like "split.i.surface".
+            sym_segments = sym.lower().split(".")
+            if any(seg in ("self", "cursor", "cls", "ctx") for seg in sym_segments):
+                continue
+            if len(sym_segments) >= 3 and any(len(seg) <= 2 for seg in sym_segments[1:-1]):
+                continue
+
             sym_lower = sym.lower()
             sym_tokens = set(
                 sym_lower
@@ -447,6 +458,12 @@ class DBOracle:
                 continue
             sym = r["symbol"]
             if sym in {s for s, _ in symbols}:
+                continue
+            # Skip accessor-chain symbols (same rule as _discover_token)
+            segs = sym.lower().split(".")
+            if any(seg in ("self", "cursor", "cls", "ctx") for seg in segs):
+                continue
+            if len(segs) >= 3 and any(len(seg) <= 2 for seg in segs[1:-1]):
                 continue
             vec = embed_symbol(sym)
             symbols.append((sym, r["bucket"]))
