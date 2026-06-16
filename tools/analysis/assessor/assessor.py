@@ -12,6 +12,7 @@ from tools.analysis.truth.views import (
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
+from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuilder
 
 
 # =========================================================
@@ -352,6 +353,7 @@ class Assessor:
             "integrity_view": self.integrity_view(),
             "responsibility": self.responsibility_snapshot(),
             "run_integrity_check": self.run_integrity_check(),
+            "self_model": self.self_model(),
         }
 
         if sample_queries:
@@ -365,6 +367,8 @@ class Assessor:
 
         return report
 
+    def self_model(self):
+        return SystemSelfModelBuilder(self.oracle).build()
 # ---------------------------------------------------------
 # ENTRYPOINT
 # ---------------------------------------------------------

@@ -20,6 +20,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
+from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuilder
 
 
 # =========================================================
@@ -52,6 +53,9 @@ class QuerySessionResult:
 
     # reasoning surface (human + AI readable)
     reasoning: Dict[str, Any] = field(default_factory=dict)
+
+    # understand and explore its limits for improving through questioning and usage
+    self_model: Any = None
 
     def seed_explanation(self) -> str:
         if not self.seeds:
@@ -101,6 +105,7 @@ class QuerySessionResult:
             "expansion_explanation": self.expansion_explanation(),
             "intent_mapping_trace": self.intent_mapping_trace(),
             "snapshot_edge_count": self.snapshot_edge_count,
+            "self_model": self.self_model,
         }
 
 
@@ -148,6 +153,8 @@ class QuerySession:
 
         expansion_trace = route_result.execution_plan.get("trace", {})
 
+        self_model = SystemSelfModelBuilder(self.oracle).build()
+
         result = QuerySessionResult(
             raw_query=text,
             intent=route_result.intent,
@@ -161,6 +168,7 @@ class QuerySession:
                 "seed_paths": expansion_trace.get("seed_paths", {}),
                 "edges": expansion_trace.get("edges", {}),
             },
+            self_model=self_model,
         )
 
         self._history.append(result)
