@@ -12,7 +12,12 @@
 #   2. Auto-discovers every truth/tests/test_*.py module and runs it via
 #      pytest (these use fixtures/parametrize, not the function-list
 #      convention above, so they need pytest's runner).
-#   3. Prints one final PASS/FAIL summary across everything.
+#   3. Prints one final PASS/FAIL summary across everything, including a
+#      GRAND TOTAL line that folds the regression-module count and the
+#      pytest count into one number - added 2026-06-17 after Bart found
+#      the two separately-printed "32 passed" lines (one regression, one
+#      pytest, coincidentally equal) confusing to eyeball without an
+#      explicit combined total.
 #
 # Auto-discovery means this file does NOT need to be hand-edited every
 # time a new test_*.py file is added under either directory - drop a new
@@ -111,22 +116,42 @@ def main():
         total_failed += failed
 
     pytest_exit_code = 0
+    pytest_collected = 0
+    pytest_failed = 0
     if pytest_targets:
         try:
             import pytest
+
+            class _StatsCollector:
+                """Pulls session.testscollected/testsfailed so we can fold
+                pytest's count into one grand total below - pytest.main()'s
+                return value is only an exit code, not a count."""
+                def pytest_sessionfinish(self, session):
+                    nonlocal pytest_collected, pytest_failed
+                    pytest_collected = getattr(session, "testscollected", 0)
+                    pytest_failed = getattr(session, "testsfailed", 0)
+
             print(f"\n=== pytest: {', '.join(pytest_targets)} ===")
-            pytest_exit_code = pytest.main(["-q", *pytest_targets])
+            pytest_exit_code = pytest.main(["-q", *pytest_targets], plugins=[_StatsCollector()])
         except ImportError:
             print(
                 "\npytest not installed - skipping "
                 f"{', '.join(pytest_targets)} (pip install pytest to include it)"
             )
 
+    pytest_passed = pytest_collected - pytest_failed
+    grand_passed = total_passed + pytest_passed
+    grand_failed = total_failed + pytest_failed
+
     print("\n" + "=" * 60)
     print(f"REGRESSION MODULES DISCOVERED: {len(regression_modules)}")
     print(f"REGRESSION TESTS: {total_passed} passed, {total_failed} failed")
     print(f"PYTEST TARGETS DISCOVERED: {len(pytest_targets)}")
-    print(f"PYTEST RESULT: {'OK' if pytest_exit_code == 0 else 'FAILURES (see above)'}")
+    print(f"PYTEST RESULT: {'OK' if pytest_exit_code == 0 else 'FAILURES (see above)'} "
+          f"({pytest_passed} passed, {pytest_failed} failed)")
+    print("-" * 60)
+    print(f"GRAND TOTAL: {grand_passed} passed, {grand_failed} failed "
+          f"({total_passed} regression + {pytest_passed} pytest)")
     print("=" * 60)
 
     if total_failed or pytest_exit_code:

@@ -280,3 +280,41 @@ e.g. logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").se
     pattern. Per Bart's request, the truncation bug itself is now queued
     as its own discussion/investigation track rather than just being
     re-fixed silently each time.
+
+[x] 2026-06-17 (later still) — Track A (DB-backed symbol discovery API)
+    completed, then used immediately to fix Track B item 2 (SUBSYSTEM
+    fragmentation), per Bart's explicit direction ("Track A, then also
+    fix subsystem fragmentation").
+    - Added list_symbols/find_symbols/find_files/find_modules/
+      symbol_module_map to oracle/db_oracle.py — all DBReader-only,
+      single SELECT against symbols/files tables, no engine/in-memory
+      fallback. Distinct from discover_seed_symbols (NL-query relevance
+      scoring for route_query) — these are general-purpose lookup
+      primitives.
+    - Closed "seed discipline enforcement": confirmed production seeding
+      was already 100% DB-backed (QuerySession.run_query() already
+      passes self.oracle.discover_seed_symbols), then removed the dead
+      _seed_symbols() decoy wrapper in api/oracle_router.py (defined,
+      never actually called — same "looks like a feature, isn't" shape
+      as _apply_intent_weights and the deleted legacy agent files).
+    - Fixed SUBSYSTEM fragmentation (truth/subsystem_view.py): _module()
+      now takes an optional module_map (symbol_module_map() — real
+      `symbols` table declarations), preferring real DB-backed module
+      resolution over the old dotted-name-split heuristic, which assumed
+      module-qualified names this codebase's real symbols mostly don't
+      have. Old heuristic kept as fallback for symbols absent from the
+      map. assessor.subsystem_view() wired to pass the map by default.
+    - New suite: tests/regression/test_discovery_api_and_subsystem_fix.py
+      (7 tests — 5 for the discovery methods, 2 for the subsystem fix
+      including a direct with-vs-without-module_map comparison).
+    Full sweep: 64/64 passing (57 prior + 7 new).
+    Full detail: REFACTOR OPS BOARD.md's 2026-06-17 "Track A completed,
+    Track B item 2 closed" entry, Truth Kernel Board.md's Tier 1
+    "Subsystem View" GROUPING QUALITY FIXED note.
+
+    Hit the silent-truncation bug a fifth time, on the Edit call that
+    added the dotted-name-fallback test case to the new regression file
+    — same shape as every prior incident (no error, plausible in-context
+    view, on-disk byte count provably unchanged via wc -c before/after).
+    Recovered via the mandatory bash heredoc rewrite + diff procedure,
+    not by retrying Edit.

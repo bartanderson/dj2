@@ -63,18 +63,22 @@ def _detect_intent(text: str) -> str:
 
 # =========================================================
 # SEED SYMBOL DISCOVERY
-# =========================================================
-
-def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
-    """
-    Step 1: map query -> candidate symbols
-    """
-
-    candidates = find_symbols_fn(text, limit=20)
-
-    return candidates
-
-
+#
+# CLAUDE-EDIT 2026-06-17: removed the dead _seed_symbols() wrapper that
+# used to live here. It took the same (text, graph, find_symbols_fn)
+# args as the call in route_query() below, did nothing but forward to
+# find_symbols_fn, and had exactly one call site - which was already
+# commented out (route_query called find_symbols_fn directly instead).
+# That's the "looks like a real seed-selection path, isn't" shape this
+# project has been removing elsewhere (_apply_intent_weights, the two
+# legacy agent.py/nl_agent.py files - see REFACTOR OPS BOARD.md
+# 2026-06-16). Per route_query()'s own docstring, the seed authority
+# contract is: find_symbols_fn MUST be DBOracle.discover_seed_symbols
+# (confirmed the only production caller, QuerySession.run_query() in
+# assessor/query_session.py, already passes exactly that - seeds were
+# already 100% DB-backed in practice; this just deletes the unused
+# decoy path so there's no longer a second, weaker-looking route that
+# could be mistaken for a caller-supplied seed option).
 # =========================================================
 # GRAPH EXPANSION STRATEGY
 # NOTE: _expand() removed - route_query uses _route_expand() directly
@@ -140,7 +144,9 @@ def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=
 
     intent = _detect_intent(text)
 
-    #seeds = _seed_symbols(text, graph, find_symbols_fn)
+    # Seeds come directly from find_symbols_fn - see seed authority
+    # contract in this function's docstring above, and the
+    # CLAUDE-EDIT note on the removed _seed_symbols() decoy, above.
     seeds = find_symbols_fn(text, limit=20)
 
     expand_result = _route_expand(graph, seeds, intent, builtin_symbols=builtin_symbols or frozenset())

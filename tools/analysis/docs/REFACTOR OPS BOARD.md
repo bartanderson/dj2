@@ -43,12 +43,24 @@ Make oracle_router deterministic under ontology constraints
     classification is DB-authoritative (DBOracle.builtin_symbols()), no
     hardcoded word list left to drift. Budget enforcement and forward/
     reverse weighting are still open.
-[ ] seed discipline enforcement
+[x] seed discipline enforcement
 - seeds ONLY from discovery API (not caller injection)
 - enforce DB-backed bootstrap constraint
+  -> DONE 2026-06-17: confirmed production seeding was already 100%
+     DB-backed (QuerySession.run_query() passes self.oracle.discover_seed_symbols
+     as find_symbols_fn, the only production caller of route_query()).
+     Removed the dead _seed_symbols() decoy wrapper in api/oracle_router.py
+     (defined but never called - the one call site was already commented
+     out), so there is no longer a second, weaker-looking seed path that
+     could be mistaken for a caller-supplied option. See NEXT STEPS entry
+     below for full writeup.
 
 PHASE 2 — QUERY DISCOVERY SYSTEM (NEXT DEPENDENCY)
-[ ] DB-backed symbol discovery API (critical)
+[x] DB-backed symbol discovery API (critical)
+  -> DONE 2026-06-17: list_symbols/find_symbols/find_files/find_modules
+     plus symbol_module_map() implemented in oracle/db_oracle.py, all
+     DBReader-only (single SELECT against symbols/files tables, no
+     engine/in-memory fallback). See NEXT STEPS entry below.
 
 Replace all engine-origin symbol seeding with:
 - list_symbols
@@ -791,3 +803,80 @@ applies to every edit in this repo - bash-side diff against intended
 content, not just a Read-tool glance, given this session's three
 truncation incidents plus one fully-phantom Read-tool view (now four
 truncation incidents as of this entry).
+
+---------------------------------------------------
+
+## DONE 2026-06-17 (later session still) - Track A completed, Track B item 2 closed
+
+Per Bart's explicit direction ("Track A, then also fix subsystem
+fragmentation"), did both in one session, in that order:
+
+**Track A - DB-backed symbol discovery API (Phase 2, critical path):**
+- Added `list_symbols`, `find_symbols`, `find_files`, `find_modules`,
+  and `symbol_module_map` to `oracle/db_oracle.py`. All five are
+  DBReader-only: a single SELECT against the `symbols`/`files` tables,
+  no engine-origin or in-memory fallback. Distinct in purpose from the
+  pre-existing `discover_seed_symbols` (NL-query relevance scoring for
+  route_query's seed step) - these are general-purpose literal/substring
+  lookup primitives for browsing and bootstrap, not query routing.
+- Closed the "seed discipline enforcement" checkbox (Phase 1): traced
+  the only production caller of `route_query()`
+  (`QuerySession.run_query()` in `assessor/query_session.py`) and
+  confirmed it already passes `self.oracle.discover_seed_symbols` as
+  `find_symbols_fn` - seeds were already 100% DB-backed in production.
+  Removed the dead `_seed_symbols()` wrapper in `api/oracle_router.py`
+  (defined, took the same args, forwarded to `find_symbols_fn` - but its
+  one call site in `route_query()` was already commented out, so it was
+  a decoy second seed-path, never a live one). Same "looks like a
+  feature, isn't" shape as the earlier `_apply_intent_weights` stub and
+  the deleted `oracle/agent.py`/`oracle/nl_agent.py` legacy agents.
+
+**Track B item 2 - SUBSYSTEM fragmentation fix (Truth.md Phase 3 Row 4):**
+- Root cause: `truth/subsystem_view.py`'s `_module()` assumed dotted
+  module-qualified symbol names ("first two dotted segments"), but this
+  codebase's real symbols are mostly bare function/class names with no
+  dots, so the heuristic returned the bare name itself for almost
+  everything - fragmenting SUBSYSTEM into ~355 near-singleton groups
+  instead of real architectural groupings.
+- Fix: `_module()` and `build_subsystem_view()` now take an optional
+  `module_map` (built by the new `DBOracle.symbol_module_map()` -
+  real `symbols` table declarations, file_path's containing directory as
+  the module). A symbol is looked up in the map first (exact, then by
+  its bare tail segment); the old dotted-name heuristic is now only a
+  fallback for symbols absent from the map (builtins, external-library
+  calls, accessor-chain noise) or when no map is supplied at all -
+  preserving exact prior behavior for callers/tests that don't seed a
+  `symbols` table (confirmed non-breaking against
+  `test_run_algebra_end_to_end.py`'s existing fixture before writing
+  the fix, by tracing what that fixture actually seeds).
+- Wired in: `Assessor.subsystem_view()` now passes
+  `module_map=self.oracle.symbol_module_map()` into
+  `build_subsystem_view()`, so the real fix is live on the production
+  path, not just available as an opt-in parameter.
+
+**Regression coverage:** new
+`tests/regression/test_discovery_api_and_subsystem_fix.py` (7 tests):
+the 5 discovery methods read real seeded `symbols`/`files` rows
+correctly (including the ambiguous-name deterministic tie-break in
+`symbol_module_map`), SUBSYSTEM grouping demonstrably differs
+with-vs-without the module_map fix on the same bare-name fixture data
+(`"do_thing"` stops being its own singleton subsystem, `"moduleA"`
+appears as the real group), and the dotted-name fallback path is
+explicitly locked in for unmapped symbols. Ran every file under
+`tests/regression/` plus `truth/tests/test_query_algebra.py` together
+this session: 64/64 passing, zero failures, including the new file.
+
+**Environment note:** hit a fifth silent-truncation incident this
+session, same shape as the four already on record - an `Edit` tool call
+against the new regression test file produced no error and an
+in-context view that looked correct, but the on-disk byte count was
+provably identical to the pre-edit file (confirmed via `wc -c` before
+and after). Recovered via the mandatory bash-heredoc rewrite + diff
+procedure in CLAUDE.md, not by retrying `Edit`. This continues to
+support treating it as a standing environment defect rather than
+isolated noise.
+
+Both tracks from the prior NEXT STEPS entry are now closed except Track
+B items 1 and 3 (drift_signals hardcoded `[]`, and the unevaluated
+"interpretability" Tier 2 items in Truth Kernel Board.md) - those remain
+open for a future session.

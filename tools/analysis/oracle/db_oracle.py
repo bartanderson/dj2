@@ -12,6 +12,31 @@ from tools.analysis.oracle.symbol_noise import is_accessor_chain_noise
 # DB ORACLE CORE
 # =========================================================
 
+def _file_path_to_module(file_path: str) -> str:
+    """
+    Derive a deterministic module identity from a real file_path - the
+    DB-backed replacement for guessing module identity from dotted
+    symbol-name splitting (see truth/subsystem_view.py's old _module()).
+    A "module" is the file's containing directory, dotted
+    (e.g. "tools/analysis/oracle/db_oracle.py" -> "tools.analysis.oracle").
+    Files at the project root map to their own stem (no containing dir).
+    """
+    if not file_path:
+        return ""
+
+    normalized = file_path.replace("\\", "/")
+    parts = [p for p in normalized.split("/") if p]
+
+    if not parts:
+        return ""
+
+    dir_parts = parts[:-1]
+    if not dir_parts:
+        return parts[-1].rsplit(".", 1)[0]
+
+    return ".".join(dir_parts)
+
+
 class DBOracle:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
@@ -520,6 +545,196 @@ class DBOracle:
             sym for score, sym in ranked
             if score >= min_score
         ][:limit]
+
+    # =====================================================
+    # DISCOVERY API (PHASE 2 - DBReader-only bootstrap layer)
+    #
+    # CLAUDE-EDIT 2026-06-17: REFACTOR OPS BOARD.md PHASE 2 / Track A -
+    # "expose a DB-backed symbol discovery API
+    # (list_symbols/find_symbols/find_files/find_modules, DBReader-only)
+    # as the single unified seed-bootstrap entrypoint." These are
+    # general-purpose discovery/browsing primitives, distinct from
+    # discover_seed_symbols() above (which does NL-query relevance
+    # scoring specifically for route_query's seed step - left unchanged,
+    # still the right tool for that job). Both read exclusively from the
+    # DB (symbols/files tables) - no engine state, no in-memory fallback.
+    # Confirmed by grep: route_query's only production caller
+    # (QuerySession.run_query()) already passes self.oracle.
+    # discover_seed_symbols, so there was never a live caller-injected
+    # seed path - this section closes Phase 1's "seed discipline
+    # enforcement" checkbox by giving that existing DB-only contract a
+    # real, general-purpose discovery layer to sit next to, instead of
+    # one ad-hoc NL-scoring method standing alone.
+    # =====================================================
+
+    def list_symbols(self, symbol_type: str = None, limit: int = None) -> List[Dict[str, Any]]:
+        """
+        list_symbols([symbol_type]) - enumerate symbols from the `symbols`
+        table (real ingestion-time data: file_path, symbol_type, name,
+        line_number, signature, canonical_id). symbol_type is one of
+        'function'/'class' (true declarations) or 'caller'/'callee'
+        (call-graph participant records - see persistence_engine.py's
+        _persist_file_analysis). DBReader-only: a single SELECT, no
+        engine/in-memory fallback.
+        """
+        cur = self.conn.cursor()
+        query = (
+            "SELECT name, file_path, symbol_type, line_number, signature, "
+            "canonical_id FROM symbols"
+        )
+        params: list = []
+        if symbol_type:
+            query += " WHERE symbol_type = ?"
+            params.append(symbol_type)
+        query += " ORDER BY file_path, line_number"
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        rows = cur.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_symbols(
+        self,
+        pattern: str,
+        symbol_type: str = None,
+        exact: bool = False,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        find_symbols(pattern) - literal name lookup against the `symbols`
+        table. exact=True does an exact name match; exact=False (default)
+        does a substring match. Distinct from discover_seed_symbols(),
+        which ranks symbols by NL-query relevance for route_query's seed
+        step - find_symbols is the general "does a symbol named/matching
+        X exist, and where is it" primitive used for direct lookups.
+        DBReader-only.
+        """
+        cur = self.conn.cursor()
+        conditions = []
+        params: list = []
+
+        if exact:
+            conditions.append("name = ?")
+            params.append(pattern)
+        else:
+            conditions.append("name LIKE ?")
+            params.append(f"%{pattern}%")
+
+        if symbol_type:
+            conditions.append("symbol_type = ?")
+            params.append(symbol_type)
+
+        query = (
+            "SELECT name, file_path, symbol_type, line_number, signature, "
+            "canonical_id FROM symbols WHERE " + " AND ".join(conditions) +
+            " ORDER BY file_path, line_number LIMIT ?"
+        )
+        params.append(limit)
+
+        rows = cur.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_files(
+        self,
+        pattern: str = None,
+        role: str = None,
+        limit: int = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        find_files([pattern], [role]) - query the `files` table (real
+        ingestion-time metadata: file_path, line_count, role, is_hot).
+        pattern does a substring match on file_path; role does an exact
+        match on the classified role (see engine/responsibility_map.py).
+        DBReader-only.
+        """
+        cur = self.conn.cursor()
+        conditions = []
+        params: list = []
+
+        if pattern:
+            conditions.append("file_path LIKE ?")
+            params.append(f"%{pattern}%")
+        if role:
+            conditions.append("role = ?")
+            params.append(role)
+
+        query = "SELECT file_path, line_count, role, is_hot FROM files"
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY file_path"
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        rows = cur.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def find_modules(self, limit: int = None) -> List[Dict[str, Any]]:
+        """
+        find_modules() - derive module grouping from the real `files`
+        table by containing directory (see module-level
+        _file_path_to_module()). There is no separate "modules" table -
+        `imports.module` records modules a file imports FROM, not the
+        file's own module identity - so this is the DB-backed source of
+        truth for "what modules does this project actually have",
+        grouped from real file_path data rather than guessed from
+        symbol-name string splitting (the bug symbol_module_map() below
+        replaces in truth/subsystem_view.py). DBReader-only.
+        """
+        cur = self.conn.cursor()
+        rows = cur.execute("SELECT file_path FROM files ORDER BY file_path").fetchall()
+
+        modules: Dict[str, List[str]] = defaultdict(list)
+        for r in rows:
+            modules[_file_path_to_module(r["file_path"])].append(r["file_path"])
+
+        result = [
+            {"module": m, "files": sorted(fs), "file_count": len(fs)}
+            for m, fs in sorted(modules.items())
+        ]
+
+        if limit:
+            result = result[:limit]
+
+        return result
+
+    def symbol_module_map(self) -> Dict[str, str]:
+        """
+        DB-backed symbol -> module map, built from real declarations
+        (symbol_type IN ('function', 'class') in the `symbols` table -
+        i.e. the file that actually DEFINES the symbol, not just a file
+        that references it as a caller/callee). Used by
+        truth/subsystem_view.py to replace its dotted-name-splitting
+        heuristic with real data (REFACTOR OPS BOARD.md / Truth.md Phase 3
+        Row 4: SUBSYSTEM grouping fragmenting into near-singleton groups
+        because this codebase's symbols are mostly bare names, not
+        dotted-module-qualified).
+
+        Ambiguous names (the same bare name defined in more than one
+        file) resolve deterministically to the alphabetically-first
+        file_path - real-world collisions are rare and this keeps the
+        map a pure function of DB content, no extra heuristics. Symbols
+        with no captured declaration (builtins, external-library calls,
+        accessor-chain noise) are simply absent from the map; callers
+        fall back to their own heuristic for those.
+        """
+        cur = self.conn.cursor()
+        rows = cur.execute(
+            """
+            SELECT name, file_path FROM symbols
+            WHERE symbol_type IN ('function', 'class')
+            ORDER BY name, file_path
+            """
+        ).fetchall()
+
+        mapping: Dict[str, str] = {}
+        for r in rows:
+            name = r["name"]
+            if name not in mapping:
+                mapping[name] = _file_path_to_module(r["file_path"])
+
+        return mapping
 
 # not class functions here...
 

@@ -42,6 +42,20 @@ All components that are proven correct via execution.
     stub literal in test_query_algebra.py.
 [X] Subsystem View — RE-UPGRADED 2026-06-16: wired via assessor.subsystem_view()
     (real graph snapshot), same direct test coverage as Summary View above.
+    GROUPING QUALITY FIXED 2026-06-17: closed Truth.md Phase 3 Row 4 -
+    _module() (truth/subsystem_view.py) assumed dotted module-qualified
+    symbol names, but this codebase's real symbols are mostly bare names,
+    so SUBSYSTEM fragmented into ~355 near-singleton groups. Added
+    DBOracle.symbol_module_map() (real `symbols` table declarations,
+    file_path's containing directory as the module) and threaded it
+    through as an optional module_map param, preferring real DB-backed
+    resolution and falling back to the old dotted-name heuristic only
+    for symbols absent from the map. assessor.subsystem_view() now passes
+    this map in by default. Proven by
+    tests/regression/test_discovery_api_and_subsystem_fix.py (7 tests,
+    includes a direct with-vs-without-module_map comparison on the same
+    fixture data). See REFACTOR OPS BOARD.md's 2026-06-17 "Track A
+    completed, Track B item 2 closed" entry for full detail.
 [X] Role View — ADDED 2026-06-17: build_role_view() (truth/views.py) wraps
     Assessor.responsibility_map()'s existing DB-backed per-file role
     classification (ingestion/classification/graph/persistence/reporting);
@@ -117,7 +131,13 @@ Components that are correct but being evaluated for practical value.
     longer dominate hotspot rankings.
 [ ] Stability signal usefulness
 [ ] Integrity signal usefulness
-[ ] Subsystem interpretability
+[ ] Subsystem interpretability — NOTE 2026-06-17: the underlying
+    grouping-quality bug (see Tier 1 Subsystem View entry above) is now
+    fixed, so SUBSYSTEM groups by real module instead of fragmenting into
+    singletons. This item is still open because that's a correctness
+    fix, not yet an evaluation against real debugging/onboarding tasks -
+    same distinction as the Role classification interpretability item
+    below.
 [ ] Role classification interpretability — NEW 2026-06-17: role view is
     wired and tested for correctness (keyword-match classification ==
     what responsibility_map() computes), but not yet evaluated against

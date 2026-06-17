@@ -338,7 +338,16 @@ class Assessor:
         )
 
     def subsystem_view(self):
-        return build_subsystem_view(self.snapshot())
+        # CLAUDE-EDIT 2026-06-17: pass the real DB-backed symbol -> module
+        # map (oracle/db_oracle.py's Phase 2 discovery API) so SUBSYSTEM
+        # grouping resolves module identity from actual declaration
+        # file_path instead of guessing from dotted symbol-name splitting.
+        # See subsystem_view.py's _module() for the fallback behavior on
+        # symbols with no captured declaration.
+        return build_subsystem_view(
+            self.snapshot(),
+            module_map=self.oracle.symbol_module_map(),
+        )
 
     def role_view(self):
         # CLAUDE-EDIT 2026-06-16: sixth Truth Layer view, wired up per
