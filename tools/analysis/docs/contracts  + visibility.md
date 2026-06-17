@@ -1,3 +1,14 @@
+STATUS NOTE (added 2026-06-16, read-only audit): This reads as exploratory brainstorming
+notes (an AI-assisted chat transcript) rather than a committed plan, and its concrete
+proposal at the end - plugging a "safe evolution protocol" into `run_analysis_pipeline` and
+`debug_run.py` - is now moot: both of those files were deleted this session (the pipeline
+module never existed, debug_run.py only imported it). The conceptual framing (reality layer /
+truth-extraction layer / constraint layer, contract precedence) is still potentially useful
+thinking, but it predates - and was effectively superseded by - the Truth Kernel / oracle
+work documented in REFACTOR OPS BOARD.md and Truth Kernel Board.md, which is further along
+and already running against real data. Worth a skim if you want the idea, but don't treat the
+file/entrypoint names in here as current.
+
 🧭 YES — THIS IS THE RIGHT SAVE POINT
 
 But not as a replacement for everything else yet.

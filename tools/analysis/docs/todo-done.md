@@ -57,3 +57,62 @@ The torch warning is just noise from sentence-transformers pulling in PyTorch on
     as a standing caveat — verify any file with `wc -c`/`python3 -c
     "import ast; ast.parse(...)"` after edits in this environment if a
     SyntaxError shows up that the Read tool doesn't corroborate.
+
+---
+
+## 2026-06-16 (same day, loose-script cleanup pass)
+
+[x] RESOLVED — audited every loose top-level .py file in tools/analysis/
+    plus two test files that surfaced as dependents. Confirmed and
+    deleted 7 dead files, all tracing back to one root cause:
+    tools/analysis/run_analysis_pipeline.py does not exist anywhere in
+    the repo (not even in __pycache__) and never did in this session's
+    visibility — it was the orchestration entrypoint an earlier
+    architecture iteration was built around, since superseded by
+    engine/run_engine.py (ingestion) + ask.py (querying).
+    Deleted:
+      - run.py (subprocessed into the missing module)
+      - debug_run.py (imported it directly)
+      - run_parity_test.py (imported 5 more nonexistent
+        engine.core.* modules plus engine.parity.ParityChecker; had an
+        internal NameError bug and "YOU MUST PROVIDE THESE" placeholder
+        comments — never finished. Superseded by the real, working
+        engine/parity_contract.py + engine/structural_parity_diff.py.)
+      - load_config_profiles.py (expected analysis_profiles.yaml,
+        which doesn't exist; zero callers anywhere)
+      - tests/core/test_pipeline_smoke.py and
+        tests/core/test_reference_extraction_integrity.py (both
+        imported run_analysis_pipeline; verified test_db_utils.py and
+        graph/project_context.py, which they also imported, are still
+        legitimately used by other live tests — only these two test
+        files themselves were dead)
+      - rewrite plan for routing to classification.md (top-level,
+        outside docs/ — a near-duplicate early draft of
+        docs/Symbol Classification Stabilization Plan.md; deleted the
+        messier duplicate-paste copy, kept the other)
+
+    Kept, dormant but functional (standalone diagnostic CLIs, no
+    broken imports, just no current callers): db_probe_toolsold.py,
+    db_toolsold_audit.py (heavy overlap with each other — candidates
+    to merge if ever revived), debug_gap_report.py.
+
+    Confirmed REFACTOR OPS BOARD.md is unaffected and still accurate —
+    its scope is the oracle/Truth-Kernel track specifically, never
+    covered these loose scripts, so this isn't a staleness gap in that
+    doc.
+
+    Added STATUS NOTE headers (no other content changed) to three
+    older planning docs that all assumed the now-dead
+    run_analysis_pipeline.py/debug_run.py were the live entrypoints —
+    flagging the architecture shift to engine/run_engine.py + ask.py
+    rather than rewriting them:
+      - docs/Symbol Classification Stabilization Plan.md (otherwise
+        still accurate as a historical record — its iteration target
+        files mostly exist under the planned names)
+      - docs/current predecessors still useful/architectural triage
+        protocol.md (methodology still fine, one stale module-ownership
+        line)
+      - docs/contracts  + visibility.md (exploratory brainstorming,
+        effectively superseded by the Truth Kernel/oracle work that's
+        since landed; flagged as such rather than deleted, since it's
+        Bart's call whether to keep)

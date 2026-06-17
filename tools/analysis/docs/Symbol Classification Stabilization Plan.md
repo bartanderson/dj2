@@ -1,4 +1,18 @@
-are you interested in this in the near future?
+STATUS NOTE (added 2026-06-16, read-only audit, no content below changed): The
+iteration target files largely exist under their planned names (graph/symbol_classifier.py,
+graph/symbol_router.py, graph/build_dependency_graph.py, graph/module_resolution.py,
+ingestion/scan_project_files.py, ingestion/extract_symbols.py) - so most of this plan's
+intent appears to have landed. Two things below are now stale: (1) every "VALIDATION"
+section says to run `python tools/analysis/run_analysis_pipeline.py` - that file no longer
+exists anywhere in the repo (confirmed via repo-wide search) and has been deleted as part of
+the loose-script cleanup; the current real entrypoint is `engine/run_engine.py` (ingestion)
+and `ask.py` (querying). (2) Iteration 3's target file
+`persistence/persist_file_analysis.py` also does not exist - persistence responsibility now
+lives in `persistence/persistence_engine.py` instead. Treat this doc as a historical design
+record of the classifier/router/graph layer, not as runnable instructions. A near-duplicate
+draft of this same plan (top-level `rewrite plan for routing to classification.md`) was
+deleted as redundant - this was the more complete/clean copy of the two, kept for that
+reason.
 
 Symbol Classification Stabilization Plan
 

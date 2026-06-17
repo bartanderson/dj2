@@ -1,3 +1,11 @@
+STATUS NOTE (added 2026-06-16, read-only audit): The triage methodology below (discover ->
+classify -> assess ownership -> determine maturity -> write governance header -> freeze or
+mark evolving) is still a reasonable process and is likely why this doc is filed under
+"current predecessors still useful." One concrete detail is now stale: under "CORE MODULES",
+`run_analysis_pipeline.py` is listed as the orchestration/reducer owner - that file has since
+been deleted (it was already broken, importing modules that don't exist) and orchestration
+now lives in `engine/run_engine.py`. Update that line if this protocol gets actively reused.
+
 🧭 THE RIGHT MODEL
 
 Bart is not the passive code provider.
