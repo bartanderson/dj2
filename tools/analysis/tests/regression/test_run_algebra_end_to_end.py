@@ -7,11 +7,13 @@
 # that closes that gap.
 #
 # This test is the permanent proof that:
-#   1. All 5 Truth Layer views (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/
-#      SUBSYSTEM) are buildable from real DB-backed data via Assessor,
-#      not stub objects (truth/tests/test_query_algebra.py covers the
-#      algebra mechanics in isolation with stubs; this covers the real
-#      data path those mechanics are supposed to run against).
+#   1. All 6 Truth Layer views (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/
+#      SUBSYSTEM/ROLE - ROLE added 2026-06-16/17, see
+#      test_role_view_routing.py for its dedicated coverage) are
+#      buildable from real DB-backed data via Assessor, not stub objects
+#      (truth/tests/test_query_algebra.py covers the algebra mechanics
+#      in isolation with stubs; this covers the real data path those
+#      mechanics are supposed to run against).
 #   2. NL to oracle router to AI compiler to AST to executor to real
 #      views runs end-to-end without raising, via Assessor.ask().
 #   3. The whole pipeline is deterministic: same question, same DB state,
@@ -88,7 +90,7 @@ def _seeded_oracle():
 
 
 # =========================================================
-# 1. ALL 5 VIEWS BUILD FROM REAL DATA (NOT STUBS)
+# 1. ALL 6 VIEWS BUILD FROM REAL DATA (NOT STUBS)
 # =========================================================
 
 def test_all_views_real_data():
@@ -98,7 +100,7 @@ def test_all_views_real_data():
         views = assessor.all_views()
 
         assert set(views.keys()) == {
-            "STRUCTURE", "STABILITY", "INTEGRITY", "SUMMARY", "SUBSYSTEM"
+            "STRUCTURE", "STABILITY", "INTEGRITY", "SUMMARY", "SUBSYSTEM", "ROLE"
         }
 
         structure = views["STRUCTURE"]

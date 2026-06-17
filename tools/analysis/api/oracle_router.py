@@ -27,7 +27,7 @@ def _is_valid_symbol(sym: str, builtin_symbols=frozenset()) -> bool:
     builtin_symbols is the DB-authoritative set from
     DBOracle.builtin_symbols() (bucket == "builtin" in symbol_references).
     This is the SAME classification seed discovery uses to exclude
-    builtins — there is no separate hardcoded noise list anymore, so
+    builtins - there is no separate hardcoded noise list anymore, so
     expansion-time and discovery-time filtering cannot drift apart.
     """
     return not is_noise_symbol(sym, builtin_symbols)
@@ -49,6 +49,15 @@ def _detect_intent(text: str) -> str:
     if "what does" in t or "surface" in t:
         return "surface_query"
 
+    # CLAUDE-EDIT 2026-06-16: per Truth.md Phase 3 Row 1 - "purpose of
+    # this file" / "why does X exist" / "role of X" style questions
+    # previously fell through to general_query and got a content-blind
+    # STABILITY+INTEGRITY answer regardless of which file was asked
+    # about. Routes to the new ROLE view instead (see role_view() /
+    # Assessor.responsibility_map()).
+    if "purpose" in t or "why does" in t or "why is" in t or "role of" in t or "what role" in t or "what kind of" in t:
+        return "role_query"
+
     return "general_query"
 
 
@@ -58,7 +67,7 @@ def _detect_intent(text: str) -> str:
 
 def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
     """
-    Step 1: map query → candidate symbols
+    Step 1: map query -> candidate symbols
     """
 
     candidates = find_symbols_fn(text, limit=20)
@@ -68,7 +77,7 @@ def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
 
 # =========================================================
 # GRAPH EXPANSION STRATEGY
-# NOTE: _expand() removed — route_query uses _route_expand() directly
+# NOTE: _expand() removed - route_query uses _route_expand() directly
 # =========================================================
 
 
@@ -78,7 +87,7 @@ def _seed_symbols(text: str, graph, find_symbols_fn) -> List[str]:
 
 def _select_primitives(intent: str) -> List[str]:
     """
-    Maps intent → graph primitives
+    Maps intent -> graph primitives
     """
 
     if intent == "impact_query":
@@ -89,6 +98,9 @@ def _select_primitives(intent: str) -> List[str]:
 
     if intent == "surface_query":
         return ["surface", "context"]
+
+    if intent == "role_query":
+        return ["role"]
 
     return ["context", "surface", "impact"]
 
@@ -156,7 +168,7 @@ def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=
     plan = _build_plan(filtered, primitives, trace)
 
     # -------------------------------------------------
-    # OBSERVABILITY (logger-gated — silent by default)
+    # OBSERVABILITY (logger-gated - silent by default)
     # -------------------------------------------------
     if logger:
         logger(f"\n=== ROUTE METRICS ===")
@@ -298,6 +310,16 @@ def _route_expand(graph, seeds, intent, builtin_symbols=frozenset()):
             "forward_depth": 1,
             "reverse": True,
             "reverse_depth": 1,
+            "two_hop": False,
+        },
+        "role_query": {
+            # ROLE is a global, file-level classification - it doesn't
+            # depend on which symbol was mentioned in the question, so
+            # there's nothing for graph traversal to add. Zero budget
+            # is the honest answer, not a placeholder.
+            "forward_depth": 0,
+            "reverse": False,
+            "reverse_depth": 0,
             "two_hop": False,
         },
     }

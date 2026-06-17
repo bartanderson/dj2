@@ -9,6 +9,7 @@ from tools.analysis.truth.views import (
     build_stability_view,
     build_integrity_view,
     build_system_summary_view,
+    build_role_view,
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.reducer.reduce import reduce
@@ -181,7 +182,7 @@ class Assessor:
             node_degree[e.caller] = node_degree.get(e.caller, 0) + 1
             node_degree[e.callee] = node_degree.get(e.callee, 0) + 1
 
-        # NOTE: bucket info lives in symbol_references, not graph_edges —
+        # NOTE: bucket info lives in symbol_references, not graph_edges -
         # GraphEdge has no .bucket attribute, so deriving bucket_summary
         # from the graph snapshot always reported everything as
         # "classification_gap". Pull it from the DB directly instead.
@@ -206,7 +207,7 @@ class Assessor:
         }
 
     # =====================================================
-    # QUERY (via QuerySession — single lifecycle object)
+    # QUERY (via QuerySession - single lifecycle object)
     # =====================================================
     def session(self) -> "QuerySession":
         """Return a fresh QuerySession bound to this oracle."""
@@ -219,11 +220,12 @@ class Assessor:
 
     def all_views(self) -> dict:
         """
-        All 5 Truth Layer views, keyed exactly as QueryPlanner/registry
-        expect (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM), built
-        from real DB-backed data. This is the dict to pass as `views=`
-        into QuerySession.run_algebra() — see tools/analysis/ask.py for
-        the reference entrypoint.
+        All 6 Truth Layer views, keyed exactly as QueryPlanner/registry
+        expect (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM/ROLE),
+        built from real DB-backed data. This is the dict to pass as
+        `views=` into QuerySession.run_algebra() - see
+        tools/analysis/ask.py for the reference entrypoint. ROLE added
+        2026-06-16 per Truth.md Phase 3/4 (purpose-of-file gap).
         """
         return {
             "STRUCTURE": self.structure_view(),
@@ -231,6 +233,7 @@ class Assessor:
             "INTEGRITY": self.integrity_view(),
             "SUMMARY": self.summary_view(),
             "SUBSYSTEM": self.subsystem_view(),
+            "ROLE": self.role_view(),
         }
 
     def ask(self, text: str) -> dict:
@@ -258,7 +261,7 @@ class Assessor:
     # run_engine built these from in-memory file_analyses via
     # evaluate_file_contracts() (a no-op stub) + SystemValidator's
     # symbol-reference check. Both checks reduce to "does this file's
-    # persisted symbol_references contain a null caller/callee" —
+    # persisted symbol_references contain a null caller/callee" -
     # which is now a DB query, not an in-memory pass.
     # =====================================================
 
@@ -313,7 +316,7 @@ class Assessor:
     # =====================================================
     # SUMMARY VIEW / SUBSYSTEM VIEW
     #
-    # CLAUDE-EDIT 2026-06-16: wired up — these were builder functions
+    # CLAUDE-EDIT 2026-06-16: wired up - these were builder functions
     # with no real caller anywhere (see Truth.md Phase 1 findings).
     # Both are pure transforms of data Assessor already computes:
     #   - summary_view() reuses reduced_snapshot() (edge_activity_total)
@@ -322,7 +325,7 @@ class Assessor:
     #     already pulls) as the "metrics" payload, plus oracle.file_count().
     #   - subsystem_view() reuses the same graph snapshot every other
     #     view is built from.
-    # No new DB queries, no new heuristics — just exposing data that
+    # No new DB queries, no new heuristics - just exposing data that
     # already existed under a name the query algebra can address.
     # =====================================================
 
@@ -336,6 +339,14 @@ class Assessor:
 
     def subsystem_view(self):
         return build_subsystem_view(self.snapshot())
+
+    def role_view(self):
+        # CLAUDE-EDIT 2026-06-16: sixth Truth Layer view, wired up per
+        # Truth.md Phase 3/4 - responsibility_map() was real, DB-backed,
+        # already-computed data with no path into Select()/Combine().
+        # Same orphaned-primitive shape as the SUMMARY/SUBSYSTEM fix
+        # earlier this session; same fix.
+        return build_role_view(self.responsibility_map())
 
     # =====================================================
     # RESPONSIBILITY MAP / SNAPSHOT

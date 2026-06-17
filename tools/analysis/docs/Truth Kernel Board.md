@@ -42,6 +42,16 @@ All components that are proven correct via execution.
     stub literal in test_query_algebra.py.
 [X] Subsystem View — RE-UPGRADED 2026-06-16: wired via assessor.subsystem_view()
     (real graph snapshot), same direct test coverage as Summary View above.
+[X] Role View — ADDED 2026-06-17: build_role_view() (truth/views.py) wraps
+    Assessor.responsibility_map()'s existing DB-backed per-file role
+    classification (ingestion/classification/graph/persistence/reporting);
+    wired via assessor.role_view(), now the 6th key in all_views(). Closes
+    Truth.md Phase 3 Row 2 (computed but unreachable) and the user-facing
+    half of Row 1 (purpose-of-file questions had no intent category or
+    view to land on). Direct test coverage in
+    tests/regression/test_role_view_routing.py (5 tests: real-data view
+    construction, Select("ROLE") execution, _detect_intent() routing,
+    and ask() end-to-end + deterministic).
 
 Criteria:
 
@@ -81,6 +91,12 @@ Components that are correct but being evaluated for practical value.
 [ ] Stability signal usefulness
 [ ] Integrity signal usefulness
 [ ] Subsystem interpretability
+[ ] Role classification interpretability — NEW 2026-06-17: role view is
+    wired and tested for correctness (keyword-match classification ==
+    what responsibility_map() computes), but not yet evaluated against
+    real debugging/onboarding tasks the way the other Tier 2 items are
+    framed. Same "correct but unevaluated for practical value" shape as
+    Subsystem interpretability above.
 
 Criteria:
 
@@ -124,6 +140,14 @@ Now: build_structure_view() excludes the DB-authoritative builtin set from
 hotspot ranking (see Tier 2 above). The SUMMARY/SUBSYSTEM verification gap
 flagged here earlier the same day is also resolved — see Tier 1 above.
 No open known issue at this tier as of 2026-06-16.
+
+UPDATE 2026-06-17: Truth.md Phase 3 Row 2 (responsibility/role
+classification computed but unreachable from ask()) is resolved — see the
+new Role View entry under Tier 1 above. Rows 3 (drift_signals hardcoded
+[]) and 4 (subsystem grouping fragmenting on undotted symbol names) from
+the same Phase 3 pass remain open; they are the same "captured/computable
+but not wired or wired wrong" shape as Row 2 was, and are the leading
+candidates for the next Tier 1 promotion.
 ---
 
 ## CORE PRINCIPLE

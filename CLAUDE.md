@@ -46,6 +46,37 @@ non-UTF-8 codepage (Windows OEM/CP437) somewhere in the write path. Avoid this:
 - When in doubt, prefer a plain hyphen (`-`) or rewording over an em dash in
   these docs — it's not worth the encoding risk for punctuation.
 
+## File write verification (mandatory)
+This session (2026-06-16/17) found that writes/edits to files in this repo can
+silently fail to land on disk while every available signal still looks correct
+- including the Read tool itself, which on at least one occasion (Truth.md,
+2026-06-17) displayed ~130 lines of fully-formed, plausible content that had
+never actually been written to disk at all. Both the Edit tool and full-file
+Write tool calls have produced silent truncation (confirmed: a Write-tool
+retry reproduced the exact same truncated byte count as a prior failed Edit) -
+switching tools is not a fix, and trusting Read's in-context view is not a
+safe verification step on its own.
+
+Mandatory procedure after every write/edit to a file in this repo, before
+doing anything else (no other tool calls in between):
+1. Have the exact intended final content available as a string, separate from
+   whatever the Read tool currently shows.
+2. Verify on the actual filesystem via the sandbox shell (`bash`), not via the
+   Read/Edit/Write tools: write the intended content to a temp file and `diff`
+   it against the real target file. Zero diff output = confirmed landed. This
+   is the authoritative check - line/byte counts and tail snippets are a
+   useful quick first pass but are not sufficient on their own, since a
+   truncation can land at a plausible-looking boundary partway through.
+3. For Python files, `ast.parse` is a cheap sanity check but catches only
+   syntax-breaking truncation, not the dangerous variant that lands cleanly.
+   Always pair it with the full diff in step 2.
+4. If the diff shows any mismatch, do not retry via Edit or Write - go
+   straight to a direct bash heredoc rewrite (`cat > path << 'EOF' ... EOF`,
+   or `cat >>` for an append onto an already-confirmed-correct prefix), then
+   re-run the diff to confirm.
+5. Keep the em-dash UTF-8 round-trip check (above) as a supplement for docs
+   that use em dashes, not a substitute for the full diff.
+
 ## Last known state (2026-06-16)
 Morning: noise-filter unification (oracle/symbol_noise.py, used at both discovery
 and expansion time), removal of dead `_apply_intent_weights` stub, QuerySession
@@ -75,16 +106,38 @@ way and make sure it stays fixed" mandate):
   (32) = 42/42.
 - Caught and fixed an environment bug along the way: this session's tooling
   silently truncated a file mid-write more than once (both on brand-new large
-  files and on a small `Edit` to an existing file) with no error surfaced —
+  files and on a small `Edit` to an existing file) with no error surfaced -
   the in-context view of the file looked correct while the on-disk bytes were
-  cut short. If a `SyntaxError` shows up that the Read tool doesn't corroborate,
-  verify with `wc -c` / `python3 -c "import ast; ast.parse(open(path).read())"`
-  in the sandbox before trusting either side blindly, and rewrite via a direct
-  bash heredoc/script if truncation is confirmed.
+  cut short. See "File write verification (mandatory)" above for the
+  procedure this grew into.
 
-All 6 docs in `tools/analysis/docs/` (REFACTOR OPS BOARD.md, Truth.md,
-Truth Kernel Board.md, TRUTH KERNEL v1.md, todo-done.md) were updated in place
-to reflect the above — see those files for full detail, this is just the index.
-Next-up item per REFACTOR OPS BOARD.md: DB-backed symbol discovery API as
-unified bootstrap (Phase 2), and oracle_router expansion budget/weighting
-tuning (Phase 1 remainder).
+## 2026-06-17 — ROLE view added, doc-write verification protocol hardened
+- Closed Truth.md Phase 3 Row 1/Row 2 (the "what is the purpose of this
+  file" gap): added ROLE as a 6th Truth Layer view
+  (`truth/views.py:build_role_view()`, wraps the already-real
+  `Assessor.responsibility_map()`), wired into `Assessor.all_views()`,
+  routed via a new `role_query` intent in `api/oracle_router.py`. New
+  regression suite `tests/regression/test_role_view_routing.py` (5 tests).
+  Full sweep: 47/47 passing. Full detail: REFACTOR OPS BOARD.md
+  2026-06-17 entry, Truth Kernel Board.md Tier 1 "Role View" entry,
+  Truth.md Phase 4 entry, todo-done.md 2026-06-17 entry.
+- Hit silent truncation twice more while landing the above (in
+  `api/oracle_router.py` and `tests/regression/test_run_algebra_end_to_end.py`),
+  plus a separate stale/locked `.pyc` cache bug that made `_detect_intent`
+  silently run old bytecode after the source was already fixed. Both are
+  written up in REFACTOR OPS BOARD.md's 2026-06-17 entry.
+- While updating the docs themselves, found a third and more concerning
+  case: the Read tool displayed a fully-formed "Phase 3 findings" section
+  in Truth.md that had never actually been written to disk (confirmed via
+  `wc -l` against the real file). Recovered the content and wrote it for
+  real via bash heredoc, verified by direct diff against disk. This is
+  the incident that prompted the "File write verification (mandatory)"
+  section above - the short version is: Read-tool-shows-it is not
+  evidence it's on disk, only a bash-side diff against intended content is.
+
+Next steps: see the "NEXT STEPS" section at the bottom of
+REFACTOR OPS BOARD.md (consolidates both the original Phase 1/2 critical
+path and the new Truth Kernel candidates) and Truth Kernel Board.md's
+Tier 1/Tier 2 2026-06-17 notes. Don't restate specifics here - those two
+files are the source of truth and this index will drift if it tries to
+duplicate them.

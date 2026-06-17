@@ -264,6 +264,7 @@ against a real project DB and confirms `algebra_result` contains real,
 non-stub data. (DONE - see `tools/analysis/ask.py`, which builds on all
 5 views via `Assessor.all_views()` rather than just 3.)
 
+
 ---
 
 ## Phase 3 findings (2026-06-16, evidence-only, no code changes)
@@ -395,6 +396,68 @@ Two distinct failure shapes, not five unrelated ones:
 
 Exit criteria for this phase ("evidence only, no guesses") is met: every
 row above is a question actually run, or a value actually read, against
-real data - not a prediction.</new_string>
-</invoke>
+real data - not a prediction.
 
+---
+
+## Phase 4 entry (2026-06-17) - Row 1/Row 2 closed: ROLE view added
+
+Per Phase 4's own rule ("one missing capability, one implementation, one
+measurable improvement"): Row 2's gap (responsibility/role classification
+computed and DB-backed, but not reachable from `ask()`) is now closed,
+and as a direct consequence so is the user-facing half of Row 1 (the
+"what is the purpose of this file" question class).
+
+What changed (one capability, the smallest version of Row 2's fix
+pattern - "connect an existing thing," not new ingestion):
+- `truth/views.py`: added `RoleView` dataclass + `build_role_view()`,
+  a pure transform wrapping `Assessor.responsibility_map()`'s existing
+  DB-backed per-file role classification (ingestion/classification/
+  graph/persistence/reporting) into the view shape the algebra expects.
+  No new heuristics, no new DB queries - same principle as
+  `build_system_summary_view()`/`build_subsystem_view()` when those were
+  wired in earlier on 2026-06-16.
+- `assessor/assessor.py`: `role_view()` added, `all_views()` now returns
+  6 keys (`STRUCTURE, STABILITY, INTEGRITY, SUMMARY, SUBSYSTEM, ROLE`).
+- `api/oracle_router.py`: `_detect_intent()` gained a `role_query` branch
+  ("purpose"/"why does"/"why is"/"role of"/"what role"/"what kind of");
+  `_select_primitives()` maps `role_query -> ["role"]`; `_route_expand()`'s
+  `intent_budget` gained a `role_query` entry with zero forward/reverse
+  depth (ROLE is a file-level classification, not graph-traversal-
+  dependent - zero budget is the honest answer, not a placeholder).
+- `truth/query_plan.py` / `truth/query_compiler.py`: ROLE registered as a
+  valid Select target with `totals`/`files` metrics, and `role_query`
+  compiles to `Select("ROLE", ...)` directly (not a `Combine` fallback).
+
+Measured improvement (Row 1's actual repro, re-run against a seeded DB
+after the fix, see `tests/regression/test_role_view_routing.py`):
+`assessor.ask("what is the purpose of ingest.py")` now returns
+`intent == "role_query"`, a compiled AST containing `Select` (not
+`Combine`), and `algebra_result.data` whose `totals`/`files` reflect the
+real per-file role classification (e.g. `ingest.py` correctly flagged
+`roles.ingestion == True`) - not the byte-identical
+`Combine(Select(STABILITY), Select(INTEGRITY))` fallback that all three
+Row 1 questions previously produced regardless of which file was named.
+
+What's still open (deliberately not touched here, per the "one truth at
+a time" rule):
+- Row 1's non-Row-2 remainder: questions whose answer was genuinely never
+  captured anywhere (e.g. Row 5's "why was this mutation made" - no
+  intent/description field exists on `MutationEvent` to surface even with
+  perfect wiring). Out of scope for this entry.
+- Row 3 (drift_signals hardcoded `[]`) and Row 4 (subsystem grouping
+  fragmenting on undotted symbol names) remain open, same "captured/
+  computable but not wired or wired wrong" shape as Row 2 was - good
+  candidates for the next Phase 4 pass.
+
+New permanent regression coverage: `tests/regression/test_role_view_routing.py`
+(5 tests - ROLE in `all_views()` against real data, `Select("ROLE")`
+executing via the algebra, `_detect_intent()` routing purpose/why/role
+phrasing to `role_query` specifically, and `ask()` running the full
+purpose-question pipeline end-to-end and deterministically), plus the
+pre-existing `test_run_algebra_end_to_end.py` updated for the 6-view
+contract. Full sweep: 47/47 passing (see REFACTOR OPS BOARD.md
+2026-06-17 entry for the complete count breakdown and the two
+environment bugs - a locked stale `.pyc` cache and a recurring silent
+file-truncation bug in this session's write tooling - found and worked
+around while landing this fix).

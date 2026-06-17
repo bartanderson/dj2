@@ -3,20 +3,20 @@
 # stub only. Now tries local Ollama (llama3.2:3b @ localhost:11434/api/generate)
 # first, validates output through QueryPlanner, falls back to the original
 # rule-based intent->AST table on any failure (connection error, timeout,
-# bad JSON, invalid view/combine). Does NOT use Anthropic API — local only.
+# bad JSON, invalid view/combine). Does NOT use Anthropic API - local only.
 #
-# LAYER 4 — QUERY COMPILER
+# LAYER 4 - QUERY COMPILER
 #
-# Translates natural language → valid Query AST.
+# Translates natural language -> valid Query AST.
 #
 # Two modes (selected automatically):
-#   1. Ollama mode  — calls llama3.2:3b via local Ollama API.
+#   1. Ollama mode  - calls llama3.2:3b via local Ollama API.
 #                     The model is given the closed algebra spec and must
 #                     emit only valid JSON. Output is validated through
 #                     QueryPlanner before use. Falls back to rule-based
 #                     on any failure (service down, invalid JSON, invalid AST).
 #
-#   2. Rule-based fallback — deterministic intent→AST table.
+#   2. Rule-based fallback - deterministic intent->AST table.
 #                     Always available. Used when Ollama is unreachable or
 #                     the model output fails validation.
 #
@@ -40,7 +40,7 @@ _planner = QueryPlanner(_registry)
 
 OLLAMA_URL   = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:3b"
-OLLAMA_TIMEOUT = 10  # seconds — fail fast, don't block the pipeline
+OLLAMA_TIMEOUT = 10  # seconds - fail fast, don't block the pipeline
 
 # =========================================================
 # CLOSED-WORLD SPEC (fed verbatim to the model)
@@ -51,7 +51,7 @@ You are a query compiler for a closed-world code analysis system.
 Your ONLY job is to translate a natural language question into a JSON query AST.
 Output JSON only. No explanation. No markdown. No extra keys.
 
-VALID VIEWS: STRUCTURE, STABILITY, INTEGRITY, SUMMARY, SUBSYSTEM
+VALID VIEWS: STRUCTURE, STABILITY, INTEGRITY, SUMMARY, SUBSYSTEM, ROLE
 
 VALID METRICS PER VIEW:
   STRUCTURE: edges, adjacency, hotspots
@@ -59,6 +59,7 @@ VALID METRICS PER VIEW:
   INTEGRITY: errors, warnings, db_mismatches
   SUMMARY:   edge_count, file_count, metrics
   SUBSYSTEM: subsystems
+  ROLE:      files, totals
 
 VALID COMBINE PAIRS (unordered):
   (STRUCTURE, STABILITY)
@@ -68,25 +69,28 @@ VALID COMBINE PAIRS (unordered):
   (STABILITY, INTEGRITY)
 
 QUERY TYPES:
-  Select(view)           → {"type": "select", "view": "VIEW"}
-  Select(view, metric)   → {"type": "select", "view": "VIEW", "metric": "METRIC"}
-  Combine(left, right)   → {"type": "combine", "left": <node>, "right": <node>}
+  Select(view)           -> {"type": "select", "view": "VIEW"}
+  Select(view, metric)   -> {"type": "select", "view": "VIEW", "metric": "METRIC"}
+  Combine(left, right)   -> {"type": "combine", "left": <node>, "right": <node>}
 
 MAPPING GUIDANCE:
   "what depends on X" / "who calls X" / "what breaks if X changes"
-    → {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"INTEGRITY"}}
+    -> {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"INTEGRITY"}}
 
   "what does X call" / "show surface of X" / "forward dependencies"
-    → {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"STABILITY"}}
+    -> {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"STABILITY"}}
 
   "show hotspots" / "most connected symbols"
-    → {"type":"select","view":"STRUCTURE","metric":"hotspots"}
+    -> {"type":"select","view":"STRUCTURE","metric":"hotspots"}
 
   "system health" / "stability overview"
-    → {"type":"combine","left":{"type":"select","view":"STABILITY"},"right":{"type":"select","view":"INTEGRITY"}}
+    -> {"type":"combine","left":{"type":"select","view":"STABILITY"},"right":{"type":"select","view":"INTEGRITY"}}
+
+  "what is the purpose of X" / "why does X exist" / "what is the role of X"
+    -> {"type":"select","view":"ROLE"}
 
   general / unclear
-    → {"type":"select","view":"STRUCTURE"}
+    -> {"type":"select","view":"STRUCTURE"}
 """
 
 # =========================================================
@@ -98,6 +102,12 @@ _INTENT_TO_AST = {
     "surface_query": lambda: Combine(Select("STRUCTURE"), Select("STABILITY")),
     "reverse_query": lambda: Combine(Select("STRUCTURE"), Select("INTEGRITY")),
     "general_query": lambda: Combine(Select("STABILITY"), Select("INTEGRITY")),
+    # CLAUDE-EDIT 2026-06-16: per Truth.md Phase 3 Row 1 / Row 2 - routes
+    # "purpose of file" style questions to the new ROLE view instead of
+    # falling through to general_query's content-blind STABILITY+INTEGRITY
+    # default. Select-only (not Combine): ROLE isn't in VALID_COMBINES yet,
+    # since no question asked so far has needed it joined with anything.
+    "role_query":    lambda: Select("ROLE"),
 }
 
 _INTENT_EXPLANATIONS = {
@@ -105,6 +115,7 @@ _INTENT_EXPLANATIONS = {
     "surface_query": "STRUCTURE+STABILITY: what does this symbol call, and is that surface stable?",
     "reverse_query": "STRUCTURE+INTEGRITY: reverse dependency view with integrity check.",
     "general_query": "STABILITY+INTEGRITY: full diagnostic view of system health.",
+    "role_query":    "ROLE: what kind of work does this file do, per the DB-backed responsibility classification.",
 }
 
 _DEFAULT_AST = lambda: Select("STRUCTURE")
@@ -115,7 +126,7 @@ def _rule_based_ast(intent: str):
 
 
 # =========================================================
-# JSON → AST PARSER
+# JSON -> AST PARSER
 # =========================================================
 
 def _parse_ast_node(node: dict):
@@ -179,10 +190,10 @@ def _compile_via_ollama(text: str, intent: str):
         return plan
 
     except requests.exceptions.ConnectionError:
-        logger.debug("Ollama not reachable — using rule-based compiler")
+        logger.debug("Ollama not reachable - using rule-based compiler")
         return None
     except requests.exceptions.Timeout:
-        logger.debug("Ollama timeout — using rule-based compiler")
+        logger.debug("Ollama timeout - using rule-based compiler")
         return None
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         logger.warning("Ollama compiler output invalid: %s", e)

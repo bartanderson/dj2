@@ -28,7 +28,7 @@ def build_structure_view(graph: Any, builtin_symbols: set = None) -> StructureVi
     # Exclude builtin symbols from hotspot ranking.
     # Builtins (print, len, getattr, etc.) dominate degree counts by volume
     # but carry no semantic signal about project structure.
-    # edges/adjacency are left intact — structural truth is not modified.
+    # edges/adjacency are left intact - structural truth is not modified.
     if builtin_symbols:
         ranked = {k: v for k, v in degree_count.items() if k not in builtin_symbols}
     else:
@@ -103,4 +103,29 @@ def build_system_summary_view(reduced, metrics, file_count: int) -> SystemSummar
         edge_count=reduced.get("edge_activity_total", 0),
         file_count=file_count,
         metrics=metrics,
+    )
+
+@dataclass
+class RoleView:
+    files: list[dict]
+    totals: dict
+
+
+def build_role_view(responsibility_map: dict) -> RoleView:
+    """
+    Pure transform - wraps Assessor.responsibility_map()'s already
+    DB-backed, already-computed role classification (ingestion/
+    classification/graph/persistence/reporting per file) into the view
+    shape the query algebra expects. No new heuristics, no new DB
+    queries: same principle as build_system_summary_view/
+    build_subsystem_view, just exposing data that already existed under
+    a name Select()/Combine() can address.
+
+    See tools/analysis/docs/Truth.md, Phase 3 findings Row 2: this is
+    the fix for the "responsibility/role classification exists, but is
+    not reachable" gap.
+    """
+    return RoleView(
+        files=responsibility_map.get("files", []),
+        totals=responsibility_map.get("totals", {}),
     )

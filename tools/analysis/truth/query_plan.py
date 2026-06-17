@@ -16,6 +16,7 @@ class QueryPlan:
         "INTEGRITY": {"errors", "warnings", "db_mismatches"},
         "SUMMARY": {"edge_count", "file_count", "metrics"},
         "SUBSYSTEM": {"subsystems"},
+        "ROLE": {"files", "totals"},
     }
 
 class QuerySemanticsRegistry:
@@ -92,7 +93,7 @@ class QueryPlanner:
             if not self.registry.validate_combine(left_view, right_view):
                 raise ValueError(f"Invalid combine: ({left_view}, {right_view})")
 
-            # STEP 3: NEW — enforce filter scoping rule
+            # STEP 3: NEW - enforce filter scoping rule
             # Filters are NOT allowed to exist at top-level inside Combine branches
             if isinstance(left, Filter) or isinstance(right, Filter):
                 raise ValueError("Filter must be attached to a Select node")

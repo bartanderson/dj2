@@ -116,3 +116,57 @@ The torch warning is just noise from sentence-transformers pulling in PyTorch on
         effectively superseded by the Truth Kernel/oracle work that's
         since landed; flagged as such rather than deleted, since it's
         Bart's call whether to keep)
+
+---
+
+## 2026-06-17 — ROLE view added (Truth.md Phase 3 Row 1/Row 2 closed)
+
+[x] RESOLVED — "what is the purpose of this file" / "why does X exist" /
+    "role of X" questions had no path to an answer: _detect_intent()
+    (api/oracle_router.py) had no category for them so they fell to
+    general_query and got a content-blind Combine(Select(STABILITY),
+    Select(INTEGRITY)) regardless of which file was named, even though
+    Assessor.responsibility_map() already had real, DB-backed per-file
+    role classification with zero callers wiring it into the algebra
+    (all_views() only returned 5 keys, ROLE wasn't one of them).
+    Fixed: build_role_view() (truth/views.py) wraps responsibility_map()
+    into the view shape the algebra expects; Assessor.role_view() wires
+    it into all_views() (now 6 keys); _detect_intent() gained a
+    role_query branch; _select_primitives()/the compiler route
+    role_query straight to Select("ROLE") (no Combine fallback);
+    _route_expand()'s intent_budget gained a role_query entry with zero
+    traversal depth (ROLE is file-level, not graph-dependent).
+
+[x] RESOLVED — new permanent regression coverage:
+    tests/regression/test_role_view_routing.py (5 tests: ROLE present in
+    all_views() against real seeded data, Select("ROLE") executing via
+    QueryExecutor, _detect_intent() routing 6 purpose/why/role phrasings
+    correctly, ask() routing a real purpose-question end-to-end to the
+    ROLE view, and ask() being deterministic on repeat). Updated
+    test_run_algebra_end_to_end.py for the new 6-view contract. Full
+    sweep after this work: 47/47 passing (5 new + 4 + 6 +
+    32-via-pytest).
+
+[x] RESOLVED (environment bug, not a project bug) — a stale/locked
+    __pycache__ .pyc for oracle_router.py had a recorded mtime+size that
+    coincidentally matched an intermediate pre-fix save of the source,
+    so Python's default timestamp-based cache check treated it as valid
+    and silently ran old bytecode even after the source was fixed and
+    __pycache__ was "cleared" (the file itself was undeletable —
+    `rm` → Operation not permitted). Diagnosed by comparing
+    inspect.getsource(fn) against the function's actual return value in
+    the same process; fixed by touch-ing the source file to force a new
+    mtime and invalidate the cache.
+
+[x] RESOLVED (environment bug, not a project bug) — this session's file
+    write tooling silently truncated files on disk multiple times (both
+    Edit and full-file Write calls) while the Read tool's in-context view
+    kept showing the complete, correct content — once landing exactly on
+    a comment boundary inside _route_expand() and dropping its final
+    return statement with no SyntaxError to flag it. Confirmed Write-tool
+    retries are not a reliable fix (one retry reproduced the identical
+    truncated byte count). The only confirmed-reliable fix found: a
+    direct bash heredoc write/append, always followed by `wc -l -c` +
+    (for .py files) `ast.parse()` + a tail diff to confirm the intended
+    ending actually landed. See REFACTOR OPS BOARD.md 2026-06-17 entry
+    for the full incident log.

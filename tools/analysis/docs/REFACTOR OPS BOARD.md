@@ -503,3 +503,126 @@ oracle_router expansion still requires:
 Next dependency in line (unchanged): DB-backed symbol discovery API as the
 single unified bootstrap entrypoint (PHASE 2 above).
 ---------------------------------------------------
+
+## 2026-06-17 - ROLE view wired up (Truth.md Phase 3/4: purpose-of-file gap)
+
+Per Truth.md Phase 3 findings (Row 1/Row 2): "what is the purpose of X" /
+"why does X exist" / "what is the role of X" questions had no path to a
+real answer. `Assessor.responsibility_map()` already had real, DB-backed,
+per-file role classification (ingestion/classification/graph/persistence/
+reporting via `engine/responsibility_map.py` ROLE_PATTERNS) but nothing
+wired it into the query algebra - same "orphaned primitive" shape as the
+SUMMARY/SUBSYSTEM gap closed earlier on 2026-06-16.
+
+Closed by adding ROLE as a 6th Truth Layer view, same fix pattern as
+before, no new heuristics:
+- `truth/query_plan.py`: `"ROLE": {"files", "totals"}` added to
+  `QueryPlan.VALID_METRICS`.
+- `truth/views.py`: `RoleView` dataclass + `build_role_view()` - pure
+  transform of `responsibility_map()`'s existing output into view shape.
+- `assessor/assessor.py`: `Assessor.role_view()` added, wired into
+  `all_views()` (now 6 keys: STRUCTURE/STABILITY/INTEGRITY/SUMMARY/
+  SUBSYSTEM/ROLE).
+- `api/oracle_router.py`: `_detect_intent()` routes purpose/why/role
+  phrasing to a new `role_query` intent; `_select_primitives()` and the
+  `intent_budget` table in `_route_expand()` both handle it (zero
+  traversal budget - ROLE is file-level, not symbol-traversal-dependent).
+- `truth/query_compiler.py`: `role_query -> Select("ROLE")` added to the
+  rule-based `_INTENT_TO_AST` table, explanation text, and the
+  Ollama-facing `_ALGEBRA_SPEC` (VALID VIEWS / VALID METRICS / mapping
+  guidance).
+
+New permanent regression coverage:
+`tools/analysis/tests/regression/test_role_view_routing.py` (5 tests:
+ROLE in `all_views()` with real seeded role data, `Select("ROLE")`
+executes via `QueryExecutor`, `_detect_intent()` classifies
+purpose/why/role phrasing as `role_query`, `ask()` routes end-to-end to
+the ROLE view, `ask()` is deterministic for role questions).
+`test_run_algebra_end_to_end.py` updated to expect 6 view keys instead of
+5. Full sweep after this work: 5 (new) + 4 (run_algebra_end_to_end) + 6
+(oracle_router_persistence_lock) + 32 (truth/tests/test_query_algebra,
+via pytest) = 47/47 passing.
+
+**Environment note - recurrence of the silent-truncation bug, plus a new
+variant:** during this work the Edit/Write-tool-to-sandbox sync silently
+truncated `api/oracle_router.py` not once but twice more, and also
+truncated `tests/regression/test_run_algebra_end_to_end.py` and this very
+doc - in each case mid-file in a way that stayed syntactically/visually
+*valid* (no `SyntaxError`, no obvious corruption), which is the dangerous
+variant: `_route_expand()` lost its final `return` statement and so
+implicitly returned `None`, breaking `route_query()` downstream with a
+confusing `TypeError` far from the real cause; this doc silently dropped
+an entire appended section. Caught and fixed via the same `wc -l`/
+`ast.parse`-vs-Read-tool diff + full heredoc rewrite workflow already
+documented earlier in this file - but notably, a `Write`-tool rewrite (not
+just `Edit`) was **also** silently truncated to the exact same byte count
+as the prior truncated version of `oracle_router.py`, so the working fix
+was specifically a **bash heredoc write/append**, not a re-attempt via the
+Windows-side file tools. If this recurs again, don't bother retrying
+Write/Edit - go straight to the heredoc.
+
+Also found and fixed a **second, distinct** bug in the same area: a
+locked/undeletable stale `.pyc` in `api/__pycache__/oracle_router.cpython-310.pyc`
+(`rm` returned "Operation not permitted") whose recorded mtime+size
+happened to exactly match an intermediate (pre-fix) saved state of
+`oracle_router.py`, so Python's normal cache-invalidation check
+considered it valid and silently ran stale bytecode despite the on-disk
+`.py` source being correct - `_detect_intent()` kept returning
+`general_query` for purpose/why/role questions even after the source fix
+landed and `__pycache__` dirs were (apparently) cleared. Diagnosed by
+comparing `inspect.getsource()` (correct) against direct `_detect_intent()`
+calls (wrong, i.e. running compiled-but-not-matching-source bytecode),
+then confirmed via the pyc header (`flags=0`, i.e. timestamp-based
+invalidation, not hash-based) showing an exact mtime+size match to the
+stale state. Fixed by `touch`-ing the source file to force a new mtime,
+which made the existing (locked, undeletable) cache invalid and forced a
+recompile. If `_detect_intent`-style behavior ever looks "obviously wrong
+despite correct-looking source" again, check this before assuming the
+source itself is bad: compare `inspect.getsource(module.func)` against
+actually calling `module.func(...)`, and if they disagree, suspect a
+stale/locked pyc rather than a code bug.
+
+---------------------------------------------------
+
+## NEXT STEPS (2026-06-17) - pick up here next session
+
+Two independent tracks are open. Neither blocks the other; pick whichever
+Bart prioritizes.
+
+**Track A - original Phase 1/2 critical path (unchanged status, not
+touched by the 2026-06-17 ROLE work):**
+1. Finish PHASE 1 oracle_router expansion boundaries: intent-specific
+   traversal budgets exist for surface/impact/reverse/general/role_query
+   (see `_route_expand()`'s `intent_budget` dict in `api/oracle_router.py`)
+   but forward-vs-reverse weighting calibration and depth-limit tuning
+   per intent are still open (see "Next up scratchpad" at the top of this
+   file and the ROUTING LAYER / "CURRENT ISSUE" sections above).
+2. Then PHASE 2: expose a DB-backed symbol discovery API
+   (list_symbols/find_symbols/find_files/find_modules, DBReader-only) as
+   the single unified seed-bootstrap entrypoint, replacing any
+   engine-origin or caller-supplied seeding.
+
+**Track B - Truth Kernel / Truth.md candidates surfaced by the ROLE-view
+work (same "Phase 4: one truth at a time" shape Row 2/ROLE just closed):**
+1. Truth.md Phase 3 Row 3 - `drift_signals` is hardcoded `[]` at the
+   `build_stability_view()` call site in `assessor.py` (a query against
+   it validates and executes cleanly but is silently always empty - the
+   most dangerous gap shape, since nothing signals it's missing).
+   Populate it from real drift-detection data, or explicitly document why
+   it can't be yet.
+2. Truth.md Phase 3 Row 4 - `_module()` in `truth/subsystem_view.py`
+   assumes dotted module-qualified symbol names; this codebase's actual
+   caller format is mostly bare function names, so SUBSYSTEM grouping
+   fragments into ~355 single-function "subsystems" instead of real
+   architectural groupings. Needs either a better module-inference
+   heuristic or a documented caveat on what SUBSYSTEM currently means.
+3. Truth Kernel Board.md Tier 2 - "Role classification interpretability"
+   and "Subsystem interpretability" both need evaluation against real
+   debugging/onboarding tasks, not just correctness checks (which they
+   already pass).
+
+Whichever track is picked, the **mandatory file-write verification
+procedure in CLAUDE.md** ("File write verification (mandatory)" section)
+applies to every edit in this repo - bash-side diff against intended
+content, not just a Read-tool glance, given this session's three
+truncation incidents plus one fully-phantom Read-tool view.
