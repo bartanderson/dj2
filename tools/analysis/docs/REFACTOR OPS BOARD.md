@@ -880,3 +880,280 @@ Both tracks from the prior NEXT STEPS entry are now closed except Track
 B items 1 and 3 (drift_signals hardcoded `[]`, and the unevaluated
 "interpretability" Tier 2 items in Truth Kernel Board.md) - those remain
 open for a future session.
+
+---------------------------------------------------
+
+## 2026-06-17 (later session) - Track B item 1 closed: drift_signals wired
+
+Closes the last open item from the "NEXT STEPS (2026-06-17)" Track B list
+above: Truth.md Phase 3 Row 3 - `drift_signals` hardcoded `[]` at the
+`build_stability_view()` call site in `assessor.py`. Same shape as Track B
+item 2 (subsystem fragmentation, closed in the prior entry above) and the
+original SUMMARY/SUBSYSTEM/ROLE gaps: an existing, correctly-implemented
+component (`contracts/contract_drift_classifier.py`'s
+`ContractDriftClassifier`) had zero callers anywhere in the codebase. The
+fix is wiring, not new heuristics:
+
+- `assessor/assessor.py`'s `stability_view()` now calls
+  `ContractDriftClassifier().classify(reports)` and passes the real
+  result into `build_stability_view()` instead of a literal `[]`.
+- `file_contract_reports()`'s violation dicts gained a `"layer": "graph"`
+  key so the classifier (which reads `contract_name`/`severity`/`layer`
+  off each violation) has a real value for all three fields, not just two.
+- `ContractDriftClassifier.classify()` hardened with a `_field(v, name,
+  default)` helper - dict-or-attribute shape-safe access, same principle
+  as `truth/query_executor.py`'s `get_field()` - since the violations
+  `file_contract_reports()` actually produces are plain dicts, not the
+  attribute-style `ContractViolation` dataclass from the dead
+  `contracts/contract_observer.py` path this classifier was originally
+  written against.
+
+**Regression coverage:** new
+`tests/regression/test_drift_signals_wiring.py` (6 tests): real seeded
+violations produce non-empty, correctly-shaped drift signals through
+`Assessor.stability_view()`; all three classification thresholds
+(transient/recurring/structural); zero violations yields zero signals;
+the result is reachable through `all_views()`/`ask()`, not just the
+direct method; and `_field()`/`classify()` explicitly handle both dict
+and attribute-shaped violations. Full sweep after this work: 7
+(discovery/subsystem) + 6 (oracle_router_persistence_lock) + 4
+(run_algebra_end_to_end) + 5 (role_view_routing) + 6 (drift_signals_wiring,
+new) + 32 (truth/tests/test_query_algebra, via pytest) = 60/60 passing.
+
+Full root-cause detail and the Row-3 repro (before/after) are in
+`Truth.md`'s "Phase 4 entry (2026-06-17, later session)" and the Tier 1
+Stability View entry in `Truth Kernel Board.md` - not duplicated here per
+this index's own rule (see top of this doc / CLAUDE.md: those two files
+are the source of truth, this index just points at them).
+
+With this, both Track B items from the original list are closed (item 2 -
+subsystem fragmentation - in the prior entry, item 1 - drift_signals -
+here). Track B item 3 (Truth Kernel Board.md Tier 2 "interpretability"
+evaluation items - Role classification and Subsystem interpretability)
+remains open; it's explicitly a judgment-call evaluation against real
+debugging/onboarding tasks, not a coding fix, so it's a different kind of
+work than everything else on this list.
+
+**Environment note:** the silent-truncation bug hit twice more landing
+this fix - `contracts/contract_drift_classifier.py` was truncated
+mid-comment, missing its entire classification loop and `return signals`
+statement (stayed syntactically valid - `ast.parse()` alone did not catch
+it, since a function silently falling off the end and implicitly
+returning `None` is not a `SyntaxError`); and `Truth Kernel Board.md` was
+truncated mid-word on the very next edit after that one was fixed. Both
+recovered via the mandatory bash heredoc rewrite + full diff verification
+already documented earlier in this file - this is at minimum the sixth
+recorded incident, continuing to support "standing environment defect,"
+not noise.
+
+---------------------------------------------------
+
+## 2026-06-17 (later session) - single-named-file ROLE filter scoping fixed; torch logging warning silenced
+
+Bart hit two real problems running `python tools/analysis/ask.py <db> "what is the purpose of db_probe_toolsold.py"` on his Windows machine: a recurring torch warning line on every run, and the query returning data for every file in the project instead of just the one named. Investigated both via code inspection (no guessing); neither was previously documented. Per Bart's "Fix both now" decision, both are now fixed and verified.
+
+**Torch logging warning:** the existing `warnings.filterwarnings()` calls in `oracle/embedding_model.py` never suppressed the "W0617 ... NOTE: Redirects are currently not supported in Windows or MacOs." line, because that line is emitted by `torch.distributed.elastic` via the standard `logging` module (its own absl-style formatter), not via `warnings.warn()` - the filters were suppressing the wrong mechanism entirely. Fixed by silencing the actual source: `logging.getLogger("torch.distributed.elastic").setLevel(logging.ERROR)`, added in `get_model()` alongside the (harmless, left in place) existing filters.
+
+**ROLE-view filtering gap (the bigger issue):** "what is the purpose of X.py" compiled to `Select(view='ROLE', metric=None, filter=None)` and returned the full unfiltered view - every file. Three independent bugs stacked to cause this, all closed together:
+
+1. `truth/query_ast.py`'s `Filter` and `truth/query_executor.py`'s `_apply_filter` were both fully implemented and already passing planner-validation tests, but nothing upstream ever constructed a `Filter` - not the Ollama prompt spec in `query_compiler.py`'s `_build_algebra_spec()`, not the rule-based fallback table. `Select.filter` had been `None` end-to-end since the algebra was built. Same "orphaned primitive" shape as the 2026-06-17 drift_signals fix earlier this file.
+2. `QueryExecutor._select()` applied `Filter` to the bare view object *before* metric projection. Every real view (StructureView/StabilityView/.../RoleView) is a dataclass, not a dict or list, so `_apply_filter`'s `isinstance` checks always fell through to "return data unchanged" - even a correctly-built `Filter` would have silently done nothing. Fixed by reordering: project the metric first, then filter the projected list/dict.
+3. `QuerySemanticsRegistry.VALID_FILTER_KEYS` had no entry at all for `"ROLE"` - a `Filter` on ROLE would have been rejected by `QueryPlanner._validate_select()` even if one had ever been constructed. Added `"ROLE": {"file_path"}`.
+
+The actual fix is deterministic on purpose, not handed to the AI compiler: the buggy run that surfaced this went through Ollama (`compiler_explanation` showed `[llama]`) and still produced `metric=None` despite the prompt explicitly preferring `metric="files"` for one-named-file questions - prompt compliance isn't guaranteed even at temperature 0.0, so the fix can't depend on the model getting it right. `truth/query_compiler.py` gained `_extract_single_file_filter(text)` (regex for a single `*.py` token) and `_maybe_scope_to_named_file(plan, text)` (rescopes a bare, unfiltered `Select("ROLE")` to `metric="files"` plus a `Filter("file_path", "endswith", name)`, re-validated through the planner). Uses `"endswith"` (a new operator added to `_apply_filter`) rather than `"=="` because the question names a bare filename while `DBOracle` stores full paths.
+
+Wired into both `compile_query()` and `compile_and_explain()` so it applies regardless of whether Ollama or the rule-based fallback produced the initial plan. Deliberately narrow: only fires when the plan is the exact bug shape (`view == "ROLE"`, `metric is None`, `filter is None`) - a compiler that already chose a specific metric like `"totals"` made a deliberate choice and is left untouched.
+
+**Regression coverage:** new `tests/regression/test_single_file_filter_scoping.py` (10 tests) - `_extract_single_file_filter()` unit behavior (one/zero/multiple files named), `_maybe_scope_to_named_file()` rescoping behavior (bare Select rescopes; already-has-metric, already-has-filter, no-file-named, and non-ROLE-view cases all left unchanged), the executor actually narrowing real DB-backed ROLE data (the part that was previously a silent no-op), and an end-to-end `Assessor.ask()` test reproducing Bart's exact question against a real seeded DB and confirming it returns exactly one file. Full sweep after this work: 80/80 passing (48 regression + 32 pytest via `truth/tests/test_query_algebra.py`).
+
+**Environment note:** hit the silent-truncation bug again this session - all four files edited in a single batch (`oracle/embedding_model.py`, `truth/query_plan.py`, `truth/query_executor.py`, `truth/query_compiler.py`) came back truncated on the mandatory bash-side verification, the worst blast radius yet for this defect. One (`embedding_model.py`, cut mid-keyword `def`) was syntax-breaking and caught by `ast.parse()`; the other three were not (cut mid-comment) and were only caught via `wc -l`/`grep`/`tail`. Recovered all four via the mandatory bash heredoc rewrite + full diff verification, not by retrying Edit/Write. This is at least the seventh through tenth recorded incidents - continuing to support "standing environment defect," not noise.
+
+## 2026-06-17 (later still) - old pre-regression-suite tests audited; 5 unblocked, 4 now surface a real latent finding
+
+Bart asked whether to "weed out" the old test files under `tests/core/`,
+`tests/debug/`, `tests/integration/`, `tests/semantic/`, and
+`test_embedding_seeds.py` (predate the `tests/regression/` convention,
+cover the engine/ingestion/graph/classification pipeline rather than the
+Truth Layer). Audit, not deletion, turned out to be the right call:
+
+- Full sweep before any change: 105 passed, 5 collection errors. All 5
+  errors were the same root cause - `tests/core/test_engine_smoke.py`,
+  `test_symbol_classification_contract.py`, `test_symbol_resolution.py`,
+  `test_symbol_storage_format.py`, `test_symbol_uniqueness.py` imported
+  `create_database`/`initialize_database` from the deleted module path
+  `tools.analysis.persistence.persist_file_analysis`. Both functions are
+  alive in `persistence/persistence_engine.py` (lines 47, 515) - not dead
+  code, just a stale import path. None of the other ~20 old files import
+  anything dead; they're real, currently-passing coverage for a different
+  architectural layer than the regression suite and were left untouched.
+- Fixing the import alone would have been wrong: `persistence_engine.create_database()`
+  unconditionally deletes-then-recreates its target file. All 5 old tests
+  called it against the same hardcoded in-repo path
+  (`tools/analysis/data/analysis.db` - directory doesn't even exist in
+  this checkout, and nothing live references that path, confirmed via
+  repo-wide grep). That meant every one of the 4 "assertion-only" tests
+  was silently wiping whatever `test_engine_smoke.py` had just persisted
+  and asserting against an empty DB - vacuously true every time (no rows
+  means no duplicates, no unresolved symbols, etc.). Exact same
+  "looks green, tests nothing" shape as the `drift_signals`/orphaned-Filter
+  bugs fixed earlier this week, just in the old test layer instead of the
+  Truth Layer.
+- Fix: moved the shared DB to `SHARED_TEST_DB_PATH`
+  (`tests/core/test_db_utils.py`, OS temp dir - categorically cannot
+  collide with any real product DB path). `test_engine_smoke.py` still
+  builds it via a real `EngineRunner` run against the `tools` corpus and
+  does NOT delete it afterward. The 4 downstream tests now open it with a
+  plain `sqlite3.connect()` (no wipe) instead of calling
+  `create_database()`, and `pytest.skip()` with a clear message if the
+  smoke test hasn't populated it yet (relies on pytest's default
+  alphabetical collection order within the directory - documented as a
+  known fragility in `test_db_utils.py`, not hidden).
+- Result once the tests became real: `test_engine_smoke.py` passes. The
+  other 4 now FAIL for real, surfacing three findings that predate this
+  session and are NOT caused by this change:
+  1. `test_symbol_uniqueness.py` finds 710+ `(file_path, name)` pairs
+     recorded more than once in the same file (e.g.
+     `get_llm_context.py:get_llm_context_for_file` x3). Could be a real
+     duplicate-insertion issue in the raw `EngineRunner.run()` path, or
+     these may get deduplicated later by `_canonical_symbol()`/
+     `make_canonical_id()` (`persistence_engine.py`) in the normal
+     `persist_all()` pipeline that this direct-engine-run smoke test
+     bypasses - not yet determined which.
+  2. `test_symbol_resolution.py` / `test_symbol_classification_contract.py`
+     report stdlib/builtin callees (`ast.parse`, `argparse.ArgumentParser`,
+     etc.) as "unresolved" - they predate the builtin/noise-filter
+     unification (`oracle/symbol_noise.py`, 2026-06-16 morning entry) and
+     don't know those are expected to not resolve against the project's
+     own `symbols` table.
+  3. `test_symbol_storage_format.py`'s "symbols must be short names only"
+     assumption doesn't hold for the same reason - qualified stdlib call
+     targets are expected to keep their dotted form.
+  None of this touches product code - only the 6 test files listed above
+  were changed. Full sweep after: 0 collection errors, 106 passed, 4
+  failed (the 4 above). Decision on what to do with those 4 failures
+  (fix the assertions to account for the noise filter, investigate the
+  duplicate-symbol finding, or mark them as a tracked known-issue) is
+  Bart's - flagged to him rather than guessed at, since it's a real
+  behavioral judgment call about the engine/persistence layer, not a
+  test-plumbing fix.
+- Verification: every file write in this entry was checked via the
+  mandatory bash-diff procedure. Hit the silent-truncation bug again -
+  all 6 test files (including one, `test_db_utils.py`, that `ast.parse`
+  reported as fine despite being truncated to a single half-written
+  comment line with no actual code - the exact "passes ast, still wrong"
+  case the verification procedure exists to catch). Recovered all 6 via
+  bash heredoc rewrite + full diff against intended content, confirmed
+  clean.
+
+## 2026-06-17 (run-on continuation) - root-caused and fixed the dead bucket-gate; the 4 flagged failures are now real green, not patched
+
+Continuing directly from the entry above: Bart's instruction was "since you
+have come so far, lets fix that up too" - i.e. actually resolve the 4
+failures left flagged in the previous entry, not just leave them as a
+known issue. All 4 turned out to share one root cause, plus a second,
+independent environment bug was found and fixed along the way.
+
+**Root cause: `persist_file_analysis()`'s function/class -> `symbols`
+insert was gated on a condition that could never be true.** The insert
+was `if getattr(obj, "bucket", None) == "project":` - but
+`FunctionRepresentation`/`ClassRepresentation` (`shared/types.py`) have no
+`bucket` field at all, and nothing in the pipeline ever sets one on them
+(`bucket` is only ever set on `SymbolReference` objects, by
+`classify_references.py`). That condition has been unconditionally False
+for every function and class in this codebase's history - the `symbols`
+table has NEVER contained a real function/class declaration, ever. The
+"710+ duplicate (file_path, name) pairs" finding from the previous entry
+was downstream of a *different*, earlier patch (commit f7acec9's "THIS
+WAS MISSING" block in `_persist_file_analysis()`) that papered over the
+empty-`symbols`-table symptom by stuffing raw, uncanonicalized
+caller/callee call-site names - including external/stdlib references -
+into `symbols` under `symbol_type='caller'/'callee'`. That's the wrong
+layer/taxonomy for that data (confirmed via exhaustive grep: no live
+consumer reads `symbol_type IN ('caller','callee')`; `db_oracle.py`'s real
+consumer `symbol_module_map()` already explicitly filters to
+`('function','class')`, defending against exactly this pollution) and is
+what produced the "duplicate name in same file" and "unresolved/malformed
+symbol" false positives.
+
+**Fix in `persistence/persistence_engine.py`:** removed the dead
+`bucket == "project"` gate on both the function-insert and class-insert
+call sites (now unconditional, matching the always-run `INSERT INTO
+functions`/`INSERT INTO classes` directly above each - `EngineRunner`
+only scans project-corpus files, so every function/class found in a
+scanned file IS a project declaration by construction; there's no
+"external declaration" case to gate against here). Removed the
+caller/callee pollution block entirely from `_persist_file_analysis()`
+(left `make_canonical_id()` in place, now unused, to keep the diff
+minimal - its only other reference is a doc mention, nothing live).
+Verified end to end: a real engine run now populates `symbols` with 660
+real rows (552 functions, 108 classes), zero caller/callee noise.
+
+**Second, independent bug found while verifying the fix: a virtiofs-cached
+stale `.pyc` that survived `__pycache__` deletion and the `-B` flag.**
+After landing the gate fix, `persist_file_analysis()` still produced zero
+`symbols` rows when actually run - confirmed via `inspect.getsource()`
+that the live function object's *source* was correct, but
+`dis.dis()` on that same function object showed the OLD gated bytecode
+(`LOAD_GLOBAL getattr` -> `COMPARE_OP '=='` -> `POP_JUMP_IF_FALSE`,
+skipping the `_insert_symbol` call). The cached `.pyc`'s embedded source
+mtime/size matched the live `.py` file's mtime/size exactly, byte for
+byte, which is how it passed Python's own staleness check despite holding
+stale bytecode - this is a different and more concerning failure mode
+than the previously-documented stale-`.pyc` risk, since the normal fix
+(delete `__pycache__`, rerun with `-B`) did NOT work: `rm`/`os.remove()`
+on the `.pyc` both failed with `PermissionError: Operation not permitted`
+on this virtiofs-mounted folder, even though the owning user/process had
+full rwx on the file. `-B` only suppresses *writing* new `.pyc` files; it
+does not stop Python from *reading and trusting* an existing one that
+still validates. Fix: `touch`ing the `.py` source file to bump its mtime
+forward invalidated the cached `.pyc` (mismatch on next import), forcing
+a real recompile - the FUSE layer allowed in-place rewrite of the `.pyc`
+even though it refused unlink, so the cache then self-healed. Recorded
+here as a new variant for future sessions: if `inspect.getsource()` and
+`dis.dis()` on the same live function object ever disagree, suspect a
+stale `.pyc` whose embedded mtime happens to match the source's current
+mtime - `touch` the source rather than trusting `rm -rf __pycache__` to
+have been sufficient.
+
+**Two of the original 4 failing tests needed real fixes once the
+`symbols` table started holding real data for the first time:**
+- `test_symbol_classification_contract.py` check #1's `GROUP BY (caller,
+  callee, line_number)` was missing `file_path`, flagging cross-file
+  coincidences as same-file duplicate edges - added `file_path` to the
+  `GROUP BY`.
+- `test_symbol_classification_contract.py` check #3 and
+  `test_symbol_resolution.py` both expected every referenced callee
+  (including stdlib/builtin/external calls) to resolve against the
+  project's own `symbols` table - the wrong invariant. Restricted both to
+  `WHERE bucket = 'project'` (the ingestion-time classification already
+  computed by `classify_references.py`). Confirmed empirically: 0
+  unresolved once restricted to project-bucket callees, vs. ~170 false
+  positives before.
+- `test_symbol_uniqueness.py` surfaced a third, new-but-legitimate finding
+  once real data showed up: several `(file_path, name)` pairs appearing
+  twice are methods of the same name on two different classes in the same
+  file (e.g. `db_oracle.py`'s two `surface` methods at lines 114 and 779).
+  `FunctionRepresentation`/`ClassRepresentation` don't track containing-
+  class scope, so file+name alone can't distinguish that from a true
+  duplicate insert. Added `symbol_type` and `line_number` to the
+  `GROUP BY` - this is now effectively a regression guard against the
+  `symbols.canonical_id UNIQUE` constraint ever being loosened, since true
+  duplicates can't land in the table at all as long as that constraint
+  holds.
+- `test_symbol_storage_format.py` ("short names only") needed no change -
+  it already passed once the pollution block (which stored dotted
+  external/stdlib names) was removed.
+
+**Full sweep after all fixes:** `python3 -m pytest tools/analysis -q` ->
+110 passed, 0 failed, 0 skipped, 0 collection errors (up from 106
+passed / 4 failed at the start of this run-on session).
+
+**Verification:** every edit in this entry (3 in `persistence_engine.py`,
+edits in all 3 of the affected test files) was checked via the mandatory
+bash-diff procedure. Hit the silent-truncation bug again on all 3 test
+files edited via the `Edit` tool in this entry - all three came back
+truncated mid-line on the bash-side check despite the `Edit` tool itself
+reporting success. Recovered all 3 via bash heredoc rewrite + full diff
+against intended content, confirmed clean. This is at least the eleventh
+through thirteenth recorded incidence of this defect across this
+project's sessions - still standing, not noise.

@@ -318,3 +318,134 @@ e.g. logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").se
     view, on-disk byte count provably unchanged via wc -c before/after).
     Recovered via the mandatory bash heredoc rewrite + diff procedure,
     not by retrying Edit.
+
+---
+
+## 2026-06-17 (later session) - drift_signals wired (Truth.md Phase 3 Row 3 closed)
+
+[x] RESOLVED - `Assessor.stability_view()` called
+    `build_stability_view(self.file_contract_reports(), drift_signals=[])`
+    with the empty list hardcoded at the call site - the query algebra
+    validated and executed against it cleanly, just always silently
+    returned nothing real. `ContractDriftClassifier`
+    (contracts/contract_drift_classifier.py) already existed with the
+    exact output shape the view expects, with zero callers anywhere -
+    same orphaned-primitive shape as the SUMMARY/SUBSYSTEM/ROLE gaps
+    closed earlier this week. Wired it in:
+    - `stability_view()` now calls `ContractDriftClassifier().classify(reports)`
+      and passes the real result.
+    - `file_contract_reports()` violation dicts gained a `"layer": "graph"`
+      key.
+    - `ContractDriftClassifier.classify()` hardened with a `_field()`
+      dict-or-attribute shape-safe accessor (same principle as
+      `get_field()` in `truth/query_executor.py`), since the real
+      violations are plain dicts, not the attribute-style
+      `ContractViolation` from the dead `contract_observer.py` path.
+    New suite: `tests/regression/test_drift_signals_wiring.py` (6 tests -
+    real non-empty drift signals from seeded violations, all three
+    classification thresholds, zero-violations-yields-zero-signals,
+    reachability via `ask()`/`all_views()`, and dict/attribute shape
+    safety). Full sweep: 60/60 passing (54 prior + 6 new - see REFACTOR
+    OPS BOARD.md's 2026-06-17 "Track B item 1 closed" entry for the exact
+    per-suite breakdown).
+    Full detail: REFACTOR OPS BOARD.md's 2026-06-17 "Track B item 1
+    closed" entry, Truth Kernel Board.md's Tier 1 "Stability View"
+    DRIFT_SIGNALS POPULATED note, Truth.md's "Phase 4 entry (2026-06-17,
+    later session)".
+
+    Hit the silent-truncation bug twice more landing this fix - on
+    `contracts/contract_drift_classifier.py` itself (missing the entire
+    classification loop and `return signals`, syntactically valid so
+    `ast.parse()` alone didn't catch it) and on `Truth Kernel Board.md`
+    (cut off mid-word on the very next edit). Recovered both via the
+    mandatory bash heredoc rewrite + full diff verification, not by
+    retrying Edit/Write - at least the sixth recorded incident this week.
+
+## 2026-06-17 (later session) - single-file ROLE filter scoping fixed; torch logging warning silenced
+
+[x] RESOLVED - Bart hit two real problems running `ask.py "what is the
+    purpose of db_probe_toolsold.py"` on his Windows machine: a recurring
+    torch logging warning, and the query returning every file in the
+    project instead of just the one named. Both fixed per Bart's "Fix
+    both now" decision.
+    - Torch warning was emitted via `logging` (torch.distributed.elastic),
+      not `warnings.warn()` - the existing `warnings.filterwarnings()`
+      calls were suppressing the wrong mechanism. Fixed with
+      `logging.getLogger("torch.distributed.elastic").setLevel(logging.ERROR)`.
+    - ROLE filtering gap: `Filter`/`_apply_filter` were real but had zero
+      callers (orphaned primitive, same shape as drift_signals);
+      `_select()` applied filters before metric projection so they'd
+      have been a no-op against dataclass-shaped views anyway;
+      `VALID_FILTER_KEYS` had no "ROLE" entry. All three fixed, plus a
+      new deterministic `_maybe_scope_to_named_file()` in
+      `query_compiler.py` that rescopes a bare ROLE query to the single
+      named file via a new "endswith" filter operator.
+    New suite: `tests/regression/test_single_file_filter_scoping.py`
+    (10 tests). Full sweep: 80/80 passing (48 regression + 32 pytest).
+    Full detail: REFACTOR OPS BOARD.md's 2026-06-17 (later session)
+    entry, Truth Kernel Board.md's Tier 1 Role View note, Truth.md's
+    Phase 4 entry, same date.
+
+    Hit the silent-truncation bug across all four edited files in a
+    single batch this time - the worst blast radius yet. Recovered all
+    four via the mandatory bash heredoc rewrite + diff procedure, not by
+    retrying Edit/Write.
+
+[x] RESOLVED 2026-06-17 (later still) - audited old pre-regression-suite
+    tests per Bart's "weed out old tests" question. Outcome: no deletion
+    needed. 5 files (tests/core/test_engine_smoke.py +
+    test_symbol_classification_contract.py/test_symbol_resolution.py/
+    test_symbol_storage_format.py/test_symbol_uniqueness.py) had a stale
+    import (deleted module persist_file_analysis -> persistence_engine,
+    same function names) plus a self-inflicted bug where they each called
+    create_database() against the same hardcoded path, which
+    unconditionally wipes-then-recreates - silently asserting against an
+    empty DB every run (vacuous pass, same shape as the drift_signals
+    fix). Fixed: shared DB moved to an OS-temp-dir path
+    (test_db_utils.py:SHARED_TEST_DB_PATH), downstream tests now read
+    without wiping, skip with a clear message if unpopulated. Once real,
+    4 of the 5 now fail for real, surfacing a likely-genuine
+    duplicate-symbol-recording finding (710+ dupes) plus two stale
+    assumptions that predate the builtin/noise-filter unification. Left
+    failing and flagged to Bart rather than silently patched - this is a
+    behavioral call about the engine layer, not a test-plumbing one.
+    The other ~20 old test files (engine/graph/ingestion layer, different
+    from what tests/regression/ covers) were left untouched - all
+    currently pass, none reference dead modules. Full detail in
+    REFACTOR OPS BOARD.md's matching 2026-06-17 entry.
+
+[x] RESOLVED 2026-06-17 (run-on continuation) - root-caused and fixed the
+    dead bucket-gate that meant `persistence_engine.py`'s `symbols` table
+    had never once held a real function/class declaration: the insert was
+    gated on `getattr(obj, "bucket", None) == "project"`, but
+    FunctionRepresentation/ClassRepresentation have no `bucket` field and
+    nothing ever sets one - unconditionally False forever. Removed the
+    dead gates (now unconditional, matching the always-run INSERT INTO
+    functions/classes calls); removed the separate caller/callee
+    pollution block in `_persist_file_analysis()` (commit f7acec9's "THIS
+    WAS MISSING" patch, a symptom-workaround for the same bug, confirmed
+    via grep to have no live consumers). Verified end to end: a real
+    engine run now populates `symbols` with 660 real rows (552 functions,
+    108 classes), zero noise.
+    Also hit and fixed a second, independent environment bug while
+    verifying: a virtiofs-cached stale .pyc whose embedded source
+    mtime/size matched the live .py file's exactly, so it passed Python's
+    own staleness check while still holding old bytecode - neither
+    `__pycache__` deletion nor `-B` caught it (both `rm` and `os.remove()`
+    on the .pyc itself failed with PermissionError on this mount). Fixed
+    by `touch`ing the source file to force an mtime mismatch on next
+    import. New variant of the known stale-bytecode risk - recorded in
+    REFACTOR OPS BOARD.md for future sessions.
+    Fixed the 3 of the 4 previously-flagged test failures that needed
+    real changes (test_symbol_uniqueness.py needed none beyond what fell
+    out of the gate fix... see below): test_symbol_classification_contract.py's
+    duplicate-edge GROUP BY was missing file_path (cross-file line-number
+    coincidences were being flagged); both it and test_symbol_resolution.py
+    were checking that stdlib/builtin/external callees resolve against
+    the project's own symbols table, which is the wrong invariant - both
+    restricted to `WHERE bucket = 'project'`; test_symbol_uniqueness.py's
+    GROUP BY was missing symbol_type/line_number, flagging legitimate
+    same-named methods on different classes in the same file as
+    duplicates. Full sweep: 110 passed, 0 failed (up from 106/4 at the
+    start of this run-on session). Full detail in REFACTOR OPS BOARD.md's
+    matching 2026-06-17 (run-on continuation) entry.

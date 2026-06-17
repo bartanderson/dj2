@@ -12,6 +12,7 @@ from tools.analysis.truth.views import (
     build_role_view,
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
+from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
@@ -277,6 +278,7 @@ class Assessor:
                     violations.append({
                         "contract_name": "symbol_reference_integrity",
                         "severity": "error",
+                        "layer": "graph",
                         "message": f"Invalid symbol reference at line {ref['line_number']}",
                     })
 
@@ -289,7 +291,17 @@ class Assessor:
         return reports
 
     def stability_view(self):
-        return build_stability_view(self.file_contract_reports(), drift_signals=[])
+        # drift_signals was hardcoded [] here until 2026-06-17 (Truth.md
+        # Phase 3 Row 3 / Truth Kernel Board Tier 1) - same "computed but
+        # unwired" shape as the SUMMARY/SUBSYSTEM/ROLE gaps fixed earlier.
+        # ContractDriftClassifier (contracts/contract_drift_classifier.py)
+        # already existed with the exact output shape build_stability_view()
+        # expects (contract_name/classification/count/layer) but had zero
+        # callers anywhere in the codebase. Wiring it here is the fix -
+        # no new heuristics, just connecting an existing real component.
+        reports = self.file_contract_reports()
+        drift_signals = ContractDriftClassifier().classify(reports)
+        return build_stability_view(reports, drift_signals=drift_signals)
 
     def validation_summary(self):
         errors = []

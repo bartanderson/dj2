@@ -461,3 +461,97 @@ contract. Full sweep: 47/47 passing (see REFACTOR OPS BOARD.md
 environment bugs - a locked stale `.pyc` cache and a recurring silent
 file-truncation bug in this session's write tooling - found and worked
 around while landing this fix).
+
+---
+
+## Phase 4 entry (2026-06-17, later session) - Row 3 closed: drift_signals populated
+
+Per Phase 4's own rule ("one missing capability, one implementation, one
+measurable improvement"): Row 3's gap (drift_signals hardcoded `[]` at the
+`build_stability_view()` call site - the "most dangerous gap shape" flagged
+when this row was first written, since the algebra validates and executes
+the query cleanly and just silently returns nothing real) is now closed.
+
+What changed (one capability, "connect an existing thing" - same fix
+pattern as Row 2/ROLE, no new heuristics):
+- `contracts/contract_drift_classifier.py` already existed with exactly
+  the output shape `build_stability_view()` expects
+  (`ContractDriftSignal`: `contract_name`/`severity`/`layer`/
+  `classification`/`count`) but had zero callers anywhere in the
+  codebase - confirmed via grep before touching anything, same
+  orphaned-primitive shape as the original SUMMARY/SUBSYSTEM gap.
+- `assessor/assessor.py`'s `stability_view()` now calls
+  `ContractDriftClassifier().classify(reports)` and passes the real
+  result into `build_stability_view()`, replacing the hardcoded `[]`.
+- `file_contract_reports()` violations gained a `"layer": "graph"` key
+  (the only contract this method currently produces -
+  `symbol_reference_integrity` - is not registered in
+  `contracts/contract_map.py`'s declared-contract registry, so `"graph"`
+  was chosen as the most accurate available layer label for a
+  graph-edge-validity check, not pulled from a registry lookup that
+  doesn't cover this ad-hoc contract name).
+- `ContractDriftClassifier.classify()` hardened with a `_field(v, name,
+  default)` shape-safe accessor (dict-or-attribute access, same
+  principle as `truth/query_executor.py`'s `get_field()`): the violations
+  `file_contract_reports()` actually produces are plain dicts, not the
+  attribute-style `ContractViolation` dataclass from the dead
+  `contracts/contract_observer.py` path. The classifier now works
+  correctly against the real (dict) shape without breaking the dormant
+  (attribute) shape if that path is ever revived.
+
+Measured improvement (Row 3's actual repro, re-run after the fix): a
+seeded DB with N broken symbol references (`null` caller/callee) now
+makes `assessor.stability_view().drift_signals` return
+`[{"contract": "symbol_reference_integrity", "class": <transient|
+recurring|structural per count>, "count": N, "layer": "graph"}]` instead
+of `[]` - confirmed for `count=1` (transient), `count=3` (recurring), and
+`count=5` (structural), and confirmed reachable through the full
+`ask()`/`all_views()` path, not just the direct method call.
+
+New permanent regression coverage:
+`tests/regression/test_drift_signals_wiring.py` (6 tests - stability_view()
+returns real, non-empty drift_signals from real seeded violations; all
+three classification thresholds; zero violations yields zero signals, not
+a wrong-shaped empty result; drift_signals reachable via
+`all_views()`/`ask()`; and the `_field()`/`classify()` shape-safety cases
+covering both dict and attribute-style violations explicitly). Full sweep
+after this work: 7 (discovery/subsystem) + 6 (oracle_router_persistence_
+lock) + 4 (run_algebra_end_to_end) + 5 (role_view_routing) + 6 (drift_
+signals_wiring, new) + 32 (truth/tests/test_query_algebra, via pytest) =
+60/60 passing.
+
+What's still open: Row 1's non-Row-2 remainder and Row 5 (genuinely
+never-captured data - no intent/description field exists on
+`MutationEvent` to surface even with perfect wiring). Both require new
+ingestion, not just wiring, so they're out of scope for this entry per
+the "one truth at a time" rule. With Rows 2, 3, and 4 all now closed,
+every "captured/computable but not wired or wired wrong" gap from the
+original Phase 3 pass is resolved - what remains is exclusively the
+"never captured" category.
+
+**Environment note:** hit the same silent-truncation bug yet again while
+landing this fix - `contracts/contract_drift_classifier.py` was truncated
+mid-comment (missing the entire classification loop and `return signals`
+statement) in a way that stayed syntactically valid (`ast.parse()` alone
+did not catch it - the function simply fell off the end and would have
+implicitly returned `None`), and a subsequent edit to this very doc
+truncated mid-word right after "[ ] No" on the very next line. Both
+recovered via the mandatory bash heredoc rewrite + full diff verification
+in CLAUDE.md, not by retrying `Edit`/`Write`. This is at least the sixth
+documented incident this week - continues to support treating it as a
+standing environment defect that every edit in this repo must be checked
+against, not isolated noise.
+
+## Phase 4 entry (2026-06-17, later session) - single-file ROLE filter scoping closed
+
+Closes a gap that surfaced through real usage rather than the original Phase 3 audit: Bart ran `ask.py` against "what is the purpose of db_probe_toolsold.py" on his Windows machine and got back the full unfiltered ROLE view - every file in the project - instead of just the one named. This is a refinement of Row 1/Row 2 (closed earlier this date): routing purpose-of-file questions to ROLE was correct, but nothing scoped the result down to the single file actually asked about once it got there.
+
+Root cause was three independent bugs stacked together: `Filter` (`truth/query_ast.py`) and `_apply_filter` (`truth/query_executor.py`) were both fully implemented and planner-validated but had zero callers anywhere - same orphaned-primitive shape as Row 3's drift_signals; `QueryExecutor._select()` applied `Filter` to the bare view object before metric projection, so even a constructed `Filter` would have been a no-op against every dataclass-shaped view (every real view is a dataclass, and `_apply_filter`'s `isinstance(dict)`/`isinstance(list)` checks always fell through); and `VALID_FILTER_KEYS` had no `"ROLE"` entry, so a `Filter` on ROLE would have failed planner validation even if one had existed.
+
+Fixed deterministically rather than via the AI compiler: the buggy run had gone through Ollama and still produced `metric=None` despite the prompt explicitly preferring `metric="files"` for one-named-file questions, proving prompt compliance isn't guaranteed even at temperature 0.0. `query_compiler.py` gained `_extract_single_file_filter()` (regex, single `*.py` token) and `_maybe_scope_to_named_file()` (rescopes a bare unfiltered `Select("ROLE")` to `metric="files"` plus a `Filter("file_path", "endswith", name)`, re-validated through the planner), wired into both `compile_query()` and `compile_and_explain()`. New `"endswith"` filter operator added since the question gives a bare filename and `DBOracle` stores full paths.
+
+New permanent regression coverage: `tests/regression/test_single_file_filter_scoping.py` (10 tests - filter extraction unit behavior, rescoping behavior including the cases that must NOT be touched, the executor actually narrowing real DB-backed data, and an end-to-end `ask()` test reproducing Bart's exact question against a real seeded DB). Full sweep after this work: 80/80 passing (48 regression + 32 pytest).
+
+Full detail: `REFACTOR OPS BOARD.md`'s 2026-06-17 (later session) entry; `Truth Kernel Board.md`'s Tier 1 "Role View" SINGLE-FILE FILTER SCOPING note, same date.
+
+**Environment note:** hit the silent-truncation bug again landing this fix - four files truncated in a single edit batch this time (the worst blast radius yet), recovered via the same mandatory bash heredoc rewrite + diff procedure as every prior incident. See REFACTOR OPS BOARD.md's entry for the per-file breakdown.

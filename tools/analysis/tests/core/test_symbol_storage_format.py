@@ -1,14 +1,30 @@
 #tools/analysis/tests/core/test_symbol_storage_format.py
+#
+# CLAUDE-EDIT 2026-06-17: same fix as test_symbol_classification_contract.py
+# - stale import + create_database()'s unconditional wipe-on-open meant
+# this was silently asserting against an empty DB. Now reads
+# SHARED_TEST_DB_PATH without wiping it; skips with a clear reason if
+# test_engine_smoke.py hasn't populated it yet.
 
-from tools.analysis.tests.core.test_db_utils import reset_analysis_db
-from tools.analysis.persistence.persist_file_analysis import create_database
+import os
+import sqlite3
 
-DB_PATH = "tools/analysis/data/analysis.db"
+import pytest
+
+from tools.analysis.tests.core.test_db_utils import SHARED_TEST_DB_PATH
+
 
 def test_symbols_are_stored_as_short_names():
+    if not os.path.exists(SHARED_TEST_DB_PATH):
+        pytest.skip(
+            "SHARED_TEST_DB_PATH not populated - run test_engine_smoke.py "
+            "first (it builds this DB via a real engine run); this test "
+            "only asserts against that data, it doesn't produce it."
+        )
+
+    db = None
     try:
-        reset_analysis_db() # delete db for data isolation per run
-        db = create_database(DB_PATH)
+        db = sqlite3.connect(SHARED_TEST_DB_PATH)
         c = db.cursor()
 
         c.execute("""
@@ -28,4 +44,5 @@ def test_symbols_are_stored_as_short_names():
             + "\n".join(fully_qualified)
         )
     finally:
-        db.close()
+        if db is not None:
+            db.close()

@@ -32,7 +32,26 @@ All components that are proven correct via execution.
 [X] Query Planner
 [X] Query Executor
 [X] Structure View — wired to real DB data (assessor.structure_view(), builtin-filtered)
-[X] Stability View — wired to real contract reports (assessor.stability_view()); NOTE: drift_signals arg is hardcoded [] at the call site, never populated
+[X] Stability View — wired to real contract reports (assessor.stability_view()).
+    DRIFT_SIGNALS POPULATED 2026-06-17: closed Truth.md Phase 3 Row 3 -
+    drift_signals was hardcoded [] at the build_stability_view() call site
+    (validated and executed cleanly, silently always empty - the most
+    dangerous gap shape, since nothing signals it's missing). ContractDriftClassifier
+    (contracts/contract_drift_classifier.py) already existed with the exact
+    output shape the view expects (contract_name/classification/count/layer)
+    but had zero callers anywhere - same orphaned-primitive shape as
+    Summary/Subsystem/Role View below. assessor.stability_view() now calls
+    ContractDriftClassifier().classify(reports) and passes the real result
+    in. Also hardened ContractDriftClassifier.classify() with a _field()
+    shape-safe accessor (dict or attribute access, same principle as
+    get_field() below) so it works against both the live dict-shaped
+    violations file_contract_reports() produces and the dormant
+    attribute-shaped ContractViolation type from contract_observer.py.
+    Proven by tests/regression/test_drift_signals_wiring.py (6 tests:
+    stability_view() returns non-empty signals from real seeded violations,
+    all three classification thresholds transient/recurring/structural,
+    zero violations yields zero signals, drift_signals reachable via
+    ask()/all_views(), and the _field()/classify() shape-safety cases).
 [X] Integrity View — wired to real validation data (assessor.integrity_view())
 [X] Summary View — RE-UPGRADED 2026-06-16 (later same day): wired to real
     data via assessor.summary_view() (reduced_snapshot() + bucket_summary()
@@ -66,6 +85,26 @@ All components that are proven correct via execution.
     tests/regression/test_role_view_routing.py (5 tests: real-data view
     construction, Select("ROLE") execution, _detect_intent() routing,
     and ask() end-to-end + deterministic).
+    SINGLE-FILE FILTER SCOPING ADDED 2026-06-17 (later session): closed a
+    real bug Bart hit on his Windows machine - "what is the purpose of
+    db_probe_toolsold.py" returned the full unfiltered ROLE view (every
+    file), not just the named one. Three stacked causes, all fixed:
+    Filter (query_ast.py) and _apply_filter (query_executor.py) were both
+    real and tested but had zero callers anywhere (same orphaned-primitive
+    shape as drift_signals above); _select() applied Filter to the bare
+    view object BEFORE metric projection, so even a constructed Filter
+    would have been a no-op against every dataclass-shaped view (fixed:
+    filter now applies AFTER projection); VALID_FILTER_KEYS had no "ROLE"
+    entry (added: {"file_path"}). Fix itself is deterministic regex +
+    planner-revalidated Filter (query_compiler.py's
+    _extract_single_file_filter()/_maybe_scope_to_named_file()), not
+    AI-compiler-dependent - the buggy run had gone through Ollama and
+    still produced metric=None despite the prompt preferring metric="files"
+    for one-named-file questions. New "endswith" filter operator added
+    (bare filename vs. full stored path). Proven by
+    tests/regression/test_single_file_filter_scoping.py (10 tests). See
+    REFACTOR OPS BOARD.md's 2026-06-17 (later session) entry for full
+    detail.
 [X] QueryResult shape contract — CLOSED 2026-06-17: audited and locked the
     full Select/Combine shape contract across all 6 views / ~15 metrics
     after a real Windows-only AttributeError (consumer assumed
@@ -190,11 +229,16 @@ No open known issue at this tier as of 2026-06-16.
 
 UPDATE 2026-06-17: Truth.md Phase 3 Row 2 (responsibility/role
 classification computed but unreachable from ask()) is resolved — see the
-new Role View entry under Tier 1 above. Rows 3 (drift_signals hardcoded
-[]) and 4 (subsystem grouping fragmenting on undotted symbol names) from
-the same Phase 3 pass remain open; they are the same "captured/computable
-but not wired or wired wrong" shape as Row 2 was, and are the leading
-candidates for the next Tier 1 promotion.
+Role View entry under Tier 1 above. Row 4 (subsystem grouping fragmenting
+on undotted symbol names) is also resolved — see the Subsystem View entry
+under Tier 1 above. Row 3 (drift_signals hardcoded []) is now ALSO
+resolved as of this same date (later session) — see the Stability View
+entry under Tier 1 above. All four Phase 3 rows from the original pass
+that were the "captured/computable but not wired or wired wrong" shape
+(Rows 2, 3, 4) are now closed; Row 1's remainder and Row 5 (genuinely
+never-captured data, e.g. no intent/description field on MutationEvent)
+remain open and require new ingestion, not just wiring.
+
 ---
 
 ## CORE PRINCIPLE

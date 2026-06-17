@@ -27,10 +27,11 @@
 
 import json
 import logging
+import re
 
 import requests
 
-from tools.analysis.truth.query_ast import Select, Combine
+from tools.analysis.truth.query_ast import Select, Combine, Filter
 from tools.analysis.truth.query_plan import QueryPlan, QueryPlanner, QuerySemanticsRegistry
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,79 @@ def _rule_based_ast(intent: str):
 
 
 # =========================================================
+# SINGLE-NAMED-FILE SCOPING (deterministic, no AI required)
+# =========================================================
+# CLAUDE-EDIT 2026-06-17: closes a real bug Bart hit on his Windows
+# machine - "what is the purpose of db_probe_toolsold.py" came back with
+# the FULL unfiltered ROLE view (every file in the project), not just
+# db_probe_toolsold.py. Root cause: truth/query_ast.py's Filter and
+# truth/query_executor.py's _apply_filter were both fully implemented and
+# already passing planner-validation tests, but NOTHING upstream ever
+# constructed a Filter - not the Ollama prompt spec (_build_algebra_spec()
+# only teaches Select/Combine), not the rule-based fallback table above.
+# Select.filter has been None end-to-end since the algebra was built. Same
+# "orphaned primitive" shape as the 2026-06-17 drift_signals fix (Truth.md
+# Phase 3 Row 3) - the capability existed, nothing called it.
+#
+# This is deterministic on purpose, not an AI-compiler responsibility:
+# Ollama was actually in the loop for the run that surfaced this (compiler
+# explanation showed "[llama]") and still produced metric=None despite the
+# prompt explicitly preferring metric="files" for one-named-file questions
+# - prompt-following compliance isn't guaranteed at temperature 0 either,
+# so the fix can't depend on the model getting it right. Regex + a
+# planner-validated Filter is.
+
+_FILENAME_PATTERN = re.compile(r"\b[\w\-./\\]+\.py\b")
+
+
+def _extract_single_file_filter(text: str):
+    """
+    Returns Filter("file_path", "endswith", name) when exactly one *.py
+    token appears in `text`, else None. "endswith" (not "==") because the
+    question gives a bare filename ("db_probe_toolsold.py") while
+    DBOracle stores full paths ("C:/Users/.../db_probe_toolsold.py") -
+    exact equality would never match.
+    """
+    names = _FILENAME_PATTERN.findall(text)
+    if len(names) == 1:
+        return Filter("file_path", "endswith", names[0])
+    return None
+
+
+def _maybe_scope_to_named_file(plan: QueryPlan, text: str) -> QueryPlan:
+    """
+    If the compiled plan is a bare, unfiltered Select("ROLE", ...) and the
+    question names exactly one file, rescope it to metric="files" + a
+    file_path filter so the result is that file's entry, not every file.
+    Re-validated through the planner, so this can never hand the executor
+    an AST shape the registry wouldn't otherwise accept on its own.
+
+    Scoped to ROLE only for now - it's the view the observed bug hit, and
+    the only view with a "file_path" filter key registered
+    (query_plan.py's VALID_FILTER_KEYS). Generalizing to other views needs
+    their own filter-key vocabularies first, not just this function -
+    documented as still-open in Truth Kernel Board.md.
+
+    Only triggers when metric is ALSO None (the exact bug shape:
+    Select('ROLE', metric=None, filter=None)) - if the compiler (Ollama or
+    rule-based) already chose a specific metric like "totals", that was a
+    deliberate choice this function should not silently override.
+    """
+    root = plan.root
+
+    if not isinstance(root, Select):
+        return plan
+    if root.view != "ROLE" or root.metric is not None or root.filter is not None:
+        return plan
+
+    file_filter = _extract_single_file_filter(text)
+    if file_filter is None:
+        return plan
+
+    return _planner.plan(Select("ROLE", metric="files", filter=file_filter))
+
+
+# =========================================================
 # JSON -> AST PARSER
 # =========================================================
 
@@ -239,10 +313,11 @@ def compile_query(intent: str, text: str = ""):
     if text:
         plan = _compile_via_ollama(text, intent)
         if plan is not None:
-            return plan
+            return _maybe_scope_to_named_file(plan, text)
 
     ast_node = _rule_based_ast(intent)
-    return _planner.plan(ast_node)
+    plan = _planner.plan(ast_node)
+    return _maybe_scope_to_named_file(plan, text)
 
 
 def compile_and_explain(intent: str, text: str = "") -> dict:
@@ -260,6 +335,8 @@ def compile_and_explain(intent: str, text: str = "") -> dict:
     if plan is None:
         ast_node = _rule_based_ast(intent)
         plan = _planner.plan(ast_node)
+
+    plan = _maybe_scope_to_named_file(plan, text)
 
     explanation = _INTENT_EXPLANATIONS.get(intent, "Default structural projection.")
     if ai_used:

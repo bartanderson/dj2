@@ -33,6 +33,11 @@ class QuerySemanticsRegistry:
         "STRUCTURE": {"edges", "callee", "caller", "hotspots"},
         "STABILITY": {"stable_contracts", "unstable_contracts"},
         "SUBSYSTEM": {"modules", "edge_count"},
+        # CLAUDE-EDIT 2026-06-17: added so a single-named-file question
+        # ("what is the purpose of X.py") can be scoped to just that file's
+        # entry in ROLE's files list instead of returning all files - see
+        # query_compiler.py's _maybe_scope_to_named_file().
+        "ROLE": {"file_path"},
     }
 
     def validate_combine(self, left, right):

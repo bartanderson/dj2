@@ -124,36 +124,43 @@ class QueryExecutor:
 
         view = self.views[q.view]
 
-        # APPLY FILTER EARLY (before projection)
-        if q.filter:
-            view = self._apply_filter(view, q.filter)
+        # CLAUDE-EDIT 2026-06-17: filter now applies AFTER projection, not
+        # before. It used to run against the bare view object first - but
+        # every real view (StructureView/StabilityView/.../RoleView) is a
+        # dataclass, not a dict or list, so _apply_filter's isinstance
+        # checks always fell through to "return data unchanged" and the
+        # filter was silently a no-op no matter what key/op/value it had.
+        # Filtering only makes sense against the addressable list/dict a
+        # metric actually projects out (e.g. ROLE's "files" list) - so
+        # project first, then filter the result. Found while wiring
+        # single-named-file scoping (query_compiler.py's
+        # _maybe_scope_to_named_file) and discovering the filter it builds
+        # would have been validated by the planner but done nothing here.
 
         # full view
         if q.metric is None:
-            return QueryResult(
-                view=q.view,
-                metric=None,
-                data=view
-            )
+            data = view
 
         # attribute projection
-        if hasattr(view, q.metric):
-            return QueryResult(
-                view=q.view,
-                metric=q.metric,
-                data=getattr(view, q.metric),
-            )
+        elif hasattr(view, q.metric):
+            data = getattr(view, q.metric)
 
         # dict projection
-        if isinstance(view, dict):
-            return QueryResult(
-                view=q.view,
-                metric=q.metric,
-                data=view.get(q.metric),
+        elif isinstance(view, dict):
+            data = view.get(q.metric)
+
+        else:
+            raise ValueError(
+                f"Metric '{q.metric}' not resolvable for view '{q.view}'"
             )
 
-        raise ValueError(
-            f"Metric '{q.metric}' not resolvable for view '{q.view}'"
+        if q.filter:
+            data = self._apply_filter(data, q.filter)
+
+        return QueryResult(
+            view=q.view,
+            metric=q.metric,
+            data=data,
         )
 
     # -------------------------
@@ -179,6 +186,12 @@ class QueryExecutor:
         if isinstance(data, dict):
             if op == "==":
                 return data if data.get(key) == value else None
+            # CLAUDE-EDIT 2026-06-17: "endswith" - for matching a bare
+            # filename (what a question names) against a full stored path
+            # (what DBOracle stores), where "==" would never match.
+            if op == "endswith":
+                v = data.get(key)
+                return data if isinstance(v, str) and v.endswith(value) else None
             return data
 
         if isinstance(data, list):
@@ -188,5 +201,10 @@ class QueryExecutor:
                 return [x for x in data if x.get(key, 0) > value]
             if op == "<":
                 return [x for x in data if x.get(key, 0) < value]
+            if op == "endswith":
+                return [
+                    x for x in data
+                    if isinstance(x.get(key), str) and x.get(key).endswith(value)
+                ]
 
         return data

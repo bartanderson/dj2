@@ -320,16 +320,28 @@ def persist_file_analysis(
             json.dumps(function.arguments),
         ))
 
-        # ONLY USE PRECOMPUTED VALUE
-        if getattr(function, "bucket", None) == "project":
-            _insert_symbol(
-                cursor,
-                analysis.file_path,
-                "function",
-                _canonical_symbol(function.name),
-                function.line_number,
-                function.return_type or "",
-            )
+        # CLAUDE-EDIT 2026-06-17: was gated on
+        # `getattr(function, "bucket", None) == "project"`, but
+        # FunctionRepresentation has no `bucket` field and nothing in the
+        # pipeline ever sets one - that condition was unconditionally
+        # False for every function in the codebase, so this insert had
+        # never fired for any project function, ever (confirmed via a
+        # real engine run against the "tools" corpus: symbols table had
+        # zero symbol_type='function'/'class' rows, 100% caller/callee
+        # noise from the separate patch in _persist_file_analysis below).
+        # EngineRunner only scans project-corpus files, so every function
+        # _extract_functions() finds in a scanned file IS a project
+        # declaration by construction - there is no "external function
+        # declaration" case here to gate against. Insert unconditionally,
+        # matching the always-run INSERT INTO functions call above.
+        _insert_symbol(
+            cursor,
+            analysis.file_path,
+            "function",
+            _canonical_symbol(function.name),
+            function.line_number,
+            function.return_type or "",
+        )
 
     # -------------------------
     # CLASSES
@@ -357,14 +369,15 @@ def persist_file_analysis(
             json.dumps(cls_obj.base_classes),
         ))
 
-        if getattr(cls_obj, "bucket", None) == "project":
-            _insert_symbol(
-                cursor,
-                analysis.file_path,
-                "class",
-                _canonical_symbol(cls_obj.name),
-                cls_obj.line_number,
-            )
+        # CLAUDE-EDIT 2026-06-17: same dead-gate fix as the function case
+        # above - ClassRepresentation has no `bucket` field either.
+        _insert_symbol(
+            cursor,
+            analysis.file_path,
+            "class",
+            _canonical_symbol(cls_obj.name),
+            cls_obj.line_number,
+        )
 
     # -------------------------
     # IMPORTS
@@ -590,60 +603,27 @@ def _persist_file_analysis(connection, file_analyses, project_prefixes):
         # existing legacy persistence
         persist_file_analysis(connection, analysis, project_prefixes)
 
-        # 🔥 THIS WAS MISSING
-        for ref in analysis.symbol_references:
-
-            caller_id = make_canonical_id(
-                analysis.file_path,
-                "caller",
-                ref.caller,
-                ref.line_number
-            )
-
-            callee_id = make_canonical_id(
-                analysis.file_path,
-                "callee",
-                ref.callee,
-                ref.line_number
-            )
-
-            cursor.execute("""
-                INSERT OR IGNORE INTO symbols (
-                    file_path,
-                    symbol_type,
-                    name,
-                    line_number,
-                    signature,
-                    canonical_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                analysis.file_path,
-                "caller",
-                ref.caller,
-                ref.line_number,
-                getattr(ref, "signature", ""),
-                caller_id
-            ))
-
-            cursor.execute("""
-                INSERT OR IGNORE INTO symbols (
-                    file_path,
-                    symbol_type,
-                    name,
-                    line_number,
-                    signature,
-                    canonical_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                analysis.file_path,
-                "callee",
-                ref.callee,
-                ref.line_number,
-                "",
-                callee_id
-            ))
+        # CLAUDE-EDIT 2026-06-17: removed the caller/callee-into-symbols
+        # block that used to live here (marked "THIS WAS MISSING"). It was
+        # a workaround added on top of the real bug instead of fixing it:
+        # persist_file_analysis()'s function/class -> symbols insert was
+        # gated on a `bucket == "project"` check that could never be True
+        # (see the CLAUDE-EDIT comments on that function), so `symbols`
+        # was always empty, and this block patched the symptom by
+        # stuffing every call-site's raw caller/callee name into `symbols`
+        # instead - uncanonicalized (dotted stdlib names like "ast.parse"
+        # landing verbatim) and with no project-only filter (external/
+        # stdlib/builtin callees included), which is exactly what made
+        # `symbols` fail its "short names only" / "no duplicates" /
+        # "every declared name is real" contracts (see
+        # tests/core/test_symbol_*.py and REFACTOR OPS BOARD.md's
+        # 2026-06-17 entry). Confirmed via repo-wide grep that nothing
+        # live reads symbol_type='caller'/'callee' rows specifically -
+        # oracle/db_oracle.py's consumers already explicitly filter to
+        # symbol_type IN ('function','class') wherever it matters. Now
+        # that the real function/class insert path actually fires,
+        # `symbols` holds genuine declarations and this patch is no
+        # longer needed.
 
 
 # ==================================================
