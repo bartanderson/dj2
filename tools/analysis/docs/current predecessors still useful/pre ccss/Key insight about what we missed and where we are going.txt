@@ -1,0 +1,152 @@
+We discovered that the core failure in `route_symbol()` is NOT merely bad matching logic but premature semantic flattening.
+
+Original pipeline behavior:
+
+AST semantic context
+→ extracted raw symbol strings
+→ discarded binding/context identity
+→ later attempted classification using incomparable representations
+
+Example failure:
+
+Input symbol:
+"fetch_complete_file_analysis"
+
+Project symbol universe:
+"tools.analysis.query.query_file_analysis.fetch_complete_file_analysis"
+
+These cannot match directly because:
+
+* input is a leaf/simple identifier
+* project symbols are fully qualified semantic identifiers
+
+The mistake was flattening semantic entities into plain strings too early.
+
+Key realization:
+We destroyed semantic linkage/binding identity during extraction.
+
+The system should ideally have preserved something like:
+
+```
+ResolvedSymbol(
+    leaf_name="dataclass",
+    fqdn="dataclasses.dataclass",
+    module="dataclasses",
+    binding_type="import",
+    ast_context=...
+)
+```
+
+instead of only:
+"dataclass"
+
+However, a full architecture rewrite is too expensive right now because flattening assumptions already exist across:
+
+* routing
+* graph building
+* persistence
+* query systems
+* rendering
+* contracts
+* AI context systems
+
+Therefore the agreed strategy is:
+
+PHASED RECONSTRUCTION BRIDGE
+
+NOT:
+
+* immediate rewrite
+* heuristic patching
+* direct pipeline fix
+
+BUT:
+
+* semantic reconstruction layer
+* shadow routing
+* observability
+* deterministic enrichment
+
+Critical insight:
+Most semantic information still exists nearby in:
+
+* AST
+* alias maps
+* imports
+* runtime bindings
+* module context
+* repository structure
+
+So reconstruction is not “guessing from nothing.”
+It is semantic recovery from retained context.
+
+We agreed to implement:
+
+1. Shared deterministic routing core
+   _route_symbol_core(...)
+
+2. Passive TraceCollector
+
+   * records CP checkpoints only
+   * no branching logic
+   * no influence on routing
+
+3. Shadow pipeline
+   route_symbol_shadow()
+
+4. Diff/trace observability system
+
+5. Later:
+   semantic reconstruction layer producing structured objects instead of strings
+
+Example future object:
+
+```
+ResolvedCandidate(
+    leaf="dataclass",
+    fqdn="dataclasses.dataclass",
+    confidence=1.0,
+    source="import_resolution",
+)
+```
+
+Important architecture conclusion:
+
+We are NOT fixing the main routing pipeline yet.
+
+We are building:
+semantic observability
++ reconstruction infrastructure
+
+The reconstruction layer is intended to become the migration bridge toward eventual full semantic identity preservation.
+
+Important conceptual distinction:
+
+Display token:
+"dataclass"
+
+Semantic identity:
+"dataclasses.dataclass"
+
+Those are different ontology levels and must not be directly compared.
+
+The future architecture path is:
+
+AST + context
+↓
+semantic reconstruction
+↓
+resolved symbol objects
+↓
+routing / graph / contracts / AI context
+
+instead of:
+
+AST
+↓
+flatten to strings
+↓
+guess forever
+
+Current immediate implementation priority:
+Build deterministic shadow + reconstruction infrastructure without modifying production classification behavior yet.

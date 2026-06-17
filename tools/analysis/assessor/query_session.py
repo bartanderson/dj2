@@ -237,7 +237,10 @@ class QuerySession:
         so callers can see the expansion trace AND the structured view output
         side by side.
 
-        views: dict of {view_name: view_object} — same format as TruthTestHarness
+        views: dict of {view_name: view_object}. In practice, callers should
+        use Assessor.all_views() to build this from real DB-backed data —
+        see Assessor.ask() and tools/analysis/ask.py, the real entrypoint
+        that wires this method up end-to-end (2026-06-16).
         """
         from tools.analysis.truth.query_compiler import compile_and_explain
         from tools.analysis.truth.query_executor import QueryExecutor

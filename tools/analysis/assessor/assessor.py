@@ -8,7 +8,9 @@ from tools.analysis.truth.views import (
     build_structure_view,
     build_stability_view,
     build_integrity_view,
+    build_system_summary_view,
 )
+from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
@@ -210,10 +212,35 @@ class Assessor:
         """Return a fresh QuerySession bound to this oracle."""
         from tools.analysis.assessor.query_session import QuerySession
         return QuerySession(self.oracle)
-    
+
     def query(self, text: str):
         """Execute a single query. Returns QuerySessionResult."""
         return self.session().run_query(text)
+
+    def all_views(self) -> dict:
+        """
+        All 5 Truth Layer views, keyed exactly as QueryPlanner/registry
+        expect (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM), built
+        from real DB-backed data. This is the dict to pass as `views=`
+        into QuerySession.run_algebra() — see tools/analysis/ask.py for
+        the reference entrypoint.
+        """
+        return {
+            "STRUCTURE": self.structure_view(),
+            "STABILITY": self.stability_view(),
+            "INTEGRITY": self.integrity_view(),
+            "SUMMARY": self.summary_view(),
+            "SUBSYSTEM": self.subsystem_view(),
+        }
+
+    def ask(self, text: str) -> dict:
+        """
+        The real, wired front door: natural language in, Truth-Layer-backed
+        algebra result out. Thin wrapper over session().run_algebra() with
+        all_views() supplied automatically, so callers never have to
+        remember to assemble the views dict themselves.
+        """
+        return self.session().run_algebra(text, views=self.all_views())
 
     # =====================================================
     # STRUCTURE VIEW (run_engine Phase 3)
@@ -284,6 +311,33 @@ class Assessor:
         return build_integrity_view(self.validation_summary(), self.snapshot())
 
     # =====================================================
+    # SUMMARY VIEW / SUBSYSTEM VIEW
+    #
+    # CLAUDE-EDIT 2026-06-16: wired up — these were builder functions
+    # with no real caller anywhere (see Truth.md Phase 1 findings).
+    # Both are pure transforms of data Assessor already computes:
+    #   - summary_view() reuses reduced_snapshot() (edge_activity_total)
+    #     and oracle.bucket_summary() (the same DB-authoritative
+    #     project/builtin/classification_gap counts build_snapshot()
+    #     already pulls) as the "metrics" payload, plus oracle.file_count().
+    #   - subsystem_view() reuses the same graph snapshot every other
+    #     view is built from.
+    # No new DB queries, no new heuristics — just exposing data that
+    # already existed under a name the query algebra can address.
+    # =====================================================
+
+    def summary_view(self):
+        snapshot = self.build_snapshot()
+        return build_system_summary_view(
+            reduced=self.reduced_snapshot(),
+            metrics=snapshot["bucket_summary"],
+            file_count=snapshot["file_count"],
+        )
+
+    def subsystem_view(self):
+        return build_subsystem_view(self.snapshot())
+
+    # =====================================================
     # RESPONSIBILITY MAP / SNAPSHOT
     #
     # DB-derived equivalent of build_responsibility_map(), grouping
@@ -351,6 +405,8 @@ class Assessor:
             "structure_view": self.structure_view(),
             "stability_view": self.stability_view(),
             "integrity_view": self.integrity_view(),
+            "summary_view": self.summary_view(),
+            "subsystem_view": self.subsystem_view(),
             "responsibility": self.responsibility_snapshot(),
             "run_integrity_check": self.run_integrity_check(),
             "self_model": self.self_model(),
