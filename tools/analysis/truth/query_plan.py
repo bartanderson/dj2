@@ -45,11 +45,15 @@ class QuerySemanticsRegistry:
         allowed = self.VALID_FILTER_KEYS.get(view, set())
         return key in allowed
 
-    def validate_metric(self, view: str, metric: str | None):
-        if metric is None:
-            return True
-        allowed = self.VALID_FILTER_KEYS.get(view, set())
-        return metric in allowed
+    # CLAUDE-EDIT 2026-06-17: removed validate_metric() - dead code (zero
+    # callers anywhere in the codebase, confirmed via grep) that was also
+    # silently wrong: it checked VALID_FILTER_KEYS instead of
+    # QueryPlan.VALID_METRICS, so it would have rejected every legitimate
+    # metric for every view had anything ever called it. The real,
+    # actually-enforced metric check lives in QueryPlanner._validate_select
+    # below. Same "looks like a feature, isn't" shape as the deleted
+    # two_hop key / _apply_intent_weights stub - found while doing the
+    # full algebra shape-contract audit (REFACTOR OPS BOARD.md 2026-06-17).
 
 class QueryPlanner:
 
@@ -102,7 +106,7 @@ class QueryPlanner:
 
         if isinstance(query, Select):
             return self._validate_select(query)
-    
+
         # pass-through for Select (unchanged behavior assumed elsewhere)
         return query
 

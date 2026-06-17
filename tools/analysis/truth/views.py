@@ -106,6 +106,11 @@ def build_system_summary_view(reduced, metrics, file_count: int) -> SystemSummar
     )
 
 @dataclass
+class SubsystemView:
+    subsystems: dict[str, dict]
+
+
+@dataclass
 class RoleView:
     files: list[dict]
     totals: dict

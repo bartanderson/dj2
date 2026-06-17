@@ -113,12 +113,19 @@ def test_all_views_real_data():
         assert summary.metrics["builtin"] >= 1  # bucket_summary, DB-authoritative
         assert summary.metrics["project"] >= 1
 
+        # CLAUDE-EDIT 2026-06-17: bracket access -> attribute access.
+        # SUBSYSTEM used to be the one view (of 6) that built/returned a
+        # bare dict instead of a dataclass, so this was the one place
+        # subsystem["subsystems"] was needed instead of subsystem.subsystems.
+        # build_subsystem_view() now returns a SubsystemView dataclass
+        # (views.py) for parity with STRUCTURE/STABILITY/INTEGRITY/SUMMARY/
+        # ROLE - see subsystem_view.py's CLAUDE-EDIT same date and REFACTOR
+        # OPS BOARD.md's "algebra shape contract" entry.
         subsystem = views["SUBSYSTEM"]
-        assert "subsystems" in subsystem
         # moduleA.core -> moduleB.utils and moduleB.utils -> moduleA.core
         # are both real cross-module edges
-        assert "moduleA.core" in subsystem["subsystems"]
-        assert "moduleB.utils" in subsystem["subsystems"]["moduleA.core"]["modules"]
+        assert "moduleA.core" in subsystem.subsystems
+        assert "moduleB.utils" in subsystem.subsystems["moduleA.core"]["modules"]
     finally:
         oracle.conn.close()
         os.remove(tmp_path)
@@ -139,6 +146,10 @@ def test_algebra_select_summary_and_subsystem_real_views():
         summary_result = executor.execute(Select("SUMMARY", metric="file_count"))
         assert summary_result.data == oracle.file_count()
 
+        # Select(..., metric="subsystems") projects the field's value
+        # directly (a dict), same as before - the metric=None full-view
+        # path is the one that changed shape (dict -> SubsystemView), and
+        # that's covered above in test_all_views_real_data.
         subsystem_result = executor.execute(Select("SUBSYSTEM", metric="subsystems"))
         assert "moduleA.core" in subsystem_result.data
     finally:

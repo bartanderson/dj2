@@ -52,6 +52,33 @@ All components that are proven correct via execution.
     tests/regression/test_role_view_routing.py (5 tests: real-data view
     construction, Select("ROLE") execution, _detect_intent() routing,
     and ask() end-to-end + deterministic).
+[X] QueryResult shape contract — CLOSED 2026-06-17: audited and locked the
+    full Select/Combine shape contract across all 6 views / ~15 metrics
+    after a real Windows-only AttributeError (consumer assumed
+    QueryResult.data always had one fixed shape; metric="files" vs
+    metric=None are both legitimate, registry-valid choices). Added
+    get_field() (truth/query_executor.py) as the one correct way to read
+    a QueryResult regardless of which valid metric was selected; fixed
+    SUBSYSTEM to return a SubsystemView dataclass instead of a bare dict
+    (was the one view of 6 with a different full-view shape); removed a
+    dead+wrong validate_metric() (zero callers, checked the wrong dict).
+    Proven, not just patched: tests/regression/test_query_result_shape_
+    contract.py asserts get_field() agrees with direct metric-selection
+    for every (view, metric) pair against real DB-backed data. See
+    REFACTOR OPS BOARD.md's 2026-06-17 "algebra shape contract audit"
+    entry for full detail.
+[X] Determinism test invariant — CLOSED 2026-06-17 (later): Bart hit a
+    real failure on his Windows machine (the only place the live Ollama
+    compiler is reachable) — test_ask_role_question_is_deterministic
+    asserted byte-identical compiled_ast across two calls of the same
+    question, but Select("ROLE") and Select("ROLE", metric="files") are
+    both valid for a one-file question and an LLM compiler at
+    temperature=0.0 isn't guaranteed to pick the same one twice. Same bug
+    class as the shape-contract entry above, one level up. Fixed the test
+    to compare answer content via get_field() instead of raw AST text —
+    "same question -> same answer", not "same question -> same AST
+    string". See REFACTOR OPS BOARD.md's 2026-06-17 "determinism test
+    fix" entry for full detail.
 
 Criteria:
 

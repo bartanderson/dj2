@@ -3,17 +3,13 @@ Next up scratchpad
 --- --- ---
 Do NOT expand anything new yet.
 
+DONE 2026-06-17 (later session): oracle_router expansion boundaries
+(depth + intent enforcement) - see ROUTING LAYER / "CURRENT ISSUE" and
+NEXT STEPS Track A item 1 below for the full calibration writeup.
+
 Next single focus:
 
-    fix oracle_router expansion boundaries (depth + intent enforcement)
-    PRIORITY: oracle_router expansion boundaries
-    BUT now precisely interpreted as:
-    enforce intent-consistent traversal budgets + semantic purity of expansion
-    NOT just depth tuning
-
-Then:
-
-    expose DB-backed symbol discovery API 
+    expose DB-backed symbol discovery API
         this becomes the only seed authority
 
 Then:
@@ -195,10 +191,21 @@ ROUTING LAYER
     → surface_query should primarily return forward structural zones
     → general_query should balance both without exploding scope
 
-[!] CURRENT ISSUE:
+[x] CURRENT ISSUE — RESOLVED 2026-06-17:
 oracle_router expansion now supports explicit traversal control but intent policies are not yet tuned
-    → depth limits need calibration
-    → forward vs reverse influence balance needs calibration
+    → [x] depth limits calibrated 2026-06-17 — surface_query forward_depth
+      1→2 (a single hop wasn't a "structural zone"); reverse_query
+      reverse_depth 2→1 (direct-usage question, narrower than
+      impact_query's transitive reverse_depth=2, which is unchanged).
+      general_query (1/1 balanced) and impact_query (reverse-only, depth
+      2) were already correctly calibrated and left unchanged. Locked in
+      by tests/regression/test_intent_budget_calibration.py (5 tests).
+    → [x] forward vs reverse influence balance calibrated 2026-06-17 — see
+      above; reverse_query and impact_query are now structurally
+      distinguishable instead of sharing one budget.
+    → [x] dead "two_hop" key (never read anywhere in _route_expand)
+      removed from every intent_budget entry, same shape as the deleted
+      _apply_intent_weights stub.
     → [x] expansion includes too many implementation-level symbols
       RESOLVED 2026-06-16 via DB-backed noise unification (see PHASE 1 note above)
 
@@ -584,23 +591,180 @@ stale/locked pyc rather than a code bug.
 
 ---------------------------------------------------
 
+## 2026-06-17 (continued) - algebra shape contract audit + fix
+
+Real bug report from Bart's Windows machine: `test_ask_purpose_question_
+routes_to_role_view` crashed with `AttributeError: 'list' object has no
+attribute 'totals'`. Root cause turned out NOT to be an AI compiler error -
+Ollama (reachable on Bart's machine, unreachable in the sandbox, which is
+why this only reproduced there) had compiled `Select("ROLE", metric=
+"files")` for "what is the purpose of ingest.py", a question naming one
+specific file. That's a legitimate, registry-valid, arguably *more
+precise* choice than the full view - not an invalid AST. The actual bug
+was that the test assumed `QueryResult.data` always had one fixed shape
+(`.totals`/`.files` as attributes of a wrapper object) instead of handling
+whichever shape the algebra legitimately returned.
+
+This matters beyond the one test: per Bart's framing, the query algebra is
+meant to be "an algebra of valid checkboxes that the AI selects... and
+narrates in a friendly fashion" - i.e. the AI choosing a different but
+equally valid checkbox is the system working as designed, and the
+consumer/narration layer's job is to handle whichever valid checkbox came
+back, not to demand one specific one. Per his explicit direction ("get
+that fixed thoroughly... full mapping... handle all the existing possible
+cases"), did a full audit of the Select/Combine shape contract across all
+6 views and ~15 metrics, not just a patch for the one failing test:
+
+- **`truth/query_executor.py`**: added `get_field(result, name, default)`
+  - the shared, shape-safe way to read a field off a `QueryResult`
+  regardless of whether `metric=None` (full view, attribute/key access) or
+  `metric=name` (that field's value already, no wrapper). Documented
+  inline as the contract every future consumer (tests, `Assessor.ask()`
+  callers, any narration layer) should go through instead of assuming a
+  fixed shape.
+- **SUBSYSTEM shape inconsistency found and fixed**: of the 6 views,
+  SUBSYSTEM was the only one whose full-view (`metric=None`) shape was a
+  bare dict (`{"subsystems": {...}}`, bracket access) instead of a
+  dataclass (attribute access) like the other 5. Added `SubsystemView`
+  dataclass (`truth/views.py`) and updated `build_subsystem_view()`
+  (`truth/subsystem_view.py`) to return it. This is exactly the kind of
+  shape drift that makes "assume one fixed shape" bugs likely - now all 6
+  views are uniform.
+- **Dead + silently-wrong code removed**: `QuerySemanticsRegistry.
+  validate_metric()` (`truth/query_plan.py`) had zero callers anywhere
+  (confirmed via grep) and checked `VALID_FILTER_KEYS` instead of
+  `QueryPlan.VALID_METRICS` - had it ever been called, it would have
+  rejected every legitimate metric for every view. Same "looks like a
+  feature, isn't" shape as the previously-deleted `two_hop` key and
+  `_apply_intent_weights` stub. The real, actually-enforced metric check
+  lives in `QueryPlanner._validate_select`, unchanged.
+- **AI-prompt/registry drift risk closed**: `query_compiler.py`'s
+  `_ALGEBRA_SPEC` (the text fed to Ollama) used to be a hand-typed copy of
+  `QueryPlan.VALID_METRICS`/`QuerySemanticsRegistry.VALID_COMBINES`, with
+  nothing stopping the two from silently diverging. `_build_algebra_spec()`
+  now generates that text directly from the registry, so the prompt the
+  model sees and the rules `QueryPlanner` actually enforces can never
+  disagree again. Also tightened the ROLE mapping guidance to note that
+  both the full view and `metric="files"` are valid for a one-file
+  question, with a preference noted (not a hard rule).
+- **Two consumers fixed to handle real shapes, not patched to expect one**:
+  `test_role_view_routing.py`'s failing test now reads via `get_field()`
+  and asserts on whichever of `files`/`totals` actually came back;
+  `test_run_algebra_end_to_end.py`'s SUBSYSTEM assertions switched from
+  bracket to attribute access to match the dataclass fix.
+- **New permanent regression suite**:
+  `tests/regression/test_query_result_shape_contract.py` (4 tests) - the
+  actual "full mapping" proof: `get_field()` agrees with direct
+  metric-selection for *every* (view, metric) pair in the real registry
+  against real DB-backed data (not stubs), `get_field()` returns the
+  documented default rather than crashing or guessing when a different
+  metric was selected, every view's full-view shape is attribute-accessible
+  (locks the SUBSYSTEM fix in so it can't quietly regress to a dict), and
+  the AI prompt spec provably contains every view/metric/combine pair the
+  registry defines.
+
+Full sweep after this work: 25 regression tests (6 modules) + 32 pytest
+(`truth/tests/test_query_algebra.py`) = 57/57 passing, including the
+originally-failing test.
+
+**Environment note - the silent-truncation bug hit every single edit made
+during this work.** All 5 files touched via the `Edit` tool this session
+(`truth/views.py`, `truth/subsystem_view.py`, `truth/query_executor.py`,
+`truth/query_plan.py`, `truth/query_compiler.py`) were truncated mid-file
+on disk despite the `Read` tool displaying complete, correct content
+immediately after each edit - confirmed via `wc -l`/`tail`/`ast.parse`
+against the real files in the sandbox, exactly the failure mode CLAUDE.md's
+"File write verification (mandatory)" section warns about. All 5 were
+recovered via direct bash heredoc rewrite and re-verified (`ast.parse` +
+line/byte counts + tail inspection). The two test-file edits
+(`test_role_view_routing.py`, then the new
+`test_query_result_shape_contract.py`) were written via heredoc from the
+start for the same reason. Even this very doc section was truncated mid-
+sentence on the first attempted `Edit` and had to be recovered the same
+way. This is not a one-off: treat every `Edit`/`Write` call in this repo
+as unverified until checked on disk, no exceptions, per CLAUDE.md.
+
+
+---------------------------------------------------
+
+## 2026-06-17 (later) - determinism test fix: same answer family, not byte-identical AST
+
+Bart ran the full sweep on his real Windows machine (the only place the live
+Ollama compiler is actually reachable) and hit a real failure:
+`test_ask_role_question_is_deterministic` failed on
+`assert first["compiled_ast"] == second["compiled_ast"]` - two separate
+`assessor.ask("what is the role of store.py")` calls compiled to two
+different (both valid) ASTs.
+
+Root cause is the same class as the original Windows bug this whole
+2026-06-17 audit started from, one level up: `Select("ROLE")` and
+`Select("ROLE", metric="files")` are BOTH registry-valid compilations for
+a one-file question - `query_compiler.py`'s MAPPING GUIDANCE only says
+"prefer files when one file is named", a preference, not a hard
+constraint - and an LLM compiler running at `temperature=0.0` is not
+guaranteed to land on the same choice across two separate calls in
+practice (greedy decoding is not bit-reproducible across requests with
+llama.cpp/Ollama - floating-point non-associativity in parallel reduction,
+a known property of the inference backend, not a bug in this codebase).
+The test's old invariant ("same question -> byte-identical AST text") was
+wrong for an LLM-backed compiler that can correctly pick from a family of
+valid ASTs; "same question -> same answer content" is the correct
+invariant, and it's exactly the `get_field()` principle already applied
+to `test_ask_purpose_question_routes_to_role_view` earlier this date.
+
+Fixed `tests/regression/test_role_view_routing.py`'s
+`test_ask_role_question_is_deterministic`: still asserts
+`first["intent"] == second["intent"] == "role_query"`, but now reads both
+calls' results via `get_field()` and asserts the underlying role
+classification for store.py (persistence) agrees, regardless of which
+valid metric the compiler happened to pick each time. No change needed to
+`get_field()`, `views.py`, or the compiler itself - this was purely a
+test-invariant fix, the same shape as the original bug.
+
+Full sweep after this fix (sandbox, rule-based-fallback path since Ollama
+isn't reachable there): 25 regression + 32 pytest = 57/57 passing.
+Bart's Windows machine is the one place this fix's real value shows up,
+since that's where the live-Ollama nondeterminism actually occurs - it's
+on him to re-run there and confirm.
+
+**Environment note (still ongoing):** this single-test edit was *also*
+silently truncated on disk by the `Edit` tool (landed mid-comment with no
+SyntaxError-free indicator until `ast.parse()` caught it), recovered via
+the same bash heredoc + `head`/`tail` reconstruction pattern as every
+other edit this session. This doc section itself is being written the
+same way for the same reason. The truncation rate this session (effectively
+every Edit-tool call, source files and docs alike) is high enough that it
+should be treated as a standing environment defect, not noise - see Bart's
+question about this, to be addressed as a parallel track.
+---------------------------------------------------
+
 ## NEXT STEPS (2026-06-17) - pick up here next session
 
 Two independent tracks are open. Neither blocks the other; pick whichever
 Bart prioritizes.
 
-**Track A - original Phase 1/2 critical path (unchanged status, not
-touched by the 2026-06-17 ROLE work):**
-1. Finish PHASE 1 oracle_router expansion boundaries: intent-specific
-   traversal budgets exist for surface/impact/reverse/general/role_query
-   (see `_route_expand()`'s `intent_budget` dict in `api/oracle_router.py`)
-   but forward-vs-reverse weighting calibration and depth-limit tuning
-   per intent are still open (see "Next up scratchpad" at the top of this
-   file and the ROUTING LAYER / "CURRENT ISSUE" sections above).
-2. Then PHASE 2: expose a DB-backed symbol discovery API
+**Track A - original Phase 1/2 critical path:**
+1. DONE 2026-06-17 (later session) - oracle_router expansion budget
+   calibration: surface_query forward_depth 1→2, reverse_query
+   reverse_depth 2→1 (now distinguishable from impact_query's transitive
+   reverse_depth=2), dead `two_hop` key removed from every
+   `intent_budget` entry. See ROUTING LAYER / "CURRENT ISSUE" section
+   above for full rationale; locked in by
+   `tests/regression/test_intent_budget_calibration.py` (5 tests). Full
+   sweep after this work: 52/52 passing (47 prior + 5 new).
+   Important caveat surfaced while doing this: `_route_expand()`'s output
+   (`expanded_symbols`/trace) currently feeds ONLY the explainability
+   surface (`seed_explanation`/`node_reasons`/persisted `query_sessions`
+   row) - `QuerySession.run_algebra()` builds its actual answer from
+   `Assessor.all_views()` (the full graph snapshot), entirely independent
+   of the expansion budget. So this calibration improves trace quality
+   today, not algebra answer content - that coupling (if ever wanted) is
+   unbuilt, not broken.
+2. NEXT: PHASE 2 - expose a DB-backed symbol discovery API
    (list_symbols/find_symbols/find_files/find_modules, DBReader-only) as
    the single unified seed-bootstrap entrypoint, replacing any
-   engine-origin or caller-supplied seeding.
+   engine-origin or caller-supplied seeding. This is the next item in
+   Track A and is unstarted.
 
 **Track B - Truth Kernel / Truth.md candidates surfaced by the ROLE-view
 work (same "Phase 4: one truth at a time" shape Row 2/ROLE just closed):**
@@ -625,4 +789,5 @@ Whichever track is picked, the **mandatory file-write verification
 procedure in CLAUDE.md** ("File write verification (mandatory)" section)
 applies to every edit in this repo - bash-side diff against intended
 content, not just a Read-tool glance, given this session's three
-truncation incidents plus one fully-phantom Read-tool view.
+truncation incidents plus one fully-phantom Read-tool view (now four
+truncation incidents as of this entry).

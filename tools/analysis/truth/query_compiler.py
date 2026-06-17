@@ -31,7 +31,7 @@ import logging
 import requests
 
 from tools.analysis.truth.query_ast import Select, Combine
-from tools.analysis.truth.query_plan import QueryPlanner, QuerySemanticsRegistry
+from tools.analysis.truth.query_plan import QueryPlan, QueryPlanner, QuerySemanticsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -45,53 +45,76 @@ OLLAMA_TIMEOUT = 10  # seconds - fail fast, don't block the pipeline
 # =========================================================
 # CLOSED-WORLD SPEC (fed verbatim to the model)
 # =========================================================
+# CLAUDE-EDIT 2026-06-17: the VIEWS/METRICS/COMBINES sections below used
+# to be a hand-typed copy of QueryPlan.VALID_METRICS / QuerySemanticsRegistry
+# .VALID_COMBINES - two sources of truth for the same facts, with nothing
+# stopping them from silently drifting apart (a future metric/combine
+# added to the registry just wouldn't be offered to the model; a typo'd
+# copy here could offer the model something the registry would then
+# reject). Generated from the registry instead, so the prompt the model
+# sees and the rules QueryPlanner actually enforces can never disagree.
+# Found while auditing the full Select/Combine shape contract after the
+# Windows-only ROLE-view bug (REFACTOR OPS BOARD.md 2026-06-17).
 
-_ALGEBRA_SPEC = """\
+def _build_algebra_spec() -> str:
+    views_line = ", ".join(sorted(QueryPlan.VALID_METRICS))
+
+    metrics_lines = "\n".join(
+        f"  {view}: {', '.join(sorted(metrics))}"
+        for view, metrics in sorted(QueryPlan.VALID_METRICS.items())
+    )
+
+    combines_lines = "\n".join(
+        f"  ({left}, {right})"
+        for left, right in sorted(QuerySemanticsRegistry.VALID_COMBINES)
+    )
+
+    return f"""\
 You are a query compiler for a closed-world code analysis system.
 Your ONLY job is to translate a natural language question into a JSON query AST.
 Output JSON only. No explanation. No markdown. No extra keys.
 
-VALID VIEWS: STRUCTURE, STABILITY, INTEGRITY, SUMMARY, SUBSYSTEM, ROLE
+VALID VIEWS: {views_line}
 
 VALID METRICS PER VIEW:
-  STRUCTURE: edges, adjacency, hotspots
-  STABILITY: stable_contracts, unstable_contracts, drift_signals
-  INTEGRITY: errors, warnings, db_mismatches
-  SUMMARY:   edge_count, file_count, metrics
-  SUBSYSTEM: subsystems
-  ROLE:      files, totals
+{metrics_lines}
 
 VALID COMBINE PAIRS (unordered):
-  (STRUCTURE, STABILITY)
-  (STRUCTURE, INTEGRITY)
-  (SUMMARY,   STABILITY)
-  (SUBSYSTEM, STRUCTURE)
-  (STABILITY, INTEGRITY)
+{combines_lines}
 
 QUERY TYPES:
-  Select(view)           -> {"type": "select", "view": "VIEW"}
-  Select(view, metric)   -> {"type": "select", "view": "VIEW", "metric": "METRIC"}
-  Combine(left, right)   -> {"type": "combine", "left": <node>, "right": <node>}
+  Select(view)           -> {{"type": "select", "view": "VIEW"}}
+  Select(view, metric)   -> {{"type": "select", "view": "VIEW", "metric": "METRIC"}}
+  Combine(left, right)   -> {{"type": "combine", "left": <node>, "right": <node>}}
 
 MAPPING GUIDANCE:
   "what depends on X" / "who calls X" / "what breaks if X changes"
-    -> {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"INTEGRITY"}}
+    -> {{"type":"combine","left":{{"type":"select","view":"STRUCTURE"}},"right":{{"type":"select","view":"INTEGRITY"}}}}
 
   "what does X call" / "show surface of X" / "forward dependencies"
-    -> {"type":"combine","left":{"type":"select","view":"STRUCTURE"},"right":{"type":"select","view":"STABILITY"}}
+    -> {{"type":"combine","left":{{"type":"select","view":"STRUCTURE"}},"right":{{"type":"select","view":"STABILITY"}}}}
 
   "show hotspots" / "most connected symbols"
-    -> {"type":"select","view":"STRUCTURE","metric":"hotspots"}
+    -> {{"type":"select","view":"STRUCTURE","metric":"hotspots"}}
 
   "system health" / "stability overview"
-    -> {"type":"combine","left":{"type":"select","view":"STABILITY"},"right":{"type":"select","view":"INTEGRITY"}}
+    -> {{"type":"combine","left":{{"type":"select","view":"STABILITY"}},"right":{{"type":"select","view":"INTEGRITY"}}}}
 
   "what is the purpose of X" / "why does X exist" / "what is the role of X"
-    -> {"type":"select","view":"ROLE"}
+  asked about a specific named file - the full ROLE view (no metric) and
+  the "files" metric alone are both valid; prefer "files" when exactly
+  one file is named, since it's the more precise answer to "this file":
+    -> {{"type":"select","view":"ROLE","metric":"files"}}
+  prefer the full view (no metric) for a question about the codebase's
+  roles in general, not one named file:
+    -> {{"type":"select","view":"ROLE"}}
 
   general / unclear
-    -> {"type":"select","view":"STRUCTURE"}
+    -> {{"type":"select","view":"STRUCTURE"}}
 """
+
+
+_ALGEBRA_SPEC = _build_algebra_spec()
 
 # =========================================================
 # RULE-BASED FALLBACK (always deterministic)

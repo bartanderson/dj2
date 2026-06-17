@@ -14,10 +14,19 @@ And "what does the oracle layer call" seeded on builtin_symbols.self.oracle, cur
     QueryPlanner, falls back to the original rule-based intent→AST table
     on any failure. No Anthropic API call, local-only.
 
-[ ] If you want to push toward Tier 4 → audit remaining direct view calls in assessor that bypass the query algebra
-    Still open.
+[x] If you want to push toward Tier 4 → audit remaining direct view calls in assessor that bypass the query algebra
+    DUPLICATE — removed 2026-06-17. Same item already tracked in Truth
+    Kernel Board.md's Tier 3 entry and REFACTOR OPS BOARD.md's
+    ARCHITECTURE SPLIT section; those two stay the source of truth for
+    it going forward.
 
-The torch warning is just noise from sentence-transformers pulling in PyTorch on Windows — harmless, but worth noting you could suppress it with PYTHONWARNINGS=ignore
+The torch warning is noise from sentence-transformers pulling in PyTorch on
+Windows. NOTE (2026-06-17): PYTHONWARNINGS=ignore does NOT suppress it —
+confirmed it's emitted via logging.warning() (torch.distributed.elastic's
+own glog-style logger), not via warnings.warn(), so the `warnings` module's
+env var has no effect on it. Real fix: raise that logger's level directly,
+e.g. logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").setLevel(logging.ERROR)
+— now wired into tests/regression/run_all.py.
 
 ---
 
@@ -170,3 +179,104 @@ The torch warning is just noise from sentence-transformers pulling in PyTorch on
     (for .py files) `ast.parse()` + a tail diff to confirm the intended
     ending actually landed. See REFACTOR OPS BOARD.md 2026-06-17 entry
     for the full incident log.
+
+---
+
+## 2026-06-17 (later session) — Track A: oracle_router intent budget calibration
+
+[x] RESOLVED — closed the "forward-vs-reverse weighting calibration and
+    depth-limit tuning per intent are still open" gap in
+    `api/oracle_router.py`'s `_route_expand()` `intent_budget` table:
+    - `surface_query` forward_depth 1→2 (a single hop wasn't a real
+      "structural zone").
+    - `reverse_query` reverse_depth 2→1 — it was sharing impact_query's
+      transitive reverse_depth=2 budget, making "what uses X" (direct
+      usage) and "what depends on X" (transitive impact) structurally
+      identical despite being different questions. `impact_query` itself
+      (reverse-only, depth 2) and `general_query` (balanced depth 1/1)
+      were already correctly calibrated per the ROUTING LAYER notes and
+      left unchanged.
+    - removed the dead `two_hop` key from every `intent_budget` entry —
+      grep-confirmed it was never read anywhere in `_route_expand()`,
+      same "looks like a feature, isn't" shape as the deleted
+      `_apply_intent_weights` stub.
+    New regression coverage: `tests/regression/test_intent_budget_calibration.py`
+    (5 tests — reverse_query stops at 1 hop where impact_query still
+    reaches 2, surface_query now reaches a 2-hop forward node,
+    general_query stays balanced at 1/1, two_hop key absent). Full sweep
+    after this work: 52/52 passing (47 prior + 5 new).
+
+    Also confirmed and documented an architectural fact while doing this:
+    `_route_expand()`'s output only feeds the explainability trace
+    (`seed_explanation`/`node_reasons`/the persisted `query_sessions`
+    row) — `QuerySession.run_algebra()` answers from
+    `Assessor.all_views()` (the full graph snapshot) independent of the
+    expansion budget. So this calibration improves trace quality, not
+    algebra answer content yet — see REFACTOR OPS BOARD.md NEXT STEPS
+    Track A for the full note.
+
+    Hit one instance of the silent file-truncation bug again while
+    writing the new test file (Write tool reported success, content
+    cut off mid-token on disk) — fixed via the now-standard bash heredoc
+    rewrite + `wc -l -c` + `ast.parse()` verification, per the procedure
+    documented just above.
+
+[x] 2026-06-17 — fixed the real Windows test_role_view_routing failure
+    (`AttributeError: 'list' object has no attribute 'totals'`) by fixing
+    root cause, not symptom: a consumer assumed QueryResult.data always
+    had one fixed shape, when Select("ROLE", metric="files") is an
+    equally valid choice the real local Ollama compiler made on Bart's
+    machine for a one-file question. Per Bart's "fix it thoroughly, full
+    mapping, handle all existing cases" direction, audited the whole
+    Select/Combine shape contract (6 views, ~15 metrics):
+    - added `get_field()` (truth/query_executor.py) — the one correct
+      way to read a QueryResult regardless of which valid metric came
+      back.
+    - found + fixed a real inconsistency: SUBSYSTEM was the only one of
+      6 views returning a bare dict instead of a dataclass for its full
+      view. Added `SubsystemView` (truth/views.py), updated
+      `build_subsystem_view()` to return it.
+    - removed dead+wrong `QuerySemanticsRegistry.validate_metric()` (zero
+      callers, checked the wrong dict — same shape as the deleted
+      `two_hop` key / `_apply_intent_weights` stub).
+    - made the AI-prompt spec (`query_compiler.py`'s `_ALGEBRA_SPEC`)
+      generate from the registry instead of hand-duplicating it, closing
+      a drift risk between what the model is told and what's enforced.
+    - fixed the two consumers that broke (`test_role_view_routing.py`,
+      `test_run_algebra_end_to_end.py`'s SUBSYSTEM bracket access) to
+      handle real shapes instead of assuming one.
+    - new suite: `tests/regression/test_query_result_shape_contract.py`
+      (4 tests, the actual full-mapping proof).
+    Full sweep: 57/57 passing (25 regression + 32 pytest).
+    Full detail: REFACTOR OPS BOARD.md's 2026-06-17 "algebra shape
+    contract audit" entry, Truth Kernel Board.md's Tier 1 "QueryResult
+    shape contract" entry.
+
+    Hit the silent-truncation bug on every single Edit made during this
+    work (5 source files + this doc) — all recovered via bash heredoc
+    rewrite, verified via `wc -l -c` + `ast.parse()` + tail inspection
+    against the real on-disk bytes, per the mandatory procedure above.
+
+[x] 2026-06-17 (later) — fixed a real failure Bart hit running the suite on
+    his Windows machine (the only place the live Ollama compiler is
+    actually reachable): `test_ask_role_question_is_deterministic` failed
+    on `first["compiled_ast"] == second["compiled_ast"]` — two calls of
+    the same question compiled to two different, both-valid ASTs
+    (`Select("ROLE")` vs `Select("ROLE", metric="files")` — same kind of
+    "more than one correct choice" shape as the shape-contract bug fixed
+    just above, one level up: an LLM compiler at temperature=0.0 isn't
+    guaranteed to pick the same valid AST twice across separate calls).
+    Fixed the test itself, not the compiler — rewrote it to compare
+    answer content via `get_field()` instead of raw AST text, matching
+    the principle already applied to `test_ask_purpose_question_routes_
+    to_role_view`. No code change needed elsewhere.
+    Full sweep after fix (sandbox, rule-based-fallback path): 57/57.
+    Full detail: REFACTOR OPS BOARD.md's 2026-06-17 "determinism test
+    fix" entry, Truth Kernel Board.md's Tier 1 "Determinism test
+    invariant" entry.
+
+    Hit the silent-truncation bug again on this exact test file edit —
+    recovered via the same bash heredoc + `head`/`tail` reconstruction
+    pattern. Per Bart's request, the truncation bug itself is now queued
+    as its own discussion/investigation track rather than just being
+    re-fixed silently each time.

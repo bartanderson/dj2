@@ -287,30 +287,53 @@ def _route_expand(graph, seeds, intent, builtin_symbols=frozenset()):
             add(n, f"reverse:{node}", source=node)
             expand_reverse(n, depth - 1)
 
+    # CLAUDE-EDIT 2026-06-17: Track A calibration pass (REFACTOR OPS BOARD.md
+    # "forward-vs-reverse weighting calibration and depth-limit tuning per
+    # intent are still open"). Two real changes, justified by what each
+    # intent actually asks:
+    #   - reverse_query ("what uses X" / "used by") is a DIRECT-usage
+    #     question, not a transitive-impact question. It previously shared
+    #     impact_query's reverse_depth=2 budget, which made the two
+    #     intents structurally identical despite being semantically
+    #     different ("who calls X directly" vs "what's at risk if X
+    #     changes, transitively"). Narrowed to reverse_depth=1.
+    #   - surface_query ("what does X do" / "surface") is supposed to
+    #     return "forward structural zones" (plural, per ROUTING LAYER
+    #     notes below) but forward_depth=1 only ever reached direct
+    #     callees - a single hop isn't a "zone". Widened to
+    #     forward_depth=2.
+    #   - impact_query and general_query were already correctly calibrated
+    #     against the same notes (impact = reverse-only depth 2, general =
+    #     balanced depth 1/1) and are unchanged.
+    # Also removed the "two_hop" key from every entry: grep-confirmed it
+    # was never read anywhere in _route_expand (or anywhere else in the
+    # codebase) - dead config that looked like a feature but wasn't, the
+    # same shape as the deleted _apply_intent_weights stub. Multi-hop
+    # traversal is already fully expressed by forward_depth/reverse_depth;
+    # this key added nothing and risked misleading a future reader into
+    # thinking two-hop expansion was conditional on it.
+    #
+    # Locked in by tests/regression/test_intent_budget_calibration.py.
     intent_budget = {
         "surface_query": {
-            "forward_depth": 1,
+            "forward_depth": 2,
             "reverse": False,
             "reverse_depth": 0,
-            "two_hop": False,
         },
         "impact_query": {
             "forward_depth": 0,
             "reverse": True,
             "reverse_depth": 2,
-            "two_hop": False,
         },
         "reverse_query": {
             "forward_depth": 0,
             "reverse": True,
-            "reverse_depth": 2,
-            "two_hop": False,
+            "reverse_depth": 1,
         },
         "general_query": {
             "forward_depth": 1,
             "reverse": True,
             "reverse_depth": 1,
-            "two_hop": False,
         },
         "role_query": {
             # ROLE is a global, file-level classification - it doesn't
@@ -320,7 +343,6 @@ def _route_expand(graph, seeds, intent, builtin_symbols=frozenset()):
             "forward_depth": 0,
             "reverse": False,
             "reverse_depth": 0,
-            "two_hop": False,
         },
     }
 
