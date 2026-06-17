@@ -261,5 +261,140 @@ views = {
 result = assessor.session().run_algebra("some real question", views)
 ```
 against a real project DB and confirms `algebra_result` contains real,
-non-stub data. (DONE — see `tools/analysis/ask.py`, which builds on all
+non-stub data. (DONE - see `tools/analysis/ask.py`, which builds on all
 5 views via `Assessor.all_views()` rather than just 3.)
+
+---
+
+## Phase 3 findings (2026-06-16, evidence-only, no code changes)
+
+Trigger: Bart noticed `ask()` has no way to answer "what is the purpose of
+this file" and asked whether that's one hole or a symptom of several.
+This section is the Phase 3 exercise: real questions run against a real
+DB, actual output recorded, gap stated. Nothing below is a guess.
+
+NOTE - environment caveat, not a project bug: the committed
+`C_Users_bartl_dev_dj2_tools_analysis.db` reports
+`sqlite3.DatabaseError: database disk image is malformed` when read from
+this sandbox (PRAGMA integrity_check fails to even run). Likely a
+binary-file sync artifact of the Windows-to-sandbox mount, same family as
+the sqlite file-handle caveat already on file in CLAUDE.md - not
+something to chase from here. Worked around by re-running the real
+ingestion pipeline (`EngineRunner.run()`) against the real
+`tools/analysis` source tree into a fresh temp DB (1932 real symbol
+references / edges) and using that for every probe below. Bart: worth
+a `PRAGMA integrity_check` on your end next session to see if the
+Windows-side file is actually fine (probable) or actually corrupt.
+
+**Row 1 - "what is the purpose of assessor.py" (and "why does
+symbol_noise.py exist", "what is the role of oracle_router" - all three,
+verbatim, via `python tools/analysis/ask.py <db> "<question>"`)**
+- Question: what is the purpose of assessor.py
+- Expected answer: a sentence describing what assessor.py is for.
+- Actual answer: intent classified as `general_query` (oracle/api/oracle_router.py
+  `_detect_intent`: only `impact_query`/`surface_query`/`general_query`
+  exist, matched on substrings "what depends"/"impact",
+  "what uses"/"used by", "what does"/"surface" - "purpose", "why", and
+  "role" match none of them and fall to the catch-all). Compiler then
+  emits the fixed fallback for `general_query`:
+  `Combine(Select(STABILITY), Select(INTEGRITY))`, narrated as
+  "full diagnostic view of system health." The result is the entire
+  project's file list under `stable_contracts` (every file with no
+  contract violations - which on this DB is nearly all of them) plus
+  empty errors/warnings. All three differently-worded questions about
+  three different symbols produced the byte-identical answer, because the
+  symbol mentioned in the question is never used past seeding/expansion -
+  it has no path into the STABILITY/INTEGRITY views at all.
+- Gap: there is no intent category for "what is this / why does this
+  exist / what is its role" anywhere in the router, and no view in the
+  algebra that could express the answer even if one existed. This isn't
+  a tuning problem, it's an absent category.
+
+**Row 2 - responsibility/role classification exists, but is not reachable**
+- Question: does the system have any real (non-AI) signal for "what kind
+  of work does this file do"?
+- Expected answer (going in): probably no, same gap as Row 1.
+- Actual answer: it exists and is real. `engine/responsibility_map.py` +
+  `Assessor.responsibility_map()` classifies every file into
+  ingestion/classification/graph/persistence/reporting by keyword-matching
+  file path + callee names, computed from the real DB. Ran it against the
+  fresh probe DB:
+  `TOTALS: {'classification': 51, 'graph': 59, 'persistence': 21, 'reporting': 46, 'ingestion': 23}`,
+  e.g. `assessor/assessor.py -> {classification, graph, reporting}`,
+  `ask.py -> {reporting}`. Confirmed by direct call that
+  `assessor.all_views()` (the only thing `Assessor.ask()` ever passes to
+  the algebra) returns exactly `['STRUCTURE', 'STABILITY', 'INTEGRITY',
+  'SUMMARY', 'SUBSYSTEM']` - `responsibility_map` is not in it and has no
+  path into `Select()`/`Combine()` at all.
+- Gap: not a missing-data problem like Row 1 - a missing-wiring problem,
+  same shape as the SUMMARY/SUBSYSTEM orphaning fixed earlier this session.
+  The fix pattern already exists in this file (see "RESOLVED 2026-06-16"
+  above): register it as a sixth view, the same way summary_view()/
+  subsystem_view() were wired in.
+
+**Row 3 - drift signal source**
+- Question: what's drifting, and why?
+- Expected answer: a list of drift signals with classification/layer.
+- Actual answer: called `assessor.stability_view()` directly against the
+  fresh probe DB - `drift_signals: []`. Confirmed in code: `assessor.py`
+  calls `build_stability_view(self.file_contract_reports(), drift_signals=[])`
+  - the empty list is a literal at the call site, not a query result.
+  Already flagged in Truth Kernel Board Tier 1 ("drift_signals arg is
+  hardcoded [], never populated") - reconfirmed live here, not fixed.
+- Gap: the field exists in the view's dataclass and in
+  `QueryPlan.VALID_METRICS["STABILITY"]`, so a query against it would
+  validate and execute cleanly and silently return nothing real. This is
+  the most dangerous shape of gap, since the algebra can't tell you it
+  doesn't know - it answers fine, the answer is just always empty.
+
+**Row 4 - how do subsystems relate to each other**
+- Question: how does subsystem A relate to subsystem B (conceptually)?
+- Expected answer: groupings that track actual architectural boundaries.
+- Actual answer: called `assessor.subsystem_view()` against the real
+  probe DB. `_module()` in truth/subsystem_view.py does
+  `symbol.split(".")[:2]` - when the caller is a bare function name with
+  no dots (which is most of this codebase's call graph, since calls are
+  recorded as `function_name -> callee_name`, not
+  `module.function_name -> callee_name`), that truncation can't truncate,
+  so the "subsystem" key IS the function name. Real output:
+  `get_llm_context_for_file -> {modules: [str, tools.analysis]}`,
+  `_route_expand -> {modules: [add, expand_forward, expand_reverse, frozenset...]}`.
+  355 "subsystems" total, for a project with roughly 60-70 real files.
+- Gap: the view isn't wrong, it's doing exactly what `_module()` says -
+  but `_module()`'s assumption (symbols arrive dotted at module
+  granularity) doesn't hold for this graph's actual caller format, so the
+  output is a function-level fragmentation, not a subsystem map. Any
+  question whose honest answer requires "subsystem" to mean something a
+  human would recognize will be wrong, not absent - arguably worse than a
+  hole, since it looks like an answer.
+
+**Row 5 - why was this changed / what was the intent of this mutation**
+- Question: why does this code mutate `target`?
+- Expected answer: a stated intent (e.g. "to cache the resolved path").
+- Actual answer: `MutationEvent` (shared/types.py) has exactly
+  `line_number`, `target`, `operation`, `raw_expression` - confirmed by
+  reading the dataclass directly. No description/intent/reason field
+  exists in the type, so there is nothing to recover regardless of view
+  or query - this is the same shape as Row 1 (no capture), not Row 3 (capture
+  exists but unwired) or Row 4 (capture exists but wrong granularity).
+- Gap: absent at the ingestion/type level, same as Row 1.
+
+### Pattern across all 5 rows
+
+Two distinct failure shapes, not five unrelated ones:
+
+1. **Never captured** (Rows 1, 5): no field, anywhere, holds this
+   information. Requires new ingestion + a new view + a new intent
+   category - real, multi-layer work.
+2. **Captured or computable, but not wired into the one algebra `ask()`
+   uses, or wired but never populated** (Rows 2, 3, 4): the fix is
+   "connect/populate an existing thing," same pattern as the
+   SUMMARY/SUBSYSTEM orphaning already fixed this session - cheap relative
+   to category 1, and there are at least three of them sitting there
+   right now.
+
+Exit criteria for this phase ("evidence only, no guesses") is met: every
+row above is a question actually run, or a value actually read, against
+real data - not a prediction.</new_string>
+</invoke>
+
