@@ -483,10 +483,21 @@ In rough priority order, deduplicated across all four source files:
     views and don't include ROLE in the allowed Combine pairs) - worth a
     pass to update DESIGN.md's spec language or explicitly note the gap
     there if ROLE participation in Combine is ever needed.
-15. **CCSS pipeline exists as real code, but Pass2/Pass3 are structural
-    stubs - decision needed: finish, integrate, or shelve.** Found during
-    Pass 2 doc review (2026-06-17): `tools/analysis/ccss - redesign into
-    tool over analysis db/` contains a working PASS1 -> PASS2 -> PASS3
+15. **CCSS pipeline: decision made and executed 2026-06-17 - SHELVED.**
+    Moved from `tools/analysis/ccss - redesign into tool over analysis db/`
+    to `tools/analysis/_shelved/ccss/` (byte-for-byte, verified via sha256
+    diff; no code changes). Rationale, in addition to the findings below:
+    the folder's own internal imports (`tools.analysis.ccss.*`) never
+    matched its actual on-disk path (spaces, no real `__init__.py`), so
+    the pipeline could not have run as written even before considering
+    integration. Full rationale recorded in
+    `tools/analysis/_shelved/ccss/SHELVED.md`. If contract-axis test
+    coverage becomes a real need later, `pass1.py` (structural extraction)
+    and `gap_ledger.py` (snapshot diffing) are worth reusing; PASS2/PASS3
+    need a from-scratch build against the real spec, not a patch - see
+    SHELVED.md for why. Original findings, preserved for context: found
+    during Pass 2 doc review (2026-06-17), the folder contained a working
+    PASS1 -> PASS2 -> PASS3
     implementation (`pass1.py`/`pass2.py`/`pass3.py`/`run.py`/
     `scan_tests.py`/`snapshot_store.py`/`ledger_store.py`/
     `snapshot_compare.py`/`gap_ledger.py`/`regression_check.py`) that
