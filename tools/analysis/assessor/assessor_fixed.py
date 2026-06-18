@@ -13,7 +13,6 @@ from tools.analysis.truth.views import (
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
-from tools.analysis.validation.system_validator import SystemValidator
 from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
@@ -305,98 +304,26 @@ class Assessor:
         return build_stability_view(reports, drift_signals=drift_signals)
 
     def validation_summary(self):
-        # CLAUDE-EDIT 2026-06-18 (TRACKER.md section 3 item 17): was a
-        # partial inline reimplementation of SystemValidator's checks -
-        # only 2 of its 4 methods, and never called _validate_contracts at
-        # all, so the contract violations file_contract_reports() already
-        # computes were never escalated into INTEGRITY errors (this file's
-        # own inline loop read v["severity"] directly, which happened to
-        # work since it indexed the dict correctly - but it was a second,
-        # parallel reimplementation of logic SystemValidator already owns,
-        # not a wiring of the real component). Now calls SystemValidator's
-        # real methods directly:
-        #   - _validate_graph_integrity / _validate_shape_signals: take
-        #     `graph` (.edges) - same shape as self.snapshot(), reusable
-        #     unchanged.
-        #   - _validate_contracts: takes ONE report and reads
-        #     report.violations, then each violation's severity/
-        #     contract_name/message via the new shape-safe _field() helper
-        #     (system_validator.py) - needed because the real method used
-        #     bare getattr(v, "severity", None), which silently returns
-        #     None forever against Assessor's dict-shaped violations
-        #     (dicts have no .severity attribute, so getattr's default
-        #     just always won - no exception, no escalation, same "looks
-        #     like a signal, does nothing" shape as the drift_signals gap
-        #     fixed 2026-06-17). Called once per file report - Assessor's
-        #     natural unit is one ContractReport per file, vs. run_engine's
-        #     single combined report - and accumulated.
-        #   - _validate_symbol_integrity: deliberately NOT called. It
-        #     requires an in-memory analysis.symbol_references object
-        #     Assessor's DB-only architecture doesn't have. Not a gap: the
-        #     identical check (null caller/callee) is already performed in
-        #     file_contract_reports() and surfaces as a
-        #     "symbol_reference_integrity" contract violation, which
-        #     _validate_contracts above already escalates to an error.
-        #     Calling both would be the same finding under two shapes.
-        validator = SystemValidator()
-        graph = self.snapshot()
-
         errors = []
-        for report in self.file_contract_reports():
-            errors += validator._validate_contracts(report)
+        warnings = []
 
-        errors += validator._validate_graph_integrity(graph)
-        warnings = validator._validate_shape_signals(graph)
+        for report in self.file_contract_reports():
+            for v in report.violations:
+                if v["severity"] == "error":
+                    errors.append(f"{report.file_path}: {v['message']}")
+
+        edges = self.snapshot().edges
+
+        if len(edges) == 0:
+            errors.append("Graph has zero edges (possible ingestion failure)")
+
+        if len(edges) < 10:
+            warnings.append("Low edge count detected (possible under-analysis)")
 
         return ValidationSummary(errors=errors, warnings=warnings)
 
-    def db_mismatches(self):
-        """
-        CLAUDE-EDIT 2026-06-18 (TRACKER.md section 3 item 17): real source
-        for IntegrityView.db_mismatches, which was permanently hardcoded
-        [] in truth/views.py with the comment "no DB comparison anymore."
-        Investigated whether engine/structural_parity_diff.py's
-        run_structural_diff() (the historical engine-vs-DB parity check
-        that name likely meant) could be revived instead - it can't: it
-        requires an in-memory file_analyses object Assessor's DB-only
-        architecture never produces, and it has zero callers anywhere in
-        the codebase (confirmed via grep) - wiring it would mean
-        inventing fake engine-side data just to satisfy its signature,
-        which is exactly what "never invent information" rules out.
-
-        What IS real and already computed: run_integrity_check() already
-        compares two independently-persisted tables that are supposed to
-        stay in sync - graph_edges (what the query/graph layer reads) and
-        symbol_references (what ingestion wrote) - and flags
-        edge_count_mismatch when their counts disagree. That is a genuine
-        DB-vs-DB mismatch, just never named "db_mismatches" or wired into
-        the Truth Layer. This method extracts exactly that signal, and
-        only that one - run_integrity_check()'s other signal,
-        invalid_edge, is the same null-caller/callee check
-        file_contract_reports() already surfaces as a
-        symbol_reference_integrity contract violation, escalated into
-        validation_summary().errors via _validate_contracts above;
-        including it here too would just be the same finding under two
-        names.
-        """
-        check = self.run_integrity_check()
-        mismatches = []
-
-        for kind, detail in check["errors"]:
-            if kind == "edge_count_mismatch":
-                mismatches.append(
-                    f"edge_count_mismatch: graph_edges={detail['graph_edges']} "
-                    f"vs symbol_references={detail['symbol_references']}"
-                )
-
-        return mismatches
-
     def integrity_view(self):
-        return build_integrity_view(
-            self.validation_summary(),
-            self.snapshot(),
-            db_mismatches=self.db_mismatches(),
-        )
+        return build_integrity_view(self.validation_summary(), self.snapshot())
 
     # =====================================================
     # SUMMARY VIEW / SUBSYSTEM VIEW

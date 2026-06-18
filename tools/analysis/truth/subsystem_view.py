@@ -29,6 +29,19 @@
 # behavior, so existing callers/tests that seed only symbol_references/
 # graph_edges (no `symbols` table rows) are unaffected - see
 # tests/regression/test_run_algebra_end_to_end.py's seeded-DB test.
+#
+# CLAUDE-EDIT 2026-06-18 (TRACKER.md section 3 item 18): build_subsystem_view()
+# now takes an optional builtin_symbols set (DBOracle.builtin_symbols(), the
+# same DB-authoritative set truth/views.py's build_structure_view() already
+# uses to exclude builtins from hotspot ranking). Before this, a builtin like
+# len/str/RuntimeError/print had no `symbols` table declaration, so it fell
+# through to the dotted-name fallback in _module() and came back as its own
+# bare-name "module" - which then polluted whichever real subsystem called it
+# with a fake architectural dependency. Edges where either endpoint is a
+# DB-confirmed builtin are now skipped entirely before module resolution, the
+# same "exclude from this signal but never mutate edges/graph truth itself"
+# treatment build_structure_view() already applies. Passing no
+# builtin_symbols (default None) preserves exact prior behavior.
 
 from __future__ import annotations
 
@@ -37,7 +50,11 @@ from collections import defaultdict
 from tools.analysis.truth.views import SubsystemView
 
 
-def build_subsystem_view(graph, module_map: dict | None = None) -> SubsystemView:
+def build_subsystem_view(
+    graph,
+    module_map: dict | None = None,
+    builtin_symbols: set | None = None,
+) -> SubsystemView:
     """
     Deterministic subsystem extraction.
 
@@ -47,6 +64,12 @@ def build_subsystem_view(graph, module_map: dict | None = None) -> SubsystemView
             symbol_module_map()), real DB-backed module resolution.
             Falls back to dotted-name splitting for any symbol not in
             the map (or when module_map is omitted entirely).
+        builtin_symbols: optional DB-authoritative builtin set (DBOracle.
+            builtin_symbols()). Edges where the caller or callee is a
+            confirmed builtin are excluded from grouping, so dependency
+            lists reflect real architectural dependencies rather than
+            calls to len/str/RuntimeError/print etc. Omit (default None)
+            to preserve exact prior (unfiltered) behavior.
 
     Output:
         SubsystemView wrapping subsystem grouping based on module projection
@@ -54,8 +77,12 @@ def build_subsystem_view(graph, module_map: dict | None = None) -> SubsystemView
 
     subsystems = defaultdict(set)
     edge_counts = defaultdict(int)
+    builtin_symbols = builtin_symbols or set()
 
     for e in graph.edges:
+        if e.caller in builtin_symbols or e.callee in builtin_symbols:
+            continue
+
         caller = _module(e.caller, module_map)
         callee = _module(e.callee, module_map)
 

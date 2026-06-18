@@ -326,7 +326,7 @@ land at a plausible-looking boundary partway through. Full procedure is in
 CLAUDE.md's "File write verification (mandatory)" section; this tracker
 file itself was written and verified using that exact procedure.
 
-**Incident log:** 22 confirmed occurrences so far. Compressed below to
+**Incident log:** 25 confirmed occurrences so far. Compressed below to
 keep this section from growing linearly forever - full blow-by-blow detail
 is kept only for entries that added genuinely new information (a new
 corruption mechanism, or a new pattern about where/when it hits); routine
@@ -436,6 +436,61 @@ procedure below; no new variant.
     it was actually a separate file, and this one) - reconfirms entry 16's
     note to treat edits to this file as elevated-risk and never skip the
     full diff here specifically.
+19. 2026-06-18 (item-17 fix session) - `validation/system_validator.py`,
+    caught immediately: `ast.parse()` raised `SyntaxError: invalid syntax`
+    at `if _field(v, "severity") == ` - cut mid-statement while adding the
+    new `_field()` helper and rewriting `_validate_contracts`. Recovered
+    via the standard `git show HEAD:<path>` baseline + Python
+    `str.replace()` (uniqueness-asserted) + diff-confirm + copy + zero-diff
+    re-confirm. No new mechanism - tallied for completeness.
+20. 2026-06-18 (same session, immediately after) - `assessor/assessor.py`,
+    also caught immediately: `ast.parse()` raised `SyntaxError:
+    unterminated string literal (detected at line 519)` at `print("e` -
+    cut mid-statement while adding the `SystemValidator` import and
+    rewriting `validation_summary()`/adding `db_mismatches()`/
+    `integrity_view()`. Same recovery procedure as #19.
+21. 2026-06-18 (same session, item 17's `db_mismatches` wiring) -
+    `truth/views.py`, the dangerous variant again: the cut landed cleanly
+    right after the syntactically-valid `return SystemSummaryView`
+    statement, silently dropping `SubsystemView`, `RoleView`, and
+    `build_role_view` entirely. `ast.parse()` plus a `tail -25` check run
+    immediately after the edit both passed clean - a false negative not
+    caught until the full regression suite produced 15 failures, the most
+    direct of which was `TypeError: build_integrity_view() got an
+    unexpected keyword argument 'db_mismatches'` (initially, reasonably
+    but incorrectly, suspected to be the section 2b pyc-cache bug instead
+    - touching sources and attempting `rm -rf __pycache__` did not help,
+    which was itself the tell that this guess was wrong), followed by
+    `ImportError: cannot import name 'build_role_view'` on the next run,
+    which is what actually pointed at this file. Recovered via the
+    standard `git show HEAD:<path>` baseline. **Process lesson, not just a
+    tally entry:** the post-edit check run at the time was `ast.parse()` +
+    `tail -25` only, skipping the mandatory full diff - exactly the
+    shortcut CLAUDE.md's procedure and entry 16 above already warn is
+    insufficient. Not a new finding, just a reminder that needed
+    re-learning the hard way: when the cut lands on a clean statement
+    boundary, nothing short of the full diff catches it, no exceptions,
+    including for edits that feel small or safe.
+
+**New refinement to the recovery procedure itself, found this session:**
+recovering `assessor/assessor.py` from incident #20 via `git show
+HEAD:<path>` silently reverted a separate, still-uncommitted fix already
+sitting in the working tree from earlier in the same session (open item
+18's `builtin_symbols=self.oracle.builtin_symbols()` argument added to
+`subsystem_view()`) - because there is no commit access in this setup,
+that fix only ever existed on disk, never in git, so HEAD was already
+stale relative to the file's true intended state even before incident #20
+happened. The zero-diff check did not catch this: it was diffing the
+reconstructed file against that same stale baseline, not against true
+intended state, so it could only ever agree with itself. Only a downstream
+behavioral check caught it - `test_assessor_subsystem_view_is_wired_to_
+the_fix` failing with `assert ['len', 'moduleB'] == ['moduleB']` after an
+otherwise-clean 89/90 suite run. **Lesson for future recovery:** before
+using `git show HEAD:<path>` as a recovery baseline, check whether the
+file already has other uncommitted changes in it this session - if so,
+HEAD is not a safe baseline on its own, and whatever those other changes
+were needs to be reapplied on top of the recovered content and confirmed
+via a real test run, not just a diff against the (incomplete) baseline.
 
 Treat this as a standing defect for every future session in this repo,
 not as noise: verify every Edit/Write via the bash-diff procedure before
@@ -656,28 +711,96 @@ In rough priority order, deduplicated across all four source files:
     Item 2 (Truth.md Phase 1 Row 1 remainder + Row 5) remains open and
     next in line.
 17. **INTEGRITY view is thinner than the codebase's own existing validation
-    logic:** found during the same evaluation. `Assessor.validation_summary()`
-    reimplements 2 of `validation/system_validator.py`'s 4 checks inline
-    and never calls `SystemValidator` itself, silently skipping its
-    `_validate_contracts` escalation path - which would surface real
-    contract-violation errors, not just the null-caller/callee + edge-count
-    checks currently wired. A second, more fully-built validation gate,
-    `validation/contract_validation_pass.py`'s `ContractValidationPass`,
-    has zero callers anywhere in the codebase (confirmed via grep) - same
-    "looks like a feature, isn't wired" shape as previously-deleted
-    orphaned components. Separately, `IntegrityView.db_mismatches`
-    (`truth/views.py`) is permanently hardcoded `[]` with the comment "no
-    DB comparison anymore" - same "looks like a real signal, always empty"
-    shape previously found and fixed for `drift_signals` (Row 3), just
-    never flagged for this field.
-18. **SUBSYSTEM dependency lists aren't builtin/stdlib-filtered:**
-    `truth/subsystem_view.py`'s `build_subsystem_view()` has no equivalent
-    of the noise filtering (`oracle/symbol_noise.py`) that hotspot ranking
-    already applies - cross-subsystem "modules" lists and edge counts
-    include calls to `len`, `str`, `RuntimeError`, `print`, etc. as if they
-    were real architectural dependencies, diluting the one part of the
-    SUBSYSTEM view (the dependency list) that adds value beyond just
-    browsing the directory tree.
+    logic: DONE 2026-06-18.** Found during the same evaluation.
+    `Assessor.validation_summary()` reimplemented 2 of
+    `validation/system_validator.py`'s 4 checks inline and never called
+    `SystemValidator` itself, silently skipping its `_validate_contracts`
+    escalation path. Fixed by having `validation_summary()` call the real
+    `SystemValidator._validate_contracts()` (per file report from
+    `file_contract_reports()`), `_validate_graph_integrity()`, and
+    `_validate_shape_signals()` directly - `_validate_symbol_integrity()`
+    is deliberately not called too, since `file_contract_reports()` already
+    performs the equivalent null-caller/callee check and escalates it via
+    the now-fixed `_validate_contracts` path, so calling both would
+    double-report the same finding under two shapes. `_validate_contracts`
+    itself had a real shape bug: it read violation fields via bare
+    `getattr(v, "severity", None)`, correct for the attribute-style
+    `ContractViolation` dataclass but silently wrong for the dict-shaped
+    violations `Assessor.file_contract_reports()` actually produces in
+    production (`getattr(dict, ...)` never raises, just always returns the
+    default, so an error-severity violation would never escalate, no
+    visible failure). Fixed with a new module-level `_field()` helper in
+    `system_validator.py` - same precedent as
+    `contracts/contract_drift_classifier.py`'s `_field()` and
+    `truth/query_executor.py`'s `get_field()`, this codebase's established
+    convention of a small per-module dual-shape reader rather than a
+    shared import. `validation/contract_validation_pass.py`'s
+    `ContractValidationPass` (zero callers, confirmed via grep) was
+    evaluated as a possible second fix target and left alone - its
+    capability is now covered by the wiring above, and there was no
+    evidence it does anything `_validate_contracts` doesn't already cover
+    once fixed, so leaving it unwired rather than inventing a second call
+    site for it. Separately, `IntegrityView.db_mismatches`
+    (`truth/views.py`) was permanently hardcoded `[]`. Investigated
+    reviving `engine/structural_parity_diff.py`'s `run_structural_diff()`
+    as the historical fix for this - ruled out: it requires an in-memory
+    `file_analyses` object Assessor's DB-only architecture never produces,
+    and has zero callers anywhere, so wiring it would mean fabricating
+    engine-side data just to fill the field, which "never invent
+    information" rules out. Used what's real instead:
+    `Assessor.run_integrity_check()` already compares two
+    independently-persisted tables that are supposed to agree
+    (`graph_edges` vs `symbol_references`) and flags `edge_count_mismatch`
+    when they don't - a genuine DB-internal-consistency signal, just never
+    wired into the Truth Layer. New `Assessor.db_mismatches()` extracts
+    exactly that signal (and only that one - `invalid_edge` is already
+    covered elsewhere); `build_integrity_view()` gained an optional
+    `db_mismatches=None` parameter (default preserves exact prior `[]`
+    behavior for any caller that doesn't pass one);
+    `Assessor.integrity_view()` now passes it through. `db_mismatches`
+    stays `list[str]`, matching `truth/query_plan.py`'s INTEGRITY-field
+    contract (`{"errors", "warnings", "db_mismatches"}`). New regression
+    file `tests/regression/test_integrity_view_wiring.py` (6 tests:
+    `_field()` unit coverage, a dict-shaped error-violation escalation
+    test, a real-DB integration test proving `validation_summary()`
+    escalates a genuine null-callee row end to end, a low-edge-count
+    warning-preserved regression guard, and two `db_mismatches()` tests -
+    real table-count disagreement detected, and no false positive when
+    tables agree). Full suite re-run after the fix: 96/96 passed, no
+    regressions. Five more silent-truncation incidents were hit recovering
+    this fix (section 2a incidents 19-21, one of which - the
+    `truth/views.py` cut - went uncaught past an insufficient `ast.parse()`
+    + `tail` check until the full suite surfaced it), plus a new recovery-
+    procedure caveat about `git show HEAD` going stale against other
+    uncommitted changes already in the same file (also section 2a, right
+    after incident 21) - see that section for full detail.
+18. **SUBSYSTEM dependency lists aren't builtin/stdlib-filtered: DONE
+    2026-06-17/18.** `truth/subsystem_view.py`'s `build_subsystem_view()`
+    had no equivalent of the noise filtering hotspot ranking
+    (`truth/views.py`'s `build_structure_view()`) already applies - a
+    builtin like `len`/`str`/`RuntimeError`/`print` has no `symbols` table
+    declaration, so `_module()` fell through to the dotted-name fallback
+    and returned the bare builtin name as its own "module," polluting
+    whichever real subsystem called it with a fake architectural
+    dependency (and, if a builtin happened to be a caller too, could show
+    up as its own bogus top-level subsystem entry). Fixed:
+    `build_subsystem_view()` now takes an optional `builtin_symbols` set
+    (`DBOracle.builtin_symbols()`, the same DB-authoritative set
+    `build_structure_view()` already uses) and skips any edge where the
+    caller or callee is a confirmed builtin, before module resolution -
+    same "exclude from the signal, never mutate edges/graph truth" pattern
+    the hotspot fix already established. `Assessor.subsystem_view()`
+    (the real production path `ask()`/`all_views()` call) was updated to
+    pass it. Default kept `None`, preserving exact prior behavior for any
+    caller that doesn't supply one. New regression file
+    `tests/regression/test_subsystem_builtin_noise_filter.py` (5 tests:
+    fixture sanity-check that `len`/`print` are confirmed builtins and the
+    real symbols aren't, a test proving the bug exists without the filter,
+    a test proving the filter excludes the noise when supplied directly to
+    `build_subsystem_view()`, a test confirming `Assessor.subsystem_view()`
+    itself is wired to pass `builtin_symbols` (not just available, live),
+    and a test confirming omitting the argument preserves prior behavior
+    exactly). Full suite passed with this fix in place.
 
 ---
 
@@ -1401,3 +1524,88 @@ previously-documented `PermissionError` variants. Fix: `touch` the source
 forces cache invalidation even when the raw delete doesn't visibly take
 effect. See section 2a incident 16 and section 2b Variant 3 for full
 detail.
+
+### 2026-06-18 (item-17/18 fix session) - INTEGRITY view gap (item 17) and SUBSYSTEM builtin filter (item 18) both closed
+
+Per Bart's "if the small ones are independent of [item 2] let's get them
+done" - item 2 (mutation-intent capture) stays explicitly deferred,
+untouched this session.
+
+Item 18 (SUBSYSTEM dependency lists not builtin/stdlib-filtered):
+`build_subsystem_view()` gained an optional `builtin_symbols` set,
+sourced from the same DB-authoritative `DBOracle.builtin_symbols()` that
+hotspot ranking already uses, and now skips any edge where the caller or
+callee is a confirmed builtin before module resolution.
+`Assessor.subsystem_view()` was updated to pass it through. New
+regression file `tests/regression/test_subsystem_builtin_noise_filter.py`
+(5 tests). See section 3 item 18 (now closed) for full detail.
+
+Item 17 (INTEGRITY view thinner than the codebase's own validation logic):
+two real gaps, fixed together. (1) `Assessor.validation_summary()` now
+calls the real `SystemValidator._validate_contracts()` /
+`_validate_graph_integrity()` / `_validate_shape_signals()` instead of a
+parallel inline reimplementation that never escalated contract violations.
+`_validate_contracts` itself had a shape bug - bare `getattr()` against
+violations that are actually dict-shaped in production, so an
+error-severity violation never escalated, no visible failure - fixed with
+a new `_field()` helper in `system_validator.py` (same precedent as
+`contract_drift_classifier.py`'s `_field()` and `query_executor.py`'s
+`get_field()`). (2) `IntegrityView.db_mismatches` was permanently
+hardcoded `[]`. Reviving `engine/structural_parity_diff.py`'s
+`run_structural_diff()` was investigated and ruled out - it needs an
+in-memory object Assessor's DB-only architecture never produces, and
+wiring it would mean fabricating data, which "never invent information"
+rules out. Used what's real instead: `Assessor.run_integrity_check()`'s
+already-computed `edge_count_mismatch` signal (`graph_edges` vs
+`symbol_references` table-count disagreement), extracted via a new
+`Assessor.db_mismatches()` and threaded through `build_integrity_view()`'s
+new optional `db_mismatches=None` parameter. New regression file
+`tests/regression/test_integrity_view_wiring.py` (6 tests). See section 3
+item 17 (now closed) for full detail.
+
+Full project test suite after both fixes: 96/96 passed
+(`pytest tools/analysis/tests/`), no regressions.
+
+Five more silent-truncation incidents this session (section 2a incidents
+19-21, bumping the running count to 25): `validation/system_validator.py`
+and `assessor/assessor.py` each cut mid-statement and were caught
+immediately by `ast.parse()`; `truth/views.py` hit the dangerous variant
+again - cut cleanly right after a valid `return` statement, silently
+dropping `SubsystemView`/`RoleView`/`build_role_view` entirely, and this
+time the post-edit check that ran (`ast.parse()` + `tail`) was itself
+insufficient and missed it - only the full regression suite's cascading
+failures caught it, by way of an initial, reasonable-but-wrong suspicion
+that it was the section 2b pyc-cache bug instead. All three recovered via
+the standard `git show HEAD:<path>` baseline procedure. That recovery
+itself surfaced a new caveat, logged in section 2a right after incident
+21: reconstructing `assessor.py` from `git show HEAD` silently reverted a
+separate, still-uncommitted item-18 fix that was already sitting in the
+same file from earlier in this session, because HEAD never reflected that
+fix (no commit access in this setup) - the zero-diff check didn't catch
+it, since it was only checking against that same stale baseline. Only a
+downstream test failure (`test_assessor_subsystem_view_is_wired_to_the_
+fix`) caught it. Recovered with a second, narrowly-targeted fix on top of
+the live (otherwise-correct) file. Lesson for future sessions: `git show
+HEAD` is only a safe recovery baseline when HEAD already reflects every
+currently-intended-but-uncommitted change to that file - check for other
+uncommitted changes before trusting it alone.
+
+While documenting all of the above, TRACKER.md itself hit incident 16's
+already-documented pattern again: a large multi-part edit landed correctly
+at every insertion point judging by in-context Read, but the live file on
+disk had silently shrunk below its pre-edit baseline line count and its
+true tail was cut mid-sentence - caught only by re-running the mandatory
+post-edit checks instead of trusting the Edit tool's own success report.
+Recovered via the standard `git show HEAD:<path>` baseline (safe here,
+since this file had no other uncommitted changes pending) + the same four
+edits reapplied via assertion-guarded `str.replace()` + zero-diff
+confirmation against the reconstructed content before copying over the
+live file. Not logged as a new numbered section 2a incident in its own
+right to avoid the entry referencing itself mid-write; recorded here
+instead as the most direct evidence yet that this file should be treated
+as elevated-risk on every edit, not just during unusually large rewrites.
+
+Housekeeping note for Bart: `tools/analysis/assessor/assessor_fixed.py`
+is a stray file from earlier recovery work that the sandbox could not
+delete (locked/undeletable here) - safe to remove on the Windows checkout
+if it's not meant to be there.

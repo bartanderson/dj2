@@ -6,6 +6,25 @@ from dataclasses import dataclass
 from typing import Any
 
 
+# CLAUDE-EDIT 2026-06-18 (TRACKER.md section 3 item 17): shape-safe field
+# read for contract violations, same precedent as
+# contracts/contract_drift_classifier.py's _field() and
+# truth/query_executor.py's get_field(). Needed because
+# _validate_contracts below is called against two legitimately different
+# violation shapes: the attribute-style ContractViolation dataclass
+# (contracts/contract_observer.py, the original run_engine shape this
+# validator was written against) and the plain-dict shape
+# Assessor.file_contract_reports() actually produces in production today.
+# getattr(dict, "severity", None) does not raise on a dict - it silently
+# returns the default every time, so escalation was a no-op against
+# Assessor's reports with no visible error. Same "looks like a signal,
+# does nothing" shape as the drift_signals gap fixed 2026-06-17.
+def _field(v: Any, name: str, default: Any = None) -> Any:
+    if isinstance(v, dict):
+        return v.get(name, default)
+    return getattr(v, name, default)
+
+
 @dataclass
 class ValidationResult:
     ok: bool
@@ -101,9 +120,11 @@ class SystemValidator:
             errors.append("Contract report missing violations")
 
         # escalate errors only
+        # CLAUDE-EDIT 2026-06-18: _field() instead of bare getattr - see
+        # the module-level comment above _field()'s definition.
         for v in getattr(report, "violations", []):
-            if getattr(v, "severity", None) == "error":
-                errors.append(f"{v.contract_name}: {v.message}")
+            if _field(v, "severity") == "error":
+                errors.append(f"{_field(v, 'contract_name')}: {_field(v, 'message')}")
 
         return errors
 

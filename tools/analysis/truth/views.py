@@ -84,11 +84,27 @@ class IntegrityView:
     db_mismatches: list[str]
 
 
-def build_integrity_view(validation_result, graph) -> IntegrityView:
+# CLAUDE-EDIT 2026-06-18 (TRACKER.md section 3 item 17): db_mismatches
+# used to be unconditionally [] with the comment "no DB comparison
+# anymore." Investigated whether engine/structural_parity_diff.py's
+# run_structural_diff() (the historical engine-vs-DB parity check this
+# name likely meant) could be revived - it can't: it requires an
+# in-memory file_analyses object Assessor's DB-only architecture never
+# produces, and it has zero callers anywhere (confirmed via grep), so
+# wiring it would mean inventing fake engine-side data just to fill the
+# field - exactly what "never invent information" rules out. What's real
+# instead: Assessor.run_integrity_check() already compares two
+# independently-persisted tables that are supposed to agree
+# (graph_edges vs symbol_references) and flags edge_count_mismatch when
+# they don't - a genuine DB-internal mismatch, just never wired into the
+# Truth Layer. See Assessor.db_mismatches() for the extraction. Default
+# kept as [] so existing callers that don't pass anything keep exactly
+# the prior behavior.
+def build_integrity_view(validation_result, graph, db_mismatches=None) -> IntegrityView:
     return IntegrityView(
         errors=validation_result.errors,
         warnings=validation_result.warnings,
-        db_mismatches=[],  # no DB comparison anymore
+        db_mismatches=db_mismatches or [],
     )
 
 @dataclass
