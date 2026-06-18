@@ -6,6 +6,15 @@
 - This is a DM/AI dungeon-game project. The active work area is `tools/analysis/` —
   a static-analysis / code-graph engine intended to eventually power a real AI agent.
 
+## Resuming a session
+If `SESSION_STATE.md` exists at the repo root, read it first - it's a high-density
+chat-resume snapshot (objective / constraints & stack / current status / next
+steps) meant to let a brand-new chat pick up without replaying history. It is
+**not authoritative**: it's a derived convenience layer, overwritten in full on
+each update (never appended to), and gitignored as local scratch rather than a
+reviewed deliverable. If it ever conflicts with TRACKER.md/DESIGN.md/HISTORY.md
+below, those win - update SESSION_STATE.md to match them, not the reverse.
+
 ## Where to look for status, every session
 Before doing anything else in `tools/analysis/`, read the docs in
 `tools/analysis/docs/`:
@@ -56,6 +65,31 @@ finishing work, so Bart can see what changed via `git diff`, and so a future ses
 - Regression tests live under `tools/analysis/tests/regression/` — plain Python,
   `assert`-based `test_*` functions, runnable directly via `python3 file.py` or pytest.
 
+## Coding guidelines
+General behavioral defaults, merged in 2026-06-18. These bias toward caution over
+speed - for trivial tasks, use judgment rather than applying all of this ceremony.
+
+1. **Think before coding.** State assumptions explicitly rather than guessing
+   silently. If multiple interpretations exist, present them instead of picking
+   one unannounced. If a simpler approach exists, say so and push back when
+   warranted. If something is genuinely unclear, stop and ask rather than
+   guessing.
+2. **Simplicity first.** Minimum code that solves the problem - no speculative
+   features, no abstractions for single-use code, no unrequested configurability,
+   no error handling for impossible scenarios. If it could be a quarter the size,
+   rewrite it.
+3. **Surgical changes.** Touch only what the task requires. Don't "improve"
+   adjacent code, comments, or formatting; don't refactor things that aren't
+   broken; match existing style even when you'd do it differently. Remove
+   imports/variables/functions that your own change made unused, but leave
+   pre-existing dead code alone (mention it, don't delete it). Every changed
+   line should trace directly to the request.
+4. **Goal-driven execution.** Turn tasks into verifiable goals ("fix the bug" →
+   write a test that reproduces it, then make it pass) and state a brief plan
+   with a verify step per stage for multi-step work. Strong success criteria
+   let work proceed without constant check-ins; weak ones ("make it work")
+   force them.
+
 ## Encoding — em dash corruption
 Bart has seen em dashes (—) come out as `ΓÇö` in these docs. That's the classic
 mojibake of UTF-8 em-dash bytes (E2 80 94) being written or re-read through a
@@ -70,7 +104,7 @@ non-UTF-8 codepage (Windows OEM/CP437) somewhere in the write path. Avoid this:
 - When in doubt, prefer a plain hyphen (`-`) or rewording over an em dash in
   these docs — it's not worth the encoding risk for punctuation.
 
-## File write verification (mandatory)
+## File writes (mandatory)
 This session (2026-06-16/17) found that writes/edits to files in this repo can
 silently fail to land on disk while every available signal still looks correct
 - including the Read tool itself, which on at least one occasion (Truth.md,
@@ -81,25 +115,28 @@ retry reproduced the exact same truncated byte count as a prior failed Edit) -
 switching tools is not a fix, and trusting Read's in-context view is not a
 safe verification step on its own.
 
-Mandatory procedure after every write/edit to a file in this repo, before
-doing anything else (no other tool calls in between):
-1. Have the exact intended final content available as a string, separate from
-   whatever the Read tool currently shows.
-2. Verify on the actual filesystem via the sandbox shell (`bash`), not via the
-   Read/Edit/Write tools: write the intended content to a temp file and `diff`
-   it against the real target file. Zero diff output = confirmed landed. This
-   is the authoritative check - line/byte counts and tail snippets are a
-   useful quick first pass but are not sufficient on their own, since a
-   truncation can land at a plausible-looking boundary partway through.
-3. For Python files, `ast.parse` is a cheap sanity check but catches only
-   syntax-breaking truncation, not the dangerous variant that lands cleanly.
-   Always pair it with the full diff in step 2.
-4. If the diff shows any mismatch, do not retry via Edit or Write - go
-   straight to a direct bash heredoc rewrite (`cat > path << 'EOF' ... EOF`,
-   or `cat >>` for an append onto an already-confirmed-correct prefix), then
-   re-run the diff to confirm.
-5. Keep the em-dash UTF-8 round-trip check (above) as a supplement for docs
-   that use em dashes, not a substitute for the full diff.
+**Current procedure (2026-06-18): use `tools/dev/safe_write.py` for every
+write/edit to a file in this repo, instead of the Edit/Write file tools.**
+It writes via temp-file + atomic rename, then reads the result back and
+byte-compares it against what was sent in - all in one call, with no content
+ever touching the historically-unreliable Edit/Write tool path:
+
+    python3 tools/dev/safe_write.py <target_path> << 'EOF'
+    <exact full file content, UTF-8>
+    EOF
+
+A printed `OK ... sha256=...` line means the write is confirmed landed; a
+`MISMATCH` line (with the first differing byte offset) means don't trust the
+file and re-run. Known tradeoff: this means whole-file rewrites rather than
+small in-place patches, even for minor edits to large files - accepted
+deliberately, since targeted in-place edits are exactly what the Edit tool's
+truncation history affected.
+
+If `tools/dev/safe_write.py` itself is ever unavailable or inapplicable, fall
+back to the previously-documented manual procedure: write the intended content
+to a temp file via bash heredoc and `diff` it against the real target file
+(zero diff output = confirmed landed); for Python files pair this with
+`ast.parse` as a cheap (but not sufficient on its own) sanity check.
 
 ## Status history
 Session-by-session history (what changed, when, why, including the

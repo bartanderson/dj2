@@ -13,6 +13,9 @@ share/
 #session backups untracked
 .nativeclaw/
 
+#local chat-resume scratch state, regenerated/overwritten constantly - not a reviewed deliverable
+/SESSION_STATE.md
+
 #tool generated and constantly changing, so of no value
 ai_context/sessions/
 ai_context/knowledge.db
