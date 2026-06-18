@@ -201,13 +201,39 @@ outputs.
 value:
 - [x] Hotspot ranking quality - resolved, builtins excluded from the
   degree-count ranking via the DB-authoritative builtin set.
-- [ ] Stability signal usefulness - open.
-- [ ] Integrity signal usefulness - open.
-- [ ] Subsystem interpretability - the correctness bug is fixed (see Tier
-  1), but evaluation against real debugging/onboarding tasks hasn't
-  happened yet.
-- [ ] Role classification interpretability - same shape: correct and
-  tested, not yet evaluated against real tasks.
+- [x] Stability signal usefulness - EVALUATED 2026-06-17: verdict NOT YET
+  USEFUL. Real signal, but its only contract source (null caller/callee in
+  persisted symbol_references) is a raw-ingestion-corruption check, not an
+  architectural stability check - trivially clean (142 stable / 0 unstable
+  / 0 drift_signals) against the real 157-file project DB. Full findings in
+  chronological log.
+- [x] Integrity signal usefulness - EVALUATED 2026-06-17: verdict NOT YET
+  USEFUL, and narrower than it should be - `Assessor.validation_summary()`
+  bypasses the already-built `SystemValidator` class entirely (reimplements
+  2 of its 4 checks inline, skips its `_validate_contracts` escalation
+  path), and `IntegrityView.db_mismatches` is a permanently hardcoded `[]`
+  ("no DB comparison anymore") - same orphaned-looks-like-a-signal shape as
+  the old drift_signals bug, just never flagged. Full findings in
+  chronological log; see also new open items 16-18 below.
+- [x] Subsystem interpretability - EVALUATED 2026-06-17: verdict MIXED. The
+  Row 4 fix holds - grouping now tracks real top-level package directories,
+  not near-singletons. But (a) `_file_path_to_module()` (db_oracle.py)
+  doesn't trim to a project-relative path the way the codebase's two
+  existing `module_name_from_file_path()` utilities do, so subsystem
+  identity strings are polluted with the full absolute filesystem path,
+  and (b) the per-subsystem dependency list isn't builtin/stdlib-filtered
+  the way hotspot ranking explicitly is, diluting the "what does this
+  depend on" signal with noise (`len`, `str`, `RuntimeError`, ...). Full
+  findings in chronological log.
+- [x] Role classification interpretability - EVALUATED 2026-06-17: verdict
+  NOT YET RELIABLE. The keyword-substring-on-callee-name heuristic produces
+  false positives whenever a file merely calls/references another
+  subsystem's function or type by name - confirmed against real data:
+  `db_oracle.py` (a persistence/query file) gets flagged "graph"/
+  "classification"/"reporting" because it references `GraphBundle`/
+  `GraphEdge`, `embed_symbol`, and `print`. Orchestrator files (e.g.
+  `run_engine.py`) correctly get every role, which is true but
+  undifferentiating. Full findings in chronological log.
 
 **TIER 3 - AUTHORITATIVE (system replacement).** All open: [ ] Assessor
 fully uses Truth Layer exclusively, [ ] Oracle fully routed through Truth
@@ -300,64 +326,51 @@ land at a plausible-looking boundary partway through. Full procedure is in
 CLAUDE.md's "File write verification (mandatory)" section; this tracker
 file itself was written and verified using that exact procedure.
 
-**Incident log (at least 14 confirmed occurrences across this project's
-sessions, in order):**
-1. 2026-06-16 - small Edit to `query_session.py` truncated mid-statement
-   (10041 of ~10222 bytes).
-2. 2026-06-17 - `api/oracle_router.py` truncated twice (lost
-   `_route_expand()`'s final `return`, causing a downstream `TypeError`);
-   a Write-tool retry reproduced the identical truncated byte count.
-3. 2026-06-17 - `tests/regression/test_run_algebra_end_to_end.py`
-   truncated.
-4. 2026-06-17 - REFACTOR OPS BOARD.md itself silently dropped an entire
-   appended section.
-5. 2026-06-17 - all 5 files touched in the shape-contract audit
-   (`truth/views.py`, `truth/subsystem_view.py`, `truth/query_executor.py`,
-   `truth/query_plan.py`, `truth/query_compiler.py`) truncated mid-file;
-   plus both new test files for that session were written via heredoc
-   from the start; plus REFACTOR OPS BOARD.md's own section about this was
-   truncated mid-sentence on the first attempt.
-6. 2026-06-17 (later) - the determinism-test-fix edit to
-   `test_role_view_routing.py` truncated mid-comment.
-7. 2026-06-17 (later still) - an Edit to the new
-   `test_discovery_api_and_subsystem_fix.py` produced no error and a
-   correct-looking in-context view, but the on-disk byte count was
-   provably identical to the pre-edit file.
-8. 2026-06-17 (later session) - `contracts/contract_drift_classifier.py`
-   truncated mid-comment, missing its entire classification loop and
-   `return signals` statement (syntactically valid, so `ast.parse()` alone
-   did not catch it).
-9. 2026-06-17 (same session) - `Truth Kernel Board.md` truncated mid-word
-   on the very next edit after #8 was fixed.
-10. 2026-06-17 (later session) - all four files in the single-file-filter
-    fix batch (`oracle/embedding_model.py`, `truth/query_plan.py`,
-    `truth/query_executor.py`, `truth/query_compiler.py`) came back
-    truncated - the worst single-batch blast radius on record. One
-    (`embedding_model.py`, cut mid-keyword `def`) was syntax-breaking; the
-    other three were not.
-11. 2026-06-17 (later still) - all 6 old test files edited during the
-    pre-regression-suite test audit were truncated, including one
-    (`test_db_utils.py`) that `ast.parse()` reported as fine despite being
-    cut to a single half-written comment line with no actual code - the
-    exact "passes ast, still wrong" case the verification procedure exists
-    to catch.
-12. 2026-06-17 (run-on continuation) - all 3 test files edited while
-    fixing the bucket-gate bug were truncated mid-line despite the Edit
-    tool itself reporting success.
-13. 2026-06-17 (Pass 2 session) - both `DESIGN.md` and `TRACKER.md` itself
-    were silently truncated by edits earlier in this same session (the
-    Agent Capability Layer rewrite, and this file's item-13 expansion).
-    Caught only because this section's own procedure was followed before
-    moving on to unrelated work: `wc -l`/`wc -c` against `git show
-    HEAD:<path>` showed DESIGN.md on disk at 438/451 lines and TRACKER.md
-    at 951/952, both cut off mid-word with no trailing newline. Recovered
-    by treating the git HEAD blob as the verified-correct base, re-applying
-    the intended edits via a bash/python splice (not Edit/Write on the
-    live file), and writing the result via direct redirect, each verified
-    with a zero-diff check before moving on. Worth naming explicitly: this
-    is the first time the bug has hit this tracker file's own
-    self-description of the bug - a reminder that "we already wrote the
-    procedure down" is not the same as "the procedure ran this time."
+**Incident log:** 17 confirmed occurrences so far. Compressed below to
+keep this section from growing linearly forever - full blow-by-blow detail
+is kept only for entries that added genuinely new information (a new
+corruption mechanism, or a new pattern about where/when it hits); routine
+repeats of an already-understood failure mode are tallied instead.
+
+**Incidents #1-12 (2026-06-16 to 2026-06-17, tally only - mechanics fully
+understood since #1, nothing below added new information):** 12 occurrences
+across `query_session.py`, `api/oracle_router.py` (x2, one a Write-tool
+retry that reproduced the identical truncated byte count - confirms
+retrying via a different tool is not a fix), `test_run_algebra_end_to_end.py`,
+REFACTOR OPS BOARD.md (x2), a 5-file batch in the shape-contract audit, a
+4-file batch in the single-file-filter fix (worst blast radius: 4/4
+files hit), a 6-file batch in the pre-regression-suite test audit
+(including one cut to a single half-written comment line that still
+passed `ast.parse()` clean), a 3-file batch in the bucket-gate fix,
+`test_role_view_routing.py`, `Truth Kernel Board.md`, and one case
+(`test_discovery_api_and_subsystem_fix.py`) where the edit produced no
+error and a correct in-context Read but the on-disk byte count was
+provably unchanged from before the edit. All recovered via the standard
+procedure below; no new variant.
+
+13. 2026-06-17 (Pass 2 session) - first time the bug hit this tracker file
+    and DESIGN.md, both truncated mid-word with no trailing newline.
+    Recovered via `git show HEAD:<path>` as the verified-correct base.
+    Notable as the first self-referential hit: the bug corrupting the
+    file that documents the bug.
+14. 2026-06-17 (Tier 2 evaluation session) - a genuinely new variant:
+    correct content landed intact but with 586 trailing `\x00` bytes
+    padded on afterward. Padding, not loss - the first incident where
+    content wasn't missing. `file` said "ASCII text" and UTF-8 decode
+    succeeded (NUL is valid UTF-8); `grep` reporting "binary file matches"
+    was the only tell. Fixed via `data.rstrip(b'\x00')`.
+15. 2026-06-17 (same session, immediately after #14) - a 3-in-a-row
+    cluster: the next two edits to this file (incidents #15 and #16 in
+    the original numbering) each truncated again - one mid-word deep in
+    the chronological log, the next in an unrelated paragraph far from
+    the part actually being edited, both still well-formed Markdown with
+    no syntactic tell. Both recovered the same way (git-HEAD-or-last-
+    verified-state base + Python `str.replace()` + direct file copy +
+    zero-diff check). Three hits on three consecutive edits to this one
+    file in a single sitting is the highest density yet recorded -
+    treat edits to TRACKER.md itself as elevated-risk, not just edits to
+    this repo in general, and always run the full reconstruction-diff,
+    never a byte-count shortcut, on this file specifically.
 
 Treat this as a standing defect for every future session in this repo,
 not as noise: verify every Edit/Write via the bash-diff procedure before
@@ -409,11 +422,16 @@ sufficient, since on this mount it sometimes isn't.
 
 In rough priority order, deduplicated across all four source files:
 
-1. **Phase 2 evaluation work (Truth Kernel Board Tier 2):** evaluate
-   Stability signal usefulness, Integrity signal usefulness, Subsystem
-   interpretability, and Role classification interpretability against
-   real debugging/onboarding tasks - all four are correctness-verified
-   already, this is a judgment-call evaluation, not a coding fix.
+1. **Phase 2 evaluation work (Truth Kernel Board Tier 2): DONE 2026-06-17.**
+   Evaluated Stability signal usefulness, Integrity signal usefulness,
+   Subsystem interpretability, and Role classification interpretability
+   against real debugging/onboarding tasks, using a real engine run over
+   this project's own `tools/` corpus (157 files, 631 symbols, 2127
+   references) rather than the hand-seeded fixture data the regression
+   suite uses. Verdict: mixed-to-negative, not blocking but real - see
+   section 1b's Tier 2 block (now closed with verdicts) and the
+   chronological log for the full evidence-based writeup. Produced 3 new
+   concrete, scoped, fixable findings - see items 16-18 below.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
@@ -506,6 +524,42 @@ In rough priority order, deduplicated across all four source files:
     status correction, not an open task. The system arrived at a stable,
     intentional end state; it's just a different end state than the
     original plan described, and nothing previously said so.
+16. **SUBSYSTEM identity strings polluted by absolute file paths:** found
+    during the Tier 2 usefulness evaluation (item 1, 2026-06-17).
+    `oracle/db_oracle.py`'s `_file_path_to_module()` (added for the Row 4
+    SUBSYSTEM fix) dots every path segment of the raw stored `file_path`
+    with no project-root trimming, unlike the two existing, already-correct
+    `module_name_from_file_path()` utilities (`core/pathing.py`,
+    `graph/module_resolution.py`) that take a `project_root` and return a
+    clean relative dotted name. Confirmed: produces
+    `sessions.eloquent-magical-bohr.mnt.dj2.tools.analysis.oracle` instead
+    of `tools.analysis.oracle` against a real engine run in this session's
+    sandbox; would equally produce a drive-letter-polluted name on Bart's
+    Windows checkout. Fix is mechanical - reuse one of the two existing
+    utilities instead of the ad hoc reimplementation.
+17. **INTEGRITY view is thinner than the codebase's own existing validation
+    logic:** found during the same evaluation. `Assessor.validation_summary()`
+    reimplements 2 of `validation/system_validator.py`'s 4 checks inline
+    and never calls `SystemValidator` itself, silently skipping its
+    `_validate_contracts` escalation path - which would surface real
+    contract-violation errors, not just the null-caller/callee + edge-count
+    checks currently wired. A second, more fully-built validation gate,
+    `validation/contract_validation_pass.py`'s `ContractValidationPass`,
+    has zero callers anywhere in the codebase (confirmed via grep) - same
+    "looks like a feature, isn't wired" shape as previously-deleted
+    orphaned components. Separately, `IntegrityView.db_mismatches`
+    (`truth/views.py`) is permanently hardcoded `[]` with the comment "no
+    DB comparison anymore" - same "looks like a real signal, always empty"
+    shape previously found and fixed for `drift_signals` (Row 3), just
+    never flagged for this field.
+18. **SUBSYSTEM dependency lists aren't builtin/stdlib-filtered:**
+    `truth/subsystem_view.py`'s `build_subsystem_view()` has no equivalent
+    of the noise filtering (`oracle/symbol_noise.py`) that hotspot ranking
+    already applies - cross-subsystem "modules" lists and edge counts
+    include calls to `len`, `str`, `RuntimeError`, `print`, etc. as if they
+    were real architectural dependencies, diluting the one part of the
+    SUBSYSTEM view (the dependency list) that adds value beyond just
+    browsing the directory tree.
 
 ---
 
@@ -1065,3 +1119,116 @@ repeated here):**
 **Separately, this same session caught and fixed a recurrence of the
 silent file-truncation bug** hitting this tracker's own two most recent
 edits - see section 2a, incident 13, for the full incident writeup.
+
+### 2026-06-17 (later still) - Tier 2 evaluation: Stability/Integrity/Subsystem/Role usefulness
+
+Per section 3 item 1 (top of the priority-ordered open-items list): the
+four Tier 2 checklist items were all "correctness-verified, not yet
+evaluated against real tasks." Did the evaluation for real, against a real
+DB - not the hand-seeded fixture data `tests/regression/` uses - by running
+`EngineRunner` over this project's own `tools/` corpus (same pattern as
+`tests/core/test_engine_smoke.py`) and querying all 6 views through
+`Assessor`/`ask.py`. Result: 157 files, 631 symbols, 2127 references, a
+real non-trivial graph. Verdict for all four: see section 1b's Tier 2
+block, now closed with detailed verdicts. Summary here; evidence and root
+causes only, not repeated from section 1b:
+
+**Stability/Integrity (evaluated together - they share one data source):**
+`Assessor.file_contract_reports()` has exactly one contract check: does a
+persisted `symbol_reference` have a null caller or callee. Against the
+real 157-file DB this returned 142 stable files, 0 unstable, 0
+drift_signals - not because the project has zero real issues (this
+project's own incident history says otherwise - dead bucket-gate, orphaned
+Filter, hardcoded `drift_signals=[]`, etc., none of which this check is
+shaped to catch), but because a working ingestion pipeline simply doesn't
+produce null caller/callee pairs. The check is real and correctly wired,
+it's just answering a narrower question ("did ingestion corrupt this row")
+than its view names ("STABILITY", "drift_signals") suggest. Looked for
+richer validation already built but unused, same shape as the Row 2/3/4
+wiring gaps closed earlier this week, and found two: `validation/
+system_validator.py`'s `SystemValidator` class (which `Assessor.
+validation_summary()` bypasses, reimplementing 2 of its 4 checks inline
+and dropping its `_validate_contracts` escalation path) and `validation/
+contract_validation_pass.py`'s `ContractValidationPass` (zero callers
+anywhere, confirmed via grep). Also found `IntegrityView.db_mismatches`
+(`truth/views.py`) is permanently hardcoded `[]` ("no DB comparison
+anymore") - an orphaned-looking field nobody has flagged since the
+drift_signals fix. Recorded as new open items 16 (partial) and 17.
+
+**Subsystem interpretability:** the Row 4 fix (real module_map instead of
+dotted-name heuristic) holds up - 31 subsystems against the real DB,
+matching the project's actual ~27 top-level package directories
+(api/, assessor/, graph/, oracle/, truth/, ...), not the previous ~355
+near-singleton fragmentation. But inspecting the real output surfaced two
+new issues: (1) `oracle/db_oracle.py`'s `_file_path_to_module()` doesn't
+trim the stored `file_path` to a project-relative path before dotting it,
+so subsystem identity strings carry the full absolute filesystem path
+(confirmed: `sessions.eloquent-magical-bohr.mnt.dj2.tools.analysis.oracle`
+instead of `tools.analysis.oracle` in this session's sandbox) - the
+codebase already has two correct utilities for this
+(`core/pathing.py` and `graph/module_resolution.py`, both named
+`module_name_from_file_path()`) that `_file_path_to_module()` didn't reuse;
+(2) the per-subsystem "modules" dependency list has no builtin/stdlib
+filtering (confirmed: `len`, `str`, `RuntimeError`, `print`, etc. appear
+as cross-subsystem dependencies), unlike hotspot ranking which explicitly
+excludes builtins. Recorded as new open items 16 (the path issue) and 18
+(the noise-filtering issue).
+
+**Role classification interpretability:** `engine/responsibility_map.py`'s
+`detect_file_roles()` keyword-matches role-pattern substrings (e.g.
+"graph", "report", "symbol") against the joined text of a file's path plus
+all its callees' names. Verified directly against real callee data why
+this misclassifies: `db_oracle.py` (a persistence/query-layer file) is
+flagged with `classification=True`/`graph=True`/`reporting=True` solely
+because it references `tools.analysis.graph.graph_builder.GraphBundle`/
+`GraphEdge` (a type it consumes, not builds), `oracle.embedding_model.
+embed_symbol`/`symbol_noise.is_accessor_chain_noise` (substring "symbol"),
+and a plain `print()` call (substring "report" - no, substring match is on
+"print" itself, which is in the `reporting` pattern list). The heuristic
+conflates "calls something whose name contains keyword X" with "this
+file's job is X." Orchestrator files fare better by accident:
+`run_engine.py` correctly gets every role true, since it really does call
+into every subsystem - true, but undifferentiating, since the same
+"all roles true" output would result from a file that haphazardly touched
+one function in each subsystem with no real orchestration responsibility.
+No new tracked item for this one - the fix (move from callee-substring
+matching to declared-import/declared-call-target analysis, or to the same
+DB-backed module_map used for SUBSYSTEM) is more of a redesign than a
+mechanical bug, and is better left as a judgment call for whenever Role
+classification becomes load-bearing for something, rather than speculative
+work now.
+
+**Method note:** this is the first session to evaluate a Truth Layer view
+against a real engine run rather than either the regression suite's
+hand-seeded fixture or a single one-off question. Worth keeping as the
+default evaluation method going forward - the fixture is good for proving
+mechanics aren't stub code, but every usefulness finding above only showed
+up against real data shape (real file count, real callee names, real
+absolute paths).
+
+**Environment notes:** (1) confirmed Ollama is not reachable from this
+sandbox, so all `ask()` calls in this session went through the rule-based
+compiler fallback, not the live LLM path - irrelevant to this evaluation
+(it targets the views/signals, not the compiler) but worth flagging so a
+future session doesn't mistake fallback-path output for AI-compiler
+output. (2) `git status`/`git diff` are broken in this sandbox this
+session (`error: index uses \x90M? extension... fatal: index file
+corrupt`) despite `.git/index` parsing as a valid v2 index per `file` -
+`git show HEAD:<path>` still works (doesn't touch the index), and was
+used as the verified-correct base for recovering from a truncation hit
+during this session's own edits (see below) - add to the standing list of
+sandbox-only artifacts in section 2, not a real repo problem, no fix
+attempted (out of scope, and per CLAUDE.md Claude doesn't have git
+credentials regardless). (3) a NEW variant of the section 2a write-tooling
+defect: this session's first edit to this very file landed correctly
+(confirmed via diff) but with 586 trailing NUL bytes appended after the
+real content - not truncation, padding. Caught and stripped before
+moving on. (4) immediately after, a second edit to this file truncated
+for real, mid-word, deep in the chronological log section, despite the
+Edit tool reporting success - recovered via `git show HEAD:<path>` as the
+verified-correct base (the file's last commit predated this session's
+edits) plus a Python `str.replace` reapplication of both intended edits,
+written via direct file copy and confirmed zero-diff before continuing.
+Both incidents are this tracker's own incident log gaining two more
+real-time entries about itself while documenting a different finding -
+same pattern noted in incident 13.
