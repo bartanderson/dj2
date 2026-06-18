@@ -1,0 +1,7 @@
+# Normalize all text files to LF in the repository and on checkout,
+# regardless of which OS/editor touches them. This avoids CRLF/LF
+# diff noise between Bart's Windows checkout and any LF-based tooling.
+#
+# After adding this file, run once: git add --renormalize .
+# then review and commit the (whitespace-only) result separately.
+* text=auto eol=lf

@@ -12,24 +12,34 @@ Before doing anything else in `tools/analysis/`, read the docs in
 - `DESIGN.md` - architecture and design: Truth Kernel / query algebra layers,
   the Authority Model, the shadow/observability layer, and the conceptual
   framing worth keeping from earlier exploratory drafts.
-- `TRACKER.md` - the single source of truth for status. Section 1 holds the
-  phase/tier status tables (engine refactor, Truth Kernel tiers, Truth
-  verification phases); section 2 covers standing environment bugs (silent
-  file truncation, stale `.pyc` caches - read this before debugging anything
-  that "looks impossible"); section 3 is open items / next steps, numbered
-  in rough priority order; section 4 is the dated chronological session log -
-  what actually happened, session by session. Updated in place (checkboxes,
-  dated entries) as work lands - do not just re-derive status from
-  conversation memory, read this file.
+- `TRACKER.md` - the single source of truth for status, kept deliberately
+  lean. A `## Dashboard` section at the very top gives an at-a-glance
+  recently-done / now-next list - read this first. Below that: section 1
+  holds the phase/tier status tables (engine refactor, Truth Kernel tiers,
+  Truth verification phases); section 2 is a short operational summary of
+  standing environment bugs (silent file truncation, stale `.pyc` caches -
+  read this before debugging anything that "looks impossible"); section 3
+  is open items / next steps, numbered in rough priority order - closed
+  items are trimmed to "what shipped + proof," not re-argued in prose,
+  since the fix is the embodiment of the design once it's in code and
+  DESIGN.md reflects it. Updated in place (checkboxes, dated entries) as
+  work lands - do not just re-derive status from conversation memory, read
+  this file.
+- `HISTORY.md` - the full historical record split out of TRACKER.md
+  2026-06-18: the complete incident-by-incident write-tooling defect log,
+  and the complete dated chronological session log (what actually
+  happened, session by session). Nothing was deleted in the split, only
+  relocated - read this when you need the full story behind a closed
+  TRACKER item, not for current status.
 
-These two replaced five older per-topic docs (REFACTOR OPS BOARD.md, Truth
+These replaced five older per-topic docs (REFACTOR OPS BOARD.md, Truth
 Kernel Board.md, Truth.md, TRUTH KERNEL v1.md, todo-done.md) plus a handful
 of older exploratory/proposal docs. The consolidation was cross-checked
 (2026-06-17, three independent passes) for anything factual that didn't make
 it across before the old docs were removed - nothing was found missing.
 If a stray reference to one of those old filenames turns up anywhere
-(including elsewhere in this file), it's stale - DESIGN.md/TRACKER.md is
-the current pointer.
+(including elsewhere in this file), it's stale - DESIGN.md/TRACKER.md/
+HISTORY.md is the current pointer.
 
 These are git-versioned and human-reviewable on purpose: update them as part of
 finishing work, so Bart can see what changed via `git diff`, and so a future session
@@ -94,9 +104,11 @@ doing anything else (no other tool calls in between):
 ## Status history
 Session-by-session history (what changed, when, why, including the
 silent-truncation incidents and the doc-consolidation/cleanup work) lives in
-TRACKER.md section 4 - read it there, don't re-derive it from conversation
-memory, and don't duplicate it here: an inline copy in this file will drift
-the moment TRACKER.md is updated and this file isn't.
+HISTORY.md (split out of TRACKER.md section 4, 2026-06-18) - read it there,
+don't re-derive it from conversation memory, and don't duplicate it here: an
+inline copy in this file will drift the moment HISTORY.md is updated and
+this file isn't.
 
-Next steps: see TRACKER.md section 3 ("Open items / next steps"), numbered
-in rough priority order across the whole project.
+Next steps: see TRACKER.md's `## Dashboard` section for the at-a-glance
+view, or section 3 ("Open items / next steps") for the full numbered,
+priority-ordered list across the whole project.

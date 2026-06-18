@@ -517,3 +517,106 @@ Truth Kernel design depends on it - the Truth Kernel's STABILITY view reads
 real contract violation reports directly rather than going through any
 arbitration layer. Worth a skim if this idea is revisited; don't treat any
 file/entrypoint name in the original as current.
+
+---
+
+## 6. SystemSelfModel & system_shape_tags (Tier 2 introspection)
+
+**Naming note before anything else:** this section's "system shape" is
+unrelated to section 2's "### System shape" subsection above. Section 2
+uses that phrase for the 4-part query-algebra design (AST / Validator /
+Executor / Compiler). This section's `system_shape_tags` is a completely
+different, unrelated piece of vocabulary: a set of boolean tags computed
+from live DB data about *this specific codebase's* structural properties.
+The collision is purely a naming accident from two different exploratory
+threads; don't conflate them.
+
+This capability was found, during the 2026-06-18 from-the-beginning
+codebase review, to be real, live, and production-wired - but undocumented
+anywhere before now. It belongs here for the same reason the shadow/
+observability layer (section 4) does: it exists, it's load-bearing, and a
+future session shouldn't have to rediscover it from scratch.
+
+### What it is
+
+`SystemSelfModelBuilder` (`inspection/meta/system_self_model.py`) builds a
+`SystemSelfModel` - the assessor's account of its own blind spots. It is a
+Tier 2 Truth Kernel component in the sense used elsewhere in this doc: it
+does not invent facts, it only reports on structural conditions that are
+already measurable from `oracle`/`graph`/`system_shape`, plus a small,
+fixed set of honestly-labeled limitations of the inspection layer's own
+design. Every field is either (a) populated from a real, checkable
+condition, or (b) a fixed structural caveat - nothing fires unconditionally
+except the caveats that are explicitly meant to.
+
+`SystemSelfModel` has six list fields: `capabilities`, `limitations`,
+`structural_biases`, `failure_modes`, `inference_gaps`, `notes`.
+
+### Where it's wired in
+
+Confirmed live in two places, not just a standalone utility:
+
+- `Assessor.self_model()` (`assessor/assessor.py`) calls
+  `SystemSelfModelBuilder(self.oracle).build()` directly.
+- `QuerySession`'s result object includes the self-model in its output.
+- The `query_sessions` table (see `persistence/persistence_engine.py`'s
+  `ensure_schema()`) has a reserved `self_model TEXT` column for it.
+
+### How `build()` derives each field
+
+1. **Graph observability** - reads `oracle.get_snapshot_graph().edges`.
+   Zero edges -> `failure_modes: graph_empty_state`. 1-9 edges ->
+   `limitations: low_observability_graph`. These are mutually exclusive
+   (empty vs. sparse-but-nonempty).
+2. **Router presence** - `_router_module_present()` checks
+   `importlib.util.find_spec("tools.analysis.api.oracle_router")` rather
+   than importing it directly, to avoid a circular import between
+   `oracle/`, `api/`, and `inspection/`. If present:
+   `structural_biases: router_is_primary_decision_layer,
+   router_expansion_budgets_not_fully_calibrated`, plus
+   `capabilities: query_expansion_via_router`. If absent:
+   `failure_modes: router_module_unreachable`.
+3. **DB-derived system shape** - calls
+   `inspection.system_shape.generate_system_shape(oracle.conn)` inside a
+   try/except (see "Failure path" below) and maps its
+   `system_shape_tags` onto self-model fields:
+   - `external_dependency_heavy` -> `limitations: external_dependency_dominance`
+   - `high_coupling_core` -> `failure_modes: high_coupling_core_risk`
+   - `contract_weak_system` -> `limitations: contract_coverage_weak`
+   - `hotspot_concentrated` -> `structural_biases: analysis_concentrated_in_few_hotspots`
+   - `cross_layer_coupling_detected` -> `failure_modes: cross_layer_coupling_present`
+
+   (`generate_system_shape()` itself, in `inspection/system_shape.py`,
+   computes these 5 tags from the `files`/`imports`/`symbol_references`/
+   `contract_violations` tables - notably not from `graph_edges`, so the
+   graph-observability checks above and these tag checks are independently
+   seedable/testable.)
+4. **Oracle capability checks** - `hasattr(oracle, "get_snapshot_graph")`
+   -> `capabilities: symbol_graph_traversal`;
+   `hasattr(oracle, "file_reference_map")` -> `capabilities:
+   contract_violation_detection`. These check for real methods that
+   execute against DB-derived data, not aspirational claims.
+5. **Fixed, unconditional caveats** - always appended regardless of any
+   runtime check, because they're structural properties of the current
+   architecture, not conditionally-detected facts:
+   `inference_gaps: semantic_identity_is_heuristic_not_ground_truth,
+   edge_bucket_assignment_is_best_effort_classification`;
+   `notes: system_self_model_is_derivative_not_authoritative,
+   self_model_reflects_db_snapshot_at_query_time_not_live_state`.
+
+### Failure path
+
+If `generate_system_shape()` raises for any reason (missing table, bad
+data, etc.), `build()` catches the exception and records
+`inference_gaps: system_shape_unavailable:<ExceptionType>` rather than
+propagating the error or silently producing a partial/wrong shape. The
+rest of the self-model (graph checks, router checks, oracle capability
+checks, fixed caveats) still gets built normally - a broken system-shape
+query degrades the self-model, it doesn't crash it.
+
+### Test coverage
+
+As of 2026-06-18 this has a dedicated regression test file,
+`tests/regression/test_system_self_model.py` - see TRACKER.md item 19.
+Before that, it had zero direct test coverage despite being live and
+wired into two production call sites.

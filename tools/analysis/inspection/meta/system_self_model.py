@@ -68,10 +68,11 @@ class SystemSelfModelBuilder:
         #
         # The query path runs through tools.analysis.api.oracle_router,
         # which applies intent-conditioned traversal budgets (see
-        # REFACTOR_OPS_BOARD.md). Per that board, budget enforcement and
-        # forward/reverse weighting are still partially heuristic, and
-        # implementation-level symbols can leak into expansion results.
-        # This is a known, named open problem, not a guess.
+        # docs/DESIGN.md, "Symbol classification & routing architecture").
+        # Per docs/TRACKER.md, budget enforcement and forward/reverse
+        # weighting are still partially heuristic, and implementation-level
+        # symbols can leak into expansion results. This is a known, named
+        # open problem, not a guess.
         # -------------------------
 
         if _router_module_present():
@@ -125,11 +126,12 @@ class SystemSelfModelBuilder:
         # Known, fixed inference-layer caveats
         #
         # These are structural properties of how the pipeline classifies
-        # and routes symbols (see Symbol_Classification_Stabilization_Plan
-        # and Truth_Kernel_Board "current known issue"). They are always
-        # true of the current architecture, not conditionally detected —
-        # that is why they are listed unconditionally rather than gated
-        # on a runtime check.
+        # and routes symbols (see docs/DESIGN.md, "Symbol classification &
+        # routing architecture", and docs/TRACKER.md's current open items
+        # on symbol classification stability). They are always true of the
+        # current architecture, not conditionally detected — that is why
+        # they are listed unconditionally rather than gated on a runtime
+        # check.
         # -------------------------
 
         inference_gaps.append("semantic_identity_is_heuristic_not_ground_truth")
