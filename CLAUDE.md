@@ -9,13 +9,27 @@
 ## Where to look for status, every session
 Before doing anything else in `tools/analysis/`, read the docs in
 `tools/analysis/docs/`:
-- `REFACTOR OPS BOARD.md` — the live execution checklist / phase plan. Source of truth
-  for what's done vs open. Updated in place (checkboxes, dated notes) as work lands —
-  do not just re-derive status from conversation memory, read this file.
-- `Truth Kernel Board.md` — Tier 0-4 status for the Truth Kernel / query algebra track.
-- `Truth.md` — Phase 0-6 verification plan for proving the Truth Layer is real.
-- `TRUTH KERNEL v1.md` — design spec for the query algebra (AST/Validator/Executor/Compiler).
-- `todo-done.md` — informal running notes, resolved items marked `[x]` with date.
+- `DESIGN.md` - architecture and design: Truth Kernel / query algebra layers,
+  the Authority Model, the shadow/observability layer, and the conceptual
+  framing worth keeping from earlier exploratory drafts.
+- `TRACKER.md` - the single source of truth for status. Section 1 holds the
+  phase/tier status tables (engine refactor, Truth Kernel tiers, Truth
+  verification phases); section 2 covers standing environment bugs (silent
+  file truncation, stale `.pyc` caches - read this before debugging anything
+  that "looks impossible"); section 3 is open items / next steps, numbered
+  in rough priority order; section 4 is the dated chronological session log -
+  what actually happened, session by session. Updated in place (checkboxes,
+  dated entries) as work lands - do not just re-derive status from
+  conversation memory, read this file.
+
+These two replaced five older per-topic docs (REFACTOR OPS BOARD.md, Truth
+Kernel Board.md, Truth.md, TRUTH KERNEL v1.md, todo-done.md) plus a handful
+of older exploratory/proposal docs. The consolidation was cross-checked
+(2026-06-17, three independent passes) for anything factual that didn't make
+it across before the old docs were removed - nothing was found missing.
+If a stray reference to one of those old filenames turns up anywhere
+(including elsewhere in this file), it's stale - DESIGN.md/TRACKER.md is
+the current pointer.
 
 These are git-versioned and human-reviewable on purpose: update them as part of
 finishing work, so Bart can see what changed via `git diff`, and so a future session
@@ -77,67 +91,12 @@ doing anything else (no other tool calls in between):
 5. Keep the em-dash UTF-8 round-trip check (above) as a supplement for docs
    that use em dashes, not a substitute for the full diff.
 
-## Last known state (2026-06-16)
-Morning: noise-filter unification (oracle/symbol_noise.py, used at both discovery
-and expansion time), removal of dead `_apply_intent_weights` stub, QuerySession
-history now persisted to a `query_sessions` DB table. Regression suite added:
-`tests/regression/test_oracle_router_persistence_lock.py`.
+## Status history
+Session-by-session history (what changed, when, why, including the
+silent-truncation incidents and the doc-consolidation/cleanup work) lives in
+TRACKER.md section 4 - read it there, don't re-derive it from conversation
+memory, and don't duplicate it here: an inline copy in this file will drift
+the moment TRACKER.md is updated and this file isn't.
 
-Later same day — agent-readiness gaps closed (per Bart's "fix it once the right
-way and make sure it stays fixed" mandate):
-- SUMMARY and SUBSYSTEM Truth Layer views (previously orphaned, zero real callers)
-  wired up via `Assessor.summary_view()`/`subsystem_view()`/`all_views()`
-  (`assessor/assessor.py`). All 5 views now run on real DB-backed data.
-- `QuerySession.run_algebra()` (previously zero callers anywhere) now has a real
-  front door: `Assessor.ask(text)`, called from the new CLI entrypoint
-  `tools/analysis/ask.py` — `python tools/analysis/ask.py <db_path> "<question>"`.
-  Run successfully end-to-end against the real project DB.
-- Deleted the legacy dead-end agents (`oracle/agent.py`, `oracle/nl_agent.py`) and
-  their only consumers (`tests/debug/oracle_compare_harness.py`,
-  `truth/test_harness.py` — a non-asserting print-only runner). `ask.py` /
-  `Assessor.ask()` is the "something better" that replaced them, per Bart's
-  explicit conditional approval.
-- New permanent regression test:
-  `tests/regression/test_run_algebra_end_to_end.py` (4 assert-based tests against
-  a real seeded sqlite DB — all 5 views, the algebra executing against
-  SUMMARY/SUBSYSTEM specifically, `ask()` running end-to-end, `ask()` being
-  deterministic). Full sweep confirmed passing together: this new suite (4) +
-  `test_oracle_router_persistence_lock.py` (6) + `truth/tests/test_query_algebra.py`
-  (32) = 42/42.
-- Caught and fixed an environment bug along the way: this session's tooling
-  silently truncated a file mid-write more than once (both on brand-new large
-  files and on a small `Edit` to an existing file) with no error surfaced -
-  the in-context view of the file looked correct while the on-disk bytes were
-  cut short. See "File write verification (mandatory)" above for the
-  procedure this grew into.
-
-## 2026-06-17 — ROLE view added, doc-write verification protocol hardened
-- Closed Truth.md Phase 3 Row 1/Row 2 (the "what is the purpose of this
-  file" gap): added ROLE as a 6th Truth Layer view
-  (`truth/views.py:build_role_view()`, wraps the already-real
-  `Assessor.responsibility_map()`), wired into `Assessor.all_views()`,
-  routed via a new `role_query` intent in `api/oracle_router.py`. New
-  regression suite `tests/regression/test_role_view_routing.py` (5 tests).
-  Full sweep: 47/47 passing. Full detail: REFACTOR OPS BOARD.md
-  2026-06-17 entry, Truth Kernel Board.md Tier 1 "Role View" entry,
-  Truth.md Phase 4 entry, todo-done.md 2026-06-17 entry.
-- Hit silent truncation twice more while landing the above (in
-  `api/oracle_router.py` and `tests/regression/test_run_algebra_end_to_end.py`),
-  plus a separate stale/locked `.pyc` cache bug that made `_detect_intent`
-  silently run old bytecode after the source was already fixed. Both are
-  written up in REFACTOR OPS BOARD.md's 2026-06-17 entry.
-- While updating the docs themselves, found a third and more concerning
-  case: the Read tool displayed a fully-formed "Phase 3 findings" section
-  in Truth.md that had never actually been written to disk (confirmed via
-  `wc -l` against the real file). Recovered the content and wrote it for
-  real via bash heredoc, verified by direct diff against disk. This is
-  the incident that prompted the "File write verification (mandatory)"
-  section above - the short version is: Read-tool-shows-it is not
-  evidence it's on disk, only a bash-side diff against intended content is.
-
-Next steps: see the "NEXT STEPS" section at the bottom of
-REFACTOR OPS BOARD.md (consolidates both the original Phase 1/2 critical
-path and the new Truth Kernel candidates) and Truth Kernel Board.md's
-Tier 1/Tier 2 2026-06-17 notes. Don't restate specifics here - those two
-files are the source of truth and this index will drift if it tries to
-duplicate them.
+Next steps: see TRACKER.md section 3 ("Open items / next steps"), numbered
+in rough priority order across the whole project.

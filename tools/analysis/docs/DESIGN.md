@@ -509,7 +509,7 @@ no single arbitration layer deciding which contract is authoritative when
 they disagree."
 
 **The 3-layer mental model proposed** (reality layer = the actual codebase;
-truth-extraction layer = CCSS/snapshots/metrics/classifier outputs;
+truth-extraction layer = snapshots/metrics/classifier outputs;
 constraint layer = contracts in all their forms) is still a reasonable way
 to think about where a future "contract precedence" system would sit, if
 one is ever built. It is not currently built, and nothing in section 2's

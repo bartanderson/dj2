@@ -483,47 +483,7 @@ In rough priority order, deduplicated across all four source files:
     views and don't include ROLE in the allowed Combine pairs) - worth a
     pass to update DESIGN.md's spec language or explicitly note the gap
     there if ROLE participation in Combine is ever needed.
-15. **CCSS pipeline: decision made and executed 2026-06-17 - SHELVED.**
-    Moved from `tools/analysis/ccss - redesign into tool over analysis db/`
-    to `tools/analysis/_shelved/ccss/` (byte-for-byte, verified via sha256
-    diff; no code changes). Rationale, in addition to the findings below:
-    the folder's own internal imports (`tools.analysis.ccss.*`) never
-    matched its actual on-disk path (spaces, no real `__init__.py`), so
-    the pipeline could not have run as written even before considering
-    integration. Full rationale recorded in
-    `tools/analysis/_shelved/ccss/SHELVED.md`. If contract-axis test
-    coverage becomes a real need later, `pass1.py` (structural extraction)
-    and `gap_ledger.py` (snapshot diffing) are worth reusing; PASS2/PASS3
-    need a from-scratch build against the real spec, not a patch - see
-    SHELVED.md for why. Original findings, preserved for context: found
-    during Pass 2 doc review (2026-06-17), the folder contained a working
-    PASS1 -> PASS2 -> PASS3
-    implementation (`pass1.py`/`pass2.py`/`pass3.py`/`run.py`/
-    `scan_tests.py`/`snapshot_store.py`/`ledger_store.py`/
-    `snapshot_compare.py`/`gap_ledger.py`/`regression_check.py`) that
-    structurally matches the canonical spec in
-    `docs/current predecessors still useful/pre ccss/prompt.md` (same
-    file_id/test_id/symbol_uid identity model, same PASS1/2/3 contract
-    boundaries). It is not wired into the main pipeline, the oracle
-    router, or the Truth Kernel - the only outside reference is
-    `engine/pipeline_dependency_tracer.py` tracking it as a known import
-    bucket, not calling it. More importantly, PASS2's `enrich_symbol()` is
-    a pure passthrough (no fqdn/role/confidence - the semantic enrichment
-    the spec calls for was never implemented) and PASS3's `gaps` list is
-    structurally always `[]` (coverage axes are computed from raw surface
-    tokens and symbol_uid presence, which is trivially complete by
-    construction, not from actual role/runtime resolution) - this is the
-    project's own "looks done, isn't" pattern again. `snapshots/` and
-    `ledger/` are currently empty on disk, and `regression_check.py`
-    hardcodes two specific timestamped snapshot filenames that don't
-    currently exist, so it would fail if run as-is. Nobody has decided
-    whether this is worth finishing (real semantic enrichment + real gap
-    detection), worth integrating into the main DB-backed pipeline (the
-    folder's own name suggests that was the intent - "redesign into tool
-    over analysis db" - but the code still reads source files directly via
-    AST, not the DB), or worth shelving. Needs a decision before any more
-    time goes into it either direction.
-16. **Semantic Identity Reconstruction: status corrected from "Phase 3 not
+15. **Semantic Identity Reconstruction: status corrected from "Phase 3 not
     started" to "Phase 3 deliberately abandoned."** Found during Pass 2 doc
     review (2026-06-17), grounded against `graph/symbol_router.py` and
     `graph/route_trace.py`. The historical plan (now in
@@ -1044,13 +1004,13 @@ the Edit tool reporting success (incident #12, section 2a) - at least the
 thirteenth recorded incidence of the truncation bug across this project's
 sessions, still standing, not noise.
 
-### 2026-06-17 (Pass 2) - older predecessor docs assessed and disposed; CCSS and semantic-identity-reconstruction findings surfaced
+### 2026-06-17 (Pass 2) - older predecessor docs assessed and disposed; semantic-identity-reconstruction findings surfaced
 
 Bart's go-ahead to do Pass 2: assess `docs/current predecessors still
-useful/` (3 files) and its `pre ccss/` subfolder (7 files) for whether
-their vision still aligns, is partially superseded, or fully superseded -
-grounded against the actual current codebase, not just read against each
-other.
+useful/` (3 files) and an older predecessor subfolder (7 files) for
+whether their vision still aligns, is partially superseded, or fully
+superseded - grounded against the actual current codebase, not just read
+against each other.
 
 **Disposition of all 10 files:**
 
@@ -1064,29 +1024,30 @@ other.
   no-re-entry model, and `classification_gap` is alive across the current
   codebase. What it predates: the shadow/trace observability layer (see
   DESIGN.md section 4 below).
-- `pre ccss/CCSS  execution plan.md`, `pre ccss/Contract Coverage Surface
-  System.md`, `pre ccss/prompt.md` - left in place, status note added to
-  each. Not superseded - actually built (see item 15 below) - but the
-  build only satisfies the structural contract, not the substance.
+- Three files specific to an exploratory test-coverage pipeline - left in
+  place at the time with a status note (not superseded, actually built,
+  but only satisfying the structural contract, not the substance). Bart
+  later decided to remove that pipeline from the codebase entirely
+  (2026-06-17), which makes these three files moot along with it.
 - `Module Governance.md` - moved to `docs/del/`. Superseded in specifics
   (file paths, `run_analysis_pipeline.py`/reducer ownership - that file is
   deleted) but its module-card methodology (OWNS / DOES NOT OWN / OUTPUTS /
   INVARIANTS / MATURITY) is the direct conceptual ancestor of DESIGN.md
   section 4's Authority Model, which superseded it.
-- `pre ccss/Key insight about what we missed and where we are going.txt` -
-  moved to `docs/del/`. Its diagnosis (premature semantic flattening in
+- `Key insight about what we missed and where we are going.txt` - moved
+  to `docs/del/`. Its diagnosis (premature semantic flattening in
   `route_symbol()` - leaf names like "dataclass" can't match fully-qualified
   project identities) was correct and was acted on; superseded by the fix
   now documented in DESIGN.md section 4, not by being wrong.
-- `pre ccss/Semantic Identity Reconstruction Migration Plan.md` - moved to
-  `docs/del/`. Partially superseded - see item 16 below for the full
+- `Semantic Identity Reconstruction Migration Plan.md` - moved to
+  `docs/del/`. Partially superseded - see the semantic-identity-
+  reconstruction status correction (open item 15, section 3) for the full
   finding.
-- `pre ccss/status as of 05242026.txt` - moved to `docs/del/`. A
-  snapshot-in-motion ("Phase 2 actively working, Phase 2.5 emerging, Phase
-  3 not started") whose motion has since stopped/redirected - historical
-  waypoint only.
-- `pre ccss/test file list.txt` - moved to `docs/del/`. Flat reference
-  list, no standalone content to assess.
+- `status as of 05242026.txt` - moved to `docs/del/`. A snapshot-in-motion
+  ("Phase 2 actively working, Phase 2.5 emerging, Phase 3 not started")
+  whose motion has since stopped/redirected - historical waypoint only.
+- `test file list.txt` - moved to `docs/del/`. Flat reference list, no
+  standalone content to assess.
 
 **New findings, written up in full in DESIGN.md and TRACKER.md (not
 repeated here):**
@@ -1094,10 +1055,12 @@ repeated here):**
 - DESIGN.md section 4 gained a new "shadow/observability layer" subsection
   documenting `route_symbol_shadow()`/`TraceCollector`/CP0-CP4 as real,
   live, currently-undocumented architecture.
-- TRACKER.md open items 15 (CCSS: built but Pass2/Pass3 are structural
-  stubs, decision needed) and 16 (semantic identity reconstruction: status
-  corrected from "Phase 3 not started" to "Phase 3 deliberately
-  abandoned, different but stable end state reached") added to section 3.
+- TRACKER.md gained two open items in section 3: a status correction for
+  semantic identity reconstruction ("Phase 3 not started" corrected to
+  "Phase 3 deliberately abandoned, different but stable end state
+  reached" - now item 15), and a decision-needed item for the exploratory
+  pipeline noted above. The latter was later removed outright once Bart
+  decided to delete that pipeline rather than finish or integrate it.
 
 **Separately, this same session caught and fixed a recurrence of the
 silent file-truncation bug** hitting this tracker's own two most recent
