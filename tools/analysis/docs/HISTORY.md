@@ -1129,3 +1129,129 @@ right to avoid the entry referencing itself mid-write; recorded here
 instead as the most direct evidence yet that this file should be treated
 as elevated-risk on every edit, not just during unusually large rewrites.
 
+
+### 2026-06-18 (item 20: code-quality / weak-spot audit of live, wired code)
+
+Per Bart's request ("next" -> confirmed "start item 20"): a robustness/
+fragility review of code that IS wired and running, independent of item 21's
+dead-code/orphaned-module disposition focus.
+
+**Scope method.** Computed the real live module surface by static
+import-graph reachability (Python `ast`, no dynamic execution) starting from
+the two real entry points: `ask.py` (query side: `python tools/analysis/
+ask.py <db_path> "<question>"`, wraps `Assessor.ask()` ->
+`QuerySession.run_algebra()`) and `engine/run_engine.py` (ingestion side:
+scans the project, populates the SQLite DB). Result: 50 modules reachable,
+64 not. Cross-checked two ways: grepped for `if __name__ == "__main__"`
+(7 files, all already accounted for in the reachable/not-reachable split);
+compared the 64 unreached modules against item 21's known orphaned-module
+candidate list - they line up closely, which cross-validates the item 20 /
+item 21 boundary rather than leaving it as an assumption.
+
+**Audited the 50 live modules for:** bare/swallowed excepts, TODO/FIXME/HACK
+debt, hardcoded stub/placeholder returns reaching production output, and
+exception-handling that doesn't match its own docstring's promised
+behavior. Found zero bare `except:`, zero TODO/FIXME/HACK comments. Found
+three `except Exception` sites (schema check in `query_session.py`'s
+`QuerySession.__init__`, session persistence in `query_session.py`'s
+`persist_query_session()`, gap-recording in `system_self_model.py`) - all
+three are deliberate, well-commented, non-fatal "record the gap, don't
+invent" patterns consistent with the project's stated principles, not bugs.
+`observability/fault_injector.py`'s `inject_edge_drop()`/
+`inject_classification_drift()` are confirmed hard-gated off by
+`ENABLE_FAULTS = False  # hard off for now` in `engine/run_engine.py` line
+14 - working as intended, not a live concern.
+
+Two genuine gaps were found. Both are reported here as audit findings, per
+item 20's own framing ("he wants visibility into... where the weak spots
+remain") - **neither has been fixed**; fixing is a separate decision for
+Bart, tracked as TRACKER.md items 22 and 23.
+
+**Finding 1 - embedding-fallback crash risk (TRACKER item 22).**
+`oracle/db_oracle.py`'s `discover_seed_symbols_semantic()` and
+`discover_seed_symbols()` wrap the `sentence-transformers`/
+`embedding_model` import in `try/except ImportError` and document that they
+"fall back to token-based if the sentence-transformers package is not
+installed." But the actual model load (`embedding_model.get_model()` ->
+`SentenceTransformer("all-MiniLM-L6-v2")`, lazy-loaded on first call) and
+every inference call (`embed_text()`, used at `db_oracle.py` line 628) sit
+*outside* that try block. A failure there - HuggingFace download/network
+failure, corrupted local model cache, anything other than "package not
+installed" - is not caught and does not degrade to the documented
+token-only fallback; it propagates. This is on the hot path of every
+real query: `assessor/query_session.py`'s `run_query()` (line 159) calls
+`route_query(text, graph, self.oracle.discover_seed_symbols, ...)` at line
+164 with no surrounding try/except of its own, so any uncaught exception
+from the embedding path crashes the whole `ask.py` invocation. This is not
+a hypothetical: `oracle/embedding_model.py` has a 2026-06-17-dated comment
+referencing a torch warning Bart personally observed, confirming
+`sentence-transformers` is actually installed and actively loading on
+Bart's real machine right now - so this is live exposure, not a dead
+edge case.
+
+**Finding 2 - dead `runtime_bindings` wiring, "runtime" bucket
+permanently empty in production (TRACKER item 23).** This is the same bug
+*shape* as the two previously-fixed "looks wired but isn't" gaps
+(hardcoded `drift_signals = []`, hardcoded `IntegrityView.db_mismatches =
+[]`, both above) - a real, individually correct, individually-tested piece
+of logic that never actually reaches production output because the wiring
+connecting it was never completed.
+
+`ingestion/parse_ast.py` contains two separate, disconnected
+`runtime_bindings` code paths:
+- The real one: `_extract_runtime_bindings()`, called internally at line
+  150 inside `_extract_symbol_references()`, feeding a local
+  `runtime_bindings` variable used only for that function's own
+  call-resolution at line 197 (`resolved = alias_map.get(raw) or
+  runtime_bindings.get(raw) or local_symbol_map.get(raw)`).
+- The production one: `parse_ast()` (lines 477-548) takes
+  `runtime_bindings` as an *external parameter*  (line 483:
+  `runtime_bindings = runtime_bindings or {}`) and stores whatever it's
+  given directly onto `FileAnalysis.runtime_bindings` (line 545) -
+  *without* ever calling `_extract_runtime_bindings()` itself.
+
+The external parameter all but always arrives empty: `ingestion/
+scan_project_files.py` line 192 hardcodes `runtime_bindings = {}  # still
+placeholder for now` and that empty dict flows straight through
+`analyze_files()` (line 205) into every `parse_ast()` call in the real
+ingestion pipeline (`engine/run_engine.py` -> `scan_project_files()` ->
+`analyze_files()` -> `parse_ast()`).
+
+Downstream, `classification/classify_references.py`'s real production
+function builds its `ProjectGraphContext` and calls `route_symbol(name=
+ref.callee, runtime_bindings=analysis.runtime_bindings, ...)` for every
+single symbol reference - so it always classifies against an empty
+`runtime_bindings` dict, meaning the documented `runtime` bucket (per
+`classify_references.py`'s own contract comment: `project | runtime |
+builtin | stdlib | external | unknown`) can never be assigned in
+practice, no matter what the code actually does at runtime.
+
+Verified empirically against the real project DB
+(`C_Users_bartl_dev_dj2_tools_analysis.db`):
+
+    sqlite3 ... "SELECT bucket, COUNT(*) FROM symbol_references GROUP BY bucket ORDER BY 2 DESC"
+    -> ('builtin', 895), ('project', 803), ('stdlib', 308), ('external', 256)
+
+Zero `runtime` rows out of 2262 total references - the smoking gun.
+`tests/regression/test_runtime_resolution_lock.py` (and similar) still
+pass because they construct `SymbolEnvironment`/`FileAnalysis` fixtures by
+calling `_extract_runtime_bindings()` (or building the dict by hand)
+directly, bypassing the broken production wiring entirely - so test-green
+gave no signal that the real pipeline never produces a non-empty
+`runtime_bindings` in practice. A fix, if Bart wants one, would have
+`parse_ast()` call `_extract_runtime_bindings()` itself and thread the
+result onto `FileAnalysis.runtime_bindings`, replacing the
+`scan_project_files.py` placeholder - not attempted this session, since
+item 20 is an audit/report task, not a fix task.
+
+**Regression baseline cross-check.** Ran `tools/analysis/tests/
+regression/run_all.py`: 74/74 passed, 0 failed, across 13 modules, in this
+sandbox. (The separate pytest-based `truth/tests/test_query_algebra.py`
+target was skipped here - pytest itself isn't installed in this sandbox;
+this is a sandbox limitation, not a claim about Bart's machine.) Confirms
+neither finding above is currently caught by any existing test.
+
+**Outcome:** item 20 closed as an audit/report deliverable (TRACKER.md
+Dashboard + item 20 entry updated); two new tracked items opened (22, 23)
+for Bart to prioritize fixing or explicitly deferring. No code was changed
+this session.

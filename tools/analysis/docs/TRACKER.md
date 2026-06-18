@@ -35,15 +35,18 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** SystemSelfModel documented + tested (item 19);
-SUBSYSTEM builtin-noise filter (item 18); INTEGRITY view gap closed
-(item 17); SUBSYSTEM path-pollution fix (item 16); Tier 2 view-usefulness
-evaluation (item 1). Full detail: section 3 below; full history:
-HISTORY.md.
+**Recently done:** Code-quality/weak-spot audit of the live, wired code
+(item 20) - DONE 2026-06-18, two real wiring gaps found and reported (not
+yet fixed, see items 22-23); SystemSelfModel documented + tested
+(item 19); SUBSYSTEM builtin-noise filter (item 18); INTEGRITY view gap
+closed (item 17); SUBSYSTEM path-pollution fix (item 16). Full detail:
+section 3 below; full history: HISTORY.md.
 
 **Now / next, in priority order:**
-1. [HIGH PRIORITY] Code-quality / weak-spot audit of the live, wired code
-   (item 20) - not started.
+1. [DECISION NEEDED] Two real gaps found by item 20's audit, neither fixed
+   yet: embedding-fallback crash risk (item 22) and dead `runtime_bindings`
+   wiring / permanently-empty "runtime" bucket (item 23) - fix-now vs.
+   track-for-later is Bart's call.
 2. Orphaned-module disposition review (item 21) - not started.
 3. Truth.md Phase 1 Row 1 remainder + Row 5 (item 2) - next substantive
    feature work; everything else closed from the Phase 3 gap audit.
@@ -482,12 +485,18 @@ writeups for each live in HISTORY.md section B.
     `tests/regression/test_system_self_model.py` added (8 tests). Full
     writeup: HISTORY.md section B.
 20. **[HIGH PRIORITY] Code-quality / weak-spot audit of the live, wired
-    code.** A robustness/fragility review of code that IS wired and
-    running - which modules are thin, under-tested, or carry known sharp
-    edges - independent of the dead-code/orphaned-module disposition focus
-    in item 21. Not yet started. Added 2026-06-18 per Bart's request: he
-    wants visibility into how solid the live code actually is and where
-    the weak spots remain, and this wasn't tracked anywhere before.
+    code: DONE 2026-06-18.** Mapped the real live surface via static
+    import-reachability from both real entry points (`ask.py` for
+    queries, `engine/run_engine.py` for ingestion): 50 modules reachable,
+    64 not - the unreached set matches item 21's orphaned-module candidate
+    list, cross-validating that split. Of the 50 live modules, found no
+    bare/swallowed excepts, no TODO/FIXME/HACK debt, and the project's
+    deliberate non-fatal `except Exception` sites (schema check, session
+    persistence, system_self_model gap recording) are all legitimate,
+    well-commented "record the gap, don't invent" patterns, not bugs.
+    Found two real gaps, both confirmed against live code and/or the real
+    project DB, neither fixed yet (audit scope, not fix scope) - recorded
+    as items 22 and 23 below. Full writeup: HISTORY.md section B.
 21. **Orphaned-module disposition review (hole vs. dead).** Evaluate
     `resolution/symbol_origin_resolver.py`, `inspection/explain_file.py`,
     `utilities/reachable_print_trace.py`, `context/build_context_packet.py`,
@@ -500,6 +509,58 @@ writeups for each live in HISTORY.md section B.
     lens, per this project's standing principle of never assuming dead from
     surface signals alone. Deferred, not yet started; report findings to
     Bart before any integrate/dispose/delete action.
+22. **Embedding-fallback crash risk in seed discovery (found by item 20's
+    audit, not yet fixed).** `oracle/db_oracle.py`'s
+    `discover_seed_symbols_semantic()`/`discover_seed_symbols()` only
+    catch `ImportError` around importing `sentence-transformers`/
+    `embedding_model` - the docstring promises "falls back to token-based
+    if the sentence-transformers package is not installed," but a load-
+    time failure *after* a successful import (model download/network
+    failure, corrupted HuggingFace cache, etc., raised inside
+    `embedding_model.get_model()`) happens outside that `try` block and is
+    never caught. This sits on the live path for every single `ask.py`
+    query - `assessor/query_session.py`'s `run_query()` passes
+    `self.oracle.discover_seed_symbols` straight into `route_query()` with
+    no surrounding try/except. `sentence-transformers` is confirmed
+    actively installed and in use on Bart's real machine (see
+    `embedding_model.py`'s own torch-warning-silencing comment,
+    2026-06-17) - so a model-load failure there would crash every query
+    instead of degrading gracefully as documented. Needs either a broader
+    `except Exception` around the embedding path with a logged fallback,
+    or a deliberate decision that this risk is acceptable as-is.
+23. **Dead `runtime_bindings` wiring - "runtime" bucket is permanently
+    empty in production (found by item 20's audit, not yet fixed).** The
+    per-file `_extract_runtime_bindings()` (`ingestion/parse_ast.py`) and
+    `resolve_runtime_symbol()` (`graph/runtime_resolution.py`) are real,
+    correct, and individually unit-tested - but only by tests that
+    construct `SymbolEnvironment`/`FileAnalysis` fixtures directly with a
+    hand-built non-empty `runtime_bindings` dict, bypassing the real
+    pipeline. In the real pipeline, `ingestion/scan_project_files.py` line
+    192 hardcodes `runtime_bindings = {}  # still placeholder for now` and
+    passes that empty dict straight through `analyze_files()` into every
+    `parse_ast()` call, which stores it unchanged onto
+    `FileAnalysis.runtime_bindings`. `_extract_runtime_bindings()` *is*
+    called for real inside `_extract_symbol_references()` - but only into
+    its own separately-scoped local variable, used solely to resolve raw
+    call names for that pass's own `SymbolReference` construction; the
+    result is never propagated back onto `FileAnalysis.runtime_bindings`.
+    Production classification (`classification/classify_references.py`'s
+    `route_symbol(runtime_bindings=analysis.runtime_bindings, ...)`, the
+    actual bucket-assignment call for every symbol reference) therefore
+    always receives `{}`. Confirmed against the real project DB:
+    `SELECT bucket, COUNT(*) FROM symbol_references GROUP BY bucket`
+    returns only `builtin`/`project`/`stdlib`/`external` - zero rows with
+    `bucket = 'runtime'` - despite "runtime" being a documented bucket in
+    `classify_references.py`'s own contract comment. Same bug shape as the
+    previously-fixed drift_signals/db_mismatches gaps (item 17): a real,
+    tested, correct computation exists, but the wiring that would surface
+    it in production output was never connected - the difference here is
+    that the unit tests construct fixtures by calling the internal helper
+    directly, so test-green gave no signal the production path was inert.
+    Needs a decision on whether `parse_ast()` should call
+    `_extract_runtime_bindings()` itself and thread the result onto
+    `FileAnalysis.runtime_bindings`, replacing the
+    `scan_project_files.py` placeholder.
 
 ---
 
