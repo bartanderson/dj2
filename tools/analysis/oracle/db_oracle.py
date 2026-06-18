@@ -1,5 +1,6 @@
 # tools/analysis/oracle/db_oracle.py
 
+import os
 import sqlite3
 import sys
 from typing import Any, Dict, List, Tuple
@@ -12,7 +13,7 @@ from tools.analysis.oracle.symbol_noise import is_accessor_chain_noise
 # DB ORACLE CORE
 # =========================================================
 
-def _file_path_to_module(file_path: str) -> str:
+def _file_path_to_module(file_path: str, project_root: str = "") -> str:
     """
     Derive a deterministic module identity from a real file_path - the
     DB-backed replacement for guessing module identity from dotted
@@ -20,11 +21,30 @@ def _file_path_to_module(file_path: str) -> str:
     A "module" is the file's containing directory, dotted
     (e.g. "tools/analysis/oracle/db_oracle.py" -> "tools.analysis.oracle").
     Files at the project root map to their own stem (no containing dir).
+
+    `project_root`, when supplied, is stripped off `file_path` first -
+    this is what keeps the dotted result project-relative
+    ("tools.analysis.oracle") instead of carrying the full absolute
+    filesystem path ("sessions.<id>.mnt.dj2.tools.analysis.oracle" on
+    this session's sandbox, or a drive-letter-polluted equivalent on
+    Bart's Windows checkout). Closes TRACKER.md open item 16. Default
+    "" preserves the exact prior (unpollution-aware) behavior for any
+    caller that doesn't have a project_root to give - see
+    DBOracle.get_project_root() for how real callers obtain one.
     """
     if not file_path:
         return ""
 
     normalized = file_path.replace("\\", "/")
+
+    if project_root:
+        root_norm = project_root.replace("\\", "/").rstrip("/")
+        if root_norm:
+            if normalized == root_norm:
+                normalized = ""
+            elif normalized.startswith(root_norm + "/"):
+                normalized = normalized[len(root_norm) + 1:]
+
     parts = [p for p in normalized.split("/") if p]
 
     if not parts:
@@ -42,6 +62,78 @@ class DBOracle:
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self.db_path = db_path
+        self._project_root = None  # lazily resolved, see get_project_root()
+
+    # -----------------------------
+    # PROJECT ROOT (for trimming absolute file_path values - item 16)
+    # -----------------------------
+
+    def get_project_root(self) -> str:
+        """
+        Real project root for trimming absolute file_path values down to
+        a project-relative module identity (see module-level
+        _file_path_to_module()). Prefers the value persisted at
+        ingestion time (persistence_engine.set_project_root(), written
+        from EngineRunner.run()'s repo_root); for DBs ingested before
+        that was wired - or any DB missing the row for another reason -
+        falls back to the longest common directory prefix across every
+        distinct `files.file_path` row. That fallback is an inference,
+        not an authoritative value: exact when ingestion scanned one
+        contiguous root (the normal case), unreliable if the DB mixes
+        file_paths from more than one root. Cached after first call - a
+        DB's project root doesn't change within one DBOracle's lifetime.
+        """
+        if self._project_root is not None:
+            return self._project_root
+
+        root = ""
+        cur = self.conn.cursor()
+        try:
+            row = cur.execute(
+                "SELECT value FROM project_meta WHERE key = 'project_root'"
+            ).fetchone()
+            if row and row["value"]:
+                root = row["value"]
+        except sqlite3.OperationalError:
+            # legacy DB, ingested before project_meta existed
+            root = ""
+
+        if not root:
+            root = self._infer_project_root()
+
+        self._project_root = root
+        return root
+
+    def _infer_project_root(self) -> str:
+        """
+        Fallback used only when no project_root was ever persisted:
+        longest common directory prefix across every distinct
+        `files.file_path`. Needs at least 2 distinct files to mean
+        anything - with only one, os.path.commonpath would return the
+        file itself (including its filename) rather than a directory,
+        which would silently corrupt every module identity instead of
+        just leaving them untrimmed, so that case intentionally returns
+        "" (no trimming, identical to the pre-item-16 behavior).
+        """
+        cur = self.conn.cursor()
+        try:
+            rows = cur.execute(
+                "SELECT DISTINCT file_path FROM files WHERE file_path IS NOT NULL"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return ""
+
+        paths = [r["file_path"].replace("\\", "/") for r in rows if r["file_path"]]
+        if len(paths) < 2:
+            return ""
+
+        try:
+            common = os.path.commonpath(paths)
+        except ValueError:
+            # e.g. mixed drive letters on Windows - no safe common root
+            return ""
+
+        return common.replace("\\", "/")
 
     # -----------------------------
     # SEMANTIC EDGES
@@ -685,9 +777,10 @@ class DBOracle:
         cur = self.conn.cursor()
         rows = cur.execute("SELECT file_path FROM files ORDER BY file_path").fetchall()
 
+        project_root = self.get_project_root()
         modules: Dict[str, List[str]] = defaultdict(list)
         for r in rows:
-            modules[_file_path_to_module(r["file_path"])].append(r["file_path"])
+            modules[_file_path_to_module(r["file_path"], project_root)].append(r["file_path"])
 
         result = [
             {"module": m, "files": sorted(fs), "file_count": len(fs)}
@@ -728,11 +821,12 @@ class DBOracle:
             """
         ).fetchall()
 
+        project_root = self.get_project_root()
         mapping: Dict[str, str] = {}
         for r in rows:
             name = r["name"]
             if name not in mapping:
-                mapping[name] = _file_path_to_module(r["file_path"])
+                mapping[name] = _file_path_to_module(r["file_path"], project_root)
 
         return mapping
 

@@ -150,6 +150,7 @@ class EngineRunner:
             file_analyses=file_analyses,
             graph=graph,
             project_prefixes=project_prefixes,
+            project_root=repo_root,
         )
 
 

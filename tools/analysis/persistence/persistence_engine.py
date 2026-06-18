@@ -13,6 +13,28 @@ from tools.analysis.identity.edge_identity import edge_identity
 def ensure_schema(connection):
     initialize_database(connection)
 
+def set_project_root(connection: sqlite3.Connection, project_root) -> None:
+    """
+    Persist the real ingestion-time project root so DBOracle can later
+    trim absolute file_path values down to a project-relative module
+    identity (oracle/db_oracle.py's _file_path_to_module() /
+    get_project_root()) - closes TRACKER.md open item 16 (SUBSYSTEM
+    identity strings polluted by the full absolute filesystem path).
+    Idempotent (INSERT OR REPLACE), single row keyed 'project_root'.
+    No-op if project_root is falsy - callers that don't have one yet
+    (e.g. tests building a DB by hand) just leave DBOracle to fall back
+    to its own common-prefix inference.
+    """
+    if not project_root:
+        return
+    normalized = normalize_file_path(project_root)
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO project_meta (key, value) VALUES ('project_root', ?)",
+        (normalized,),
+    )
+    connection.commit()
+
 def _insert_symbol(cursor, file_path, symbol_type, name, line_number, signature=""):
     canonical_id = f"{file_path}:{symbol_type}:{name}:{line_number}"
 
@@ -185,6 +207,13 @@ def initialize_database(connection: sqlite3.Connection) -> None:
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS project_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS query_sessions (
@@ -543,7 +572,7 @@ def create_database(database_path: str | Path) -> sqlite3.Connection:
 # ==================================================
 # PUBLIC ENTRY POINT (ONLY FUNCTION CALLED OUTSIDE)
 # ==================================================
-def persist_all(connection, file_analyses, graph, project_prefixes, logger=None):
+def persist_all(connection, file_analyses, graph, project_prefixes, logger=None, project_root=None):
     """
     Single persistence orchestrator.
 
@@ -554,6 +583,11 @@ def persist_all(connection, file_analyses, graph, project_prefixes, logger=None)
     # 1. SCHEMA GUARANTEE (MUST BE FIRST)
     # -----------------------------------------
     ensure_schema(connection)
+
+    # -----------------------------------------
+    # 1b. PROJECT ROOT (item 16 - optional, no-op if not supplied)
+    # -----------------------------------------
+    set_project_root(connection, project_root)
 
     cursor = connection.cursor()
 

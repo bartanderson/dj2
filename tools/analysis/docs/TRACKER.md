@@ -326,7 +326,7 @@ land at a plausible-looking boundary partway through. Full procedure is in
 CLAUDE.md's "File write verification (mandatory)" section; this tracker
 file itself was written and verified using that exact procedure.
 
-**Incident log:** 17 confirmed occurrences so far. Compressed below to
+**Incident log:** 22 confirmed occurrences so far. Compressed below to
 keep this section from growing linearly forever - full blow-by-blow detail
 is kept only for entries that added genuinely new information (a new
 corruption mechanism, or a new pattern about where/when it hits); routine
@@ -371,6 +371,71 @@ procedure below; no new variant.
     treat edits to TRACKER.md itself as elevated-risk, not just edits to
     this repo in general, and always run the full reconstruction-diff,
     never a byte-count shortcut, on this file specifically.
+16. 2026-06-17/18 (item-16 fix session) - a 3-incident cluster across the
+    three source files touched by the SUBSYSTEM-path-pollution fix
+    (open item 16 below): (a) `oracle/db_oracle.py` truncated mid-statement
+    (`mapping: Dict[str, st`) immediately after a 4-edit Edit-tool batch,
+    caught by `ast.parse()`; (b) `persistence/persistence_engine.py`
+    truncated mid-comment after a later, separate Edit-tool batch - this
+    one is the most dangerous variant seen yet: it cut cleanly at a
+    comment line boundary with the file's existing trailing-newline-less
+    EOF, so `ast.parse()` passed clean and the file *looked* complete, but
+    an entire pre-existing function (`_persist_graph_edges`, ~40 lines,
+    not touched by the intended edit at all) silently disappeared from
+    the end of the file - only caught because a regression test later
+    exercising the real `EngineRunner` pipeline raised `NameError:
+    name '_persist_graph_edges' is not defined`, which prompted a
+    diff against `git show HEAD:<path>`, which the routine post-edit
+    `ast.parse()` + grep check had not caught; (c) `engine/run_engine.py`
+    lost its final line (`print("Database saved at:", db_path)`,
+    inside the dead `if __name__ == "__main__":` CLI block, never
+    exercised by the test suite) after what looked like a single clean
+    1-line Edit, again undetected by `ast.parse()` since the truncation
+    point was simply EOF. All three recovered via the standard
+    `git show HEAD:<path>` baseline + Python `str.replace()`
+    reapplication + direct file copy + zero-diff confirmation.
+    Reinforces the existing takeaway with a sharper edge: `ast.parse()`
+    and a grep for the lines you intentionally changed are NOT sufficient
+    verification on their own - they cannot detect silent deletion of
+    unrelated, untouched content elsewhere in the same file. The full
+    `git show HEAD:<path>` diff (or equivalent zero-diff-against-intended-
+    content check) is the only check that actually catches this class.
+17. 2026-06-18 (same item-16 fix session, follow-up) - a 4th hit, this
+    time on `tests/regression/test_subsystem_path_pollution_fix.py`
+    itself, during the Windows-test-failure follow-up fix (see section 3
+    item 16 and section 4): an Edit-tool batch that touched two test
+    functions left the file truncated mid-statement inside the last
+    (untouched) test function, cutting off before the `__main__` block
+    entirely - caught immediately by `ast.parse()` since the cut landed
+    inside an open `try/except` rather than at a clean boundary.
+    Recovered the same way as incident 16: full intended content
+    rewritten via a direct bash heredoc (not a retried Edit/Write),
+    `ast.parse()` plus `diff` against the heredoc-written copy confirmed
+    zero mismatch before copying over the real file. Same takeaway as
+    16 and prior incidents - no new lesson, just another data point that
+    this remains live and unpredictable per-edit, not something that
+    got fixed by switching tools or being more careful about edit size.
+18. 2026-06-18 (same item-16 fix session, follow-up) - a 5th hit, this
+    time on TRACKER.md itself, during the two Edit calls that wrote
+    incident 17's own entry (the bump to "17 occurrences" plus the new
+    item 17 text above): both intended edits landed correctly at their
+    insertion points, but the file also silently lost 16 lines of
+    previously-correct, untouched content elsewhere in the same file -
+    the tail of this very incident-16 entry, in section 4's dated log,
+    cut mid-sentence at "(dead `__main__` CLI code" with no trailing
+    newline. Caught only because `wc -l` showed 1366 lines instead of
+    the expected 1367+16, which prompted a full diff against the
+    trusted pre-edit baseline rather than trusting the Edit tool's own
+    "success" report. Recovered via the standard procedure: reconstruct
+    the full intended content from the last zero-diff-verified baseline
+    via a bash heredoc-driven script, re-verify both new markers and the
+    previously-lost tail text are present, `cp` over the live file, diff
+    to confirm zero output. This makes TRACKER.md itself the most
+    truncation-prone single file encountered this engagement (5 incidents
+    now: the 3-cluster in entry 16, entry 17 misnumbered as "4th hit" when
+    it was actually a separate file, and this one) - reconfirms entry 16's
+    note to treat edits to this file as elevated-risk and never skip the
+    full diff here specifically.
 
 Treat this as a standing defect for every future session in this repo,
 not as noise: verify every Edit/Write via the bash-diff procedure before
@@ -409,12 +474,34 @@ forward - which worked because the FUSE layer allowed in-place rewrite of
 the `.pyc` even though it refused unlink, so the cache then self-healed on
 next import.
 
+**Variant 3 (2026-06-17/18, item-16 fix session):** `rm -rf
+__pycache__` returned success (no error, no output) but a `ls` of the same
+directory run immediately afterward in the very next shell call still
+showed the `.pyc` files present - not a `PermissionError` like Variants
+1/2, just a silent no-op from the caller's perspective. Knock-on effect:
+`importlib`'s normal mtime-based pyc validation then legitimately found a
+"valid" (matching mtime/size) stale pyc and used it, so a freshly-edited,
+syntactically-correct module imported successfully but was missing
+attributes (`hasattr(module, 'new_function')` was `False`) that
+`inspect.getsource()` on that exact same module object confirmed were
+present in the source - the same disagreement signature as Variants 1/2,
+just reached via a delete that silently didn't stick rather than one that
+errored. Confirmed via `-B`/`PYTHONDONTWRITEBYTECODE=1` plus a fresh
+`SourceFileLoader.exec_module()` call still reproducing the stale result
+even with bytecode writing disabled - ruling out "it'll fix itself once a
+new pyc is written." Fixed the same way as Variants 1/2: `touch` every
+source `.py` file to bump mtimes forward, then delete `__pycache__` again
+- after the touch, the next import recompiled correctly.
+
 **Takeaway for future sessions:** if `inspect.getsource()` and `dis.dis()`
 on the same live function object ever disagree, or if a function's
 runtime behavior contradicts its visibly-correct source, suspect a stale
 `.pyc` before assuming the code itself is wrong - and reach for `touch
 <source.py>` rather than trusting a `__pycache__` deletion to have been
-sufficient, since on this mount it sometimes isn't.
+sufficient, since on this mount it sometimes isn't (confirmed: even `rm
+-rf` reporting clean success is not proof the deletion actually took
+effect - verify with a fresh `hasattr`/`dis.dis()` check, not just by
+checking the `rm` exit code or a `find` that ran too soon afterward).
 
 ---
 
@@ -524,19 +611,50 @@ In rough priority order, deduplicated across all four source files:
     status correction, not an open task. The system arrived at a stable,
     intentional end state; it's just a different end state than the
     original plan described, and nothing previously said so.
-16. **SUBSYSTEM identity strings polluted by absolute file paths:** found
-    during the Tier 2 usefulness evaluation (item 1, 2026-06-17).
-    `oracle/db_oracle.py`'s `_file_path_to_module()` (added for the Row 4
-    SUBSYSTEM fix) dots every path segment of the raw stored `file_path`
-    with no project-root trimming, unlike the two existing, already-correct
-    `module_name_from_file_path()` utilities (`core/pathing.py`,
-    `graph/module_resolution.py`) that take a `project_root` and return a
-    clean relative dotted name. Confirmed: produces
+16. **SUBSYSTEM identity strings polluted by absolute file paths: DONE
+    2026-06-17/18.** Found during the Tier 2 usefulness evaluation (item 1,
+    2026-06-17): `oracle/db_oracle.py`'s `_file_path_to_module()` (added for
+    the Row 4 SUBSYSTEM fix) dotted every path segment of the raw stored
+    `file_path` with no project-root trimming, producing
     `sessions.eloquent-magical-bohr.mnt.dj2.tools.analysis.oracle` instead
-    of `tools.analysis.oracle` against a real engine run in this session's
-    sandbox; would equally produce a drive-letter-polluted name on Bart's
-    Windows checkout. Fix is mechanical - reuse one of the two existing
-    utilities instead of the ad hoc reimplementation.
+    of `tools.analysis.oracle` against a real engine run (would equally
+    produce a drive-letter-polluted name on Bart's Windows checkout). The
+    original framing here ("fix is mechanical - reuse one of the two
+    existing `module_name_from_file_path()` utilities") turned out to be
+    wrong: both existing utilities (`core/pathing.py`,
+    `graph/module_resolution.py`) require an explicit `project_root`
+    argument, and nothing anywhere in the schema persisted one - there was
+    no project_root to hand them. The real fix needed a small supporting
+    design, not just a swap-in: (1) a new `project_meta` key/value table
+    in `persistence/persistence_engine.py`; (2) `set_project_root()`,
+    called from `persist_all()` (now taking an optional `project_root`
+    param) with the real ingestion-time root; (3) `EngineRunner.run()`
+    threading its already-known `repo_root` through to `persist_all()`;
+    (4) `DBOracle.get_project_root()`, which reads the persisted value and
+    falls back to inferring it (longest common directory prefix across
+    `files.file_path`, via `os.path.commonpath()`) for any DB that
+    predates this change; (5) `_file_path_to_module()` gaining an optional
+    `project_root` parameter (default `""`, preserving exact prior
+    behavior for any caller that doesn't supply one), used by both
+    `find_modules()` and `symbol_module_map()`. New regression test file:
+    `tests/regression/test_subsystem_path_pollution_fix.py` (7 tests,
+    covering the trim logic directly, both project_root sources -
+    persisted and inferred - their respective edge cases, the DBOracle-
+    level discovery API, and a full real `EngineRunner` run end to end).
+    Full project test suite re-run after the fix: 85/85 passed
+    (`pytest tools/analysis/tests/`), confirming no regressions from the
+    `_file_path_to_module()` signature change or the new `persist_all()`
+    parameter. Picked ahead of item 2 in this session despite being lower
+    in this list's numbering: Bart's standing instruction is to prefer
+    "anything high priority affecting other sections" over strict list
+    order, and this one qualified - the buggy function is shared by both
+    the SUBSYSTEM view *and* `find_modules()`/`symbol_module_map()`, which
+    are general-purpose discovery-API primitives from the already-"DONE"
+    Phase 2 discovery layer that future Agent Capability Layer work
+    (item 13) is expected to build on, so the pollution would otherwise
+    have propagated into whatever gets built on top of discovery next.
+    Item 2 (Truth.md Phase 1 Row 1 remainder + Row 5) remains open and
+    next in line.
 17. **INTEGRITY view is thinner than the codebase's own existing validation
     logic:** found during the same evaluation. `Assessor.validation_summary()`
     reimplements 2 of `validation/system_validator.py`'s 4 checks inline
@@ -1232,3 +1350,54 @@ written via direct file copy and confirmed zero-diff before continuing.
 Both incidents are this tracker's own incident log gaining two more
 real-time entries about itself while documenting a different finding -
 same pattern noted in incident 13.
+
+### 2026-06-17/18 (item-16 fix session) - SUBSYSTEM path-pollution fix (item 16) closed
+
+Followed Bart's standing reprioritization instruction ("anything high
+priority affecting other sections would be good, otherwise take them in
+order, update in an understandable way") to work item 16 ahead of item 2:
+`_file_path_to_module()` is shared by the SUBSYSTEM view and by
+`find_modules()`/`symbol_module_map()`, general-purpose discovery-API
+primitives that future Agent Capability Layer work (item 13) is expected
+to build on, so the path-pollution bug would otherwise have propagated
+into whatever gets built on top of discovery next.
+
+Fix turned out larger than item 16's original framing ("mechanical - reuse
+an existing utility"): both existing `module_name_from_file_path()`
+utilities need an explicit `project_root`, and nothing persisted one.
+Added: `project_meta` key/value table; `persistence_engine.
+set_project_root()`, called from `persist_all()`'s new optional
+`project_root` param; `EngineRunner.run()` threading its `repo_root`
+through; `DBOracle.get_project_root()` (persisted value, falling back to
+common-directory-prefix inference for pre-existing DBs); and
+`_file_path_to_module()` gaining an optional `project_root` param
+(default `""`, exact prior behavior preserved for callers that don't pass
+one). New regression file `tests/regression/
+test_subsystem_path_pollution_fix.py` (7 tests). Full suite re-run twice
+after recovery work below: 85/85 passed both times, no regressions. See
+section 3 item 16 (now closed) for full detail.
+
+Three more silent-truncation incidents this session, all in source files
+touched by this fix, bumping the section 2a incident count to 20: (a)
+`oracle/db_oracle.py` cut mid-statement, caught by `ast.parse()`; (b)
+`persistence/persistence_engine.py` cut mid-comment at EOF - the most
+dangerous variant yet, since it silently deleted an entire untouched
+pre-existing function (`_persist_graph_edges`) without breaking syntax,
+only caught via a runtime `NameError` from a later test plus a full `git
+show HEAD:<path>` diff; (c) `engine/run_engine.py` lost its final line
+(dead `__main__` CLI code, never exercised by tests) at EOF, again
+syntactically invisible. All three recovered via the standard `git show
+HEAD:<path>` baseline + assertion-guarded `str.replace()` + direct file
+copy + zero-diff confirmation. Reinforces section 2a's takeaway with a
+sharper edge: `ast.parse()` plus reviewing only the intentionally-changed
+lines is not sufficient - only a full diff against a known-good baseline
+catches silent deletion of unrelated, untouched content elsewhere in the
+same file. Also hit a new sub-variant of the section 2b stale-`.pyc` bug:
+`rm -rf __pycache__` reported success with no error, but a `ls` run
+immediately afterward in the very next shell call still showed the
+`.pyc` files present - a silent no-op delete, distinct from the
+previously-documented `PermissionError` variants. Fix: `touch` the source
+`.py` files to bump mtime forward before re-clearing `__pycache__`, which
+forces cache invalidation even when the raw delete doesn't visibly take
+effect. See section 2a incident 16 and section 2b Variant 3 for full
+detail.
