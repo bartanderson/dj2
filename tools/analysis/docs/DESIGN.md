@@ -174,142 +174,156 @@ build against.
 
 ---
 
-## 3. Agent capability layer (live design proposal)
+## 3. Agent capability layer (design proposal - nothing built yet)
 
-**Status:** design proposal, not yet a finished execution checklist.
-Written 2026-06-17 to close out a design conversation that started from a
-determinism-test fix and Bart's "the boundary is my memory" reframe - he
-wants a capable software base enhanced with AI, not an AI that's trying to
-be capable on its own. That's the same principle the Truth Kernel already
-encodes ("not allowed to invent information"); this section is about
-extending that same deterministic-core-plus-AI-narration shape outward to
-cover the actual game code, not the analysis tool's own code.
+**Status: design only. Not one line of this has been implemented.** The
+build-order checklist for this section lives in TRACKER.md under "Agent
+Capability Layer build order" - that's where checkboxes belong; this
+section is for the reasoning behind them, not for tracking what's done.
 
-The concrete trigger: Bart half-remembered a design decision ("potentials
-that collapse at trigger time") and asked for it to be checked rather than
-trusted from memory. It was found (world_controller.py's
-potential_locations + generate_location_from_potential, world_map.py's
-on-demand-generation comment, travel_system.py's EncounterPoint.activate()
-+ generate_encounter()) along with a live gap: region_id is hardcoded None
-at creation, so generate_location_from_potential always returns None right
-now - wired but dead. That lookup-and-verify cycle is exactly the
-capability being designed for here: how to make it repeatable without
-re-grepping from scratch every time, and how to extend the same idea to
-ripple/impact analysis.
+### Why this layer exists
 
-### Four layers - status today vs. gap vs. proposed
+The concrete trigger was small: Bart half-remembered a design decision -
+"potentials that collapse at trigger time" - and asked for it to be
+checked rather than trusted from memory. It checked out, but only
+partially: `world_controller.py`'s `potential_locations` and
+`generate_location_from_potential`, `world_map.py`'s on-demand-generation
+comment, and `travel_system.py`'s `EncounterPoint.activate()` /
+`generate_encounter()` all confirmed the mechanism is real and wired up -
+but `region_id` is hardcoded `None` at the point a potential is created,
+so `generate_location_from_potential` always returns `None` right now.
+Wired, but dead.
 
-**1. Knowledge layer (what facts exist about the codebase)**
-Today: `graph_edges`/`symbol_references` tables, populated by ingestion,
-scoped only to tools/analysis itself. The actual game code - world/,
-engine/, resolver/, dungeon_neo/, etc. - has never been ingested, so
-questions about it require ad-hoc grep instead of a query.
-Proposed: point ingestion at world/ + engine/ + resolver/ + dungeon_neo/
-(core/, og_system/, routes/, ai/ as a second pass). Same DB, same schema -
-"run the thing we already have over more files," no new design needed here.
+That's the pattern worth naming: a half-remembered fact about a large
+codebase turned out to be mostly right and partly wrong, and the only way
+to find out which parts was to go look. This is the same problem the Truth
+Kernel already solves one level down - "the AI must not invent structure,
+it must read it off the DB" - showing up one level up, for the person
+doing the designing. Bart's own framing for this is "the boundary is my
+memory": past some size, a codebase stops fitting in one person's head,
+and the limiting resource isn't AI capability, it's how much of a large,
+changing system one person can keep accurately in mind at once. This
+layer is about extending the Truth Kernel's discipline outward to cover
+the actual game code (world/, engine/, resolver/, dungeon_neo/, etc.),
+which has never been ingested at all - right now, questions about it
+require ad-hoc grep, not a query.
 
-**2. Reasoning layer (how facts get turned into answers)**
-Today: the Truth Kernel query algebra (Select/Combine), 6 views
-(STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM/ROLE), `Assessor.ask()` as
-the NL front door - real, tested, regression-covered (see TRACKER.md for
-the current pass count). No structural gap; this layer is solid and just
-needs to be fed more (layer 1) and asked more (layer 4).
+### The shape: four layers, one throughline
 
-**3. Tracking layer (durable record of in-progress work across sessions)**
-Today: doesn't exist in DB-backed form. TRACKER.md (this file's
-counterpart) is the closest analogue, but it's meta-tool notes about the
-analysis tool itself, not a per-ripple work surface for changes to the game
-code. Proposed: the task.md mechanism below.
+It's tempting to describe this as four independent features to build.
+That's the wrong frame - two of the four layers are already built, because
+they're the same mechanism the Truth Kernel runs on, just narrower in
+scope than they need to be. The other two are genuinely new, and one of
+them depends on a fact about the system that hasn't been checked yet.
 
-**4. Capability layer (the actual analyses built on top of 1-3)**
-Today: an `impact_query` intent exists in `api/oracle_router.py`, but its
-full semantics are unverified - it's not yet confirmed whether it returns
-the complete transitive reverse-dependency closure of a target symbol, or
-only what the expansion-depth budget for the explainability trace happens
-to surface. This needs to be checked before anything is built on top of it.
-Proposed: ripple/blast-radius analysis (true transitive closure, both
-directions) as the first new capability, since it's the direct prerequisite
-for the task.md workflow below.
+**Knowledge - widen the substrate, don't redesign it.** The
+`graph_edges`/`symbol_references` tables and the ingestion pipeline that
+populates them already exist and already work; they're just scoped to
+`tools/analysis` itself. Pointing that same ingestion at `world/` +
+`engine/` + `resolver/` + `dungeon_neo/` (with `core/`, `og_system/`,
+`routes/`, `ai/` as a second pass) is "run the thing we already have over
+more files," not new design.
 
-### The task.md proposal
+**Reasoning - proven, but only proven on one corpus.** The query algebra
+(Select/Combine), the 6 views, and `Assessor.ask()` as the NL front door
+are real, tested, and regression-covered - but every test that proves that
+runs against `tools/analysis`'s own code. "This works" and "this works on
+a much larger, differently-shaped codebase full of game logic instead of
+analysis-tool logic" are different claims, and only the first one has been
+checked. Applying this project's own verify-don't-assume discipline to
+itself: the reasoning layer should be treated as proven-on-one-corpus, not
+proven, until it's actually been run against the widened Knowledge layer.
 
-Bart's own stated workflow: for a SIMPLE ripple (a rename, a literal string
-in a known-small set of places) he already has the right tool - Sublime
-Text global search, navigate, edit - and this system shouldn't insert
-itself there, that would just be friction.
+**Tracking - a durable record has to answer to ground truth, not just
+exist.** Nothing like a per-task durable record exists yet; TRACKER.md is
+the closest analogue, but it's meta-notes about the analysis tool itself,
+not a workspace for tracking an in-progress change to the game code. The
+task.md mechanism below is the proposed answer. The reason its
+re-open-and-recheck-drift requirement isn't optional: a checklist that
+just sits there and gets read is, eventually, "memory in a different file
+format" - exactly the failure mode this whole layer exists to avoid. A
+task.md only earns its keep if reopening it re-asks the question it was
+built from, against current DB state, every time.
+
+**Capability - the payoff layer, and the one most likely to fool you if
+skipped past.** An `impact_query` intent already exists in
+`api/oracle_router.py`. What's unverified is whether it returns the full
+transitive reverse-dependency closure of a target symbol, or only what the
+explainability trace's depth budget happens to surface along the way -
+those are very different guarantees, and right now nobody has written down
+which one it actually provides. This project has hit the "looks done,
+isn't" pattern more than once already (orphaned Truth Layer views with
+zero real callers, `drift_signals` hardcoded to `[]`, `Filter` nodes that
+were referenced but never constructed) - the lesson each time was that an
+unverified assumption about what a piece of code actually does is exactly
+where the next one of these is hiding. `impact_query` is a plausible next
+home for that bug, precisely because it looks finished. It has to be
+audited against real data before the task.md mechanism is built on top of
+it, not after.
+
+### The task.md mechanism, and where it's deliberately *not* meant to help
+
+Bart's own stated workflow: for a SIMPLE ripple - a rename, a literal
+string in a known-small set of places - he already has the right tool,
+Sublime Text global search, navigate, edit, and this system shouldn't
+insert itself there; that would just be friction for no benefit.
 
 For a NON-simple ripple - where the chain includes pass-through logic,
 indirect callers, or effects a literal-string search can't see (an
-interface contract, a data shape, a behavior that changes meaning two calls
-downstream) - that's the case this is meant to help with. Not by guessing:
-by enumerating the real chain from the graph and giving a structured place
-to work through it "one at a time in order till we get it fixed," in his
-words, including "hate to leave something broken."
+interface contract, a data shape, a behavior that changes meaning two
+calls downstream) - that's the case this is meant to help with. Not by
+guessing: by enumerating the real chain from the graph and giving a
+structured place to work through it "one at a time in order till we get it
+fixed," in his words, including "hate to leave something broken."
 
 A task.md, generated from a ripple/impact query, should contain:
 
-- the target symbol/file and the query that produced this file (so it can
-  be regenerated, not just read)
-- the full discovered chain: direct callers, direct callees, and transitive
-  reach in both directions, distinguishing "local effect at this site" from
-  "pass-through logic that itself needs to change"
-- one checklist line per affected site, each in a state: OPEN / IN PROGRESS
-  / DONE / ABANDONED (with reason) - reusing the same state machine
-  proposed for durable backlog items generally, rather than inventing a
+- the target symbol/file and the query that produced this file, so it can
+  be regenerated, not just read
+- the full discovered chain in both directions, distinguishing "local
+  effect at this site" from "pass-through logic that itself needs to
+  change" - those are different kinds of work and collapsing them into one
+  undifferentiated list would defeat the purpose
+- one checklist line per affected site, each in a state: OPEN / IN
+  PROGRESS / DONE / ABANDONED (with reason) - reusing the same state
+  machine as durable backlog items generally, rather than inventing a
   second one
 - nothing marked DONE on the file as a whole until every line is DONE or
   explicitly ABANDONED with a reason - no silent partial completion
 
-Re-opening a task.md later has to do more than display the file: the tool
-should re-run the query that generated it against current DB state and
-report drift (sites that no longer exist, new sites that now match,
-anything that changed shape since the file was written). Otherwise a
-task.md from last week silently goes stale exactly the way conversation
-memory does, defeating the point.
+Re-opening a task.md has to do more than display the file: it has to
+re-run the query that generated it against current DB state and report
+drift - sites that no longer exist, new sites that now match, anything
+that changed shape since the file was written. Skip that, and a task.md
+from last week goes stale exactly the way a half-remembered design
+decision does - which is the thing this whole layer was built to stop
+happening.
 
-### Build order (smallest safe slices, in dependency order)
+### Decisions Bart has already made, and why
 
-1. [ ] Widen ingestion scope to world/ + engine/ + resolver/ + dungeon_neo/.
-   No new code - run existing ingestion over more files, plus whatever
-   path-config change that requires. Verify with a regression test that
-   asserts a known real symbol (e.g.
-   `generate_location_from_potential`) shows up in `graph_edges` after
-   ingestion.
-2. [ ] Audit `impact_query`'s actual semantics against real data: full
-   transitive closure, or only what the explainability trace's depth
-   budget surfaces? Write this down as fact either way before building on
-   it -"verify, don't assume" is the point of this whole section.
-3. [ ] If a gap is found in #2, fix it or add a separate full-closure
-   ripple query (both directions) as a new, explicit capability - not
-   silently repurposing the explainability trace for a job it wasn't built
-   for.
-4. [ ] Build the task.md generator off the ripple query from #2/#3.
-   Markdown, plain checklist format, matching the existing doc voice (see
-   TRACKER.md for the style to match).
-5. [ ] Build the "re-reference a task.md" path: read file -> extract the
-   originating query -> re-run against current DB -> diff -> report.
-
-### Open questions, answered by Bart
-
-1. **Where should task.md files live?** A new tools/analysis/tasks/
-   directory, git-tracked? Or something more disposable that isn't meant
-   to survive a `git status` check?
-   - A: docs folder (same folder as this file) is fine.
+1. **Where should task.md files live?** Answer: the docs folder, same
+   folder as this file. The alternative under consideration was a
+   dedicated `tools/analysis/tasks/` directory; the simpler answer won
+   because there's no benefit yet to a separate location until there's
+   evidence one is needed - matching the project's general preference for
+   not building structure ahead of a demonstrated need for it.
 2. **Should ABANDONED require a reason every time**, or is that overkill
-   for a one-person backlog?
-   - A: if the AI isn't sure of the reason, it should ask the user for one;
-     if the user says he doesn't care, use a sensible default (e.g. "user
-     ok'd").
+   for a one-person backlog? Answer: if the AI isn't sure of the reason, it
+   should ask; if Bart says he doesn't care, fall back to a sensible
+   default (e.g. "user ok'd"). This keeps the state machine honest without
+   making it bureaucratic - the point of requiring a reason is to prevent
+   silent abandonment, not to extract paperwork.
 3. **For "pass-through logic," is structural call-chain enumeration enough
-   for v1**, or should the existing contract/classification systems (see
-   section 5 below) be pulled in too, to flag behavioral/type risk along
-   the chain?
-   - A: keep v1 simple; add more later if needed.
+   for v1**, or should the existing contract/classification machinery
+   (section 5 below) be pulled in too, to flag behavioral/type risk along
+   the chain? Answer: keep v1 to structural call-chain enumeration only;
+   add more later if a real case demonstrates the need. This is the same
+   discipline as decision 1 - resist scope creep that isn't backed by
+   evidence yet, especially here, where section 5's contract systems are
+   themselves only partially reconciled with each other.
 
-This section is still open work - see TRACKER.md for whether any of the
-build-order items above have been started.
-
----
+Build sequencing, what's actually started, and current status all live in
+TRACKER.md - intentionally not duplicated here.
 
 ## 4. Symbol classification & routing architecture
 
@@ -409,6 +423,60 @@ non-goals. Per the status note above, that level of detail is now mostly
 historical - the files and authority boundaries it specified are in place.
 If the authority model above is ever violated by future changes, this
 section is the reference for what "violated" means.
+
+### The shadow/observability layer (added after this plan; not in the original design)
+
+This wasn't in the original Symbol Classification Stabilization Plan, but
+it's real and live in `graph/symbol_router.py` / `graph/route_trace.py`
+today, and it isn't documented anywhere else, so it belongs here.
+
+`route_symbol()` is still the only production entrypoint - a thin wrapper
+over `_route_symbol_core()`, explicitly commented in the source as "the
+historical routing truth source... must remain deterministic and
+structurally stable." Nothing about that has changed.
+
+Alongside it, `route_symbol_shadow()` runs the same core router but also
+attaches a `TraceCollector` that records CP0-CP4 checkpoints (raw input,
+canonical/normalized form, classification input, project/runtime/
+builtin/stdlib match flags, final result) plus a parallel "CP2.5 semantic
+observation" pass that records lexical/decomposition signals and candidate
+semantic identities (surface, fqdn guess, module, confidence, evidence).
+The source comments are unusually explicit about what this layer is and
+is not: "This is NOT a production routing path," "MUST NOT influence CP3
+routing decisions," "All routing decisions in this module are final
+within the pipeline" (referring to the CP3 stage the legacy router owns).
+It's a pure observation/audit channel, not an alternate routing path.
+
+This is the resolution of an older, larger ambition. The
+"semantic identity reconstruction" line of work (see
+`docs/del/Semantic Identity Reconstruction Migration Plan.md`) originally
+proposed a phased migration - through CP2.5 and CP3 checkpoint stages,
+comparing a shadow semantic-aware router against the legacy one - toward
+eventually replacing `route_symbol()` with identity-aware resolution. The
+code comments confirm that the comparison/shadow infrastructure got built
+close to as specified, but the end state didn't: a full "CP2.5 semantic
+observation layer" that could influence routing was tried, then marked
+`(DEPRECATED)` and removed from execution, then replaced by the current
+"SEED DISCOVERY LAYER" (DB-backed symbol lookup, explicitly "no semantic
+interpretation, no identity reconstruction") plus the permanent
+trace-only CP2.5 that exists today. In other words: the diagnosis behind
+the migration plan was correct and the audit tooling it called for got
+built, but the project deliberately stopped short of the planned
+pipeline replacement and settled on "legacy router stays sole authority
+forever, shadow/trace layer watches and records but never decides." That's
+a quieter, more conservative outcome than the original plan envisioned,
+and it's consistent with this section's own authority-model principle:
+one layer, one authority, and "use the shadow output to inform a human or
+a future decision" is a different thing from "let the shadow output make
+the decision."
+
+No open item currently tracks whether this shadow/trace layer is being
+used for anything (e.g. periodic comparison runs, drift detection) or
+just sitting there instrumented but uncalled outside of
+`classification/classify_references.py`'s direct use of
+`route_symbol_shadow()`. Worth a real audit before the Agent Capability
+Layer's Knowledge-widening work (section 3) starts touching this part of
+the pipeline.
 
 ---
 

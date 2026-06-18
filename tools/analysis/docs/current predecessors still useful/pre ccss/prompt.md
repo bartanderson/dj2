@@ -1,3 +1,14 @@
+STATUS NOTE (added 2026-06-17, Pass 2 read-only audit): this spec was
+actually implemented. `tools/analysis/ccss - redesign into tool over
+analysis db/pass1.py`/`pass2.py`/`pass3.py` follow this file_id/test_id/
+symbol_uid identity model and PASS1->PASS2->PASS3 contract almost
+verbatim. But PASS2 and PASS3 only satisfy the structural contract, not
+the substance: PASS2's `enrich_symbol()` never produces fqdn/role/
+confidence (pure passthrough), and PASS3's `gaps` output is hardcoded
+empty - the actual coverage-gap detection this spec exists to produce was
+never built. See TRACKER.md item 15 for the full finding and the open
+decision (finish / integrate / shelve).
+
 CCSS 3-PASS TEST ANALYSIS SYSTEM (CANONICAL SPEC v1.0)
 0. GLOBAL INVARIANTS
 File Identity

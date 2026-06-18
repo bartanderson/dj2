@@ -300,7 +300,7 @@ land at a plausible-looking boundary partway through. Full procedure is in
 CLAUDE.md's "File write verification (mandatory)" section; this tracker
 file itself was written and verified using that exact procedure.
 
-**Incident log (at least 13 confirmed occurrences across this project's
+**Incident log (at least 14 confirmed occurrences across this project's
 sessions, in order):**
 1. 2026-06-16 - small Edit to `query_session.py` truncated mid-statement
    (10041 of ~10222 bytes).
@@ -344,6 +344,20 @@ sessions, in order):**
 12. 2026-06-17 (run-on continuation) - all 3 test files edited while
     fixing the bucket-gate bug were truncated mid-line despite the Edit
     tool itself reporting success.
+13. 2026-06-17 (Pass 2 session) - both `DESIGN.md` and `TRACKER.md` itself
+    were silently truncated by edits earlier in this same session (the
+    Agent Capability Layer rewrite, and this file's item-13 expansion).
+    Caught only because this section's own procedure was followed before
+    moving on to unrelated work: `wc -l`/`wc -c` against `git show
+    HEAD:<path>` showed DESIGN.md on disk at 438/451 lines and TRACKER.md
+    at 951/952, both cut off mid-word with no trailing newline. Recovered
+    by treating the git HEAD blob as the verified-correct base, re-applying
+    the intended edits via a bash/python splice (not Edit/Write on the
+    live file), and writing the result via direct redirect, each verified
+    with a zero-diff check before moving on. Worth naming explicitly: this
+    is the first time the bug has hit this tracker file's own
+    self-description of the bug - a reminder that "we already wrote the
+    procedure down" is not the same as "the procedure ran this time."
 
 Treat this as a standing defect for every future session in this repo,
 not as noise: verify every Edit/Write via the bash-diff procedure before
@@ -441,18 +455,86 @@ In rough priority order, deduplicated across all four source files:
     Truth Layer exclusively, Oracle fully routed through it, engine
     introspection migrated, legacy dual-path removed, no ad-hoc graph
     inspection paths remaining anywhere, query language frozen.
-13. **Agent Capability Layer build order (see DESIGN.md section 3) - not
-    started:** widen ingestion scope to world/ + engine/ + resolver/ +
-    dungeon_neo/; audit `impact_query`'s actual transitive-closure
-    semantics against real data; fix/add a full-closure ripple query if
-    a gap is found; build the task.md generator; build the task.md
-    re-reference/drift-report path.
+13. **Agent Capability Layer build order (see DESIGN.md section 3 for the
+    why - this is sequencing only). Status: not started, zero items below
+    have any code behind them as of 2026-06-17.**
+    1. [ ] Widen ingestion scope to world/ + engine/ + resolver/ +
+       dungeon_neo/. No new code - run existing ingestion over more files,
+       plus whatever path-config change that requires. Verify with a
+       regression test asserting a known real symbol (e.g.
+       `generate_location_from_potential`) shows up in `graph_edges` after
+       ingestion.
+    2. [ ] Audit `impact_query`'s actual semantics against real data: full
+       transitive closure, or only what the explainability trace's depth
+       budget surfaces? Write this down as fact either way before building
+       on it.
+    3. [ ] If a gap is found in #2, fix it or add a separate full-closure
+       ripple query (both directions) as a new, explicit capability - not
+       silently repurposing the explainability trace for a job it wasn't
+       built for.
+    4. [ ] Build the task.md generator off the ripple query from #2/#3.
+       Markdown, plain checklist format, matching this doc's voice.
+    5. [ ] Build the "re-reference a task.md" path: read file -> extract
+       the originating query -> re-run against current DB -> diff ->
+       report.
 14. **Truth Kernel Board Tier 0:** AI compiler surface hypotheses -
     TRUTH KERNEL v1.md's view-legality and Combine-legality lists are
     stale relative to the current 6-view reality (they only mention 5
     views and don't include ROLE in the allowed Combine pairs) - worth a
     pass to update DESIGN.md's spec language or explicitly note the gap
     there if ROLE participation in Combine is ever needed.
+15. **CCSS pipeline exists as real code, but Pass2/Pass3 are structural
+    stubs - decision needed: finish, integrate, or shelve.** Found during
+    Pass 2 doc review (2026-06-17): `tools/analysis/ccss - redesign into
+    tool over analysis db/` contains a working PASS1 -> PASS2 -> PASS3
+    implementation (`pass1.py`/`pass2.py`/`pass3.py`/`run.py`/
+    `scan_tests.py`/`snapshot_store.py`/`ledger_store.py`/
+    `snapshot_compare.py`/`gap_ledger.py`/`regression_check.py`) that
+    structurally matches the canonical spec in
+    `docs/current predecessors still useful/pre ccss/prompt.md` (same
+    file_id/test_id/symbol_uid identity model, same PASS1/2/3 contract
+    boundaries). It is not wired into the main pipeline, the oracle
+    router, or the Truth Kernel - the only outside reference is
+    `engine/pipeline_dependency_tracer.py` tracking it as a known import
+    bucket, not calling it. More importantly, PASS2's `enrich_symbol()` is
+    a pure passthrough (no fqdn/role/confidence - the semantic enrichment
+    the spec calls for was never implemented) and PASS3's `gaps` list is
+    structurally always `[]` (coverage axes are computed from raw surface
+    tokens and symbol_uid presence, which is trivially complete by
+    construction, not from actual role/runtime resolution) - this is the
+    project's own "looks done, isn't" pattern again. `snapshots/` and
+    `ledger/` are currently empty on disk, and `regression_check.py`
+    hardcodes two specific timestamped snapshot filenames that don't
+    currently exist, so it would fail if run as-is. Nobody has decided
+    whether this is worth finishing (real semantic enrichment + real gap
+    detection), worth integrating into the main DB-backed pipeline (the
+    folder's own name suggests that was the intent - "redesign into tool
+    over analysis db" - but the code still reads source files directly via
+    AST, not the DB), or worth shelving. Needs a decision before any more
+    time goes into it either direction.
+16. **Semantic Identity Reconstruction: status corrected from "Phase 3 not
+    started" to "Phase 3 deliberately abandoned."** Found during Pass 2 doc
+    review (2026-06-17), grounded against `graph/symbol_router.py` and
+    `graph/route_trace.py`. The historical plan (now in
+    `docs/del/Semantic Identity Reconstruction Migration Plan.md`)
+    proposed a phased bridge - shadow pipeline, CP2.5/CP3 checkpoints -
+    eventually replacing `route_symbol()` with semantic-identity-aware
+    resolution. The shadow/trace infrastructure (`route_symbol_shadow()`,
+    `TraceCollector`, CP0-CP4 checkpoints) was built close to as specified
+    and is real and live, called from
+    `classification/classify_references.py`. But the planned end state -
+    retiring or replacing the legacy router - was not just "not yet
+    reached," it was tried and explicitly reversed: the code's own
+    comments mark an earlier "CP2.5 semantic observation layer" that could
+    influence routing as `(DEPRECATED)` and "removed from execution,"
+    replaced by a DB-backed "seed discovery" layer with "no semantic
+    interpretation, no identity reconstruction," plus a permanent
+    trace-only CP2.5 that explicitly "MUST NOT influence CP3 routing
+    decisions." See DESIGN.md section 4's new "shadow/observability layer"
+    subsection for the full writeup. No action item here - this is a
+    status correction, not an open task. The system arrived at a stable,
+    intentional end state; it's just a different end state than the
+    original plan described, and nothing previously said so.
 
 ---
 
@@ -950,3 +1032,62 @@ run-on session).
 the Edit tool reporting success (incident #12, section 2a) - at least the
 thirteenth recorded incidence of the truncation bug across this project's
 sessions, still standing, not noise.
+
+### 2026-06-17 (Pass 2) - older predecessor docs assessed and disposed; CCSS and semantic-identity-reconstruction findings surfaced
+
+Bart's go-ahead to do Pass 2: assess `docs/current predecessors still
+useful/` (3 files) and its `pre ccss/` subfolder (7 files) for whether
+their vision still aligns, is partially superseded, or fully superseded -
+grounded against the actual current codebase, not just read against each
+other.
+
+**Disposition of all 10 files:**
+
+- `architectural triage protocol.md` - left in place, unchanged. Already
+  carries a 2026-06-16 status note marking the methodology "still a
+  reasonable process" with one corrected stale reference
+  (`run_analysis_pipeline.py` -> `engine/run_engine.py`). No new findings.
+- `old checklist.md` (the "C3" classification model) - left in place, new
+  status note added. Still substantially describes current reality:
+  `route_symbol()` -> `_route_symbol_core()` is the same single-pipeline,
+  no-re-entry model, and `classification_gap` is alive across the current
+  codebase. What it predates: the shadow/trace observability layer (see
+  DESIGN.md section 4 below).
+- `pre ccss/CCSS  execution plan.md`, `pre ccss/Contract Coverage Surface
+  System.md`, `pre ccss/prompt.md` - left in place, status note added to
+  each. Not superseded - actually built (see item 15 below) - but the
+  build only satisfies the structural contract, not the substance.
+- `Module Governance.md` - moved to `docs/del/`. Superseded in specifics
+  (file paths, `run_analysis_pipeline.py`/reducer ownership - that file is
+  deleted) but its module-card methodology (OWNS / DOES NOT OWN / OUTPUTS /
+  INVARIANTS / MATURITY) is the direct conceptual ancestor of DESIGN.md
+  section 4's Authority Model, which superseded it.
+- `pre ccss/Key insight about what we missed and where we are going.txt` -
+  moved to `docs/del/`. Its diagnosis (premature semantic flattening in
+  `route_symbol()` - leaf names like "dataclass" can't match fully-qualified
+  project identities) was correct and was acted on; superseded by the fix
+  now documented in DESIGN.md section 4, not by being wrong.
+- `pre ccss/Semantic Identity Reconstruction Migration Plan.md` - moved to
+  `docs/del/`. Partially superseded - see item 16 below for the full
+  finding.
+- `pre ccss/status as of 05242026.txt` - moved to `docs/del/`. A
+  snapshot-in-motion ("Phase 2 actively working, Phase 2.5 emerging, Phase
+  3 not started") whose motion has since stopped/redirected - historical
+  waypoint only.
+- `pre ccss/test file list.txt` - moved to `docs/del/`. Flat reference
+  list, no standalone content to assess.
+
+**New findings, written up in full in DESIGN.md and TRACKER.md (not
+repeated here):**
+
+- DESIGN.md section 4 gained a new "shadow/observability layer" subsection
+  documenting `route_symbol_shadow()`/`TraceCollector`/CP0-CP4 as real,
+  live, currently-undocumented architecture.
+- TRACKER.md open items 15 (CCSS: built but Pass2/Pass3 are structural
+  stubs, decision needed) and 16 (semantic identity reconstruction: status
+  corrected from "Phase 3 not started" to "Phase 3 deliberately
+  abandoned, different but stable end state reached") added to section 3.
+
+**Separately, this same session caught and fixed a recurrence of the
+silent file-truncation bug** hitting this tracker's own two most recent
+edits - see section 2a, incident 13, for the full incident writeup.

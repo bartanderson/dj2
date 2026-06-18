@@ -1,3 +1,17 @@
+STATUS NOTE (added 2026-06-17, Pass 2 read-only audit): this still
+substantially describes current reality. The single-pipeline, no-re-entry
+model below matches `route_symbol()` -> `_route_symbol_core()` in
+`graph/symbol_router.py` today, and `classification_gap` (the fallback
+this doc describes) is alive across the current codebase (`assessor.py`,
+`graph/symbol_classifier.py`, `metrics/extract_metrics.py`,
+`oracle/db_oracle.py`, `reducer/reduce.py`, and others). What this doc
+predates: a permanent shadow/trace observability layer
+(`route_symbol_shadow()` / `TraceCollector`, CP0-CP4 + a trace-only CP2.5)
+that now runs alongside the pipeline described here, purely for
+auditability - it never feeds back into the routing decision this doc
+describes. See DESIGN.md section 4's "shadow/observability layer"
+subsection for the full writeup.
+
 ONE canonical classification entry point for ALL symbols
 
 SINGLE-PIPELINE EXECUTION MODEL

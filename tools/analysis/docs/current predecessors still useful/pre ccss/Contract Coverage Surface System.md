@@ -1,3 +1,12 @@
+STATUS NOTE (added 2026-06-17, Pass 2 read-only audit): this was actually
+built. `tools/analysis/ccss - redesign into tool over analysis db/`
+contains a real PASS1/PASS2/PASS3 implementation matching this plan's
+identity model and pass boundaries. But PASS2 enrichment and PASS3 gap
+detection are structural stubs only - no real semantic role/confidence
+classification, `gaps` is hardcoded empty - and it's not wired into the
+main pipeline. See TRACKER.md item 15 for the full finding and the open
+decision (finish / integrate / shelve).
+
 1. Core system name
 Contract Coverage Surface System (CCSS)
 
