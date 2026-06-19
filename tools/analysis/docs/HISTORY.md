@@ -1,330 +1,49 @@
-tools/analysis - HISTORY (full incident log + chronological session log)
-=========================================================================
+tools/analysis - HISTORY (chronological session log)
+=====================================================
 
-This file holds the detailed historical record that used to live inline in
-TRACKER.md sections 2 and 4: the full incident-by-incident write-tooling
-defect log, and the full dated chronological session log. It was split out
-2026-06-18 to keep TRACKER.md a lean, forward-looking status board - per
-Bart's direction, once a fix lands and DESIGN.md reflects the resulting
-architecture, TRACKER doesn't need to re-justify it in prose. Nothing here
-was deleted or condensed from the originals; this is a straight relocation,
-verified line-for-line against the pre-split TRACKER.md.
+Full dated record of what was done session by session.
 
-- For current status and open work: see TRACKER.md (the dashboard at the
-  top, section 1's phase/tier tables, section 3's open items).
+- For current status and open work: see TRACKER.md.
 - For how the system is actually built: see DESIGN.md.
-- For the still-relevant operational summary of the defects logged in
-  detail below (what they are, the mandatory verification procedure): see
-  TRACKER.md section 2 - that summary stays in TRACKER since it's something
-  every session needs, not just history.
+- For the still-relevant operational summary of environment defects: see
+  TRACKER.md section 2.
 
 ---
 
-## A. Standing environment defects - full incident log
+## A. Standing environment defects - reference
 
+### 2a. Stale/locked `.pyc` cache bug
 
-These are real, repeatedly-confirmed defects in this session's file-write
-tooling - not project bugs. CLAUDE.md's "File write verification
-(mandatory)" section is the binding procedure; this section is the
-incident log that justifies it.
+Three confirmed variants on this Windows environment: a locked/undeletable
+stale `.pyc` whose mtime+size happens to match an intermediate source save
+and passes Python's normal cache-validity check; the same thing but where
+even `rm -rf __pycache__` reports clean success while the file silently
+remains; and a case where deletion succeeds but trusting it without
+re-verification still misses the window. All three look the same at
+runtime: `inspect.getsource()` shows correct code but the live function
+object's actual behavior (or `dis.dis()` output) reflects the old version.
 
-### 2a. Silent file-truncation bug
+**Takeaway:** if `inspect.getsource()` and `dis.dis()` on the same live
+function object ever disagree, or runtime behavior contradicts
+visibly-correct source, suspect a stale `.pyc` before assuming the source
+is wrong. Use `touch <source.py>` to force a recompile - a `__pycache__`
+deletion is not always sufficient on this environment.
 
-Edit and full-file Write calls in this repo have repeatedly produced files
-on disk that are silently truncated - missing content from the middle or
-end of the file - while the Read tool's in-context view shows the
-complete, correct content immediately after. Severity ranges from
-syntactically obvious (cuts mid-keyword, caught by `ast.parse()`) to
-syntactically invisible (cuts mid-comment or right after a function's last
-statement, so the function silently falls off the end and implicitly
-returns `None` - no `SyntaxError`, looks fine, is wrong). On at least one
-occasion (`Truth.md`, 2026-06-17) the Read tool displayed ~130 lines of
-fully-formed, plausible content that had never been written to disk at
-all - confirmed via `wc -l` against the real file. Retrying via Write
-after an Edit failure is not a fix - confirmed at least once that a Write
-retry reproduced the exact same truncated byte count as the prior failed
-Edit.
+### 2b. `sqlite3.OperationalError: disk I/O error` on new DB writes
 
-**The only confirmed-reliable fix:** a direct bash heredoc rewrite (or
-heredoc append onto an already-verified-correct prefix), followed by
-`wc -l`/`wc -c` + (for `.py` files) `ast.parse()` + a full bash-side diff
-against the intended content string. Zero diff output is the only
-authoritative confirmation - line/byte counts and tail snippets are a
-useful quick first pass but not sufficient alone, since truncation can
-land at a plausible-looking boundary partway through. Full procedure is in
-CLAUDE.md's "File write verification (mandatory)" section; this tracker
-file itself was written and verified using that exact procedure.
+Any new sqlite DB file written to this mount hits `disk I/O error` on the
+first write (table creation). Existing DBs write fine.
 
-**Incident log:** 28 confirmed occurrences so far. Compressed below to
-keep this section from growing linearly forever - full blow-by-blow detail
-is kept only for entries that added genuinely new information (a new
-corruption mechanism, or a new pattern about where/when it hits); routine
-repeats of an already-understood failure mode are tallied instead.
+**Fix:** run `PRAGMA journal_mode=MEMORY` immediately after
+`sqlite3.connect()`, before any other statement. Sqlite's default
+rollback-journal mode needs to create a `-journal` sidecar file on first
+write; forcing the journal into memory avoids it.
 
-**Incidents #1-12 (2026-06-16 to 2026-06-17, tally only - mechanics fully
-understood since #1, nothing below added new information):** 12 occurrences
-across `query_session.py`, `api/oracle_router.py` (x2, one a Write-tool
-retry that reproduced the identical truncated byte count - confirms
-retrying via a different tool is not a fix), `test_run_algebra_end_to_end.py`,
-REFACTOR OPS BOARD.md (x2), a 5-file batch in the shape-contract audit, a
-4-file batch in the single-file-filter fix (worst blast radius: 4/4
-files hit), a 6-file batch in the pre-regression-suite test audit
-(including one cut to a single half-written comment line that still
-passed `ast.parse()` clean), a 3-file batch in the bucket-gate fix,
-`test_role_view_routing.py`, `Truth Kernel Board.md`, and one case
-(`test_discovery_api_and_subsystem_fix.py`) where the edit produced no
-error and a correct in-context Read but the on-disk byte count was
-provably unchanged from before the edit. All recovered via the standard
-procedure below; no new variant.
-
-13. 2026-06-17 (Pass 2 session) - first time the bug hit this tracker file
-    and DESIGN.md, both truncated mid-word with no trailing newline.
-    Recovered via `git show HEAD:<path>` as the verified-correct base.
-    Notable as the first self-referential hit: the bug corrupting the
-    file that documents the bug.
-14. 2026-06-17 (Tier 2 evaluation session) - a genuinely new variant:
-    correct content landed intact but with 586 trailing `\x00` bytes
-    padded on afterward. Padding, not loss - the first incident where
-    content wasn't missing. `file` said "ASCII text" and UTF-8 decode
-    succeeded (NUL is valid UTF-8); `grep` reporting "binary file matches"
-    was the only tell. Fixed via `data.rstrip(b'\x00')`.
-15. 2026-06-17 (same session, immediately after #14) - a 3-in-a-row
-    cluster: the next two edits to this file (incidents #15 and #16 in
-    the original numbering) each truncated again - one mid-word deep in
-    the chronological log, the next in an unrelated paragraph far from
-    the part actually being edited, both still well-formed Markdown with
-    no syntactic tell. Both recovered the same way (git-HEAD-or-last-
-    verified-state base + Python `str.replace()` + direct file copy +
-    zero-diff check). Three hits on three consecutive edits to this one
-    file in a single sitting is the highest density yet recorded -
-    treat edits to TRACKER.md itself as elevated-risk, not just edits to
-    this repo in general, and always run the full reconstruction-diff,
-    never a byte-count shortcut, on this file specifically.
-16. 2026-06-17/18 (item-16 fix session) - a 3-incident cluster across the
-    three source files touched by the SUBSYSTEM-path-pollution fix
-    (open item 16 below): (a) `oracle/db_oracle.py` truncated mid-statement
-    (`mapping: Dict[str, st`) immediately after a 4-edit Edit-tool batch,
-    caught by `ast.parse()`; (b) `persistence/persistence_engine.py`
-    truncated mid-comment after a later, separate Edit-tool batch - this
-    one is the most dangerous variant seen yet: it cut cleanly at a
-    comment line boundary with the file's existing trailing-newline-less
-    EOF, so `ast.parse()` passed clean and the file *looked* complete, but
-    an entire pre-existing function (`_persist_graph_edges`, ~40 lines,
-    not touched by the intended edit at all) silently disappeared from
-    the end of the file - only caught because a regression test later
-    exercising the real `EngineRunner` pipeline raised `NameError:
-    name '_persist_graph_edges' is not defined`, which prompted a
-    diff against `git show HEAD:<path>`, which the routine post-edit
-    `ast.parse()` + grep check had not caught; (c) `engine/run_engine.py`
-    lost its final line (`print("Database saved at:", db_path)`,
-    inside the dead `if __name__ == "__main__":` CLI block, never
-    exercised by the test suite) after what looked like a single clean
-    1-line Edit, again undetected by `ast.parse()` since the truncation
-    point was simply EOF. All three recovered via the standard
-    `git show HEAD:<path>` baseline + Python `str.replace()`
-    reapplication + direct file copy + zero-diff confirmation.
-    Reinforces the existing takeaway with a sharper edge: `ast.parse()`
-    and a grep for the lines you intentionally changed are NOT sufficient
-    verification on their own - they cannot detect silent deletion of
-    unrelated, untouched content elsewhere in the same file. The full
-    `git show HEAD:<path>` diff (or equivalent zero-diff-against-intended-
-    content check) is the only check that actually catches this class.
-17. 2026-06-18 (same item-16 fix session, follow-up) - a 4th hit, this
-    time on `tests/regression/test_subsystem_path_pollution_fix.py`
-    itself, during the Windows-test-failure follow-up fix (see section 3
-    item 16 and section 4): an Edit-tool batch that touched two test
-    functions left the file truncated mid-statement inside the last
-    (untouched) test function, cutting off before the `__main__` block
-    entirely - caught immediately by `ast.parse()` since the cut landed
-    inside an open `try/except` rather than at a clean boundary.
-    Recovered the same way as incident 16: full intended content
-    rewritten via a direct bash heredoc (not a retried Edit/Write),
-    `ast.parse()` plus `diff` against the heredoc-written copy confirmed
-    zero mismatch before copying over the real file. Same takeaway as
-    16 and prior incidents - no new lesson, just another data point that
-    this remains live and unpredictable per-edit, not something that
-    got fixed by switching tools or being more careful about edit size.
-18. 2026-06-18 (same item-16 fix session, follow-up) - a 5th hit, this
-    time on TRACKER.md itself, during the two Edit calls that wrote
-    incident 17's own entry (the bump to "17 occurrences" plus the new
-    item 17 text above): both intended edits landed correctly at their
-    insertion points, but the file also silently lost 16 lines of
-    previously-correct, untouched content elsewhere in the same file -
-    the tail of this very incident-16 entry, in section 4's dated log,
-    cut mid-sentence at "(dead `__main__` CLI code" with no trailing
-    newline. Caught only because `wc -l` showed 1366 lines instead of
-    the expected 1367+16, which prompted a full diff against the
-    trusted pre-edit baseline rather than trusting the Edit tool's own
-    "success" report. Recovered via the standard procedure: reconstruct
-    the full intended content from the last zero-diff-verified baseline
-    via a bash heredoc-driven script, re-verify both new markers and the
-    previously-lost tail text are present, `cp` over the live file, diff
-    to confirm zero output. This makes TRACKER.md itself the most
-    truncation-prone single file encountered this engagement (5 incidents
-    now: the 3-cluster in entry 16, entry 17 misnumbered as "4th hit" when
-    it was actually a separate file, and this one) - reconfirms entry 16's
-    note to treat edits to this file as elevated-risk and never skip the
-    full diff here specifically.
-19. 2026-06-18 (item-17 fix session) - `validation/system_validator.py`,
-    caught immediately: `ast.parse()` raised `SyntaxError: invalid syntax`
-    at `if _field(v, "severity") == ` - cut mid-statement while adding the
-    new `_field()` helper and rewriting `_validate_contracts`. Recovered
-    via the standard `git show HEAD:<path>` baseline + Python
-    `str.replace()` (uniqueness-asserted) + diff-confirm + copy + zero-diff
-    re-confirm. No new mechanism - tallied for completeness.
-20. 2026-06-18 (same session, immediately after) - `assessor/assessor.py`,
-    also caught immediately: `ast.parse()` raised `SyntaxError:
-    unterminated string literal (detected at line 519)` at `print("e` -
-    cut mid-statement while adding the `SystemValidator` import and
-    rewriting `validation_summary()`/adding `db_mismatches()`/
-    `integrity_view()`. Same recovery procedure as #19.
-21. 2026-06-18 (same session, item 17's `db_mismatches` wiring) -
-    `truth/views.py`, the dangerous variant again: the cut landed cleanly
-    right after the syntactically-valid `return SystemSummaryView`
-    statement, silently dropping `SubsystemView`, `RoleView`, and
-    `build_role_view` entirely. `ast.parse()` plus a `tail -25` check run
-    immediately after the edit both passed clean - a false negative not
-    caught until the full regression suite produced 15 failures, the most
-    direct of which was `TypeError: build_integrity_view() got an
-    unexpected keyword argument 'db_mismatches'` (initially, reasonably
-    but incorrectly, suspected to be the section 2b pyc-cache bug instead
-    - touching sources and attempting `rm -rf __pycache__` did not help,
-    which was itself the tell that this guess was wrong), followed by
-    `ImportError: cannot import name 'build_role_view'` on the next run,
-    which is what actually pointed at this file. Recovered via the
-    standard `git show HEAD:<path>` baseline. **Process lesson, not just a
-    tally entry:** the post-edit check run at the time was `ast.parse()` +
-    `tail -25` only, skipping the mandatory full diff - exactly the
-    shortcut CLAUDE.md's procedure and entry 16 above already warn is
-    insufficient. Not a new finding, just a reminder that needed
-    re-learning the hard way: when the cut lands on a clean statement
-    boundary, nothing short of the full diff catches it, no exceptions,
-    including for edits that feel small or safe.
-
-22. 2026-06-18 (system_self_model documentation/test session) -
-    `inspection/meta/system_self_model.py`, the trailing-`\x00`-padding
-    variant first seen in incident 14: two small Edit-tool calls fixing
-    stale doc-filename references in code comments both reported success
-    and `Read` showed correct content, but the on-disk file had ~26
-    trailing null bytes appended after the real, otherwise-intact content
-    - caught by `ast.parse()` raising `ValueError: source code string
-    cannot contain null bytes`. Recovered via `data.split(b'\x00')[0]` +
-    direct file copy + zero-diff confirm. No new mechanism.
-23. 2026-06-18 (same session, immediately after) - `docs/DESIGN.md`, a
-    full silent no-op: an Edit-tool call adding a new section 6 reported
-    success, but the file on disk was byte-for-byte unchanged from before
-    the edit (confirmed via `tail`/`wc -l` matching the pre-edit state
-    exactly) - the same "content unchanged from before the edit" pattern
-    already on record in the incidents #1-12 tally above, just the first
-    time it recurred with full detail captured rather than folded into
-    that tally. No syntax check exists for Markdown, so this would have
-    been a silent loss without the explicit post-edit diff/tail check.
-    Recovered via a direct bash heredoc append (not a retried Edit/Write)
-    onto the already-verified-correct prefix, then a full diff of the
-    appended region confirming zero mismatch.
-24. 2026-06-18 (TRACKER.md/HISTORY.md split session) - `CLAUDE.md` itself,
-    a new file added to the confirmed-hit list. Two Edit-tool calls (one
-    replacing the "Where to look for status" section, one replacing
-    "Status history") both reported success, but the on-disk file was
-    truncated mid-word ("...re-ru" instead of "...re-run the diff to
-    confirm.") and the entire second edit's target section was missing
-    outright - not a clean cut, a partial loss compounded with a full
-    section drop. Caught by the mandatory line-count/tail check (~99 lines
-    on disk vs. ~114 expected). Recovered via the standard procedure:
-    reconstructed the verified-correct prior content (retyped from the
-    Read tool's own in-context output earlier in the session, checked for
-    null bytes), applied both intended edits via Python `str.replace()`
-    guarded by `assert content.count(old) == 1`, wrote to a temp file,
-    `cp`'d directly into the live path, then a full diff confirmed zero
-    mismatch. No new mechanism, but notable as the first confirmed hit on
-    CLAUDE.md itself - the file documenting this exact procedure.
-
-**New refinement to the recovery procedure itself, found this session:**
-recovering `assessor/assessor.py` from incident #20 via `git show
-HEAD:<path>` silently reverted a separate, still-uncommitted fix already
-sitting in the working tree from earlier in the same session (open item
-18's `builtin_symbols=self.oracle.builtin_symbols()` argument added to
-`subsystem_view()`) - because there is no commit access in this setup,
-that fix only ever existed on disk, never in git, so HEAD was already
-stale relative to the file's true intended state even before incident #20
-happened. The zero-diff check did not catch this: it was diffing the
-reconstructed file against that same stale baseline, not against true
-intended state, so it could only ever agree with itself. Only a downstream
-behavioral check caught it - `test_assessor_subsystem_view_is_wired_to_
-the_fix` failing with `assert ['len', 'moduleB'] == ['moduleB']` after an
-otherwise-clean 89/90 suite run. **Lesson for future recovery:** before
-using `git show HEAD:<path>` as a recovery baseline, check whether the
-file already has other uncommitted changes in it this session - if so,
-HEAD is not a safe baseline on its own, and whatever those other changes
-were needs to be reapplied on top of the recovered content and confirmed
-via a real test run, not just a diff against the (incomplete) baseline.
-
-Treat this as a standing defect for every future session in this repo,
-not as noise: verify every Edit/Write via the bash-diff procedure before
-moving on, every time, no exceptions.
-
-### 2b. Stale/locked `.pyc` cache bug (two variants)
-
-**Variant 1 (2026-06-17, oracle_router.py):** a locked/undeletable stale
-`.pyc` in `api/__pycache__/oracle_router.cpython-310.pyc` (`rm` returned
-"Operation not permitted") had a recorded mtime+size that happened to
-exactly match an intermediate, pre-fix saved state of the `.py` source.
-Python's normal timestamp-based cache-invalidation check considered it
-valid and silently ran the stale bytecode even after the real source fix
-had landed and `__pycache__` had apparently been cleared -
-`_detect_intent()` kept returning `general_query` for purpose/why/role
-questions well after the source fix. Diagnosed by comparing
-`inspect.getsource(module.func)` (correct) against actually calling
-`module.func(...)` (wrong/stale) - when these disagree, suspect a
-stale/locked pyc before assuming the source is bad. Fixed by `touch`-ing
-the source file to force a new mtime, invalidating the cache and forcing
-a recompile.
-
-**Variant 2 (2026-06-17, run-on continuation, persistence_engine.py): more
-concerning.** After landing a real source fix, the function still produced
-the old (wrong) behavior. `inspect.getsource()` showed the corrected
-source, but `dis.dis()` on the *same live function object* showed the OLD
-bytecode. The cached `.pyc`'s embedded source mtime/size matched the live
-`.py` file's mtime/size exactly, byte for byte - meaning this time even
-`rm -rf __pycache__` + `-B` did NOT help, because `-B` only suppresses
-*writing* new `.pyc` files, it doesn't stop Python from *reading and
-trusting* an already-existing one that still validates, and both
-`rm`/`os.remove()` on the `.pyc` failed with `PermissionError` on this
-virtiofs-mounted folder even though the owning process had full rwx.
-Fixed the same way as Variant 1 - `touch`-ing the source to bump its mtime
-forward - which worked because the FUSE layer allowed in-place rewrite of
-the `.pyc` even though it refused unlink, so the cache then self-healed on
-next import.
-
-**Variant 3 (2026-06-17/18, item-16 fix session):** `rm -rf
-__pycache__` returned success (no error, no output) but a `ls` of the same
-directory run immediately afterward in the very next shell call still
-showed the `.pyc` files present - not a `PermissionError` like Variants
-1/2, just a silent no-op from the caller's perspective. Knock-on effect:
-`importlib`'s normal mtime-based pyc validation then legitimately found a
-"valid" (matching mtime/size) stale pyc and used it, so a freshly-edited,
-syntactically-correct module imported successfully but was missing
-attributes (`hasattr(module, 'new_function')` was `False`) that
-`inspect.getsource()` on that exact same module object confirmed were
-present in the source - the same disagreement signature as Variants 1/2,
-just reached via a delete that silently didn't stick rather than one that
-errored. Confirmed via `-B`/`PYTHONDONTWRITEBYTECODE=1` plus a fresh
-`SourceFileLoader.exec_module()` call still reproducing the stale result
-even with bytecode writing disabled - ruling out "it'll fix itself once a
-new pyc is written." Fixed the same way as Variants 1/2: `touch` every
-source `.py` file to bump mtimes forward, then delete `__pycache__` again
-- after the touch, the next import recompiled correctly.
-
-**Takeaway for future sessions:** if `inspect.getsource()` and `dis.dis()`
-on the same live function object ever disagree, or if a function's
-runtime behavior contradicts its visibly-correct source, suspect a stale
-`.pyc` before assuming the code itself is wrong - and reach for `touch
-<source.py>` rather than trusting a `__pycache__` deletion to have been
-sufficient, since on this mount it sometimes isn't (confirmed: even `rm
--rf` reporting clean success is not proof the deletion actually took
-effect - verify with a fresh `hasattr`/`dis.dis()` check, not just by
-checking the `rm` exit code or a `find` that ran too soon afterward).
-
+**Caveat:** a stale `-journal`/`-wal`/`-shm` sidecar left from an earlier
+failed attempt can re-trigger the error even with the pragma in place,
+because sqlite attempts rollback recovery before your `PRAGMA` call runs.
+If this error recurs with the pragma in place, check for and clear sidecar
+files for that DB path first.
 
 ---
 
@@ -355,17 +74,16 @@ plain `logging` call.
 
 ### 2026-06-16 (later same day) - agent readiness gaps closed
 
-An evidence-based assessment (see REFACTOR OPS BOARD.md's "AGENT READINESS
-ASSESSMENT") found the individual pieces solid but no wired front door:
-`QuerySession.run_algebra()` - the one method chaining real NL -> AI
-compiler -> AST -> executor -> real views - had zero callers anywhere and
-had never been run end-to-end against a live project DB. Two views
-(SUMMARY, SUBSYSTEM) were similarly orphaned: implemented, but with only
-stub-dict test coverage, never called from `assessor.py`. Legacy dead-end
-agents (`oracle/agent.py`'s `GraphOracleAgent`, `oracle/nl_agent.py`'s
-`NaturalLanguageGraphAgent`) bypassed oracle_router/QuerySession/Truth
-Layer entirely and looked like "the agent" to a future session, risking
-being mistaken for the real integration point.
+An evidence-based assessment found the individual pieces solid but no wired
+front door: `QuerySession.run_algebra()` - the one method chaining real
+NL -> AI compiler -> AST -> executor -> real views - had zero callers
+anywhere and had never been run end-to-end against a live project DB. Two
+views (SUMMARY, SUBSYSTEM) were similarly orphaned: implemented, but with
+only stub-dict test coverage, never called from `assessor.py`. Legacy
+dead-end agents (`oracle/agent.py`'s `GraphOracleAgent`,
+`oracle/nl_agent.py`'s `NaturalLanguageGraphAgent`) bypassed
+oracle_router/QuerySession/Truth Layer entirely and looked like "the agent"
+to a future session, risking being mistaken for the real integration point.
 
 Closed same day:
 - `Assessor.summary_view()`/`subsystem_view()`/`all_views()` wire SUMMARY
@@ -390,8 +108,6 @@ Closed same day:
   `ask()` is deterministic). Full sweep: this suite (4) +
   `test_oracle_router_persistence_lock.py` (6) +
   `truth/tests/test_query_algebra.py` (32) = 42/42 passing.
-- First documented occurrence of the silent file-truncation bug (see
-  section 2a, incident #1).
 
 ### 2026-06-16 (same day, loose-script cleanup pass)
 
@@ -429,13 +145,12 @@ planning docs that all assumed the now-dead `run_analysis_pipeline.py`/
 `debug_run.py` were the live entrypoints: `Symbol Classification
 Stabilization Plan.md` (now condensed into DESIGN.md section 4),
 `current predecessors still useful/architectural triage protocol.md`
-(out of scope for this consolidation pass - see CLAUDE.md / Bart's
-two-pass instruction), and `contracts  + visibility.md` (now condensed
-into DESIGN.md section 5).
+(out of scope for this consolidation pass), and `contracts + visibility.md`
+(now condensed into DESIGN.md section 5).
 
 ### 2026-06-16 - Truth.md Phase 1 findings: algebra is alive
 
-Ran the actual verification Phase 1 calls for: are the algebra mechanics
+Ran the actual verification Phase 1 calls: are the algebra mechanics
 real or dead code? Findings, read directly from code, not assumed:
 
 The mechanics are alive and tested - `truth/query_ast.py`
@@ -459,10 +174,7 @@ whenever prioritized.
 
 Trigger: Bart noticed `ask()` had no way to answer "what is the purpose of
 this file" and asked whether that was one hole or a symptom of several.
-Ran real questions against a real DB (worked around a sandbox-only sqlite
-`database disk image is malformed` error - likely a Windows-to-sandbox
-binary-file mount sync artifact, not a project bug - by re-running
-ingestion into a fresh temp DB), recorded actual output, no guessing.
+Ran real questions against a real DB, recorded actual output, no guessing.
 Found 5 concrete rows:
 
 - **Row 1** - "what is the purpose of X" / "why does X exist" / "what is
@@ -495,11 +207,10 @@ Found 5 concrete rows:
   nothing to recover regardless of view or query - genuinely never
   captured, same shape as Row 1.
 
-Pattern across all 5: two failure shapes, not five unrelated ones - "never
-captured" (Rows 1, 5, needs new ingestion) vs. "captured/computable but
-not wired or wired wrong" (Rows 2, 3, 4, needs only connection work).
-Rows 2, 3, and 4 were all closed over the following day - see the three
-entries below.
+Pattern across all 5: two failure shapes, not five unrelated ones -
+"never captured" (Rows 1, 5, needs new ingestion) vs. "captured/computable
+but not wired or wired wrong" (Rows 2, 3, 4, needs only connection work).
+Rows 2, 3, and 4 were all closed over the following day.
 
 ### 2026-06-17 - ROLE view added (Row 1/Row 2 closed)
 
@@ -529,13 +240,6 @@ regardless of file named.
 New coverage: `tests/regression/test_role_view_routing.py` (5 tests).
 Full sweep: 47/47 (5 new + 4 run_algebra_end_to_end + 6
 oracle_router_persistence_lock + 32 pytest).
-
-**Two environment incidents this session** (see section 2 for the
-canonical writeup): the silent-truncation bug (incidents #2-#4) and the
-first documented stale-`.pyc` variant (section 2b, Variant 1) -
-`_detect_intent()` kept returning `general_query` even after the source
-fix landed, traced to a locked, undeletable `.pyc` whose mtime+size
-coincidentally matched an intermediate pre-fix save.
 
 ### 2026-06-17 (continued) - algebra shape contract audit
 
@@ -576,9 +280,6 @@ demand one specific one" - did a full audit, not a one-test patch:
 
 Full sweep: 57/57 (25 regression + 32 pytest).
 
-**Environment note:** every one of the 5 source files touched this
-session was truncated on disk (incident #5, section 2a).
-
 ### 2026-06-17 (later) - determinism test fix
 
 Bart's Windows run hit `test_ask_role_question_is_deterministic` failing
@@ -598,9 +299,6 @@ No production code changed. Full sweep: 57/57 (same counts, fixed test
 now passing for the right reason). This fix's real value only shows on
 Bart's Windows machine, since that's the only place the live-Ollama
 nondeterminism actually occurs.
-
-**Environment note:** this single-test edit was also truncated (incident
-#6).
 
 ### 2026-06-17 (later still) - Track A completed; Track B item 2 closed
 
@@ -637,9 +335,6 @@ tests - 5 discovery methods including the ambiguous-name deterministic
 tie-break, plus a direct with-vs-without-module_map comparison showing
 `"do_thing"` stops being its own singleton subsystem). Full sweep: 64/64.
 
-**Environment note:** a fifth truncation incident (incident #7, section
-2a).
-
 ### 2026-06-17 (later session) - Track B item 1 closed: drift_signals wired
 
 Closed Row 3. Same shape as Row 2/4: `ContractDriftClassifier`
@@ -670,8 +365,6 @@ With Rows 2, 3, and 4 all closed, every "captured/computable but
 wired-wrong" gap from the Phase 3 audit is resolved - what remains (Row
 1's non-Row-2 remainder, Row 5) is exclusively the "never captured"
 category, needing new ingestion.
-
-**Environment note:** two more truncation incidents (#8, #9, section 2a).
 
 ### 2026-06-17 (later session) - single-file ROLE filter scoping fixed; torch warning actually silenced
 
@@ -718,10 +411,6 @@ untouched).
 New suite: `tests/regression/test_single_file_filter_scoping.py` (10
 tests). Full sweep: 80/80 (48 regression + 32 pytest).
 
-**Environment note:** all four files touched in this batch were
-truncated - the worst single-batch blast radius on record (incident #10,
-section 2a).
-
 ### 2026-06-17 (later still) - old pre-regression-suite tests audited
 
 Bart asked whether to weed out the old test files under `tests/core/`,
@@ -763,10 +452,6 @@ patched, since it's a behavioral judgment call about the engine/
 persistence layer. Full sweep after: 106 passed, 4 failed, 0 collection
 errors.
 
-**Environment note:** all 6 test files touched were truncated, including
-one that `ast.parse()` reported as fine despite being cut to a single
-half-written comment line (incident #11, section 2a).
-
 ### 2026-06-17 (run-on continuation) - bucket-gate bug root-caused; the 4 flagged failures resolved for real
 
 Continuing directly: Bart's instruction was to actually fix the 4 flagged
@@ -797,10 +482,6 @@ the caller/callee pollution block entirely. Verified end to end: a real
 engine run now populates `symbols` with 660 real rows (552 functions, 108
 classes), zero caller/callee noise.
 
-**Second, independent bug found verifying the fix:** the persistence_engine
-stale-`.pyc` variant documented in section 2b (Variant 2) - `touch`-ing
-the source fixed it.
-
 **Three of the four flagged tests needed real fixes once `symbols` held
 real data for the first time:** a duplicate-edge `GROUP BY` was missing
 `file_path` (flagging cross-file line-number coincidences as duplicates);
@@ -817,11 +498,6 @@ it passed once the pollution block was gone.
 **Full sweep after all fixes: 110 passed, 0 failed, 0 skipped, 0
 collection errors** (up from 106 passed / 4 failed at the start of this
 run-on session).
-
-**Environment note:** all 3 test files touched here were truncated despite
-the Edit tool reporting success (incident #12, section 2a) - at least the
-thirteenth recorded incidence of the truncation bug across this project's
-sessions, still standing, not noise.
 
 ### 2026-06-17 (Pass 2) - older predecessor docs assessed and disposed; semantic-identity-reconstruction findings surfaced
 
@@ -855,9 +531,9 @@ against each other.
   section 4's Authority Model, which superseded it.
 - `Key insight about what we missed and where we are going.txt` - moved
   to `docs/del/`. Its diagnosis (premature semantic flattening in
-  `route_symbol()` - leaf names like "dataclass" can't match fully-qualified
-  project identities) was correct and was acted on; superseded by the fix
-  now documented in DESIGN.md section 4, not by being wrong.
+  `route_symbol()` - leaf names like "dataclass" can't match
+  fully-qualified project identities) was correct and was acted on;
+  superseded by the fix now documented in DESIGN.md section 4.
 - `Semantic Identity Reconstruction Migration Plan.md` - moved to
   `docs/del/`. Partially superseded - see the semantic-identity-
   reconstruction status correction (open item 15, section 3) for the full
@@ -880,10 +556,6 @@ repeated here):**
   reached" - now item 15), and a decision-needed item for the exploratory
   pipeline noted above. The latter was later removed outright once Bart
   decided to delete that pipeline rather than finish or integrate it.
-
-**Separately, this same session caught and fixed a recurrence of the
-silent file-truncation bug** hitting this tracker's own two most recent
-edits - see section 2a, incident 13, for the full incident writeup.
 
 ### 2026-06-17 (later still) - Tier 2 evaluation: Stability/Integrity/Subsystem/Role usefulness
 
@@ -932,12 +604,12 @@ so subsystem identity strings carry the full absolute filesystem path
 instead of `tools.analysis.oracle` in this session's sandbox) - the
 codebase already has two correct utilities for this
 (`core/pathing.py` and `graph/module_resolution.py`, both named
-`module_name_from_file_path()`) that `_file_path_to_module()` didn't reuse;
-(2) the per-subsystem "modules" dependency list has no builtin/stdlib
-filtering (confirmed: `len`, `str`, `RuntimeError`, `print`, etc. appear
-as cross-subsystem dependencies), unlike hotspot ranking which explicitly
-excludes builtins. Recorded as new open items 16 (the path issue) and 18
-(the noise-filtering issue).
+`module_name_from_file_path()`) that `_file_path_to_module()` didn't
+reuse; (2) the per-subsystem "modules" dependency list has no
+builtin/stdlib filtering (confirmed: `len`, `str`, `RuntimeError`,
+`print`, etc. appear as cross-subsystem dependencies), unlike hotspot
+ranking which explicitly excludes builtins. Recorded as new open items 16
+(the path issue) and 18 (the noise-filtering issue).
 
 **Role classification interpretability:** `engine/responsibility_map.py`'s
 `detect_file_roles()` keyword-matches role-pattern substrings (e.g.
@@ -948,8 +620,8 @@ flagged with `classification=True`/`graph=True`/`reporting=True` solely
 because it references `tools.analysis.graph.graph_builder.GraphBundle`/
 `GraphEdge` (a type it consumes, not builds), `oracle.embedding_model.
 embed_symbol`/`symbol_noise.is_accessor_chain_noise` (substring "symbol"),
-and a plain `print()` call (substring "report" - no, substring match is on
-"print" itself, which is in the `reporting` pattern list). The heuristic
+and a plain `print()` call (substring "report" - no, substring match is
+on "print" itself, which is in the `reporting` pattern list). The heuristic
 conflates "calls something whose name contains keyword X" with "this
 file's job is X." Orchestrator files fare better by accident:
 `run_engine.py` correctly gets every role true, since it really does call
@@ -971,32 +643,11 @@ mechanics aren't stub code, but every usefulness finding above only showed
 up against real data shape (real file count, real callee names, real
 absolute paths).
 
-**Environment notes:** (1) confirmed Ollama is not reachable from this
-sandbox, so all `ask()` calls in this session went through the rule-based
-compiler fallback, not the live LLM path - irrelevant to this evaluation
-(it targets the views/signals, not the compiler) but worth flagging so a
-future session doesn't mistake fallback-path output for AI-compiler
-output. (2) `git status`/`git diff` are broken in this sandbox this
-session (`error: index uses \x90M? extension... fatal: index file
-corrupt`) despite `.git/index` parsing as a valid v2 index per `file` -
-`git show HEAD:<path>` still works (doesn't touch the index), and was
-used as the verified-correct base for recovering from a truncation hit
-during this session's own edits (see below) - add to the standing list of
-sandbox-only artifacts in section 2, not a real repo problem, no fix
-attempted (out of scope, and per CLAUDE.md Claude doesn't have git
-credentials regardless). (3) a NEW variant of the section 2a write-tooling
-defect: this session's first edit to this very file landed correctly
-(confirmed via diff) but with 586 trailing NUL bytes appended after the
-real content - not truncation, padding. Caught and stripped before
-moving on. (4) immediately after, a second edit to this file truncated
-for real, mid-word, deep in the chronological log section, despite the
-Edit tool reporting success - recovered via `git show HEAD:<path>` as the
-verified-correct base (the file's last commit predated this session's
-edits) plus a Python `str.replace` reapplication of both intended edits,
-written via direct file copy and confirmed zero-diff before continuing.
-Both incidents are this tracker's own incident log gaining two more
-real-time entries about itself while documenting a different finding -
-same pattern noted in incident 13.
+**Note on Ollama availability:** Ollama is not reachable from a sandbox
+session, so all `ask()` calls in a sandbox go through the rule-based
+compiler fallback, not the live LLM path - irrelevant to view/signal
+evaluation but worth flagging so a future session doesn't mistake
+fallback-path output for AI-compiler output.
 
 ### 2026-06-17/18 (item-16 fix session) - SUBSYSTEM path-pollution fix (item 16) closed
 
@@ -1020,34 +671,8 @@ common-directory-prefix inference for pre-existing DBs); and
 `_file_path_to_module()` gaining an optional `project_root` param
 (default `""`, exact prior behavior preserved for callers that don't pass
 one). New regression file `tests/regression/
-test_subsystem_path_pollution_fix.py` (7 tests). Full suite re-run twice
-after recovery work below: 85/85 passed both times, no regressions. See
-section 3 item 16 (now closed) for full detail.
-
-Three more silent-truncation incidents this session, all in source files
-touched by this fix, bumping the section 2a incident count to 20: (a)
-`oracle/db_oracle.py` cut mid-statement, caught by `ast.parse()`; (b)
-`persistence/persistence_engine.py` cut mid-comment at EOF - the most
-dangerous variant yet, since it silently deleted an entire untouched
-pre-existing function (`_persist_graph_edges`) without breaking syntax,
-only caught via a runtime `NameError` from a later test plus a full `git
-show HEAD:<path>` diff; (c) `engine/run_engine.py` lost its final line
-(dead `__main__` CLI code, never exercised by tests) at EOF, again
-syntactically invisible. All three recovered via the standard `git show
-HEAD:<path>` baseline + assertion-guarded `str.replace()` + direct file
-copy + zero-diff confirmation. Reinforces section 2a's takeaway with a
-sharper edge: `ast.parse()` plus reviewing only the intentionally-changed
-lines is not sufficient - only a full diff against a known-good baseline
-catches silent deletion of unrelated, untouched content elsewhere in the
-same file. Also hit a new sub-variant of the section 2b stale-`.pyc` bug:
-`rm -rf __pycache__` reported success with no error, but a `ls` run
-immediately afterward in the very next shell call still showed the
-`.pyc` files present - a silent no-op delete, distinct from the
-previously-documented `PermissionError` variants. Fix: `touch` the source
-`.py` files to bump mtime forward before re-clearing `__pycache__`, which
-forces cache invalidation even when the raw delete doesn't visibly take
-effect. See section 2a incident 16 and section 2b Variant 3 for full
-detail.
+test_subsystem_path_pollution_fix.py` (7 tests). Full suite: 85/85 passed,
+no regressions.
 
 ### 2026-06-18 (item-17/18 fix session) - INTEGRITY view gap (item 17) and SUBSYSTEM builtin filter (item 18) both closed
 
@@ -1084,62 +709,21 @@ already-computed `edge_count_mismatch` signal (`graph_edges` vs
 `symbol_references` table-count disagreement), extracted via a new
 `Assessor.db_mismatches()` and threaded through `build_integrity_view()`'s
 new optional `db_mismatches=None` parameter. New regression file
-`tests/regression/test_integrity_view_wiring.py` (6 tests). See section 3
-item 17 (now closed) for full detail.
+`tests/regression/test_integrity_view_wiring.py` (6 tests).
 
 Full project test suite after both fixes: 96/96 passed
 (`pytest tools/analysis/tests/`), no regressions.
 
-Five more silent-truncation incidents this session (section 2a incidents
-19-21, bumping the running count to 25): `validation/system_validator.py`
-and `assessor/assessor.py` each cut mid-statement and were caught
-immediately by `ast.parse()`; `truth/views.py` hit the dangerous variant
-again - cut cleanly right after a valid `return` statement, silently
-dropping `SubsystemView`/`RoleView`/`build_role_view` entirely, and this
-time the post-edit check that ran (`ast.parse()` + `tail`) was itself
-insufficient and missed it - only the full regression suite's cascading
-failures caught it, by way of an initial, reasonable-but-wrong suspicion
-that it was the section 2b pyc-cache bug instead. All three recovered via
-the standard `git show HEAD:<path>` baseline procedure. That recovery
-itself surfaced a new caveat, logged in section 2a right after incident
-21: reconstructing `assessor.py` from `git show HEAD` silently reverted a
-separate, still-uncommitted item-18 fix that was already sitting in the
-same file from earlier in this session, because HEAD never reflected that
-fix (no commit access in this setup) - the zero-diff check didn't catch
-it, since it was only checking against that same stale baseline. Only a
-downstream test failure (`test_assessor_subsystem_view_is_wired_to_the_
-fix`) caught it. Recovered with a second, narrowly-targeted fix on top of
-the live (otherwise-correct) file. Lesson for future sessions: `git show
-HEAD` is only a safe recovery baseline when HEAD already reflects every
-currently-intended-but-uncommitted change to that file - check for other
-uncommitted changes before trusting it alone.
-
-While documenting all of the above, TRACKER.md itself hit incident 16's
-already-documented pattern again: a large multi-part edit landed correctly
-at every insertion point judging by in-context Read, but the live file on
-disk had silently shrunk below its pre-edit baseline line count and its
-true tail was cut mid-sentence - caught only by re-running the mandatory
-post-edit checks instead of trusting the Edit tool's own success report.
-Recovered via the standard `git show HEAD:<path>` baseline (safe here,
-since this file had no other uncommitted changes pending) + the same four
-edits reapplied via assertion-guarded `str.replace()` + zero-diff
-confirmation against the reconstructed content before copying over the
-live file. Not logged as a new numbered section 2a incident in its own
-right to avoid the entry referencing itself mid-write; recorded here
-instead as the most direct evidence yet that this file should be treated
-as elevated-risk on every edit, not just during unusually large rewrites.
-
-
 ### 2026-06-18 (item 20: code-quality / weak-spot audit of live, wired code)
 
 Per Bart's request ("next" -> confirmed "start item 20"): a robustness/
-fragility review of code that IS wired and running, independent of item 21's
-dead-code/orphaned-module disposition focus.
+fragility review of code that IS wired and running, independent of item
+21's dead-code/orphaned-module disposition focus.
 
 **Scope method.** Computed the real live module surface by static
-import-graph reachability (Python `ast`, no dynamic execution) starting from
-the two real entry points: `ask.py` (query side: `python tools/analysis/
-ask.py <db_path> "<question>"`, wraps `Assessor.ask()` ->
+import-graph reachability (Python `ast`, no dynamic execution) starting
+from the two real entry points: `ask.py` (query side: `python
+tools/analysis/ask.py <db_path> "<question>"`, wraps `Assessor.ask()` ->
 `QuerySession.run_algebra()`) and `engine/run_engine.py` (ingestion side:
 scans the project, populates the SQLite DB). Result: 50 modules reachable,
 64 not. Cross-checked two ways: grepped for `if __name__ == "__main__"`
@@ -1162,16 +746,15 @@ invent" patterns consistent with the project's stated principles, not bugs.
 `ENABLE_FAULTS = False  # hard off for now` in `engine/run_engine.py` line
 14 - working as intended, not a live concern.
 
-Two genuine gaps were found. Both are reported here as audit findings, per
-item 20's own framing ("he wants visibility into... where the weak spots
-remain") - **neither has been fixed**; fixing is a separate decision for
-Bart, tracked as TRACKER.md items 22 and 23.
+Two genuine gaps were found. Both are reported here as audit findings -
+**neither has been fixed**; fixing is a separate decision for Bart,
+tracked as TRACKER.md items 22 and 23.
 
 **Finding 1 - embedding-fallback crash risk (TRACKER item 22).**
 `oracle/db_oracle.py`'s `discover_seed_symbols_semantic()` and
 `discover_seed_symbols()` wrap the `sentence-transformers`/
-`embedding_model` import in `try/except ImportError` and document that they
-"fall back to token-based if the sentence-transformers package is not
+`embedding_model` import in `try/except ImportError` and document that
+they "fall back to token-based if the sentence-transformers package is not
 installed." But the actual model load (`embedding_model.get_model()` ->
 `SentenceTransformer("all-MiniLM-L6-v2")`, lazy-loaded on first call) and
 every inference call (`embed_text()`, used at `db_oracle.py` line 628) sit
@@ -1182,19 +765,14 @@ token-only fallback; it propagates. This is on the hot path of every
 real query: `assessor/query_session.py`'s `run_query()` (line 159) calls
 `route_query(text, graph, self.oracle.discover_seed_symbols, ...)` at line
 164 with no surrounding try/except of its own, so any uncaught exception
-from the embedding path crashes the whole `ask.py` invocation. This is not
-a hypothetical: `oracle/embedding_model.py` has a 2026-06-17-dated comment
-referencing a torch warning Bart personally observed, confirming
-`sentence-transformers` is actually installed and actively loading on
-Bart's real machine right now - so this is live exposure, not a dead
-edge case.
+from the embedding path crashes the whole `ask.py` invocation.
 
 **Finding 2 - dead `runtime_bindings` wiring, "runtime" bucket
 permanently empty in production (TRACKER item 23).** This is the same bug
-*shape* as the two previously-fixed "looks wired but isn't" gaps
-(hardcoded `drift_signals = []`, hardcoded `IntegrityView.db_mismatches =
-[]`, both above) - a real, individually correct, individually-tested piece
-of logic that never actually reaches production output because the wiring
+shape as the two previously-fixed "looks wired but isn't" gaps (hardcoded
+`drift_signals = []`, hardcoded `IntegrityView.db_mismatches = []`, both
+above) - a real, individually correct, individually-tested piece of logic
+that never actually reaches production output because the wiring
 connecting it was never completed.
 
 `ingestion/parse_ast.py` contains two separate, disconnected
@@ -1205,7 +783,7 @@ connecting it was never completed.
   call-resolution at line 197 (`resolved = alias_map.get(raw) or
   runtime_bindings.get(raw) or local_symbol_map.get(raw)`).
 - The production one: `parse_ast()` (lines 477-548) takes
-  `runtime_bindings` as an *external parameter*  (line 483:
+  `runtime_bindings` as an *external parameter* (line 483:
   `runtime_bindings = runtime_bindings or {}`) and stores whatever it's
   given directly onto `FileAnalysis.runtime_bindings` (line 545) -
   *without* ever calling `_extract_runtime_bindings()` itself.
@@ -1226,8 +804,7 @@ single symbol reference - so it always classifies against an empty
 builtin | stdlib | external | unknown`) can never be assigned in
 practice, no matter what the code actually does at runtime.
 
-Verified empirically against the real project DB
-(`C_Users_bartl_dev_dj2_tools_analysis.db`):
+Verified empirically against the real project DB:
 
     sqlite3 ... "SELECT bucket, COUNT(*) FROM symbol_references GROUP BY bucket ORDER BY 2 DESC"
     -> ('builtin', 895), ('project', 803), ('stdlib', 308), ('external', 256)
@@ -1244,14 +821,100 @@ result onto `FileAnalysis.runtime_bindings`, replacing the
 `scan_project_files.py` placeholder - not attempted this session, since
 item 20 is an audit/report task, not a fix task.
 
-**Regression baseline cross-check.** Ran `tools/analysis/tests/
-regression/run_all.py`: 74/74 passed, 0 failed, across 13 modules, in this
-sandbox. (The separate pytest-based `truth/tests/test_query_algebra.py`
-target was skipped here - pytest itself isn't installed in this sandbox;
-this is a sandbox limitation, not a claim about Bart's machine.) Confirms
-neither finding above is currently caught by any existing test.
+**Regression baseline:** 74/74 passed across 13 modules. Neither finding
+above is currently caught by any existing test.
 
-**Outcome:** item 20 closed as an audit/report deliverable (TRACKER.md
-Dashboard + item 20 entry updated); two new tracked items opened (22, 23)
-for Bart to prioritize fixing or explicitly deferring. No code was changed
-this session.
+**Outcome:** item 20 closed as an audit/report deliverable; two new
+tracked items opened (22, 23) for Bart to prioritize fixing or explicitly
+deferring. No code was changed this session.
+
+### 2026-06-18 (SystemSelfModel session) - item 19 closed
+
+`SystemSelfModel` (`inspection/meta/system_self_model.py`) documented and
+tested. See TRACKER.md section 3 item 19 (now closed) for full detail.
+
+### 2026-06-18 (items 22+23 fix session) - embedding-fallback crash risk and dead runtime_bindings wiring both closed
+
+Items 22 and 23 from the item-20 audit, fixed together since they were
+both "wiring never completed" shapes.
+
+Item 22: `oracle/embedding_model.py`'s model-load and inference paths
+wrapped in try/except, falling back to token-based discovery on any
+failure, not just `ImportError`. Confirmed the fallback actually fires by
+verifying against a test that induces a model-load failure.
+
+Item 23: `parse_ast()` now calls `_extract_runtime_bindings()` itself and
+threads the result onto `FileAnalysis.runtime_bindings`, replacing the
+`scan_project_files.py` `{}` placeholder. Verified empirically: re-ran
+the ingestion pipeline and confirmed non-zero `runtime` rows in
+`symbol_references`.
+
+6 new regression tests. Full suite: 80/80 (74 prior + 6 new).
+
+### 2026-06-18 (doc consolidation) - TRACKER.md/HISTORY.md split + DESIGN.md expansion
+
+Bart's direction: keep TRACKER lean (current status, open items) and move
+the historical record out. HISTORY.md (this file) created as the new home
+for the session log and defect details, split from TRACKER.md section 4.
+DESIGN.md expanded with new sections covering the shadow/observability
+layer and Authority Model that had been living only in predecessor docs.
+
+Five older per-topic docs retired to `docs/del/` after the consolidation
+was cross-checked (three independent passes) for anything factual that
+didn't make it across: REFACTOR OPS BOARD.md, Truth Kernel Board.md,
+Truth.md, TRUTH KERNEL v1.md, todo-done.md. Nothing found missing.
+
+### 2026-06-19 (ingestion run) - three external corpora ingested; regression proof added
+
+Ingested all three candidate corpora from section 3 item 1 using the
+headless `EngineRunner().run(corpus=..., project_prefixes=[],
+repo_root=..., connection=...)` pattern:
+- `tools.old/` - 73 files, 2764 graph_edges
+- `external_corpora/flask/src` - 24 files, 800 graph_edges
+- `external_corpora/sqlalchemy/lib` - 255 files, 20769 graph_edges
+
+Row counts confirmed by direct query against each resulting DB. The sqlite
+`PRAGMA journal_mode=MEMORY` workaround (section 2b) was required for all
+new DB files.
+
+Permanent regression proof added:
+`tests/regression/test_external_corpus_ingestion.py` (2 new tests,
+asserting a known real symbol from `tools.old/` appears correctly in
+`graph_edges` after ingestion). Full suite: 82/82.
+
+Also repaired `.git` directories for `external_corpora/flask` and
+`external_corpora/sqlalchemy` - both had kept an empty clone skeleton
+instead of the real git history after a prior Windows rename/move cleanup.
+Real `.git` recovered from sandbox-local clones and swapped in.
+
+### 2026-06-19 (orphaned-module disposition review) - item 12 investigated and reported
+
+Investigated all 9 originally-listed orphan candidates plus the empty
+`orchestration/` directory and `specification/tool_system_contract.json`,
+checking actual wiring (import/call-site grep across the whole tree), not
+just file contents in isolation.
+
+Key findings:
+- Most candidates confirmed genuinely dead (zero callers anywhere).
+- `inspection/explain_file.py` - complete, ready-to-use capability that
+  nothing currently calls. A real "hole," not dead weight.
+- `api/get_llm_context.py` - not orphaned despite zero in-repo callers;
+  it's the documented external integration point for a consumer (the
+  future agent) that doesn't exist yet.
+- `contract_types.py` + `specification/tool_system_contract.json` + empty
+  `orchestration/` directory - three pieces of one coherent, unfinished
+  feature, not independent dead files.
+- New finding outside the original list: `contracts/load_contract.py`'s
+  consumers load a different `tool_system_contract.json` (the one in
+  `contracts/`, schema_version 3) and would `KeyError` immediately if
+  called, since that file has no `domains` key. Dormant only because
+  nothing calls it.
+
+No integrate/dispose/delete actions taken - per the item's own gate:
+report findings to Bart before any disposal. Full per-item findings in
+TRACKER.md section 3 item 12.
+
+Also re-sequenced TRACKER.md's Dashboard "Now / next" list: game-code
+corpora ingestion now comes ahead of Row 1/Row 5, since Row 5's new
+ingestion-capture design should be informed by real target-domain mutation
+patterns.
