@@ -16,6 +16,9 @@ share/
 #local chat-resume scratch state, regenerated/overwritten constantly - not a reviewed deliverable
 /SESSION_STATE.md
 
+#external open-source corpora cloned in for ingestion testing - not part of this repo's history
+/external_corpora/
+
 #tool generated and constantly changing, so of no value
 ai_context/sessions/
 ai_context/knowledge.db

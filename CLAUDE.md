@@ -15,6 +15,12 @@ each update (never appended to), and gitignored as local scratch rather than a
 reviewed deliverable. If it ever conflicts with TRACKER.md/DESIGN.md/HISTORY.md
 below, those win - update SESSION_STATE.md to match them, not the reverse.
 
+If you suspect this file might be behind the most recent prior session - e.g. it
+describes a decision as pending that context elsewhere suggests was already
+made - cross-check before trusting it: use `mcp__session_info__list_sessions`
+and `read_transcript` to read the latest prior session's actual outcome, rather
+than guessing from this file's claims alone.
+
 ## Where to look for status, every session
 Before doing anything else in `tools/analysis/`, read the docs in
 `tools/analysis/docs/`:
@@ -64,6 +70,11 @@ finishing work, so Bart can see what changed via `git diff`, and so a future ses
   (e.g. sqlite3 file-handle behavior) only reproduce there.
 - Regression tests live under `tools/analysis/tests/regression/` — plain Python,
   `assert`-based `test_*` functions, runnable directly via `python3 file.py` or pytest.
+- Before ending any session that did substantive work, the last action is rewriting
+  `SESSION_STATE.md` in full (via `safe_write.py`) with current status and next steps
+  - mandatory, not just a convention. A session that does real work and skips this
+  leaves the next session relying on a stale snapshot it has no way to detect from
+  the file alone.
 
 ## Coding guidelines
 General behavioral defaults, merged in 2026-06-18. These bias toward caution over
