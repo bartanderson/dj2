@@ -502,7 +502,10 @@ def parse_ast(
         return None
 
     try:
-        tree = ast.parse(source)
+        import warnings as _warnings
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore", DeprecationWarning)
+            tree = ast.parse(source, filename=str(file_path))
     except SyntaxError as e:
         print("PARSE_AST SYNTAX ERROR:", file_path)
         print("  error:", repr(e))

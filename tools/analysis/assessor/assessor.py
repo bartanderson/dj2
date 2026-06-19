@@ -18,6 +18,7 @@ from tools.analysis.reducer.reduce import reduce
 from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_responsibility_map
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
 from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuilder
+from tools.analysis.inspection.explain_file import explain_file as _explain_file
 
 
 # =========================================================
@@ -448,6 +449,9 @@ class Assessor:
         # Same orphaned-primitive shape as the SUMMARY/SUBSYSTEM fix
         # earlier this session; same fix.
         return build_role_view(self.responsibility_map())
+
+    def explain_file(self, file_path: str) -> dict:
+        return _explain_file(self.oracle.conn, file_path)
 
     # =====================================================
     # RESPONSIBILITY MAP / SNAPSHOT

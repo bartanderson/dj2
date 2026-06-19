@@ -101,7 +101,10 @@ def build_global_symbols(
         )
 
         try:
-            tree = ast.parse(source)
+            import warnings as _warnings
+            with _warnings.catch_warnings():
+                _warnings.simplefilter("ignore", DeprecationWarning)
+                tree = ast.parse(source, filename=str(file_path))
         except SyntaxError:
             continue
 
