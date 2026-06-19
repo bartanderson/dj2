@@ -32,8 +32,8 @@ Before doing anything else in `tools/analysis/`, read the docs in
   recently-done / now-next list - read this first. Below that: section 1
   holds the phase/tier status tables (engine refactor, Truth Kernel tiers,
   Truth verification phases); section 2 is a short operational summary of
-  standing environment bugs (silent file truncation, stale `.pyc` caches -
-  read this before debugging anything that "looks impossible"); section 3
+  standing environment bugs (stale `.pyc` caches - read this before
+  debugging anything that "looks impossible"); section 3
   is open items / next steps, numbered in rough priority order - closed
   items are trimmed to "what shipped + proof," not re-argued in prose,
   since the fix is the embodiment of the design once it's in code and
@@ -71,20 +71,11 @@ finishing work, so Bart can see what changed via `git diff`, and so a future ses
 - Regression tests live under `tools/analysis/tests/regression/` — plain Python,
   `assert`-based `test_*` functions, runnable directly via `python3 file.py` or pytest.
 - Before ending any session that did substantive work, the last action is rewriting
-  `SESSION_STATE.md` in full (via `safe_write.py`) with current status and next steps
-  - mandatory, not just a convention. A session that does real work and skips this
-  leaves the next session relying on a stale snapshot it has no way to detect from
-  the file alone. This is a standing instruction, not something to ask permission
-  for each time - just do it as part of finishing the work.
-- **Batch anticipated writes to the same file.** If a follow-up edit to a file is
-  already known or planned (e.g. a fix to TRACKER.md immediately followed by a
-  second addendum to it, or any case where the mandatory SESSION_STATE.md rewrite
-  above is clearly coming next regardless of what else happens this session), fold
-  them into one `safe_write.py` pass instead of doing two separate full-file
-  rewrites back to back. This isn't about delaying real work to wait for
-  hypothetical future edits - only about not splitting writes you already know are
-  both coming into needless extra round trips, which also needlessly doubles
-  exposure to the truncation-prone write path below.
+  `SESSION_STATE.md` in full with current status and next steps - mandatory, not
+  just a convention. A session that does real work and skips this leaves the next
+  session relying on a stale snapshot it has no way to detect from the file alone.
+  This is a standing instruction, not something to ask permission for each time -
+  just do it as part of finishing the work.
 
 ## Coding guidelines
 General behavioral defaults, merged in 2026-06-18. These bias toward caution over
@@ -125,59 +116,9 @@ non-UTF-8 codepage (Windows OEM/CP437) somewhere in the write path. Avoid this:
 - When in doubt, prefer a plain hyphen (`-`) or rewording over an em dash in
   these docs — it's not worth the encoding risk for punctuation.
 
-## File writes (mandatory)
-This session (2026-06-16/17) found that writes/edits to files in this repo can
-silently fail to land on disk while every available signal still looks correct
-- including the Read tool itself, which on at least one occasion (Truth.md,
-2026-06-17) displayed ~130 lines of fully-formed, plausible content that had
-never actually been written to disk at all. Both the Edit tool and full-file
-Write tool calls have produced silent truncation (confirmed: a Write-tool
-retry reproduced the exact same truncated byte count as a prior failed Edit) -
-switching tools is not a fix, and trusting Read's in-context view is not a
-safe verification step on its own.
-
-**Current procedure (2026-06-18): use `tools/dev/safe_write.py` for every
-write/edit to a file in this repo, instead of the Edit/Write file tools.**
-It writes via temp-file + atomic rename, then reads the result back and
-byte-compares it against what was sent in - all in one call, with no content
-ever touching the historically-unreliable Edit/Write tool path:
-
-    python3 tools/dev/safe_write.py <target_path> << 'EOF'
-    <exact full file content, UTF-8>
-    EOF
-
-A printed `OK ... sha256=...` line means the write is confirmed landed; a
-`MISMATCH` line (with the first differing byte offset) means don't trust the
-file and re-run. Known tradeoff: this means whole-file rewrites rather than
-small in-place patches, even for minor edits to large files - accepted
-deliberately, since targeted in-place edits are exactly what the Edit tool's
-truncation history affected.
-
-If `tools/dev/safe_write.py` itself is ever unavailable or inapplicable, fall
-back to the previously-documented manual procedure: write the intended content
-to a temp file via bash heredoc and `diff` it against the real target file
-(zero diff output = confirmed landed); for Python files pair this with
-`ast.parse` as a cheap (but not sufficient on its own) sanity check.
-
-**2026-06-19 addition: the defect also hits plain reads, not just Edit/Write
-tool calls.** Building an edit by reading an existing file from disk via a
-plain script (e.g. Python `pathlib.read_text()`), then writing the modified
-result via `safe_write.py`, can still lose content - if the *read* silently
-truncates, `safe_write.py`'s byte-compare only proves the write matches what
-it was given, which was already short. Confirmed once: a TRACKER.md edit lost
-3 numbered items and a section header this way, caught only by a structural
-check (item count, section markers), not by `safe_write.py`'s own "OK" line.
-**Mitigation:** when you already have a verified-correct copy of a file's
-content from earlier in the session (e.g. an initial Read at session start),
-build edits from that in-context copy rather than issuing a fresh disk read.
-When a fresh read is unavoidable, sanity-check its structure (line count,
-section/item markers, last-line completeness) before trusting it as an edit
-base, and always do a final independent `diff` against the intended content
-after writing - not just a re-read through the same tool that did the read.
-
 ## Status history
 Session-by-session history (what changed, when, why, including the
-silent-truncation incidents and the doc-consolidation/cleanup work) lives in
+doc-consolidation/cleanup work) lives in
 HISTORY.md (split out of TRACKER.md section 4, 2026-06-18) - read it there,
 don't re-derive it from conversation memory, and don't duplicate it here: an
 inline copy in this file will drift the moment HISTORY.md is updated and

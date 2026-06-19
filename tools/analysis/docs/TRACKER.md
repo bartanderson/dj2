@@ -113,10 +113,10 @@ history: HISTORY.md.
    Layer build-out (section 3 items 3-11) - all open, see section 3 for
    full detail and sequencing notes.
 
-**Standing defects to remember every session** (section 2): silent
-file-write truncation and stale `.pyc` caching are real, repeatedly-
-confirmed tooling defects in this environment, not project bugs - verify
-every write per CLAUDE.md's mandatory procedure.
+**Standing defects to remember every session** (section 2): stale `.pyc`
+caching is a confirmed tooling defect on this environment - if runtime
+behavior contradicts visible source, suspect a stale cache before assuming
+the source is wrong.
 
 ---
 
@@ -381,91 +381,13 @@ different track - don't conflate them).
 
 ## 2. Standing environment defects (canonical reference)
 
-These are real, repeatedly-confirmed defects in this session's file-write
-tooling - not project bugs. CLAUDE.md's "File write verification
-(mandatory)" section is the binding procedure. Full incident-by-incident
-detail (27 silent-truncation incidents, 3 stale-pyc variants) was moved to
-HISTORY.md section A 2026-06-18 - this section is the operational summary
-every session actually needs before touching a file in this repo.
+These were originally documented as Cowork sandbox defects (FUSE/virtiofs
+file-bridge issues). The file-write truncation bugs (2a) and delete-path
+permission bugs (2c) were confirmed to be Cowork-specific and are no longer
+applicable when running Claude Code directly on Windows. Full incident
+history: HISTORY.md section A.
 
-### 2a. Silent file-truncation bug
-
-Edit and full-file Write calls in this repo have repeatedly produced files
-on disk that are silently truncated, padded with trailing NUL bytes, or
-left byte-for-byte unchanged - despite a reported success and a correct-
-looking in-context Read. Severity ranges from syntactically obvious
-(caught by `ast.parse()`) to syntactically invisible (a function or whole
-block silently disappears at a clean boundary, no error raised).
-Retrying via a different tool is not a fix - confirmed reproducing the
-identical truncated byte count across tools at least once.
-
-**The only confirmed-reliable fix:** a direct bash heredoc rewrite (or
-heredoc append onto an already-verified-correct prefix), followed by a
-full bash-side diff against the intended content string. Zero diff output
-is the only authoritative confirmation - byte/line counts and tail
-snippets are a useful first pass but not sufficient alone. Full procedure
-is in CLAUDE.md's "File write verification (mandatory)" section.
-
-**28 confirmed occurrences so far** across this engagement. This file
-(TRACKER.md) is the single most truncation-prone file encountered (5+
-incidents) - treat any edit to it as elevated-risk and always run the full
-diff, never a byte-count shortcut. Full incident log: HISTORY.md section A.
-
-**29th occurrence, 2026-06-19: confirmed this also hits plain reads, not
-just Edit/Write tool calls.** Building a TRACKER.md edit by reading the
-existing file via a plain Python script (`pathlib.read_text()`), then
-writing the modified result via `safe_write.py`, silently dropped 3
-numbered items and the section 4 header - the read truncated mid-file,
-and `safe_write.py`'s byte-compare only proved the write matched what it
-was given, which was already short. Caught by a structural check (item
-count, section markers), not by `safe_write.py`'s "OK" line. See CLAUDE.md
-"File writes" section for the resulting mitigation: build edits from a
-verified in-context copy rather than a fresh disk read when one is
-already available, and verify structure (not just byte-match) after any
-read used as an edit base.
-
-**External validation, 2026-06-19: this is an upstream Cowork/Windows bug,
-not antivirus, not specific to this repo or machine.** Investigated per
-Bart's request after he ruled out antivirus as the cause (removed it, the
-bug persisted). Three independently-filed reports against
-`anthropics/claude-code` describe the identical mechanism:
-- **#40264** (closed as "invalid"/not-CLI-specific, but the repro and root-
-  cause analysis stand): the Cowork file bridge (virtiofs + an inner FUSE
-  layer) caches file *size* metadata keyed by filename after a write, and
-  never invalidates that cache when the host file is later changed
-  externally - reads silently return the old, shorter length forever, no
-  error raised. Confirmed no way to force-invalidate from inside a
-  session: `fusermount -u` and `echo 3 > /proc/sys/vm/drop_caches` both
-  return "Operation not permitted" inside the VM.
-- **#41710** (open): same symptom on plain text/source files, not just
-  binary formats - `Read`/`wc -l` silently return fewer lines than the
-  host file actually has, no error. Documents `git show HEAD:<path>`
-  (reading from the git object store, which bypasses the mount entirely)
-  as a working diagnostic/workaround for committed content. Validated
-  live in this repo this session: `git show HEAD:tools/analysis/docs/
-  TRACKER.md | wc -l` and plain `wc -l` on the same path both currently
-  return 716 - no discrepancy at the moment, which confirms the check
-  itself works correctly as a pre-edit sanity gate even though nothing was
-  caught by it this particular time. Same caveat as the issue notes: only
-  covers committed content, no help for uncommitted edits - exactly the
-  case this bug matters most for.
-- **#50873** (open, labels area:cowork/area:sandbox/bug/has-repro/
-  platform:windows): same mechanism again, with a sharper detail worth
-  remembering - the `.git/index` mtime can correctly reflect live host
-  activity even while specific *working-tree files* are served stale
-  content, so a coarse "is the whole mount stale" check can pass while
-  individual files are still wrong. The staleness is per-file, not
-  per-mount.
-
-**Conclusion: no fix exists from inside the sandbox.** This is an upstream
-FUSE/virtiofs metadata-cache invalidation defect in Cowork's Windows
-sandbox bridge, already independently reported with matching repro steps
-by multiple other users - it is not antivirus, and not something specific
-to this machine or repo. `safe_write.py`'s diff-verify-after-write
-procedure, plus the `git show HEAD:<path>` cross-check for tracked files,
-remain the only available mitigations.
-
-### 2b. Stale/locked `.pyc` cache bug
+### 2a. Stale/locked `.pyc` cache bug
 
 Three confirmed variants: a locked/undeletable stale `.pyc` whose
 mtime+size happens to match an intermediate source save and so passes
@@ -483,116 +405,7 @@ wrong - `touch <source.py>` to force a recompile, since a `__pycache__`
 deletion isn't always trustworthy on this mount even when it reports
 success. Full variant detail: HISTORY.md section A.
 
-### 2c. Delete-path `Operation not permitted` bug (under `external_corpora/`)
-
-Confirmed twice now (2026-06-18 session, recurred 2026-06-19): `rm`/`rm -rf`
-on files or directories under `external_corpora/` fails with "Operation not
-permitted" even after `chmod -R u+w` and retry - not a transient lock, and
-distinct from the 2a/2b write-path bugs above (this is delete-path only;
-writes and reads to the same paths work fine).
-
-**Confirmed workaround: `mv` works where `rm` doesn't.** Renaming a
-directory out of the way (`mv target target_old`) succeeds even when
-deleting its contents directly fails. There is currently no known way to
-actually remove the renamed-aside leftovers from inside the sandbox -
-ended up leaving `external_corpora/flask/.git_broken_skeleton` and
-`external_corpora/sqlalchemy/.git_broken_skeleton` in place 2026-06-19 for
-exactly this reason. Bart can delete these from Windows directly:
-`Remove-Item -Recurse -Force "external_corpora\flask\.git_broken_skeleton",
-"external_corpora\sqlalchemy\.git_broken_skeleton"`.
-
-**2026-06-19 update: confirmed NOT scoped to `external_corpora/`** - the
-same "Operation not permitted" on `rm` reproduced on brand-new files
-created directly at the repo root during this session's ingestion work
-(probe/broken-attempt `.db` files with no relation to `external_corpora/`
-at all). Worked around the same way (`mv` into
-`_sandbox_cleanup_needed/`, a new folder at the repo root) rather than
-scattering renamed-aside files individually - Bart should delete that
-whole folder from Windows along with the two `.git_broken_skeleton` dirs
-above. This widens the bug's known scope from "under `external_corpora/`"
-to "this sandbox's mount of the repo, anywhere" - rename the section
-heading mentally; not renaming the doc section itself mid-investigation.
-
-**2026-06-19, second finding: phantom-directory variant.** Re-checked both
-`.git_broken_skeleton` dirs this session (still present per Bart's own
-earlier Windows-side deletion attempt - he believed these were cleared).
-They no longer appear in `ls -la` or `find` output for their parent
-directory at all, but a direct `stat`/`rm` by exact path still resolves
-them and `rm` still fails "Operation not permitted" on every file inside.
-Whatever Bart's Windows-side delete did, the sandbox's view of the mount
-did not converge with it - this looks like a stale directory-entry cache
-on the sandbox side of the mount (the entry is gone from one view,
-"Operation not permitted" from the OS in the other) rather than a
-Windows-side antivirus/Explorer file-lock, which would show the file as
-present-but-busy, not invisible-yet-resolvable. Not yet root-caused;
-flagging the shape in case it recurs.
-
-**2026-06-19, third finding: confirmed resolved on Bart's actual machine -
-sandbox-side cache artifact, no action needed.** Bart searched his real
-filesystem directly (Sublime Text) and confirmed neither
-`.git_broken_skeleton` directory exists on disk. Re-checked from the
-sandbox same session: both dirs are still absent from `ls -la`/`find` on
-their parent directories (consistent with the phantom-directory note
-above), but `stat` by exact path still resolves them, with live inode
-numbers and `Modify` timestamps - all from *this* session's checks, not
-stale from before Bart's deletion. Conclusion: this is the sandbox's
-virtiofs/FUSE mount view holding stale directory entries it never
-invalidated, not a real leftover on Bart's machine. Nothing further for
-Bart to delete here - do not re-ask. Closing this sub-thread; if the
-phantom-entry shape recurs elsewhere, it's now a known FUSE-cache
-quirk, not a sign of an actual file.
-
-**2026-06-19, fourth finding: root cause confirmed via direct syscall
-tests, and matches an independently-filed report.** Investigated per
-Bart's request after he ruled out antivirus (removed it; the bug
-persisted) and suspected Windows processes themselves. Found
-`anthropics/claude-code#55206` (open, labels area:cowork/area:sandbox/
-bug/has-repro/platform:windows, filed 2026-05-01), which reports the
-identical symptom on Cowork/Windows and attributes it to the sandbox's
-own FUSE mount layer structurally denying the `unlink` syscall - not
-antivirus, not a Windows file-handle race (it explicitly rules out
-`#28546`'s file-handle-latency theory via a control test: a brand-new
-file, touched and `rm`'d microseconds later, still fails, with no race
-window where it succeeds). Reproduced and isolated the exact syscall
-scope directly in this session, against a disposable test file/dir at
-the dj2 repo root:
-- `rm` and Python's `os.unlink()` both fail identically ("Operation not
-  permitted") - rules out a shell-specific quirk; this is the syscall
-  itself being denied.
-- `rmdir` on an empty directory fails the same way.
-- `rename()` (`mv` within the same filesystem) succeeds - confirms the
-  existing "`mv` works where `rm` doesn't" workaround above, and explains
-  *why*: rename doesn't remove a directory entry, unlink/rmdir do.
-- A cross-filesystem `mv` (e.g. into `/tmp`) succeeds at copying the
-  content out, then fails at the same point trying to remove the source -
-  because cross-filesystem move is implemented as copy+unlink under the
-  hood. So moving "out" of this mount is not actually a way to reclaim
-  space here either; only same-filesystem rename works.
-- Opening a file with truncation (`open(path, "w")`, i.e. `O_TRUNC`)
-  **succeeds** and zeroes the file's content, even though the directory
-  entry itself can't be removed. New, previously-undocumented workaround:
-  when the actual goal is "get rid of the content" rather than
-  specifically "remove the directory entry," truncating in place is a
-  usable substitute for delete on this mount.
-
-  Conclusion: the denial is scoped specifically to directory-entry-removal
-  operations (`unlink`, `rmdir`) on this mount - not a general permission,
-  lock, or antivirus problem, since every other operation on the same
-  files (write, truncate, rename) works normally. This matches Bart's own
-  finding that removing antivirus didn't help: the cause sits in the
-  sandbox's own FUSE layer, not on the Windows host or in a Windows
-  process. There is still no way to actually delete a directory entry
-  from inside the sandbox; Windows-side deletion remains the only real
-  fix. Three disposable test artifacts from this session's syscall tests
-  are still present at the repo root for exactly this reason - genuinely
-  new this session, not a stale-cache illusion like the third finding
-  above - and need deleting from Windows:
-  `_delbugtest_dj2_renamed.txt`, `_delbugtest_dj2_b.txt` (both already
-  truncated to empty/near-empty content from inside the sandbox, so no
-  real data is at risk - just empty leftover entries), and the empty
-  directory `_delbugtest_dir`.
-
-### 2d. `sqlite3.OperationalError: disk I/O error` on new DB writes
+### 2b. `sqlite3.OperationalError: disk I/O error` on new DB writes
 
 New 2026-06-19, found while ingesting the three corpora in section 3 item
 1. Any **new** sqlite DB file written to the dj2 mount hits
@@ -688,8 +501,8 @@ distinct angles folded in.
    `_sandbox_cleanup_needed/` deleted by Bart, and the two
    `.git_broken_skeleton` dirs are confirmed gone on his actual machine -
    their lingering visibility to `stat`/`rm` inside the sandbox is a stale
-   virtiofs mount-cache artifact, not a real file (see 2c's third
-   finding). No outstanding Windows-side action remains.
+   virtiofs mount-cache artifact, not a real file (Cowork sandbox defect,
+   now resolved). No outstanding Windows-side action remains.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
