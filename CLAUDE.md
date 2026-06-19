@@ -74,7 +74,17 @@ finishing work, so Bart can see what changed via `git diff`, and so a future ses
   `SESSION_STATE.md` in full (via `safe_write.py`) with current status and next steps
   - mandatory, not just a convention. A session that does real work and skips this
   leaves the next session relying on a stale snapshot it has no way to detect from
-  the file alone.
+  the file alone. This is a standing instruction, not something to ask permission
+  for each time - just do it as part of finishing the work.
+- **Batch anticipated writes to the same file.** If a follow-up edit to a file is
+  already known or planned (e.g. a fix to TRACKER.md immediately followed by a
+  second addendum to it, or any case where the mandatory SESSION_STATE.md rewrite
+  above is clearly coming next regardless of what else happens this session), fold
+  them into one `safe_write.py` pass instead of doing two separate full-file
+  rewrites back to back. This isn't about delaying real work to wait for
+  hypothetical future edits - only about not splitting writes you already know are
+  both coming into needless extra round trips, which also needlessly doubles
+  exposure to the truncation-prone write path below.
 
 ## Coding guidelines
 General behavioral defaults, merged in 2026-06-18. These bias toward caution over
@@ -148,6 +158,22 @@ back to the previously-documented manual procedure: write the intended content
 to a temp file via bash heredoc and `diff` it against the real target file
 (zero diff output = confirmed landed); for Python files pair this with
 `ast.parse` as a cheap (but not sufficient on its own) sanity check.
+
+**2026-06-19 addition: the defect also hits plain reads, not just Edit/Write
+tool calls.** Building an edit by reading an existing file from disk via a
+plain script (e.g. Python `pathlib.read_text()`), then writing the modified
+result via `safe_write.py`, can still lose content - if the *read* silently
+truncates, `safe_write.py`'s byte-compare only proves the write matches what
+it was given, which was already short. Confirmed once: a TRACKER.md edit lost
+3 numbered items and a section header this way, caught only by a structural
+check (item count, section markers), not by `safe_write.py`'s own "OK" line.
+**Mitigation:** when you already have a verified-correct copy of a file's
+content from earlier in the session (e.g. an initial Read at session start),
+build edits from that in-context copy rather than issuing a fresh disk read.
+When a fresh read is unavoidable, sanity-check its structure (line count,
+section/item markers, last-line completeness) before trusting it as an edit
+base, and always do a final independent `diff` against the intended content
+after writing - not just a re-read through the same tool that did the read.
 
 ## Status history
 Session-by-session history (what changed, when, why, including the

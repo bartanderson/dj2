@@ -379,6 +379,19 @@ is in CLAUDE.md's "File write verification (mandatory)" section.
 incidents) - treat any edit to it as elevated-risk and always run the full
 diff, never a byte-count shortcut. Full incident log: HISTORY.md section A.
 
+**29th occurrence, 2026-06-19: confirmed this also hits plain reads, not
+just Edit/Write tool calls.** Building a TRACKER.md edit by reading the
+existing file via a plain Python script (`pathlib.read_text()`), then
+writing the modified result via `safe_write.py`, silently dropped 3
+numbered items and the section 4 header - the read truncated mid-file,
+and `safe_write.py`'s byte-compare only proved the write matched what it
+was given, which was already short. Caught by a structural check (item
+count, section markers), not by `safe_write.py`'s "OK" line. See CLAUDE.md
+"File writes" section for the resulting mitigation: build edits from a
+verified in-context copy rather than a fresh disk read when one is
+already available, and verify structure (not just byte-match) after any
+read used as an edit base.
+
 ### 2b. Stale/locked `.pyc` cache bug
 
 Three confirmed variants: a locked/undeletable stale `.pyc` whose
@@ -440,6 +453,21 @@ on the sandbox side of the mount (the entry is gone from one view,
 Windows-side antivirus/Explorer file-lock, which would show the file as
 present-but-busy, not invisible-yet-resolvable. Not yet root-caused;
 flagging the shape in case it recurs.
+
+**2026-06-19, third finding: confirmed resolved on Bart's actual machine -
+sandbox-side cache artifact, no action needed.** Bart searched his real
+filesystem directly (Sublime Text) and confirmed neither
+`.git_broken_skeleton` directory exists on disk. Re-checked from the
+sandbox same session: both dirs are still absent from `ls -la`/`find` on
+their parent directories (consistent with the phantom-directory note
+above), but `stat` by exact path still resolves them, with live inode
+numbers and `Modify` timestamps - all from *this* session's checks, not
+stale from before Bart's deletion. Conclusion: this is the sandbox's
+virtiofs/FUSE mount view holding stale directory entries it never
+invalidated, not a real leftover on Bart's machine. Nothing further for
+Bart to delete here - do not re-ask. Closing this sub-thread; if the
+phantom-entry shape recurs elsewhere, it's now a known FUSE-cache
+quirk, not a sign of an actual file.
 
 ### 2d. `sqlite3.OperationalError: disk I/O error` on new DB writes
 
@@ -529,13 +557,12 @@ distinct angles folded in.
 
    Remaining candidate from this item's original list: the game's own
    source (`world/`/`engine/`/`resolver/`/`dungeon_neo/`) - not started,
-   no sequencing decided. Outstanding manual cleanup needed from Windows
-   (sandbox can't delete any of this, see 2c/2d): the two
-   `.git_broken_skeleton` leftover directories (still present despite
-   Bart's earlier Windows-side deletion attempt - see 2c's
-   phantom-directory note) and a new `_sandbox_cleanup_needed/` folder at
-   the repo root holding this session's renamed-aside probe/failed-attempt
-   DB files.
+   no sequencing decided. Cleanup from last session's run is fully
+   resolved as of 2026-06-19 (later): `_sandbox_cleanup_needed/` deleted
+   by Bart, and the two `.git_broken_skeleton` dirs are confirmed gone on
+   his actual machine - their lingering visibility to `stat`/`rm` inside
+   the sandbox is a stale virtiofs mount-cache artifact, not a real file
+   (see 2c's third finding). No outstanding Windows-side action remains.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
