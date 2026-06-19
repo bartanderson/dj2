@@ -518,6 +518,23 @@ def parse_ast(
     known_symbols = global_known_symbols or set()
     project_symbols = global_known_symbols or set()
 
+    # TRACKER.md item 23: runtime_bindings was only ever the caller's
+    # parameter (always {} from scan_project_files.py's placeholder),
+    # even though _extract_symbol_references() below computes the real
+    # tree-derived bindings internally via _extract_runtime_bindings() -
+    # it just never returned/exposed them. Recomputing here (deliberately
+    # redundant with that internal call, rather than changing its return
+    # signature and risking its other direct caller,
+    # tests/debug/test_symbol_pipeline_trace.py) so FileAnalysis.runtime_bindings
+    # (set below) actually reflects real bindings instead of staying
+    # permanently empty in production - the "runtime" classification
+    # bucket was dead because of this.
+    detected_runtime_bindings = _extract_runtime_bindings(
+        tree,
+        alias_map={"ctx": "tools.analysis.context"},
+    )
+    runtime_bindings = {**detected_runtime_bindings, **runtime_bindings}
+
     symbol_references = _extract_symbol_references(
         tree,
         known_symbols,

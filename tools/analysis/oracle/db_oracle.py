@@ -1,5 +1,6 @@
 # tools/analysis/oracle/db_oracle.py
 
+import logging
 import os
 import sqlite3
 import sys
@@ -8,6 +9,8 @@ from collections import defaultdict, deque
 from tools.analysis.graph.graph_builder import GraphEdge, GraphBundle
 from tools.analysis.oracle.edge_semantics import interpret_edge
 from tools.analysis.oracle.symbol_noise import is_accessor_chain_noise
+
+_logger = logging.getLogger(__name__)
 
 # =========================================================
 # DB ORACLE CORE
@@ -607,36 +610,49 @@ class DBOracle:
                    0.25 works well for all-MiniLM-L6-v2 — below this
                    similarity is essentially noise.
 
-        Falls back to discover_seed_symbols() (token-based) if the
-        sentence-transformers package is not installed.
+        Falls back to _discover_token() (token-based) if the
+        sentence-transformers package is not installed, or if the
+        embedding model fails to load/run for any other reason (e.g.
+        a network or cache failure after a successful import - see
+        TRACKER.md item 22). Falls back to _discover_token() directly
+        rather than discover_seed_symbols(), since discover_seed_symbols()
+        -> _discover_combined() -> this method would re-enter the same
+        failing path and recurse.
         """
         try:
             import numpy as np
             from tools.analysis.oracle.embedding_model import embed_text
         except ImportError:
-            return self.discover_seed_symbols(text, limit)
+            return self._discover_token(text, limit)
 
-        # lazy build
-        if not hasattr(self, "_embedding_index") or self._embedding_index is None:
-            self.build_embedding_index()
+        try:
+            # lazy build
+            if not hasattr(self, "_embedding_index") or self._embedding_index is None:
+                self.build_embedding_index()
 
-        index = self._embedding_index
+            index = self._embedding_index
 
-        if not index["symbols"] or index["matrix"] is None:
-            return self.discover_seed_symbols(text, limit)
+            if not index["symbols"] or index["matrix"] is None:
+                return self._discover_token(text, limit)
 
-        query_vec = embed_text(text)                        # (384,)
-        scores = index["matrix"] @ query_vec               # (N,) cosine similarity
+            query_vec = embed_text(text)                        # (384,)
+            scores = index["matrix"] @ query_vec               # (N,) cosine similarity
 
-        ranked = sorted(
-            zip(scores, [s for s, _ in index["symbols"]]),
-            reverse=True,
-        )
+            ranked = sorted(
+                zip(scores, [s for s, _ in index["symbols"]]),
+                reverse=True,
+            )
 
-        return [
-            sym for score, sym in ranked
-            if score >= min_score
-        ][:limit]
+            return [
+                sym for score, sym in ranked
+                if score >= min_score
+            ][:limit]
+        except Exception as e:
+            _logger.warning(
+                "Embedding-based seed discovery failed (%s: %s); falling back to token-based discovery.",
+                type(e).__name__, e,
+            )
+            return self._discover_token(text, limit)
 
     # =====================================================
     # DISCOVERY API (PHASE 2 - DBReader-only bootstrap layer)

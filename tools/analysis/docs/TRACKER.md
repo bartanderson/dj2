@@ -35,24 +35,34 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Code-quality/weak-spot audit of the live, wired code
-(item 20) - DONE 2026-06-18, two real wiring gaps found and reported (not
-yet fixed, see items 22-23); SystemSelfModel documented + tested
-(item 19); SUBSYSTEM builtin-noise filter (item 18); INTEGRITY view gap
-closed (item 17); SUBSYSTEM path-pollution fix (item 16). Full detail:
-section 3 below; full history: HISTORY.md.
+**Recently done:** Embedding-fallback crash risk in seed discovery (old
+item 22) and dead `runtime_bindings` wiring (old item 23) - both DONE
+2026-06-18, fixed and regression-tested (6 new tests; 80/80 full suite
+after); see section 3 items 13-14 for proof. Section 3 reordered/merged
+same date: items 3+4+7, 9+13 step 2, and 6+8 consolidated to remove
+duplication while preserving each source's nuance; closed items 1/15-20
+removed from the open numbered list (nothing deleted - full writeups
+remain in HISTORY.md section B). Before that: code-quality/weak-spot
+audit of the live, wired code (old item 20) - DONE 2026-06-18, found the
+two gaps just closed above; SystemSelfModel documented + tested (old item
+19); SUBSYSTEM builtin-noise filter (old item 18); INTEGRITY view gap
+closed (old item 17); SUBSYSTEM path-pollution fix (old item 16). Full
+history: HISTORY.md.
 
 **Now / next, in priority order:**
-1. [DECISION NEEDED] Two real gaps found by item 20's audit, neither fixed
-   yet: embedding-fallback crash risk (item 22) and dead `runtime_bindings`
-   wiring / permanently-empty "runtime" bucket (item 23) - fix-now vs.
-   track-for-later is Bart's call.
-2. Orphaned-module disposition review (item 21) - not started.
-3. Truth.md Phase 1 Row 1 remainder + Row 5 (item 2) - next substantive
-   feature work; everything else closed from the Phase 3 gap audit.
-4. Engine refactor Phases 3-6, the Architecture Split, and the Agent
-   Capability Layer build-out (items 3-13) - all open, see section 3 for
-   sequencing.
+1. [TOP PRIORITY, NEW] Evaluate widening the ingestion test corpus - game
+   folders (`world/`/`engine/`/`resolver/`/`dungeon_neo/`), `tools.old/`,
+   and possibly downloadable open-source projects - now unblocked since
+   items 22/23 are fixed. Sequencing across corpora is intentionally open,
+   not a fixed ranking - see section 3 item 1.
+2. Orphaned-module disposition review (section 3 item 12) - not started.
+3. Truth.md Phase 1 Row 1 remainder + Row 5 (section 3 item 2) - next
+   substantive feature work; everything else closed from the Phase 3 gap
+   audit.
+4. Engine/Assessor boundary completion, the Architecture Split, the
+   query-expansion/impact_query semantics audit, and the Agent Capability
+   Layer build-out (section 3 items 3-11) - all open, see section 3 for
+   full detail and sequencing notes.
 
 **Standing defects to remember every session** (section 2): silent
 file-write truncation and stale `.pyc` caching are real, repeatedly-
@@ -374,130 +384,121 @@ success. Full variant detail: HISTORY.md section A.
 
 ## 3. Open items / next steps
 
-In rough priority order, deduplicated across all four original source
-files. Closed items below are trimmed to what shipped + proof; full
-writeups for each live in HISTORY.md section B.
+Closed/no-action items previously numbered 1 and 15-20 have been removed
+from this list (2026-06-18 cleanup) - nothing deleted, see the Dashboard
+above for the at-a-glance "recently done" line and HISTORY.md section B
+for full writeups. Items 3+4+7, 9+13 (step 2), and 6+8 below have been
+merged from the prior numbering to remove duplication while preserving
+every source document's nuance - see each merged item's body for the
+distinct angles folded in.
 
-1. **Phase 2 evaluation work (Truth Kernel Board Tier 2): DONE 2026-06-17.**
-   Evaluated Stability/Integrity/Subsystem/Role view usefulness against a
-   real project-corpus engine run (157 files, 631 symbols, 2127 refs);
-   verdict mixed-to-negative but not blocking - see section 1b's Tier 2
-   block. Produced findings 16-18 below. Full writeup: HISTORY.md section B.
+1. **[TOP PRIORITY, NEW 2026-06-18] Evaluate widening the ingestion test
+   corpus.** The analysis tool has so far only ever ingested itself (157
+   files, its own self-corpus) plus regression fixtures - DESIGN.md
+   section 3 flags this explicitly as an open assumption: the reasoning
+   layer is "proven, but only proven on one corpus," unverified on a
+   differently-shaped codebase. Candidates to evaluate as additional test
+   cases, each exercising different capabilities:
+   - The game's own source: `world/`, `engine/`, `resolver/`,
+     `dungeon_neo/` - real target-domain code, generalizes old item 13
+     step 1 ("widen ingestion scope") from a fixed first-step into part
+     of this broader evaluation.
+   - `tools.old/` - already in-repo, untouched by the self-analysis run
+     so far, a reasonable next corpus before the game code.
+   - Possibly downloadable open-source projects, for capabilities (or
+     codebase shapes/sizes) the in-repo corpora don't exercise.
+   Sequencing across these is intentionally **not** fixed - Bart was
+   explicit that this is "a listing... not an ordering," and wants
+   proposed impacts of alternative orderings rather than one imposed
+   priority. Items 13 and 14 below (old items 22/23) were a stated
+   prerequisite before widening scope, since both bugs could otherwise
+   produce misleading or crashing results on a differently-shaped corpus
+   - both are now fixed, so this item is unblocked. Verify whichever
+   corpus is chosen first with a regression test asserting a known real
+   symbol from that corpus appears correctly in `graph_edges` after
+   ingestion (the same bar old item 13 step 1 set).
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
    just wiring - bigger lift than anything closed so far.
-3. **Engine refactor Phase 3 remainder:** move query execution fully into
-   Assessor (route_query becomes Assessor-owned, DBOracle becomes pure
-   kernel only, no semantic interpretation in the DB layer).
-4. **Engine refactor Phase 4:** DB-only execution mode (no engine
-   dependency in the query path, deterministic replay support).
-5. **Engine refactor Phase 5:** formalize the existing trace data as
+3. **Engine/Assessor boundary completion** (merges old items 3, 4, and 7
+   - three angles on the same end-state, kept together since they're
+   sequential pieces of one boundary, not independent work):
+   - Move query execution fully into Assessor: `route_query` becomes
+     Assessor-owned, `DBOracle` becomes pure kernel only, no semantic
+     interpretation in the DB layer (old Phase 3 remainder).
+   - DB-only execution mode: no engine dependency in the query path,
+     deterministic replay support (old Phase 4).
+   - Architecture split groundwork this depends on: create a contracts
+     layer, create an assessor layer, move the query stack into
+     assessor, enforce the DB-only boundary, remove engine/query
+     coupling (old item 7, all still open).
+4. **Engine refactor Phase 5:** formalize the existing trace data as
    first-class named API functions (`expansion_explanation()`,
    `seed_explanation()`, `intent_mapping_trace()`) - the underlying data
    already exists in `execution_plan["trace"]`.
-6. **Engine refactor Phase 6 (later, explicitly deferred):** replace
-   heuristic pruning/scoring with trace-weighted ranking derived from
-   expansion provenance.
-7. **ARCHITECTURE SPLIT (all open):** create a contracts layer, create an
-   assessor layer, move the query stack into assessor, enforce a DB-only
-   boundary, remove engine/query coupling.
-8. **Ranking refinement layer:** upgrade pruning from heuristic scoring to
-   trace-informed scoring (overlaps with Phase 6 above).
-9. **Validate intent-specific expansion quality against real usage** -
-   the budgets are now calibrated and locked by regression tests, but
-   whether `impact_query`/`surface_query`/`general_query` actually produce
-   the *right* zones for real questions hasn't been evaluated end to end.
-10. **Reasoning layer remainder:** answer architectural questions from
-    graph truth directly; identify structural influence/dependency zones;
-    support oracle-style interrogation queries; an oracle execution
-    feedback loop (query -> refinement signal).
-11. **Test suite hygiene:** project symbol ordering must be DB-
-    deterministic (no insertion-order reliance anywhere); a minimal oracle
-    CLI smoke test harness; alias_map normalization consistency (currently
-    "under observation," not yet confirmed stable); unify the identity
-    factory entrypoint to a single creation path; unify classification
-    imports to a single source path; eliminate residual dual routing
-    paths in tests.
-12. **Truth Kernel Tier 3/4 (system replacement / closed-world complete):**
-    all items open and explicitly future-state - Assessor fully on the
-    Truth Layer exclusively, Oracle fully routed through it, engine
-    introspection migrated, legacy dual-path removed, no ad-hoc graph
-    inspection paths remaining anywhere, query language frozen.
-13. **Agent Capability Layer build order (see DESIGN.md section 3 for the
-    why - this is sequencing only). Status: not started, zero items below
-    have any code behind them as of 2026-06-17.**
-    1. [ ] Widen ingestion scope to world/ + engine/ + resolver/ +
-       dungeon_neo/. No new code - run existing ingestion over more files,
-       plus whatever path-config change that requires. Verify with a
-       regression test asserting a known real symbol (e.g.
-       `generate_location_from_potential`) shows up in `graph_edges` after
-       ingestion.
-    2. [ ] Audit `impact_query`'s actual semantics against real data: full
-       transitive closure, or only what the explainability trace's depth
-       budget surfaces? Write this down as fact either way before building
-       on it.
-    3. [ ] If a gap is found in #2, fix it or add a separate full-closure
-       ripple query (both directions) as a new, explicit capability - not
-       silently repurposing the explainability trace for a job it wasn't
-       built for.
-    4. [ ] Build the task.md generator off the ripple query from #2/#3.
-       Markdown, plain checklist format, matching this doc's voice.
-    5. [ ] Build the "re-reference a task.md" path: read file -> extract
+5. **Trace-weighted ranking (explicitly deferred - merges old items 6 and
+   8, same upgrade described from two angles):** replace heuristic
+   pruning/scoring with trace-weighted ranking derived from expansion
+   provenance (old Phase 6); equivalently, upgrade the ranking refinement
+   layer from heuristic scoring to trace-informed scoring (old item 8).
+   "Later" per the original Phase 6 note - revisit once query-expansion
+   quality (item 6 below) has been validated against real usage, since
+   that validation will inform what "trace-informed" should actually
+   weight.
+6. **Query-expansion validation / `impact_query` semantics audit (merges
+   old item 9 and old item 13 step 2 - same open question, raised from
+   the usage-evaluation angle and the build-order angle):**
+   - Validate intent-specific expansion quality against real usage - the
+     budgets are now calibrated and locked by regression tests, but
+     whether `impact_query`/`surface_query`/`general_query` actually
+     produce the *right* zones for real questions hasn't been evaluated
+     end-to-end (old item 9).
+   - Audit `impact_query`'s actual semantics against real data
+     specifically: full transitive closure, or only what the
+     explainability trace's depth budget surfaces? DESIGN.md section 3
+     calls for this to be audited against real data before the task.md
+     mechanism is built on top of it, not after (old item 13 step 2). If
+     a gap is found, fix it or add a separate full-closure ripple query
+     (both directions) as a new, explicit capability - not silently
+     repurposing the explainability trace for a job it wasn't built for
+     (old item 13 step 3, kept here since it's the direct contingency on
+     this audit's outcome).
+7. **Reasoning layer remainder:** answer architectural questions from
+   graph truth directly; identify structural influence/dependency zones;
+   support oracle-style interrogation queries; an oracle execution
+   feedback loop (query -> refinement signal).
+8. **Test suite hygiene:** project symbol ordering must be DB-
+   deterministic (no insertion-order reliance anywhere); a minimal oracle
+   CLI smoke test harness; alias_map normalization consistency (currently
+   "under observation," not yet confirmed stable); unify the identity
+   factory entrypoint to a single creation path; unify classification
+   imports to a single source path; eliminate residual dual routing
+   paths in tests.
+9. **Truth Kernel Tier 3/4 (system replacement / closed-world complete):**
+   all items open and explicitly future-state - Assessor fully on the
+   Truth Layer exclusively, Oracle fully routed through it, engine
+   introspection migrated, legacy dual-path removed, no ad-hoc graph
+   inspection paths remaining anywhere, query language frozen.
+10. **Agent Capability Layer build order, remainder (old item 13 steps 4
+    and 5 - steps 1 and 2 folded into items 1 and 6 above):**
+    1. [ ] Build the task.md generator off the ripple query from item 6
+       above. Markdown, plain checklist format, matching this doc's
+       voice.
+    2. [ ] Build the "re-reference a task.md" path: read file -> extract
        the originating query -> re-run against current DB -> diff ->
        report.
-14. **Truth Kernel Board Tier 0:** AI compiler surface hypotheses -
+    As with item 1 above, Bart's direction is that this is a listing of
+    capability pieces, not a locked sequence - propose impacts of
+    alternative orderings (e.g. doing corpus-widening work in parallel
+    with this rather than strictly before it) rather than assuming one.
+11. **Truth Kernel Board Tier 0:** AI compiler surface hypotheses -
     TRUTH KERNEL v1.md's view-legality and Combine-legality lists are
     stale relative to the current 6-view reality (they only mention 5
     views and don't include ROLE in the allowed Combine pairs) - worth a
     pass to update DESIGN.md's spec language or explicitly note the gap
     there if ROLE participation in Combine is ever needed.
-15. **Semantic Identity Reconstruction: status corrected from "Phase 3 not
-    started" to "Phase 3 deliberately abandoned" - no action item.** The
-    shadow/trace infrastructure (`route_symbol_shadow()`, `TraceCollector`,
-    CP0-CP4) was built and is real and live; the planned replacement of the
-    legacy router was tried and explicitly reversed per the code's own
-    comments. Full writeup: DESIGN.md section 4 ("shadow/observability
-    layer") and HISTORY.md section B.
-16. **SUBSYSTEM identity strings polluted by absolute file paths: DONE
-    2026-06-17/18.** Fixed via a new persisted `project_root` (new
-    `project_meta` table + `set_project_root()`/`get_project_root()`) so
-    `_file_path_to_module()` trims paths correctly. Test coverage:
-    `tests/regression/test_subsystem_path_pollution_fix.py` (7 tests); full
-    suite 85/85 after. Full writeup: HISTORY.md section B.
-17. **INTEGRITY view thinner than the codebase's own validation logic:
-    DONE 2026-06-18.** `validation_summary()` now calls the real
-    `SystemValidator` checks instead of a partial inline reimplementation;
-    `IntegrityView.db_mismatches` now reflects a real `graph_edges`/
-    `symbol_references` count-disagreement signal instead of a hardcoded
-    `[]`. Test coverage: `tests/regression/test_integrity_view_wiring.py`
-    (6 tests); full suite 96/96 after. Full writeup: HISTORY.md section B.
-18. **SUBSYSTEM dependency lists weren't builtin/stdlib-filtered: DONE
-    2026-06-17/18.** `build_subsystem_view()` now takes the same DB-
-    authoritative `builtin_symbols` set hotspot ranking already uses and
-    excludes builtin edges before module resolution. Test coverage:
-    `tests/regression/test_subsystem_builtin_noise_filter.py` (5 tests).
-    Full writeup: HISTORY.md section B.
-19. **`SystemSelfModel`/`SystemSelfModelBuilder` undocumented and untested:
-    DONE 2026-06-18.** Real, production-wired Tier 2 component
-    (`Assessor.self_model()`, `QuerySession` results) had zero docs/tests.
-    Fixed: DESIGN.md section 6 added, stale comment references corrected,
-    `tests/regression/test_system_self_model.py` added (8 tests). Full
-    writeup: HISTORY.md section B.
-20. **[HIGH PRIORITY] Code-quality / weak-spot audit of the live, wired
-    code: DONE 2026-06-18.** Mapped the real live surface via static
-    import-reachability from both real entry points (`ask.py` for
-    queries, `engine/run_engine.py` for ingestion): 50 modules reachable,
-    64 not - the unreached set matches item 21's orphaned-module candidate
-    list, cross-validating that split. Of the 50 live modules, found no
-    bare/swallowed excepts, no TODO/FIXME/HACK debt, and the project's
-    deliberate non-fatal `except Exception` sites (schema check, session
-    persistence, system_self_model gap recording) are all legitimate,
-    well-commented "record the gap, don't invent" patterns, not bugs.
-    Found two real gaps, both confirmed against live code and/or the real
-    project DB, neither fixed yet (audit scope, not fix scope) - recorded
-    as items 22 and 23 below. Full writeup: HISTORY.md section B.
-21. **Orphaned-module disposition review (hole vs. dead).** Evaluate
+12. **Orphaned-module disposition review (hole vs. dead).** Evaluate
     `resolution/symbol_origin_resolver.py`, `inspection/explain_file.py`,
     `utilities/reachable_print_trace.py`, `context/build_context_packet.py`,
     the `contracts/` cluster (`contract_validator.py`,
@@ -506,61 +507,60 @@ writeups for each live in HISTORY.md section B.
     `api/query_entry.py`, the empty `orchestration/` directory, and
     `specification/tool_system_contract.json` - each through the "missing
     capability that should be wired" vs. "genuinely dead, safe to remove"
-    lens, per this project's standing principle of never assuming dead from
-    surface signals alone. Deferred, not yet started; report findings to
-    Bart before any integrate/dispose/delete action.
-22. **Embedding-fallback crash risk in seed discovery (found by item 20's
-    audit, not yet fixed).** `oracle/db_oracle.py`'s
-    `discover_seed_symbols_semantic()`/`discover_seed_symbols()` only
-    catch `ImportError` around importing `sentence-transformers`/
-    `embedding_model` - the docstring promises "falls back to token-based
-    if the sentence-transformers package is not installed," but a load-
-    time failure *after* a successful import (model download/network
-    failure, corrupted HuggingFace cache, etc., raised inside
-    `embedding_model.get_model()`) happens outside that `try` block and is
-    never caught. This sits on the live path for every single `ask.py`
-    query - `assessor/query_session.py`'s `run_query()` passes
-    `self.oracle.discover_seed_symbols` straight into `route_query()` with
-    no surrounding try/except. `sentence-transformers` is confirmed
-    actively installed and in use on Bart's real machine (see
-    `embedding_model.py`'s own torch-warning-silencing comment,
-    2026-06-17) - so a model-load failure there would crash every query
-    instead of degrading gracefully as documented. Needs either a broader
-    `except Exception` around the embedding path with a logged fallback,
-    or a deliberate decision that this risk is acceptable as-is.
-23. **Dead `runtime_bindings` wiring - "runtime" bucket is permanently
-    empty in production (found by item 20's audit, not yet fixed).** The
-    per-file `_extract_runtime_bindings()` (`ingestion/parse_ast.py`) and
-    `resolve_runtime_symbol()` (`graph/runtime_resolution.py`) are real,
-    correct, and individually unit-tested - but only by tests that
-    construct `SymbolEnvironment`/`FileAnalysis` fixtures directly with a
-    hand-built non-empty `runtime_bindings` dict, bypassing the real
-    pipeline. In the real pipeline, `ingestion/scan_project_files.py` line
-    192 hardcodes `runtime_bindings = {}  # still placeholder for now` and
-    passes that empty dict straight through `analyze_files()` into every
-    `parse_ast()` call, which stores it unchanged onto
-    `FileAnalysis.runtime_bindings`. `_extract_runtime_bindings()` *is*
-    called for real inside `_extract_symbol_references()` - but only into
-    its own separately-scoped local variable, used solely to resolve raw
-    call names for that pass's own `SymbolReference` construction; the
-    result is never propagated back onto `FileAnalysis.runtime_bindings`.
-    Production classification (`classification/classify_references.py`'s
-    `route_symbol(runtime_bindings=analysis.runtime_bindings, ...)`, the
-    actual bucket-assignment call for every symbol reference) therefore
-    always receives `{}`. Confirmed against the real project DB:
-    `SELECT bucket, COUNT(*) FROM symbol_references GROUP BY bucket`
-    returns only `builtin`/`project`/`stdlib`/`external` - zero rows with
-    `bucket = 'runtime'` - despite "runtime" being a documented bucket in
-    `classify_references.py`'s own contract comment. Same bug shape as the
-    previously-fixed drift_signals/db_mismatches gaps (item 17): a real,
-    tested, correct computation exists, but the wiring that would surface
-    it in production output was never connected - the difference here is
-    that the unit tests construct fixtures by calling the internal helper
-    directly, so test-green gave no signal the production path was inert.
-    Needs a decision on whether `parse_ast()` should call
-    `_extract_runtime_bindings()` itself and thread the result onto
-    `FileAnalysis.runtime_bindings`, replacing the
-    `scan_project_files.py` placeholder.
+    lens, per this project's standing principle of never assuming dead
+    from surface signals alone. Deferred, not yet started; report
+    findings to Bart before any integrate/dispose/delete action.
+13. **Embedding-fallback crash risk in seed discovery: DONE 2026-06-18.**
+    `oracle/db_oracle.py`'s `discover_seed_symbols_semantic()` previously
+    only caught `ImportError` around the top-level
+    `import numpy`/`from ...embedding_model import embed_text`
+    statements - any failure *after* that point (the actual model load
+    inside `embedding_model.get_model()`, which can fail at call time due
+    to a missing model cache, no network access, a corrupted download,
+    etc.) propagated uncaught all the way to every `ask.py` query. Fixed:
+    the embedding-index build and lookup are now wrapped in
+    `except Exception`, logging a warning (`_logger.warning(...)`, new
+    module logger added) and falling back directly to `_discover_token()`
+    - not via `discover_seed_symbols()`, since that path re-enters
+    `discover_seed_symbols_semantic()` through `_discover_combined()` and
+    would recurse forever against a failure that won't go away on retry.
+    Proof: `tests/regression/test_embedding_seed_discovery_fallback.py`
+    (3 tests) - one against the real environment (sentence-transformers
+    genuinely not installed in this sandbox, confirming the fix handles
+    the exact naturally-occurring case), one simulating a non-ImportError
+    failure (`OSError`) to prove the broader exception net works and
+    doesn't recurse, one confirming the public `discover_seed_symbols()`
+    entrypoint used by `route_query()`/`QuerySession.run_query()` doesn't
+    crash either. Full regression suite: 80/80 after.
+14. **Dead `runtime_bindings` wiring: DONE 2026-06-18.** `parse_ast()`
+    (`ingestion/parse_ast.py`) previously set `FileAnalysis.runtime_bindings`
+    directly from its caller-supplied parameter - always `{}`, since
+    `scan_project_files.py` line 192 hardcodes
+    `runtime_bindings = {}  # still placeholder for now` - even though
+    `_extract_runtime_bindings()` was already being called for real
+    inside `_extract_symbol_references()`, just discarded after its own
+    internal use. Production classification
+    (`classify_references.py`'s `route_symbol(runtime_bindings=
+    analysis.runtime_bindings, ...)`) therefore always received `{}`, so
+    the "runtime" bucket was permanently empty in real output. Fixed:
+    `parse_ast()` now also calls `_extract_runtime_bindings()` itself and
+    merges the result onto `runtime_bindings` before it's stored on
+    `FileAnalysis` - deliberately redundant with
+    `_extract_symbol_references()`'s internal call rather than changing
+    that function's return signature, to avoid touching its other direct
+    caller (`tests/debug/test_symbol_pipeline_trace.py`).
+    `scan_project_files.py`'s placeholder line is left untouched (still
+    correctly describes the parameter it passes; the fix lives entirely
+    inside `parse_ast()`). Proof:
+    `tests/regression/test_runtime_bindings_wiring.py` (3 tests) - new
+    fixture `tests/fixtures/sample_project/runtime_bucket_case.py`
+    (`ai = engine.ai_system; ai()`) run through the real pipeline
+    (`parse_ast()` -> `classify_references()`, the same two calls
+    `analyze_files()` chains in production) confirms the reference is
+    classified `bucket='runtime'`; a regression-guard test confirms
+    forcing `runtime_bindings` back to `{}` (the exact pre-fix production
+    state) loses the bucket on the same fixture, proving this test would
+    have caught the original bug. Full regression suite: 80/80 after.
 
 ---
 
