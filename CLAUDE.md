@@ -60,6 +60,25 @@ These are git-versioned and human-reviewable on purpose: update them as part of
 finishing work, so Bart can see what changed via `git diff`, and so a future session
 (mine) doesn't need conversation history to know where things stand.
 
+## DB management (standing rule)
+When a new corpus DB is needed, create it fresh - delete any stale `.db`
+files for that corpus first (or overwrite in place). Do not ask Bart
+whether to clean up; just clean and create. The only DB that is never
+auto-deleted is `ai_context/knowledge.db` (unrelated to this tool).
+The self-corpus DB (`C_Users_bartl_dev_dj2_tools_analysis.db`) is the
+primary development DB and should not be deleted unless explicitly
+rebuilding it. All other `.db` files at the repo root are expendable
+ingestion artifacts.
+
+Game corpora use one DB per directory (2026-06-19): `world_corpus.db`,
+`engine_corpus.db`, `dungeon_neo_corpus.db`. (`resolver/` is a single
+file with no graph edges - not worth a DB.) This
+is because `_persist_graph_edges` does a full table reset per run, so
+combining corpora into one DB silently drops all but the last corpus's
+graph_edges. Revisit and merge into a single `game_corpus.db` once the
+ingestion layer supports per-file edge management (item 3 / architecture
+boundary work).
+
 ## Working agreement
 - I (Claude) have direct read/write access to this folder when it's connected to a
   Cowork session — edit files in place, no patch files needed.

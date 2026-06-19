@@ -22,6 +22,18 @@ from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuil
 from tools.analysis.inspection.explain_file import explain_file as _explain_file
 from tools.analysis.agent.task_generator import generate_task_md as _generate_task_md
 from tools.analysis.agent.task_rereferencer import rereference_task_md as _rereference_task_md
+from tools.analysis.intent.semantic_summary import (
+    get_or_generate_summary as _get_or_generate_summary,
+    get_summary_if_fresh as _get_summary_if_fresh,
+    list_summaries as _list_summaries,
+)
+from tools.analysis.intent.knowledge_artifact import (
+    add_artifact as _add_artifact,
+    get_artifacts as _get_artifacts,
+    list_artifacts as _list_artifacts,
+    delete_artifact as _delete_artifact,
+    highest_provenance as _highest_provenance,
+)
 
 
 # =========================================================
@@ -484,6 +496,93 @@ class Assessor:
             builtin_symbols=self.oracle.builtin_symbols(),
             diff_out_path=diff_out_path,
         )
+
+    # =====================================================
+    # INTENT LAYER - SUB-LAYER A: SEMANTIC SUMMARIES
+    # (DESIGN.md section 3 / TRACKER.md item 12b)
+    # AI-generated per-file/module/subsystem descriptions.
+    # Lazy generation; source_hash for staleness detection.
+    # =====================================================
+
+    def semantic_summary(
+        self,
+        subject: str,
+        kind: str = "file",
+        source_text: str = "",
+        *,
+        force_refresh: bool = False,
+    ) -> dict:
+        """
+        Return (and cache) an AI semantic summary for `subject`.
+        `source_text` is the raw content to summarise - the caller reads
+        the file; this method does not touch the filesystem directly.
+        Returns a dict with content, source_hash, model_version,
+        generated_at, cache_hit.
+        """
+        from tools.analysis.persistence.persistence_engine import ensure_schema
+        ensure_schema(self.oracle.conn)
+        return _get_or_generate_summary(
+            self.oracle.conn, subject, kind, source_text,
+            force_refresh=force_refresh,
+        )
+
+    def semantic_summary_if_fresh(
+        self,
+        subject: str,
+        kind: str = "file",
+        source_text: str = "",
+    ) -> dict | None:
+        """Return cached summary only if fresh; None if missing/stale."""
+        return _get_summary_if_fresh(self.oracle.conn, subject, kind, source_text)
+
+    def list_semantic_summaries(self, kind: str = None) -> list:
+        """List all stored summaries, optionally filtered by kind."""
+        return _list_summaries(self.oracle.conn, kind=kind)
+
+    # =====================================================
+    # INTENT LAYER - SUB-LAYER B: KNOWLEDGE ARTIFACTS
+    # (DESIGN.md section 3 / TRACKER.md item 12b)
+    # Durable findings, strategy decisions, confirmed facts.
+    # Written deliberately, not auto-captured.
+    # =====================================================
+
+    def add_artifact(
+        self,
+        subject: str,
+        kind: str,
+        content: str,
+        provenance: str = "ai-generated",
+    ) -> int:
+        """
+        Store a knowledge artifact. Returns the new row id.
+        subject   - file path, module name, subsystem, or free-form topic.
+        kind      - file_purpose / strategy_decision / query_finding /
+                    design_note / known_issue.
+        provenance - human-confirmed / ai-confirmed-by-human / ai-generated.
+        """
+        from tools.analysis.persistence.persistence_engine import ensure_schema
+        ensure_schema(self.oracle.conn)
+        return _add_artifact(self.oracle.conn, subject, kind, content, provenance)
+
+    def get_artifacts(self, subject: str, kind: str = None) -> list:
+        """
+        Retrieve artifacts for `subject`, sorted by provenance rank
+        (human-confirmed first) then recency.
+        """
+        return _get_artifacts(self.oracle.conn, subject, kind=kind)
+
+    def list_artifacts(self, kind: str = None, provenance: str = None) -> list:
+        """List all stored artifacts, optionally filtered by kind/provenance."""
+        return _list_artifacts(self.oracle.conn, kind=kind, provenance=provenance)
+
+    def delete_artifact(self, artifact_id: int) -> bool:
+        """Delete a single artifact by id. Returns True if removed."""
+        return _delete_artifact(self.oracle.conn, artifact_id)
+
+    def highest_provenance_artifact(self, subject: str, kind: str = None) -> dict | None:
+        """Return the highest-provenance artifact for a subject, or None."""
+        artifacts = self.get_artifacts(subject, kind=kind)
+        return _highest_provenance(artifacts)
 
     # =====================================================
     # RESPONSIBILITY MAP / SNAPSHOT

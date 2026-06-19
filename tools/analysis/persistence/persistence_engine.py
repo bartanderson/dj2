@@ -12,6 +12,13 @@ from tools.analysis.identity.edge_identity import edge_identity
 
 def ensure_schema(connection):
     initialize_database(connection)
+    # Intent Layer tables (DESIGN.md section 3 / TRACKER.md item 12b)
+    from tools.analysis.intent.semantic_summary import ensure_semantic_summaries_table
+    from tools.analysis.intent.knowledge_artifact import ensure_knowledge_artifacts_table
+    cursor = connection.cursor()
+    ensure_semantic_summaries_table(cursor)
+    ensure_knowledge_artifacts_table(cursor)
+    connection.commit()
 
 def set_project_root(connection: sqlite3.Connection, project_root) -> None:
     """
