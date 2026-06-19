@@ -35,7 +35,30 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Ingestion run 2026-06-19 against all three candidate
+**Recently done:** Orphaned-module disposition review (section 3 item 12)
+- investigated and reported 2026-06-19, no integrate/dispose/delete action
+taken (per the item's own gate: report findings to Bart before any
+disposal). Checked actual wiring (import/call-site grep across the whole
+tree), not just file contents in isolation, for all 9 originally-listed
+candidates plus the empty `orchestration/` directory and the
+`specification/tool_system_contract.json` spec file. Full per-item findings
+and disposition recommendations: section 3 item 12 below. Headline results:
+most candidates are confirmed genuinely dead (zero callers anywhere); one
+(`inspection/explain_file.py`) is a complete, ready-to-use capability that
+nothing currently calls - a real "hole," not dead weight; one
+(`api/get_llm_context.py`) isn't orphaned at all despite zero in-repo
+callers, since it's the documented external integration point for a
+consumer (the future agent) that doesn't exist yet; and `contract_types.py`
++ `specification/tool_system_contract.json` + the empty `orchestration/`
+directory turn out to be three pieces of one coherent, unfinished feature
+rather than independent dead files. Also surfaced one finding outside the
+original list, same directory: `contracts/load_contract.py`'s consumers
+load a *different* `tool_system_contract.json` (the one physically in
+`contracts/`, schema_version 3) and would `KeyError` immediately if ever
+called, since that file has no `domains` key - dormant, not yet broken in
+practice, only because nothing calls it.
+
+Before that: Ingestion run 2026-06-19 against all three candidate
 corpora from section 3 item 1: `tools.old/` (73 files, 2764 graph_edges),
 `external_corpora/flask/src` (24 files, 800 graph_edges),
 `external_corpora/sqlalchemy/lib` (255 files, 20769 graph_edges) - row
@@ -68,14 +91,23 @@ history: HISTORY.md.
 
 **Now / next, in priority order:**
 1. [NEW] Game-code corpora (`world/`/`engine/`/`resolver/`/`dungeon_neo/`)
-   are the only remaining un-ingested candidate from section 3 item 1 -
-   tools.old/Flask/SQLAlchemy are now done (see Dashboard above and
-   section 3 item 1). No sequencing decision made yet on whether/when to
-   do these.
-2. Orphaned-module disposition review (section 3 item 12) - not started.
-3. Truth.md Phase 1 Row 1 remainder + Row 5 (section 3 item 2) - next
+   ingestion - decided 2026-06-19 to sequence this **ahead of** Row 1/Row 5
+   below (was previously unsequenced, listed alongside item 3). Reasoning:
+   Row 5 needs to design a new ingestion-time "why was this mutation made"
+   capture mechanism, and that design should be informed by what mutation
+   patterns actually look like in the real target domain (the game's own
+   code), not guessed from the self-corpus or the two off-domain
+   generalization corpora (Flask/SQLAlchemy) already ingested. Mechanically
+   cheap to run - same `EngineRunner().run(...)` headless pattern already
+   used for the three corpora done so far, same regression-test bar (a
+   known real symbol resolves correctly in `graph_edges` post-ingestion).
+2. Truth.md Phase 1 Row 1 remainder + Row 5 (section 3 item 2) - next
    substantive feature work; everything else closed from the Phase 3 gap
-   audit.
+   audit. Sequenced after item 1 above, not before, per the reasoning there.
+3. Orphaned-module disposition review (section 3 item 12) - investigated
+   and reported 2026-06-19 (see "Recently done" above and section 3 item 12
+   for full findings). No further open work here unless/until Bart makes a
+   per-item disposition call.
 4. Engine/Assessor boundary completion, the Architecture Split, the
    query-expansion/impact_query semantics audit, and the Agent Capability
    Layer build-out (section 3 items 3-11) - all open, see section 3 for
@@ -647,17 +679,23 @@ distinct angles folded in.
    the mount, worked around the same way (`mv` aside).
 
    Remaining candidate from this item's original list: the game's own
-   source (`world/`/`engine/`/`resolver/`/`dungeon_neo/`) - not started,
-   no sequencing decided. Cleanup from last session's run is fully
-   resolved as of 2026-06-19 (later): `_sandbox_cleanup_needed/` deleted
-   by Bart, and the two `.git_broken_skeleton` dirs are confirmed gone on
-   his actual machine - their lingering visibility to `stat`/`rm` inside
-   the sandbox is a stale virtiofs mount-cache artifact, not a real file
-   (see 2c's third finding). No outstanding Windows-side action remains.
+   source (`world/`/`engine/`/`resolver/`/`dungeon_neo/`) - **decided
+   2026-06-19 (later session) to do this next, ahead of item 2 below** -
+   see Dashboard "Now / next" item 1 for the reasoning (Row 5's new
+   ingestion-capture design should be informed by real target-domain
+   mutation shapes, not guessed). Not yet started. Cleanup from last
+   session's run is fully resolved as of 2026-06-19 (later):
+   `_sandbox_cleanup_needed/` deleted by Bart, and the two
+   `.git_broken_skeleton` dirs are confirmed gone on his actual machine -
+   their lingering visibility to `stat`/`rm` inside the sandbox is a stale
+   virtiofs mount-cache artifact, not a real file (see 2c's third
+   finding). No outstanding Windows-side action remains.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
-   just wiring - bigger lift than anything closed so far.
+   just wiring - bigger lift than anything closed so far. **Sequenced
+   after item 1's game-code ingestion (decided 2026-06-19) - design this
+   against real target-domain mutation shapes, not the self-corpus alone.**
 3. **Engine/Assessor boundary completion** (merges old items 3, 4, and 7
    - three angles on the same end-state, kept together since they're
    sequential pieces of one boundary, not independent work):
@@ -735,18 +773,103 @@ distinct angles folded in.
     views and don't include ROLE in the allowed Combine pairs) - worth a
     pass to update DESIGN.md's spec language or explicitly note the gap
     there if ROLE participation in Combine is ever needed.
-12. **Orphaned-module disposition review (hole vs. dead).** Evaluate
-    `resolution/symbol_origin_resolver.py`, `inspection/explain_file.py`,
-    `utilities/reachable_print_trace.py`, `context/build_context_packet.py`,
-    the `contracts/` cluster (`contract_validator.py`,
-    `contract_lifecycle.py`, `contract_health_aggregator.py`,
-    `contract_types.py`, plus 3 empty stub files), `api/get_llm_context.py`,
-    `api/query_entry.py`, the empty `orchestration/` directory, and
-    `specification/tool_system_contract.json` - each through the "missing
-    capability that should be wired" vs. "genuinely dead, safe to remove"
-    lens, per this project's standing principle of never assuming dead
-    from surface signals alone. Deferred, not yet started; report
-    findings to Bart before any integrate/dispose/delete action.
+12. **Orphaned-module disposition review (hole vs. dead): INVESTIGATED
+    AND REPORTED 2026-06-19.** Evaluated all 9 originally-listed
+    candidates - `resolution/symbol_origin_resolver.py`,
+    `inspection/explain_file.py`, `utilities/reachable_print_trace.py`,
+    `context/build_context_packet.py`, the `contracts/` cluster
+    (`contract_validator.py`, `contract_lifecycle.py`,
+    `contract_health_aggregator.py`, `contract_types.py`, plus 3 empty
+    stub files), `api/get_llm_context.py`, `api/query_entry.py`, the
+    empty `orchestration/` directory, and
+    `specification/tool_system_contract.json` - via actual import/call-site
+    wiring checks (whole-tree grep for each symbol/module), not just
+    surface-reading file contents, per this project's standing principle
+    of never assuming dead from surface signals alone. **No
+    integrate/dispose/delete action taken on any of it - this item's own
+    gate requires reporting to Bart first, which is what this entry is.**
+    Per-item disposition:
+    - **Confirmed genuinely dead (zero callers anywhere), safe-to-remove
+      candidates:** `utilities/reachable_print_trace.py` (a standalone
+      manual debug script, has its own `__main__`, never imported
+      elsewhere); `context/build_context_packet.py` (superseded by the
+      now-live `context/build_context_bundle.py`; its own comments
+      already flag its `dependencies`/`referenced_symbols` fields as
+      placeholders not to be trusted); `api/query_entry.py` (a simpler,
+      superseded precursor to `inspection/explain_file.py` /
+      `get_llm_context_for_file` - returns only raw counts, no
+      contracts/semantic summary); `contracts/contract_validator.py`,
+      `contract_lifecycle.py`, `contract_health_aggregator.py` (a
+      self-contained "contract health scoring" trio, fully wired to each
+      other internally but with zero external callers anywhere); the 3
+      empty stub files (`analysis_contract.py`, `failure_contract.py`,
+      `representation_contract.py`, confirmed 0 bytes each). Also
+      confirmed dead, though this is not a new finding:
+      `contracts/contract_map.py` -> `contracts/contract_observer.py` ->
+      `validation/contract_validation_pass.py` - existing regression
+      tests (`tests/regression/test_drift_signals_wiring.py` line 15,
+      `tests/regression/test_integrity_view_wiring.py`) already document
+      this exact path as zero-caller, and `assessor/assessor.py`'s own
+      comment (line 264) confirms the live pipeline replaced it with
+      direct DB queries (`evaluate_file_contracts()` is explicitly
+      labelled "a no-op stub" there).
+    - **One genuine hole (missing capability that should be wired):**
+      `inspection/explain_file.py` is a complete, working, DB-backed
+      per-file report generator (imports, symbol density, top
+      callers/callees, contract violations, a heuristic semantic
+      summary) that nothing currently calls. TIER 2's Role-view
+      evaluation above already wants exactly this kind of per-file
+      explainability signal - this looks ready to serve that need
+      directly rather than needing to be built from scratch.
+    - **Not actually orphaned despite zero in-repo callers:**
+      `api/get_llm_context.py` - its own docstring identifies it as "the
+      ONLY function external systems should call" for LLM-context
+      retrieval. Zero in-repo callers is expected here, not a sign of
+      dead code: its intended consumer is the future agent CLAUDE.md
+      describes, which doesn't exist yet. Recommend: keep as-is, revisit
+      only once an actual external consumer exists to confirm the shape
+      still fits.
+    - **An unfinished-but-coherent feature, not three unrelated items:**
+      `contracts/contract_types.py` (typed dataclasses - `SystemContract`,
+      `DomainContract`, `OutputContract`, `DependencyRules`,
+      `CoreInvariants`, `StabilityPrinciple`) and
+      `specification/tool_system_contract.json` (the domains-shaped spec
+      those dataclasses exactly mirror: ingestion/representation/
+      analysis/indexing/orchestration domains, output_contract,
+      dependency_rules, core_invariants, stability_principle) are a
+      matched pair - confirmed nothing ever actually loads that JSON file
+      into those dataclasses anywhere. The empty `orchestration/`
+      directory is the third piece of this same unfinished thread: that
+      same spec file's own "orchestration" domain definition ("Controls
+      execution flow across all other domains... must not implement
+      domain logic") describes exactly what should live there, and
+      nothing has been written yet. Recommend treating these three as one
+      decision, not three: either finish wiring the typed loader + start
+      building the orchestration layer the spec describes, or
+      consciously shelve all three together as a deferred design, not
+      "delete the loader, ignore the spec, leave the directory empty by
+      accident."
+    - **New finding, outside the original 9-item list but same
+      directory, worth flagging alongside it:** `contracts/
+      load_contract.py` (and its consumers `parse_contract.py`/
+      `scan_contract.py`) load a *different* `tool_system_contract.json`
+      - the one physically sitting in `contracts/` itself
+      (`schema_version: 3`, a "modules" pipeline-status document, not the
+      "domains" spec above) - and then call `contract["domains"][...]`
+      on it. That file has no `domains` key at all, so this chain would
+      raise `KeyError` immediately if anything ever called it. Currently
+      zero callers, so this is dormant rather than actively broken in
+      production - flagging so nobody tries to wire `parse_contract.py`/
+      `scan_contract.py` in as-is without first fixing which JSON file
+      they're meant to read.
+    - **Confirmed no overlap with item 2 (Truth.md Row 1/Row 5):** none
+      of the above touch `MutationEvent`, intent/description capture, or
+      "why was this change made" semantics at ingestion time - the
+      "intent" hits in the contracts cluster are all the word
+      "intentionally"/"system intent" in docstrings describing contract
+      *design* intent, unrelated to mutation-author intent. Row 5
+      remains genuinely unstarted new ingestion work, not something this
+      review accidentally already solved or could accidentally break.
 13. **Embedding-fallback crash risk in seed discovery: DONE 2026-06-18.**
     `oracle/db_oracle.py`'s `discover_seed_symbols_semantic()` previously
     only caught `ImportError` around the top-level
