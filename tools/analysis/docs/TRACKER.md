@@ -146,9 +146,11 @@ Every open item falls into one of three buckets:
    against real data, and audits impact_query semantics before the agent
    capability layer is built on top of it. Do this before the Agent
    Capability Layer (item 10), not after.
-4. Agent Capability Layer (section 3 item 10) - build task.md generator and
-   re-reference path. Sequenced after item 6 above because item 6 may
-   change what the ripple query needs to do.
+4. [DONE 2026-06-19] Agent Capability Layer (item 10) - COMPLETE.
+   Step 1: `Assessor.generate_task_md(symbol, out_path)`. Two-tier output.
+   Step 2: `Assessor.rereference_task_md(path, diff_out_path)`. Reads
+   existing task.md, diffs against current DB, renders change report.
+   114/114 passing.
 5. Architecture hygiene batch (section 3 items 3, 4, 5, 8, 9, 11) - fold in
    as a group after items 2-4 above. These are make-work relative to items
    2-4 and should not be let in front of them.
@@ -583,24 +585,38 @@ distinct angles folded in.
    quality (item 6 below) has been validated against real usage, since
    that validation will inform what "trace-informed" should actually
    weight.
-6. **Query-expansion validation / `impact_query` semantics audit (merges
-   old item 9 and old item 13 step 2 - same open question, raised from
-   the usage-evaluation angle and the build-order angle):**
-   - Validate intent-specific expansion quality against real usage - the
-     budgets are now calibrated and locked by regression tests, but
-     whether `impact_query`/`surface_query`/`general_query` actually
-     produce the *right* zones for real questions hasn't been evaluated
-     end-to-end (old item 9).
-   - Audit `impact_query`'s actual semantics against real data
-     specifically: full transitive closure, or only what the
-     explainability trace's depth budget surfaces? DESIGN.md section 3
-     calls for this to be audited against real data before the task.md
-     mechanism is built on top of it, not after (old item 13 step 2). If
-     a gap is found, fix it or add a separate full-closure ripple query
-     (both directions) as a new, explicit capability - not silently
-     repurposing the explainability trace for a job it wasn't built for
-     (old item 13 step 3, kept here since it's the direct contingency on
-     this audit's outcome).
+6. **Query-expansion validation / `impact_query` semantics audit: DONE
+   2026-06-19.** Audited against real self-corpus DB using
+   `tools.analysis.truth.query_ast.Select` (69 incoming callers, most-called
+   project symbol) as the probe target. Findings:
+   - `impact_query` is NOT a pure transitive reverse-dependency closure.
+     It expands from a seed SET (token-matched related symbols, not just
+     the target), then walks reverse edges at depth-2 from all seeds.
+     Result is a neighborhood superset - 86 nodes vs. 47 in the real
+     BFS closure. The depth-2 budget was not the limiting factor for this
+     corpus (real graph was only depth-2 deep for this symbol anyway);
+     seed over-broadness is the real shape of the behavior.
+   - The one node BFS found that router missed (`<module>`) is a noise
+     artifact already correctly filtered by `symbol_noise.py` line 65
+     (`startswith("<")`). Fix #4 is already done - not a gap.
+   - `<module>` aside, router returns a SUPERSET of the BFS closure, not
+     a subset - the depth budget is not silently truncating anything for
+     this corpus.
+   **Implications for task.md (item 10):**
+   - task.md must NOT present router results as "exact caller set" -
+     they are "impact zone" (neighborhood). Call it that explicitly.
+   - task.md should show TWO tiers: "Direct callers (confirmed)" from
+     `graph_edges WHERE callee = ?` and "Impact zone (may need review)"
+     from the router. Both are useful; conflating them is misleading.
+   - Fix #2 (implemented 2026-06-19): added `seeds` override parameter
+     to `route_query()` - when the caller passes seeds directly, seed
+     discovery is skipped. This makes "what depends on X" when X is a
+     known symbol use X as the only seed, giving a true reverse closure
+     from that specific symbol rather than a token-match neighborhood.
+   - Fix for game corpus: depth-2 may be insufficient for deeper game
+     call chains (DM -> world -> dungeon_neo). Audit `impact_query`
+     against the game corpus DB once a clear target symbol is available.
+     Add to item 10's pre-flight checklist before task.md ships.
 7. **Reasoning layer remainder:** answer architectural questions from
    graph truth directly; identify structural influence/dependency zones;
    support oracle-style interrogation queries; an oracle execution
@@ -619,12 +635,19 @@ distinct angles folded in.
    inspection paths remaining anywhere, query language frozen.
 10. **Agent Capability Layer build order, remainder (old item 13 steps 4
     and 5 - steps 1 and 2 folded into items 1 and 6 above):**
-    1. [ ] Build the task.md generator off the ripple query from item 6
+    1. [x] Build the task.md generator off the ripple query from item 6
        above. Markdown, plain checklist format, matching this doc's
-       voice.
-    2. [ ] Build the "re-reference a task.md" path: read file -> extract
+       voice. DONE 2026-06-19: `tools/analysis/agent/task_generator.py`,
+       wired as `Assessor.generate_task_md(symbol, out_path=None)`.
+       Two-tier output: direct callers (graph_edges WHERE callee=?) +
+       impact zone (route_query seeds override). 7 regression tests in
+       `test_task_generator.py`. 102/102 passing.
+    2. [x] Build the "re-reference a task.md" path: read file -> extract
        the originating query -> re-run against current DB -> diff ->
-       report.
+       report. DONE 2026-06-19: `tools/analysis/agent/task_rereferencer.py`,
+       wired as `Assessor.rereference_task_md(path, diff_out_path=None)`.
+       Returns diff dict + rendered Markdown. 12 regression tests in
+       `test_task_rereferencer.py`. 114/114 passing.
     As with item 1 above, Bart's direction is that this is a listing of
     capability pieces, not a locked sequence - propose impacts of
     alternative orderings (e.g. doing corpus-widening work in parallel

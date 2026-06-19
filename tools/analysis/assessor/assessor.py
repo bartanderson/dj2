@@ -20,6 +20,8 @@ from tools.analysis.engine.responsibility_map import ROLE_PATTERNS, print_respon
 from tools.analysis.engine.responsibility_snapshot import build_responsibility_snapshot
 from tools.analysis.inspection.meta.system_self_model import SystemSelfModelBuilder
 from tools.analysis.inspection.explain_file import explain_file as _explain_file
+from tools.analysis.agent.task_generator import generate_task_md as _generate_task_md
+from tools.analysis.agent.task_rereferencer import rereference_task_md as _rereference_task_md
 
 
 # =========================================================
@@ -460,6 +462,28 @@ class Assessor:
 
     def explain_file(self, file_path: str) -> dict:
         return _explain_file(self.oracle.conn, file_path)
+
+    def generate_task_md(self, symbol: str, out_path: str = None) -> str:
+        graph = self.snapshot()
+        return _generate_task_md(
+            symbol=symbol,
+            conn=self.oracle.conn,
+            graph=graph,
+            find_symbols_fn=self.oracle.discover_seed_symbols,
+            builtin_symbols=self.oracle.builtin_symbols(),
+            out_path=out_path,
+        )
+
+    def rereference_task_md(self, task_md_path: str, diff_out_path: str = None) -> dict:
+        graph = self.snapshot()
+        return _rereference_task_md(
+            task_md_path=task_md_path,
+            conn=self.oracle.conn,
+            graph=graph,
+            find_symbols_fn=self.oracle.discover_seed_symbols,
+            builtin_symbols=self.oracle.builtin_symbols(),
+            diff_out_path=diff_out_path,
+        )
 
     # =====================================================
     # RESPONSIBILITY MAP / SNAPSHOT

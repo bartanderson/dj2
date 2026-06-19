@@ -128,7 +128,7 @@ def _build_plan(symbols: List[str], primitives: List[str], trace: Dict[str, Any]
 # =========================================================
 # MAIN ROUTER ENTRYPOINT
 # =========================================================
-def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=None) -> RouteResult:
+def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=None, seeds=None) -> RouteResult:
     """
     Seed authority contract:
     find_symbols_fn MUST be DBOracle.discover_seed_symbols, seeds must come from DB truth only.
@@ -140,14 +140,22 @@ def route_query(text: str, graph, find_symbols_fn, logger=None, builtin_symbols=
     Callers should always pass this; expansion-time noise filtering relies
     on it instead of a hardcoded word list. Defaults to empty set if omitted
     (expansion still filters accessor-chain noise, just not builtins).
+
+    seeds: if provided, skip seed discovery and use exactly these symbols as
+    seeds. Use when the caller already knows the exact symbol (e.g. task.md
+    generator querying a specific known callee) - avoids token-match broadness
+    that otherwise turns "what depends on X" into "neighborhood of X and
+    related symbols." Audit finding 2026-06-19: without this, impact_query
+    returns a superset neighborhood, not the true reverse closure from X.
     """
 
     intent = _detect_intent(text)
 
-    # Seeds come directly from find_symbols_fn - see seed authority
-    # contract in this function's docstring above, and the
-    # CLAUDE-EDIT note on the removed _seed_symbols() decoy, above.
-    seeds = find_symbols_fn(text, limit=20)
+    if seeds is None:
+        # Seeds come directly from find_symbols_fn - see seed authority
+        # contract in this function's docstring above, and the
+        # CLAUDE-EDIT note on the removed _seed_symbols() decoy, above.
+        seeds = find_symbols_fn(text, limit=20)
 
     expand_result = _route_expand(graph, seeds, intent, builtin_symbols=builtin_symbols or frozenset())
 
