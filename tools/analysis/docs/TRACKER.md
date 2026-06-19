@@ -392,6 +392,47 @@ verified in-context copy rather than a fresh disk read when one is
 already available, and verify structure (not just byte-match) after any
 read used as an edit base.
 
+**External validation, 2026-06-19: this is an upstream Cowork/Windows bug,
+not antivirus, not specific to this repo or machine.** Investigated per
+Bart's request after he ruled out antivirus as the cause (removed it, the
+bug persisted). Three independently-filed reports against
+`anthropics/claude-code` describe the identical mechanism:
+- **#40264** (closed as "invalid"/not-CLI-specific, but the repro and root-
+  cause analysis stand): the Cowork file bridge (virtiofs + an inner FUSE
+  layer) caches file *size* metadata keyed by filename after a write, and
+  never invalidates that cache when the host file is later changed
+  externally - reads silently return the old, shorter length forever, no
+  error raised. Confirmed no way to force-invalidate from inside a
+  session: `fusermount -u` and `echo 3 > /proc/sys/vm/drop_caches` both
+  return "Operation not permitted" inside the VM.
+- **#41710** (open): same symptom on plain text/source files, not just
+  binary formats - `Read`/`wc -l` silently return fewer lines than the
+  host file actually has, no error. Documents `git show HEAD:<path>`
+  (reading from the git object store, which bypasses the mount entirely)
+  as a working diagnostic/workaround for committed content. Validated
+  live in this repo this session: `git show HEAD:tools/analysis/docs/
+  TRACKER.md | wc -l` and plain `wc -l` on the same path both currently
+  return 716 - no discrepancy at the moment, which confirms the check
+  itself works correctly as a pre-edit sanity gate even though nothing was
+  caught by it this particular time. Same caveat as the issue notes: only
+  covers committed content, no help for uncommitted edits - exactly the
+  case this bug matters most for.
+- **#50873** (open, labels area:cowork/area:sandbox/bug/has-repro/
+  platform:windows): same mechanism again, with a sharper detail worth
+  remembering - the `.git/index` mtime can correctly reflect live host
+  activity even while specific *working-tree files* are served stale
+  content, so a coarse "is the whole mount stale" check can pass while
+  individual files are still wrong. The staleness is per-file, not
+  per-mount.
+
+**Conclusion: no fix exists from inside the sandbox.** This is an upstream
+FUSE/virtiofs metadata-cache invalidation defect in Cowork's Windows
+sandbox bridge, already independently reported with matching repro steps
+by multiple other users - it is not antivirus, and not something specific
+to this machine or repo. `safe_write.py`'s diff-verify-after-write
+procedure, plus the `git show HEAD:<path>` cross-check for tracked files,
+remain the only available mitigations.
+
 ### 2b. Stale/locked `.pyc` cache bug
 
 Three confirmed variants: a locked/undeletable stale `.pyc` whose
@@ -468,6 +509,56 @@ invalidated, not a real leftover on Bart's machine. Nothing further for
 Bart to delete here - do not re-ask. Closing this sub-thread; if the
 phantom-entry shape recurs elsewhere, it's now a known FUSE-cache
 quirk, not a sign of an actual file.
+
+**2026-06-19, fourth finding: root cause confirmed via direct syscall
+tests, and matches an independently-filed report.** Investigated per
+Bart's request after he ruled out antivirus (removed it; the bug
+persisted) and suspected Windows processes themselves. Found
+`anthropics/claude-code#55206` (open, labels area:cowork/area:sandbox/
+bug/has-repro/platform:windows, filed 2026-05-01), which reports the
+identical symptom on Cowork/Windows and attributes it to the sandbox's
+own FUSE mount layer structurally denying the `unlink` syscall - not
+antivirus, not a Windows file-handle race (it explicitly rules out
+`#28546`'s file-handle-latency theory via a control test: a brand-new
+file, touched and `rm`'d microseconds later, still fails, with no race
+window where it succeeds). Reproduced and isolated the exact syscall
+scope directly in this session, against a disposable test file/dir at
+the dj2 repo root:
+- `rm` and Python's `os.unlink()` both fail identically ("Operation not
+  permitted") - rules out a shell-specific quirk; this is the syscall
+  itself being denied.
+- `rmdir` on an empty directory fails the same way.
+- `rename()` (`mv` within the same filesystem) succeeds - confirms the
+  existing "`mv` works where `rm` doesn't" workaround above, and explains
+  *why*: rename doesn't remove a directory entry, unlink/rmdir do.
+- A cross-filesystem `mv` (e.g. into `/tmp`) succeeds at copying the
+  content out, then fails at the same point trying to remove the source -
+  because cross-filesystem move is implemented as copy+unlink under the
+  hood. So moving "out" of this mount is not actually a way to reclaim
+  space here either; only same-filesystem rename works.
+- Opening a file with truncation (`open(path, "w")`, i.e. `O_TRUNC`)
+  **succeeds** and zeroes the file's content, even though the directory
+  entry itself can't be removed. New, previously-undocumented workaround:
+  when the actual goal is "get rid of the content" rather than
+  specifically "remove the directory entry," truncating in place is a
+  usable substitute for delete on this mount.
+
+  Conclusion: the denial is scoped specifically to directory-entry-removal
+  operations (`unlink`, `rmdir`) on this mount - not a general permission,
+  lock, or antivirus problem, since every other operation on the same
+  files (write, truncate, rename) works normally. This matches Bart's own
+  finding that removing antivirus didn't help: the cause sits in the
+  sandbox's own FUSE layer, not on the Windows host or in a Windows
+  process. There is still no way to actually delete a directory entry
+  from inside the sandbox; Windows-side deletion remains the only real
+  fix. Three disposable test artifacts from this session's syscall tests
+  are still present at the repo root for exactly this reason - genuinely
+  new this session, not a stale-cache illusion like the third finding
+  above - and need deleting from Windows:
+  `_delbugtest_dj2_renamed.txt`, `_delbugtest_dj2_b.txt` (both already
+  truncated to empty/near-empty content from inside the sandbox, so no
+  real data is at risk - just empty leftover entries), and the empty
+  directory `_delbugtest_dir`.
 
 ### 2d. `sqlite3.OperationalError: disk I/O error` on new DB writes
 
