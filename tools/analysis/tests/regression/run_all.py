@@ -91,16 +91,22 @@ def _run_module(module_name: str) -> tuple[int, int]:
 
     passed = 0
     failed = 0
+    skipped = 0
     for fn in test_fns:
         try:
             fn()
             print(f"PASS: {fn.__name__}")
             passed += 1
-        except Exception:
-            print(f"FAIL: {fn.__name__}")
-            traceback.print_exc()
-            failed += 1
-    return passed, failed
+        except BaseException as exc:
+            # pytest.skip() raises _pytest.outcomes.Skipped (a BaseException subclass)
+            if type(exc).__name__ == "Skipped":
+                print(f"SKIP: {fn.__name__} ({exc})")
+                skipped += 1
+            else:
+                print(f"FAIL: {fn.__name__}")
+                traceback.print_exc()
+                failed += 1
+    return passed, failed, skipped
 
 
 def main():
@@ -109,11 +115,13 @@ def main():
 
     total_passed = 0
     total_failed = 0
+    total_skipped = 0
 
     for module_name in regression_modules:
-        passed, failed = _run_module(module_name)
+        passed, failed, skipped = _run_module(module_name)
         total_passed += passed
         total_failed += failed
+        total_skipped += skipped
 
     pytest_exit_code = 0
     pytest_collected = 0
@@ -145,12 +153,12 @@ def main():
 
     print("\n" + "=" * 60)
     print(f"REGRESSION MODULES DISCOVERED: {len(regression_modules)}")
-    print(f"REGRESSION TESTS: {total_passed} passed, {total_failed} failed")
+    print(f"REGRESSION TESTS: {total_passed} passed, {total_failed} failed, {total_skipped} skipped")
     print(f"PYTEST TARGETS DISCOVERED: {len(pytest_targets)}")
     print(f"PYTEST RESULT: {'OK' if pytest_exit_code == 0 else 'FAILURES (see above)'} "
           f"({pytest_passed} passed, {pytest_failed} failed)")
     print("-" * 60)
-    print(f"GRAND TOTAL: {grand_passed} passed, {grand_failed} failed "
+    print(f"GRAND TOTAL: {grand_passed} passed, {grand_failed} failed, {total_skipped} skipped "
           f"({total_passed} regression + {pytest_passed} pytest)")
     print("=" * 60)
 

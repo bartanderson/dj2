@@ -35,7 +35,19 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Orphaned-module disposition review (section 3 item 12)
+**Recently done:** Game-code corpora ingestion (Dashboard item 1) - DONE
+2026-06-19. Ingested all four game corpus dirs (`world/` 65 files,
+`engine/` 2, `resolver/` 1, `dungeon_neo/` 13) via the standard
+`EngineRunner().run(...)` headless pattern. All pass. Regression proof
+added: `tests/regression/test_game_corpus_ingestion.py` (5 tests: one
+per-corpus completion check + one known real cross-file call anchor:
+`_generate_via_ai` -> `world.ai_utils.get_ai_response` at line 41 in
+`world/name_generator.py`). Note confirmed during probe: `self.method()`
+intra-class calls are not captured as graph edges by the engine (known
+behavior, not a test bug - anchored on a cross-file call instead). Full
+suite still passing. Item 1 fully closed.
+
+Before that: Orphaned-module disposition review (section 3 item 12)
 - investigated and reported 2026-06-19, no integrate/dispose/delete action
 taken (per the item's own gate: report findings to Bart before any
 disposal). Checked actual wiring (import/call-site grep across the whole
@@ -90,17 +102,7 @@ closed (old item 17); SUBSYSTEM path-pollution fix (old item 16). Full
 history: HISTORY.md.
 
 **Now / next, in priority order:**
-1. [NEW] Game-code corpora (`world/`/`engine/`/`resolver/`/`dungeon_neo/`)
-   ingestion - decided 2026-06-19 to sequence this **ahead of** Row 1/Row 5
-   below (was previously unsequenced, listed alongside item 3). Reasoning:
-   Row 5 needs to design a new ingestion-time "why was this mutation made"
-   capture mechanism, and that design should be informed by what mutation
-   patterns actually look like in the real target domain (the game's own
-   code), not guessed from the self-corpus or the two off-domain
-   generalization corpora (Flask/SQLAlchemy) already ingested. Mechanically
-   cheap to run - same `EngineRunner().run(...)` headless pattern already
-   used for the three corpora done so far, same regression-test bar (a
-   known real symbol resolves correctly in `graph_edges` post-ingestion).
+1. [DONE 2026-06-19] Game-code corpora ingestion - see "Recently done" above.
 2. Truth.md Phase 1 Row 1 remainder + Row 5 (section 3 item 2) - next
    substantive feature work; everything else closed from the Phase 3 gap
    audit. Sequenced after item 1 above, not before, per the reasoning there.
