@@ -35,7 +35,14 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Embedding-fallback crash risk in seed discovery (old
+**Recently done:** `external_corpora/flask` and `external_corpora/sqlalchemy`
+.git directories repaired 2026-06-19 - both had silently kept the empty
+clone-skeleton `.git` (no objects, no config) instead of the real one after
+last session's manual Windows rename/move/delete cleanup, root-caused to
+PowerShell wildcard moves skipping hidden dot-folders; real `.git` (with
+full pack + history) recovered from the still-present sandbox-local clones
+at `/tmp/ext_clone/` and swapped in - see section 2c and section 3 item 1.
+Before that: Embedding-fallback crash risk in seed discovery (old
 item 22) and dead `runtime_bindings` wiring (old item 23) - both DONE
 2026-06-18, fixed and regression-tested (6 new tests; 80/80 full suite
 after); see section 3 items 13-14 for proof. Section 3 reordered/merged
@@ -380,6 +387,24 @@ wrong - `touch <source.py>` to force a recompile, since a `__pycache__`
 deletion isn't always trustworthy on this mount even when it reports
 success. Full variant detail: HISTORY.md section A.
 
+### 2c. Delete-path `Operation not permitted` bug (under `external_corpora/`)
+
+Confirmed twice now (2026-06-18 session, recurred 2026-06-19): `rm`/`rm -rf`
+on files or directories under `external_corpora/` fails with "Operation not
+permitted" even after `chmod -R u+w` and retry - not a transient lock, and
+distinct from the 2a/2b write-path bugs above (this is delete-path only;
+writes and reads to the same paths work fine).
+
+**Confirmed workaround: `mv` works where `rm` doesn't.** Renaming a
+directory out of the way (`mv target target_old`) succeeds even when
+deleting its contents directly fails. There is currently no known way to
+actually remove the renamed-aside leftovers from inside the sandbox -
+ended up leaving `external_corpora/flask/.git_broken_skeleton` and
+`external_corpora/sqlalchemy/.git_broken_skeleton` in place 2026-06-19 for
+exactly this reason. Bart can delete these from Windows directly:
+`Remove-Item -Recurse -Force "external_corpora\flask\.git_broken_skeleton",
+"external_corpora\sqlalchemy\.git_broken_skeleton"`.
+
 ---
 
 ## 3. Open items / next steps
@@ -417,6 +442,18 @@ distinct angles folded in.
    corpus is chosen first with a regression test asserting a known real
    symbol from that corpus appears correctly in `graph_edges` after
    ingestion (the same bar old item 13 step 1 set).
+
+   **Status update 2026-06-19:** the two open-source candidate corpora
+   (Flask, SQLAlchemy) are now structurally clean and verified - confirmed
+   entry points unchanged from last session (`external_corpora/flask/src`,
+   24 `.py` files, 384K; `external_corpora/sqlalchemy/lib`, 255 `.py`
+   files, 8.5M), and their `.git` directories are now real, functional
+   clones (previously empty skeletons - see section 2c, Dashboard, and
+   HISTORY.md). No ingestion has been run against them yet; that's still
+   the next concrete step for this item once sequencing is decided.
+   Outstanding manual cleanup (sandbox can't delete it, see 2c): Bart
+   should remove the two `.git_broken_skeleton` leftover directories from
+   Windows.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
