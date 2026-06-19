@@ -85,7 +85,8 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         name TEXT,
         line_number INTEGER,
         return_type TEXT,
-        arguments_json TEXT
+        arguments_json TEXT,
+        docstring TEXT
     )
     """)
 
@@ -96,7 +97,8 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         name TEXT,
         line_number INTEGER,
         methods_json TEXT,
-        base_classes_json TEXT
+        base_classes_json TEXT,
+        docstring TEXT
     )
     """)
 
@@ -131,7 +133,8 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         line_number INTEGER,
         target TEXT,
         operation TEXT,
-        raw_expression TEXT
+        raw_expression TEXT,
+        intent TEXT
     )
     """)
 
@@ -338,15 +341,17 @@ def persist_file_analysis(
             name,
             line_number,
             return_type,
-            arguments_json
+            arguments_json,
+            docstring
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
             _canonical_symbol(function.name),
             function.line_number,
             function.return_type,
             json.dumps(function.arguments),
+            function.docstring,
         ))
 
         # CLAUDE-EDIT 2026-06-17: was gated on
@@ -387,15 +392,17 @@ def persist_file_analysis(
             name,
             line_number,
             methods_json,
-            base_classes_json
+            base_classes_json,
+            docstring
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
             _canonical_symbol(cls_obj.name),
             cls_obj.line_number,
             json.dumps(cls_obj.methods),
             json.dumps(cls_obj.base_classes),
+            cls_obj.docstring,
         ))
 
         # CLAUDE-EDIT 2026-06-17: same dead-gate fix as the function case
@@ -496,15 +503,17 @@ def persist_file_analysis(
             line_number,
             target,
             operation,
-            raw_expression
+            raw_expression,
+            intent
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
         """, (
             analysis.file_path,
             mutation.line_number,
             mutation.target,
             mutation.operation,
             mutation.raw_expression,
+            mutation.intent,
         ))
 
     # -------------------------

@@ -10,6 +10,7 @@ from tools.analysis.truth.views import (
     build_integrity_view,
     build_system_summary_view,
     build_role_view,
+    build_intent_view,
 )
 from tools.analysis.truth.subsystem_view import build_subsystem_view
 from tools.analysis.contracts.contract_drift_classifier import ContractDriftClassifier
@@ -223,12 +224,15 @@ class Assessor:
 
     def all_views(self) -> dict:
         """
-        All 6 Truth Layer views, keyed exactly as QueryPlanner/registry
-        expect (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM/ROLE),
+        All 7 Truth Layer views, keyed exactly as QueryPlanner/registry
+        expect (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM/ROLE/INTENT),
         built from real DB-backed data. This is the dict to pass as
         `views=` into QuerySession.run_algebra() - see
         tools/analysis/ask.py for the reference entrypoint. ROLE added
-        2026-06-16 per Truth.md Phase 3/4 (purpose-of-file gap).
+        2026-06-16 per Truth.md Phase 3/4 (purpose-of-file gap). INTENT
+        added 2026-06-19 per Truth.md Phase 1 Row 1 remainder + Row 5:
+        docstring-based intent capture, the first grounded answer to
+        "what is X for" that does not use call-graph heuristics.
         """
         return {
             "STRUCTURE": self.structure_view(),
@@ -237,6 +241,7 @@ class Assessor:
             "SUMMARY": self.summary_view(),
             "SUBSYSTEM": self.subsystem_view(),
             "ROLE": self.role_view(),
+            "INTENT": self.intent_view(),
         }
 
     def ask(self, text: str) -> dict:
@@ -449,6 +454,9 @@ class Assessor:
         # Same orphaned-primitive shape as the SUMMARY/SUBSYSTEM fix
         # earlier this session; same fix.
         return build_role_view(self.responsibility_map())
+
+    def intent_view(self):
+        return build_intent_view(self.oracle.conn)
 
     def explain_file(self, file_path: str) -> dict:
         return _explain_file(self.oracle.conn, file_path)

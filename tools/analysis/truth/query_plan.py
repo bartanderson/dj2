@@ -17,6 +17,7 @@ class QueryPlan:
         "SUMMARY": {"edge_count", "file_count", "metrics"},
         "SUBSYSTEM": {"subsystems"},
         "ROLE": {"files", "totals"},
+        "INTENT": {"functions", "classes", "mutations", "coverage"},
     }
 
 class QuerySemanticsRegistry:
@@ -38,6 +39,7 @@ class QuerySemanticsRegistry:
         # entry in ROLE's files list instead of returning all files - see
         # query_compiler.py's _maybe_scope_to_named_file().
         "ROLE": {"file_path"},
+        "INTENT": {"file_path", "name"},
     }
 
     def validate_combine(self, left, right):

@@ -55,6 +55,7 @@ class ClassRepresentation:
     line_number: int
     methods: List[str] = field(default_factory=list)
     base_classes: List[str] = field(default_factory=list)
+    docstring: Optional[str] = None
 
 
 @dataclass
@@ -117,6 +118,7 @@ class MutationEvent:
     target: str
     operation: str
     raw_expression: str
+    intent: str = ""
 
 
 # ----------------------------

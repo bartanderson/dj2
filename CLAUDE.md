@@ -64,7 +64,12 @@ finishing work, so Bart can see what changed via `git diff`, and so a future ses
 - I (Claude) have direct read/write access to this folder when it's connected to a
   Cowork session — edit files in place, no patch files needed.
 - I do NOT have git push/commit credentials and will not attempt to commit or push.
+  Never run `git add`, `git commit`, `git push`, or any git write command under
+  any circumstance. When asked for a commit message, output the message string only.
   Bart reviews changes (via git diff) and commits/pushes himself.
+- Before any multi-step sequence of tool calls, state in one short line what I am
+  about to do so Bart can abort before I go sideways. Example: "Reading X, then
+  editing Y." Skip this only for single-step actions.
 - I can run things in my own sandbox to verify (syntax checks, regression tests), but
   final confirmation on his actual Windows hardware is his to do, since some bugs
   (e.g. sqlite3 file-handle behavior) only reproduce there.

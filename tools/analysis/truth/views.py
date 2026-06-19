@@ -132,6 +132,57 @@ class RoleView:
     totals: dict
 
 
+@dataclass
+class IntentView:
+    """
+    Answers "what is X for" using author-stated intent (docstrings) rather
+    than call-graph heuristics. Populated from the functions/classes tables'
+    docstring columns, which are captured at ingestion time from ast.get_docstring().
+    This is Truth.md Phase 1 Row 1 remainder + Row 5: the first deterministic,
+    grounded answer to intent questions that does not invent information.
+    """
+    functions: list[dict]   # {file, name, line, docstring}
+    classes: list[dict]     # {file, name, line, docstring}
+    mutations: list[dict]   # {file, line, target, operation, intent}
+    coverage: dict          # {functions_with_docstring, functions_total, ...}
+
+
+def build_intent_view(conn) -> "IntentView":
+    import sqlite3
+    cur = conn.cursor()
+
+    cur.execute("SELECT file_path, name, line_number, docstring FROM functions WHERE docstring IS NOT NULL AND docstring != ''")
+    functions = [{"file": r[0], "name": r[1], "line": r[2], "docstring": r[3]} for r in cur.fetchall()]
+
+    cur.execute("SELECT file_path, name, line_number, docstring FROM classes WHERE docstring IS NOT NULL AND docstring != ''")
+    classes = [{"file": r[0], "name": r[1], "line": r[2], "docstring": r[3]} for r in cur.fetchall()]
+
+    cur.execute("SELECT file_path, line_number, target, operation, intent FROM mutations WHERE intent IS NOT NULL AND intent != ''")
+    mutations = [{"file": r[0], "line": r[1], "target": r[2], "operation": r[3], "intent": r[4]} for r in cur.fetchall()]
+
+    cur.execute("SELECT COUNT(*) FROM functions")
+    fn_total = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM functions WHERE docstring IS NOT NULL AND docstring != ''")
+    fn_with_doc = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM classes")
+    cls_total = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM classes WHERE docstring IS NOT NULL AND docstring != ''")
+    cls_with_doc = cur.fetchone()[0]
+
+    return IntentView(
+        functions=functions,
+        classes=classes,
+        mutations=mutations,
+        coverage={
+            "functions_with_docstring": fn_with_doc,
+            "functions_total": fn_total,
+            "classes_with_docstring": cls_with_doc,
+            "classes_total": cls_total,
+        },
+    )
+
+
 def build_role_view(responsibility_map: dict) -> RoleView:
     """
     Pure transform - wraps Assessor.responsibility_map()'s already

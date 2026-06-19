@@ -100,7 +100,7 @@ def test_all_views_real_data():
         views = assessor.all_views()
 
         assert set(views.keys()) == {
-            "STRUCTURE", "STABILITY", "INTEGRITY", "SUMMARY", "SUBSYSTEM", "ROLE"
+            "STRUCTURE", "STABILITY", "INTEGRITY", "SUMMARY", "SUBSYSTEM", "ROLE", "INTENT"
         }
 
         structure = views["STRUCTURE"]

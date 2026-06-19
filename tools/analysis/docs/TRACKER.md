@@ -517,11 +517,9 @@ distinct angles folded in.
 
    Verification bar this item set ("a regression test asserting a known
    real symbol from that corpus appears correctly in `graph_edges`") is
-   met: `tests/regression/test_external_corpus_ingestion.py`, new this
-   session, 2 tests - one asserting `tools.old/` ingestion produces a
-   non-empty `graph_edges` table at all, one asserting a specific known
-   real symbol from that corpus resolves correctly as a node in it. Full
-   regression suite: 82/82 after (was 80/80).
+   met at the time; test file later removed 2026-06-19 - `tools.old/`
+   is not actively maintained and the 45-second ingestion run added noise
+   to the suite with no ongoing value.
 
    Hit two new environment issues doing this, both now logged as standing
    defects rather than one-offs: a `disk I/O error` on any brand-new
@@ -543,12 +541,23 @@ distinct angles folded in.
    their lingering visibility to `stat`/`rm` inside the sandbox is a stale
    virtiofs mount-cache artifact, not a real file (Cowork sandbox defect,
    now resolved). No outstanding Windows-side action remains.
-2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
-   data (no intent/description field on `MutationEvent`; no general
-   "why/intent" capture at ingestion time). Requires new ingestion, not
-   just wiring - bigger lift than anything closed so far. **Sequenced
-   after item 1's game-code ingestion (decided 2026-06-19) - design this
-   against real target-domain mutation shapes, not the self-corpus alone.**
+2. **Truth.md Phase 1 Row 1 remainder + Row 5: DONE 2026-06-19.**
+   Docstring-based intent capture wired end-to-end:
+   - `MutationEvent.intent` field added - populated from the containing
+     function's docstring first line at parse time.
+   - `ClassRepresentation.docstring` field added - captured via
+     `ast.get_docstring()` at parse time (functions already had this field,
+     it just wasn't being persisted).
+   - `functions` and `classes` tables gained `docstring` column;
+     `mutations` table gained `intent` column. All three INSERT paths updated.
+   - `IntentView` added as the 7th Truth Layer view (`build_intent_view()`
+     in `truth/views.py`) - queries `functions`/`classes`/`mutations` tables
+     directly, returns per-item docstrings + coverage stats.
+   - `INTENT` registered in `QueryPlan.VALID_METRICS` and
+     `QuerySemanticsRegistry.VALID_FILTER_KEYS`. `Assessor.intent_view()`
+     and `Assessor.all_views()` updated (now returns 7 views).
+   - 7 regression tests in `tests/regression/test_intent_view_wiring.py`.
+   - Full suite: 127/127 passing (was 120).
 3. **Engine/Assessor boundary completion** (merges old items 3, 4, and 7
    - three angles on the same end-state, kept together since they're
    sequential pieces of one boundary, not independent work):

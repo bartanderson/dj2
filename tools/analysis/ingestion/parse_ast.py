@@ -131,6 +131,7 @@ def _extract_classes(tree: ast.AST) -> List[ClassRepresentation]:
                     line_number=node.lineno,
                     methods=methods,
                     base_classes=[ast.unparse(b) for b in node.bases],
+                    docstring=ast.get_docstring(node),
                 )
             )
 
@@ -327,8 +328,22 @@ def _extract_symbol_references(
 
 
 def _extract_mutations(tree: ast.AST) -> List[MutationEvent]:
-    # Minimal deterministic placeholder extraction
-    # (you already have richer mutation logic elsewhere; we unify later)
+    # Build a map of (start_line, end_line) -> first docstring line for each
+    # function, so each mutation can be annotated with the intent of the
+    # function it lives in.
+    func_intents: List[tuple] = []  # (start, end, intent_str)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            doc = ast.get_docstring(node) or ""
+            intent = doc.split("\n")[0].strip() if doc else ""
+            end = getattr(node, "end_lineno", node.lineno)
+            func_intents.append((node.lineno, end, intent))
+
+    def _intent_for_line(lineno: int) -> str:
+        for start, end, intent in func_intents:
+            if start <= lineno <= end:
+                return intent
+        return ""
 
     mutations: List[MutationEvent] = []
 
@@ -345,6 +360,7 @@ def _extract_mutations(tree: ast.AST) -> List[MutationEvent]:
                         target=target,
                         operation=node.func.attr,
                         raw_expression=ast.unparse(node),
+                        intent=_intent_for_line(node.lineno),
                     )
                 )
 
