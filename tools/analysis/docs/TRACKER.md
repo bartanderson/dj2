@@ -35,7 +35,17 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** `external_corpora/flask` and `external_corpora/sqlalchemy`
+**Recently done:** Ingestion run 2026-06-19 against all three candidate
+corpora from section 3 item 1: `tools.old/` (73 files, 2764 graph_edges),
+`external_corpora/flask/src` (24 files, 800 graph_edges),
+`external_corpora/sqlalchemy/lib` (255 files, 20769 graph_edges) - row
+counts confirmed by direct query against each resulting DB. Permanent
+regression proof added:
+`tests/regression/test_external_corpus_ingestion.py` (2 new tests,
+asserting a known real symbol from `tools.old/` appears correctly in
+`graph_edges`); full suite now 82/82. New standing environment defect found
+and worked around during this run - see section 2d. Before that:
+`external_corpora/flask` and `external_corpora/sqlalchemy`
 .git directories repaired 2026-06-19 - both had silently kept the empty
 clone-skeleton `.git` (no objects, no config) instead of the real one after
 last session's manual Windows rename/move/delete cleanup, root-caused to
@@ -57,11 +67,11 @@ closed (old item 17); SUBSYSTEM path-pollution fix (old item 16). Full
 history: HISTORY.md.
 
 **Now / next, in priority order:**
-1. [TOP PRIORITY, NEW] Evaluate widening the ingestion test corpus - game
-   folders (`world/`/`engine/`/`resolver/`/`dungeon_neo/`), `tools.old/`,
-   and possibly downloadable open-source projects - now unblocked since
-   items 22/23 are fixed. Sequencing across corpora is intentionally open,
-   not a fixed ranking - see section 3 item 1.
+1. [NEW] Game-code corpora (`world/`/`engine/`/`resolver/`/`dungeon_neo/`)
+   are the only remaining un-ingested candidate from section 3 item 1 -
+   tools.old/Flask/SQLAlchemy are now done (see Dashboard above and
+   section 3 item 1). No sequencing decision made yet on whether/when to
+   do these.
 2. Orphaned-module disposition review (section 3 item 12) - not started.
 3. Truth.md Phase 1 Row 1 remainder + Row 5 (section 3 item 2) - next
    substantive feature work; everything else closed from the Phase 3 gap
@@ -405,6 +415,53 @@ exactly this reason. Bart can delete these from Windows directly:
 `Remove-Item -Recurse -Force "external_corpora\flask\.git_broken_skeleton",
 "external_corpora\sqlalchemy\.git_broken_skeleton"`.
 
+**2026-06-19 update: confirmed NOT scoped to `external_corpora/`** - the
+same "Operation not permitted" on `rm` reproduced on brand-new files
+created directly at the repo root during this session's ingestion work
+(probe/broken-attempt `.db` files with no relation to `external_corpora/`
+at all). Worked around the same way (`mv` into
+`_sandbox_cleanup_needed/`, a new folder at the repo root) rather than
+scattering renamed-aside files individually - Bart should delete that
+whole folder from Windows along with the two `.git_broken_skeleton` dirs
+above. This widens the bug's known scope from "under `external_corpora/`"
+to "this sandbox's mount of the repo, anywhere" - rename the section
+heading mentally; not renaming the doc section itself mid-investigation.
+
+**2026-06-19, second finding: phantom-directory variant.** Re-checked both
+`.git_broken_skeleton` dirs this session (still present per Bart's own
+earlier Windows-side deletion attempt - he believed these were cleared).
+They no longer appear in `ls -la` or `find` output for their parent
+directory at all, but a direct `stat`/`rm` by exact path still resolves
+them and `rm` still fails "Operation not permitted" on every file inside.
+Whatever Bart's Windows-side delete did, the sandbox's view of the mount
+did not converge with it - this looks like a stale directory-entry cache
+on the sandbox side of the mount (the entry is gone from one view,
+"Operation not permitted" from the OS in the other) rather than a
+Windows-side antivirus/Explorer file-lock, which would show the file as
+present-but-busy, not invisible-yet-resolvable. Not yet root-caused;
+flagging the shape in case it recurs.
+
+### 2d. `sqlite3.OperationalError: disk I/O error` on new DB writes
+
+New 2026-06-19, found while ingesting the three corpora in section 3 item
+1. Any **new** sqlite DB file written to the dj2 mount hits
+`disk I/O error` on the first write (table creation), even though reads
+and writes against an *existing* DB on the same mount work fine.
+
+**Confirmed fix:** run `PRAGMA journal_mode=MEMORY` immediately after
+`sqlite3.connect()`, before any other statement. Sqlite's default
+rollback-journal mode needs to create a `-journal` sidecar file
+alongside the main `.db` on first write; the mount's I/O layer chokes on
+that specific operation. Forcing the journal to live in memory instead
+avoids it entirely.
+
+**Caveat:** a stale `-journal`/`-wal`/`-shm` sidecar left over from an
+earlier failed attempt (i.e. before this fix was applied) can re-trigger
+the same error on a fresh connect, because sqlite attempts rollback
+recovery against the orphaned journal before your `PRAGMA` call ever
+runs. If this error recurs even with the pragma in place, check for and
+clear sidecar files for that exact DB path first.
+
 ---
 
 ## 3. Open items / next steps
@@ -443,17 +500,42 @@ distinct angles folded in.
    symbol from that corpus appears correctly in `graph_edges` after
    ingestion (the same bar old item 13 step 1 set).
 
-   **Status update 2026-06-19:** the two open-source candidate corpora
-   (Flask, SQLAlchemy) are now structurally clean and verified - confirmed
-   entry points unchanged from last session (`external_corpora/flask/src`,
-   24 `.py` files, 384K; `external_corpora/sqlalchemy/lib`, 255 `.py`
-   files, 8.5M), and their `.git` directories are now real, functional
-   clones (previously empty skeletons - see section 2c, Dashboard, and
-   HISTORY.md). No ingestion has been run against them yet; that's still
-   the next concrete step for this item once sequencing is decided.
-   Outstanding manual cleanup (sandbox can't delete it, see 2c): Bart
-   should remove the two `.git_broken_skeleton` leftover directories from
-   Windows.
+   **Status update 2026-06-19 (later, this session): ingestion actually
+   run against all three non-game-code candidates, all three landed.**
+   Used `EngineRunner().run(corpus=..., project_prefixes=[], repo_root=...,
+   connection=...)` directly (the headless invocation pattern from
+   `tests/core/test_engine_smoke.py` - `run_engine.py`'s own `__main__` is
+   GUI-only via tkinter and unusable here). Row counts confirmed by direct
+   query against each resulting DB:
+   - `tools.old/`: 73 files, 2764 `graph_edges`.
+   - `external_corpora/flask/src`: 24 files, 800 `graph_edges`.
+   - `external_corpora/sqlalchemy/lib`: 255 files, 20769 `graph_edges`.
+
+   Verification bar this item set ("a regression test asserting a known
+   real symbol from that corpus appears correctly in `graph_edges`") is
+   met: `tests/regression/test_external_corpus_ingestion.py`, new this
+   session, 2 tests - one asserting `tools.old/` ingestion produces a
+   non-empty `graph_edges` table at all, one asserting a specific known
+   real symbol from that corpus resolves correctly as a node in it. Full
+   regression suite: 82/82 after (was 80/80).
+
+   Hit two new environment issues doing this, both now logged as standing
+   defects rather than one-offs: a `disk I/O error` on any brand-new
+   sqlite DB write to this mount (section 2d - fixed with
+   `PRAGMA journal_mode=MEMORY`), and the delete-path "Operation not
+   permitted" bug (2c) turning out not to be scoped to
+   `external_corpora/` after all - reproduced on new files anywhere in
+   the mount, worked around the same way (`mv` aside).
+
+   Remaining candidate from this item's original list: the game's own
+   source (`world/`/`engine/`/`resolver/`/`dungeon_neo/`) - not started,
+   no sequencing decided. Outstanding manual cleanup needed from Windows
+   (sandbox can't delete any of this, see 2c/2d): the two
+   `.git_broken_skeleton` leftover directories (still present despite
+   Bart's earlier Windows-side deletion attempt - see 2c's
+   phantom-directory note) and a new `_sandbox_cleanup_needed/` folder at
+   the repo root holding this session's renamed-aside probe/failed-attempt
+   DB files.
 2. **Truth.md Phase 1 Row 1 remainder + Row 5:** genuinely never-captured
    data (no intent/description field on `MutationEvent`; no general
    "why/intent" capture at ingestion time). Requires new ingestion, not
