@@ -55,8 +55,22 @@ class ValidationSummary:
 
 
 class Assessor:
-    def __init__(self, oracle):
+    def __init__(self, oracle, knowledge=None):
         self.oracle = oracle
+        # knowledge: KnowledgeOracle instance, or None (no persistent store).
+        # When None and oracle has a db_path, defaults to knowledge.db
+        # alongside the corpus DB (see oracle/knowledge_oracle.py).
+        if knowledge is None and hasattr(oracle, 'db_path') and oracle.db_path:
+            try:
+                from tools.analysis.oracle.knowledge_oracle import KnowledgeOracle
+                knowledge = KnowledgeOracle.alongside(oracle.db_path)
+            except Exception:
+                knowledge = None
+        self.knowledge = knowledge
+
+    @property
+    def _knowledge_conn(self):
+        return self.knowledge.conn if self.knowledge else None
 
     def run(self, symbol: str):
         graph = self.oracle.get_snapshot_graph()
@@ -476,7 +490,10 @@ class Assessor:
         return _explain_file(self.oracle.conn, file_path)
 
     def generate_task_md(self, symbol: str, out_path: str = None) -> str:
-        return _generate_task_md(symbol=symbol, oracle=self.oracle, out_path=out_path)
+        return _generate_task_md(
+            symbol=symbol, oracle=self.oracle, out_path=out_path,
+            knowledge_conn=self._knowledge_conn,
+        )
 
     def rereference_task_md(self, task_md_path: str, diff_out_path: str = None) -> dict:
         return _rereference_task_md(task_md_path=task_md_path, oracle=self.oracle, diff_out_path=diff_out_path)
@@ -536,32 +553,41 @@ class Assessor:
         kind: str,
         content: str,
         provenance: str = "ai-generated",
+        file_hash: str = None,
     ) -> int:
         """
-        Store a knowledge artifact. Returns the new row id.
-        subject   - file path, module name, subsystem, or free-form topic.
+        Store a knowledge artifact in knowledge.db. Returns the new row id.
+        subject   - file path, symbol, subsystem, or free-form topic.
         kind      - file_purpose / strategy_decision / query_finding /
                     design_note / known_issue.
         provenance - human-confirmed / ai-confirmed-by-human / ai-generated.
+        file_hash  - SHA-256 of subject file at creation time (optional);
+                     enables staleness detection on re-ingest.
         """
-        from tools.analysis.persistence.persistence_engine import ensure_schema
-        ensure_schema(self.oracle.conn)
-        return _add_artifact(self.oracle.conn, subject, kind, content, provenance)
+        if self._knowledge_conn is None:
+            raise RuntimeError("No knowledge DB configured on this Assessor.")
+        return _add_artifact(self._knowledge_conn, subject, kind, content, provenance, file_hash)
 
     def get_artifacts(self, subject: str, kind: str = None) -> list:
         """
-        Retrieve artifacts for `subject`, sorted by provenance rank
-        (human-confirmed first) then recency.
+        Retrieve artifacts for `subject` from knowledge.db, sorted by
+        provenance rank (human-confirmed first) then recency.
         """
-        return _get_artifacts(self.oracle.conn, subject, kind=kind)
+        if self._knowledge_conn is None:
+            return []
+        return _get_artifacts(self._knowledge_conn, subject, kind=kind)
 
     def list_artifacts(self, kind: str = None, provenance: str = None) -> list:
         """List all stored artifacts, optionally filtered by kind/provenance."""
-        return _list_artifacts(self.oracle.conn, kind=kind, provenance=provenance)
+        if self._knowledge_conn is None:
+            return []
+        return _list_artifacts(self._knowledge_conn, kind=kind, provenance=provenance)
 
     def delete_artifact(self, artifact_id: int) -> bool:
         """Delete a single artifact by id. Returns True if removed."""
-        return _delete_artifact(self.oracle.conn, artifact_id)
+        if self._knowledge_conn is None:
+            return False
+        return _delete_artifact(self._knowledge_conn, artifact_id)
 
     def highest_provenance_artifact(self, subject: str, kind: str = None) -> dict | None:
         """Return the highest-provenance artifact for a subject, or None."""

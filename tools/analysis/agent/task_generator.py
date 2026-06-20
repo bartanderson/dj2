@@ -24,13 +24,15 @@ def generate_task_md(
     symbol: str,
     oracle,
     out_path: Optional[str] = None,
+    knowledge_conn=None,
 ) -> str:
     """
     Build a task.md checklist for `symbol`.
 
-    oracle   - DBOracle (or duck-type with conn, get_edge_maps,
-               discover_seed_symbols, builtin_symbols).
-    out_path - if given, write the markdown to this file path as well.
+    oracle        - DBOracle (structural graph: graph_edges, functions, etc.).
+    out_path      - if given, write the markdown to this file path as well.
+    knowledge_conn - sqlite3 connection to knowledge.db; if None, known
+                    findings section is omitted.
 
     Returns the markdown string.
     """
@@ -41,7 +43,7 @@ def generate_task_md(
     direct_set = {(r["caller"], r["file_path"]) for r in direct}
     impact_only = [s for s in impact if s not in {r["caller"] for r in direct}]
 
-    findings = _known_findings(oracle.conn, symbol)
+    findings = _known_findings(knowledge_conn, symbol) if knowledge_conn is not None else []
     content = _render(symbol, direct, impact_only, findings)
 
     if out_path:
@@ -100,19 +102,23 @@ def _impact_zone(symbol, oracle) -> list[str]:
 
 def _known_findings(conn, symbol: str) -> list[dict]:
     """
-    Artifacts stored for this symbol, sorted by provenance rank (highest first).
-    Returns list of {kind, content, provenance}. Empty list if table absent.
+    Artifacts stored for this symbol in knowledge.db, provenance-ranked.
+    Returns list of {kind, content, provenance, needs_review}.
     """
     _RANK = {"human-confirmed": 3, "ai-confirmed-by-human": 2, "ai-generated": 1}
     try:
+        # Match exact symbol name OR file::symbol convention (e.g. "path.py::symbol")
         rows = conn.execute(
-            "SELECT kind, content, provenance FROM knowledge_artifacts "
-            "WHERE subject = ? ORDER BY created_at DESC",
-            (symbol,),
+            "SELECT kind, content, provenance, needs_review FROM knowledge_artifacts "
+            "WHERE subject = ? OR subject LIKE ? ORDER BY created_at DESC",
+            (symbol, f"%::{symbol}"),
         ).fetchall()
     except Exception:
         return []
-    results = [{"kind": r[0], "content": r[1], "provenance": r[2]} for r in rows]
+    results = [
+        {"kind": r[0], "content": r[1], "provenance": r[2], "needs_review": bool(r[3])}
+        for r in rows
+    ]
     results.sort(key=lambda r: _RANK.get(r["provenance"], 0), reverse=True)
     return results
 
@@ -132,8 +138,8 @@ def _render(symbol: str, direct: list[dict], impact_only: list[str],
         "",
         "## Direct callers (confirmed)",
         "",
-        "_These call `{symbol}` directly. Any signature or behavior change here",
-        "requires updating each caller._".format(symbol=symbol),
+        "_These call `{symbol}` directly. Any signature or behavior change here"
+        " requires updating each caller._".format(symbol=symbol),
         "",
     ]
 
@@ -168,7 +174,8 @@ def _render(symbol: str, direct: list[dict], impact_only: list[str],
             "",
         ]
         for f in findings:
-            lines.append(f"- **[{f['kind']} / {f['provenance']}]** {f['content']}")
+            stale = " **[STALE - needs review]**" if f.get("needs_review") else ""
+            lines.append(f"- **[{f['kind']} / {f['provenance']}]**{stale} {f['content']}")
 
     lines += [
         "",

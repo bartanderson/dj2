@@ -11,14 +11,11 @@ from tools.analysis.core.pathing import normalize_file_path
 from tools.analysis.identity.edge_identity import edge_identity
 
 def ensure_schema(connection):
+    # Corpus DB schema only - structural tables.
+    # Intent tables (knowledge_artifacts, semantic_summaries) live in
+    # knowledge.db, not in corpus DBs. See DESIGN.md section 7 and
+    # oracle/knowledge_oracle.py.
     initialize_database(connection)
-    # Intent Layer tables (DESIGN.md section 3 / TRACKER.md item 12b)
-    from tools.analysis.intent.semantic_summary import ensure_semantic_summaries_table
-    from tools.analysis.intent.knowledge_artifact import ensure_knowledge_artifacts_table
-    cursor = connection.cursor()
-    ensure_semantic_summaries_table(cursor)
-    ensure_knowledge_artifacts_table(cursor)
-    connection.commit()
 
 def set_project_root(connection: sqlite3.Connection, project_root) -> None:
     """

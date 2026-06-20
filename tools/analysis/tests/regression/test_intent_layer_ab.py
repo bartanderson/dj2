@@ -48,9 +48,12 @@ def _make_conn():
 # ==================================================================
 
 def test_ensure_schema_creates_semantic_summaries_table():
+    # semantic_summaries lives in knowledge.db (KnowledgeOracle), not corpus DB.
+    # Verify the table is created by ensure_semantic_summaries_table directly.
     conn = sqlite3.connect(":memory:")
-    ensure_schema(conn)
     cursor = conn.cursor()
+    ensure_semantic_summaries_table(cursor)
+    conn.commit()
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='semantic_summaries'"
     )
@@ -164,9 +167,12 @@ def test_semantic_summary_invalid_kind_raises():
 # ==================================================================
 
 def test_ensure_schema_creates_knowledge_artifacts_table():
+    # knowledge_artifacts lives in knowledge.db (KnowledgeOracle), not corpus DB.
+    # Verify the table is created by ensure_knowledge_artifacts_table directly.
     conn = sqlite3.connect(":memory:")
-    ensure_schema(conn)
     cursor = conn.cursor()
+    ensure_knowledge_artifacts_table(cursor)
+    conn.commit()
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='knowledge_artifacts'"
     )

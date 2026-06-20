@@ -25,7 +25,10 @@
 
 from __future__ import annotations
 
+import builtins as _builtins
 from typing import Iterable
+
+_PYTHON_BUILTINS = frozenset(dir(_builtins))
 
 
 def is_accessor_chain_noise(symbol: str) -> bool:
@@ -66,6 +69,12 @@ def is_noise_symbol(symbol: str, builtin_symbols: Iterable[str] = ()) -> bool:
         return True
 
     if symbol in builtin_symbols:
+        return True
+
+    # Python's own builtins module is authoritative for bare builtin names
+    # (e.g. 'all', 'len', 'range'). Covers names that appear in mixed buckets
+    # in the DB and are therefore excluded from builtin_symbols().
+    if symbol in _PYTHON_BUILTINS:
         return True
 
     if is_accessor_chain_noise(symbol):

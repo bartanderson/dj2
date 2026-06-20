@@ -77,14 +77,14 @@ types required.
 
 Every AST must pass: VALID / INVALID + reason. Rules are strict but small:
 
-- **View legality** - only registered views. (Originally STRUCTURE /
-  STABILITY / INTEGRITY / SUMMARY / SUBSYSTEM; ROLE was added as a 6th view
-  later - see TRACKER.md. This doc's examples below predate that addition
-  and should be read as "5 views, now 6.")
+- **View legality** - only registered views: STRUCTURE / STABILITY /
+  INTEGRITY / SUMMARY / SUBSYSTEM / ROLE / INTENT (7 total; ROLE added
+  2026-06-16, INTENT added 2026-06-19).
 - **Metric legality** - must match `QueryPlan.VALID_METRICS[view]`.
-- **Combine legality** - only registered pairs are allowed, e.g.
+- **Combine legality** - only registered pairs are allowed:
   `(STRUCTURE, STABILITY)`, `(STRUCTURE, INTEGRITY)`, `(SUMMARY, STABILITY)`,
-  `(SUBSYSTEM, STRUCTURE)`. No guessing, no fallback logic.
+  `(SUBSYSTEM, STRUCTURE)`, `(STABILITY, INTEGRITY)`. ROLE and INTENT are
+  Select-only for now (no Combine pairs registered). No guessing, no fallback.
 - **Filter legality** - filter keys must be in `allowed_keys(view)`.
 
 Checkpoint: invalid combine, invalid metric, and invalid filter all hard-fail.
@@ -152,7 +152,7 @@ reasoning system - combinations must be enumerated, views must be fixed,
 filters must be constrained.
 
 For the current build/test status of every layer above (AST, Executor,
-Planner/Validator, Compiler, Views, and the 6th ROLE view added after this
+Planner/Validator, Compiler, Views, and the ROLE/INTENT views added after this
 spec was written), see TRACKER.md's Truth Kernel Tier Status section - it is
 the authoritative "is this actually true today" answer, not this file.
 
@@ -174,10 +174,12 @@ build against.
 
 ---
 
-## 3. Intent Layer - semantic summaries and knowledge artifacts (design proposal - nothing built yet)
+## 3. Intent Layer - semantic summaries and knowledge artifacts
 
-**Status: design only. Nothing implemented.** TRACKER.md carries the build
-sequencing note for this section; this section is the reasoning behind it.
+**Status: built and wired (2026-06-19). See TRACKER.md item 12b for proof.**
+The sections below are the original design reasoning; they remain accurate
+except for the "nothing built yet" framing. Section 3b (below) documents the
+2026-06-20 knowledge.db architecture decision that extends this layer.
 
 ### The problem this solves
 
@@ -717,3 +719,56 @@ As of 2026-06-18 this has a dedicated regression test file,
 `tests/regression/test_system_self_model.py` - see TRACKER.md item 19.
 Before that, it had zero direct test coverage despite being live and
 wired into two production call sites.
+
+---
+
+## 7. knowledge.db - shared knowledge overlay (decided 2026-06-20)
+
+### The problem
+
+`knowledge_artifacts` and `semantic_summaries` were originally stored inside
+each corpus DB (`world_corpus.db`, `engine_corpus.db`, etc.). This created
+two problems:
+
+1. A finding about `world/world_controller.py` could only be stored in
+   `world_corpus.db` - not visible when querying any other corpus.
+2. Corpus DBs are expendable rebuild artifacts. Rebuilding `world_corpus.db`
+   would silently delete all human-confirmed findings stored in it.
+
+### The design
+
+A single `knowledge.db` at the repo root holds only the two intent tables:
+`knowledge_artifacts` and `semantic_summaries`. All corpus Assessors read and
+write to this shared DB via an optional second connection (`KnowledgeOracle`).
+
+- Corpus DB answers "what is the structure" (graph_edges, functions, classes).
+- `knowledge.db` answers "what do we know about the code" (findings, summaries).
+
+Assessor's `knowledge` parameter defaults to opening `knowledge.db` in the
+same directory as the corpus DB. Tests that don't need it pass `None`.
+
+### Staleness
+
+`semantic_summaries` already has `source_hash` - no change needed.
+
+`knowledge_artifacts` gains two new columns:
+- `file_hash TEXT` - hash of the subject file at artifact creation time.
+- `needs_review INTEGER DEFAULT 0` - set to 1 by the ingestion pipeline when
+  a re-ingest detects the subject file changed (new hash). Never auto-deleted;
+  human confirms whether the finding still applies.
+
+The ingestion pipeline (`EngineRunner.run()`) checks `knowledge.db` after each
+file is processed: if any artifact's `subject` references that file path and
+the stored `file_hash` differs from the newly computed hash, it sets
+`needs_review = 1` on that artifact.
+
+`generate_task_md()` surfaces `needs_review` artifacts with a "[STALE - needs
+review]" prefix so the agent knows to verify before trusting the finding.
+
+### Why this survives the planned corpus DB merge
+
+The three game corpus DBs (`world_corpus.db`, `engine_corpus.db`,
+`dungeon_neo_corpus.db`) are planned to merge into a single `game_corpus.db`
+once `_persist_graph_edges` supports per-file edge management (TRACKER item 3).
+Because `knowledge.db` is separate, that merge is a pure structural operation -
+findings survive untouched, no migration required.

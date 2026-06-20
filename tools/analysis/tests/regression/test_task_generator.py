@@ -161,12 +161,22 @@ def test_assessor_generate_task_md_wired():
             os.remove(tmp)
 
 
+def _make_knowledge_conn():
+    from tools.analysis.intent.knowledge_artifact import ensure_knowledge_artifacts_table
+    conn = sqlite3.connect(":memory:")
+    cursor = conn.cursor()
+    ensure_knowledge_artifacts_table(cursor)
+    conn.commit()
+    return conn
+
+
 def test_known_findings_appear_in_output():
     from tools.analysis.agent.task_generator import generate_task_md
     from tools.analysis.intent.knowledge_artifact import add_artifact
     oracle = _make_oracle()
-    add_artifact(oracle.conn, "handler", "known_issue", "Handler silently drops errors.", "human-confirmed")
-    md = generate_task_md("handler", oracle)
+    kconn = _make_knowledge_conn()
+    add_artifact(kconn, "handler", "known_issue", "Handler silently drops errors.", "human-confirmed")
+    md = generate_task_md("handler", oracle, knowledge_conn=kconn)
     assert "Known findings" in md
     assert "Handler silently drops errors." in md
     assert "human-confirmed" in md
@@ -175,7 +185,8 @@ def test_known_findings_appear_in_output():
 def test_no_findings_section_when_no_artifacts():
     from tools.analysis.agent.task_generator import generate_task_md
     oracle = _make_oracle()
-    md = generate_task_md("handler", oracle)
+    kconn = _make_knowledge_conn()
+    md = generate_task_md("handler", oracle, knowledge_conn=kconn)
     assert "Known findings" not in md
 
 

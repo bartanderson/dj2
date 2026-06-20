@@ -35,7 +35,19 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Knowledge artifacts wired into generate_task_md() - DONE 2026-06-19.
+**Recently done:** Builtin noise filter extended - DONE 2026-06-20. `symbol_noise.py`
+now checks Python's `builtins` module as a secondary filter, removing bare Python
+builtin names (e.g. `all`, `len`, `range`) from impact zones even when they appear
+in mixed DB buckets. Bare method names like `get` (dict.get()) are a separate class
+of noise - accepted for now, covered by the impact zone's "cross-check" note.
+Before that: knowledge.db shared overlay - DONE 2026-06-20. `KnowledgeOracle`
+wraps `knowledge.db` (separate from corpus DBs); `knowledge_artifacts` + `semantic_summaries`
+moved there. `Assessor` auto-opens it alongside corpus DB. `generate_task_md` reads from
+knowledge conn, shows `[STALE]` prefix when `needs_review=1`. Template bug fixed. Artifact
+migrated from self-corpus DB. `generate_task_md('generate_location_from_potential')` against
+`world_corpus.db` now shows the Known findings section end-to-end. Suite: 148/148.
+Before that: Test suite hygiene (item 8) - CLOSED 2026-06-20. Deleted legacy
+`tests/core/` and `tests/debug/`. Before that: Knowledge artifacts wired into generate_task_md() - DONE 2026-06-19.
 `_known_findings()` fetches artifacts for the symbol; `_render()` adds "Known findings"
 section (provenance-ranked) when any exist. 2 new tests in `test_task_generator.py`. Suite: 148/148.
 Before that: Test suite hygiene (item 8, partial) - DONE 2026-06-19. Oracle CLI smoke test
@@ -657,11 +669,15 @@ distinct angles folded in.
    - [x] Symbol ordering DB-deterministic: verified 2026-06-19. All
      production queries use `ORDER BY`; Python sorts used for
      provenance ranking. No test asserts insertion-order positions.
-   - [ ] alias_map normalization consistency (under observation, not yet
-     confirmed stable).
-   - [ ] Unify identity factory entrypoint to a single creation path.
-   - [ ] Unify classification imports to a single source path.
-   - [ ] Eliminate residual dual routing paths in tests.
+   - [x] Dual routing paths in tests: DONE 2026-06-20. Deleted
+     `tests/core/` and `tests/debug/` - both tested the deprecated
+     pre-oracle graph/identity layer, neither was in the regression suite.
+   - ACCEPTED DEBT (2026-06-20): alias_map normalization, identity factory
+     double-construction in parse_ast.py, and classification import
+     inconsistency in graph/symbol_classifier.py are all pre-oracle layer
+     issues with zero correctness impact on the production query path.
+     Leave until the graph/identity layer is formally deprecated or a
+     specific bug forces it.
 9. **Truth Kernel Tier 3/4 (system replacement / closed-world complete):**
    all items open and explicitly future-state - Assessor fully on the
    Truth Layer exclusively, Oracle fully routed through it, engine
@@ -707,12 +723,41 @@ distinct angles folded in.
       `Assessor.delete_artifact()`, `Assessor.highest_provenance_artifact()`.
     - 27 regression tests in `tests/regression/test_intent_layer_ab.py`.
       Full suite: 142/142 passing (was 127).
-13. **Truth Kernel Board Tier 0:** AI compiler surface hypotheses -
-    TRUTH KERNEL v1.md's view-legality and Combine-legality lists are
-    stale relative to the current 6-view reality (they only mention 5
-    views and don't include ROLE in the allowed Combine pairs) - worth a
-    pass to update DESIGN.md's spec language or explicitly note the gap
-    there if ROLE participation in Combine is ever needed.
+13. **Truth Kernel Board Tier 0 (DONE 2026-06-20):** DESIGN.md
+    view-legality and Combine-legality lists updated to list all 7 views
+    (STRUCTURE/STABILITY/INTEGRITY/SUMMARY/SUBSYSTEM/ROLE/INTENT with dates),
+    added missing `(STABILITY, INTEGRITY)` pair, noted ROLE/INTENT are
+    Select-only. Stale "5 views, now 6" prose fixed throughout.
+14. **knowledge.db - shared knowledge overlay: DONE 2026-06-20.**
+    Design: DESIGN.md section 7. All steps complete:
+    - [x] `oracle/knowledge_oracle.py`: `KnowledgeOracle` wrapping
+      `knowledge.db`; creates `knowledge_artifacts` (with `file_hash`,
+      `needs_review` columns) and `semantic_summaries` tables.
+      `KnowledgeOracle.alongside(corpus_db_path)` opens `knowledge.db`
+      next to any corpus DB.
+    - [x] `persistence/persistence_engine.py`: `ensure_schema()` now
+      creates corpus tables only; knowledge tables live in KnowledgeOracle.
+    - [x] `intent/knowledge_artifact.py`: added `file_hash`/`needs_review`
+      columns + migration (ALTER TABLE, idempotent); added
+      `flag_stale_artifacts()` for ingestion hook. SELECT queries updated.
+    - [x] `assessor/assessor.py`: `Assessor.__init__` takes optional
+      `knowledge` param; auto-opens `knowledge.db` alongside corpus DB
+      when oracle has `db_path`. All artifact methods route to knowledge
+      conn; return [] / raise if knowledge is None.
+    - [x] `agent/task_generator.py`: `generate_task_md` takes optional
+      `knowledge_conn`; `_known_findings()` queries knowledge conn with
+      exact + `file::symbol` LIKE match; stale artifacts flagged
+      `[STALE - needs review]` in output. Template bug fixed (unsubstituted
+      `{symbol}` in direct-callers prose).
+    - [x] Existing `generate_location_from_potential` artifact migrated
+      from self-corpus DB to `knowledge.db` (row id 1 in knowledge.db).
+    - [x] Tests updated: `test_intent_layer_ab.py` (ensure_schema tests
+      now call table-create fns directly), `test_task_generator.py`
+      (artifact tests use separate knowledge conn). Suite: 148/148.
+    - Ingestion staleness hook (`flag_stale_artifacts` call in
+      `EngineRunner.run()`) left as a follow-on - schema and function are
+      ready, just not wired into the ingest loop yet (low urgency until
+      game corpus files start changing actively).
 12. **Orphaned-module disposition review (hole vs. dead): INVESTIGATED
     AND REPORTED 2026-06-19.** Evaluated all 9 originally-listed
     candidates - `resolution/symbol_origin_resolver.py`,

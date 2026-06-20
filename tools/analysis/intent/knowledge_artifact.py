@@ -52,7 +52,9 @@ def ensure_knowledge_artifacts_table(cursor: sqlite3.Cursor) -> None:
         kind TEXT NOT NULL,
         content TEXT NOT NULL,
         provenance TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        file_hash TEXT,
+        needs_review INTEGER NOT NULL DEFAULT 0
     )
     """)
     cursor.execute(
@@ -63,6 +65,12 @@ def ensure_knowledge_artifacts_table(cursor: sqlite3.Cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_ka_kind "
         "ON knowledge_artifacts(kind)"
     )
+    # Migrate existing DBs: add columns if absent (idempotent)
+    for col, definition in [("file_hash", "TEXT"), ("needs_review", "INTEGER NOT NULL DEFAULT 0")]:
+        try:
+            cursor.execute(f"ALTER TABLE knowledge_artifacts ADD COLUMN {col} {definition}")
+        except Exception:
+            pass  # column already exists
 
 
 # ------------------------------------------------------------------
@@ -75,14 +83,18 @@ def add_artifact(
     kind: str,
     content: str,
     provenance: str = "ai-generated",
+    file_hash: Optional[str] = None,
 ) -> int:
     """
     Store a knowledge artifact. Returns the new row id.
 
-    subject   - file path, module name, subsystem label, or free-form topic.
-    kind      - one of VALID_KINDS.
-    content   - the finding or decision text.
+    subject    - file path, symbol, subsystem label, or free-form topic.
+    kind       - one of VALID_KINDS.
+    content    - the finding or decision text.
     provenance - one of VALID_PROVENANCES; defaults to 'ai-generated'.
+    file_hash  - SHA-256 of the subject file at creation time (optional).
+                 When set, the ingestion pipeline can flag this artifact
+                 needs_review=1 if the file changes.
     """
     if kind not in VALID_KINDS:
         raise ValueError(f"kind must be one of {VALID_KINDS}, got {kind!r}")
@@ -93,13 +105,40 @@ def add_artifact(
     cursor = connection.cursor()
     cursor.execute(
         """
-        INSERT INTO knowledge_artifacts (subject, kind, content, provenance, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO knowledge_artifacts
+            (subject, kind, content, provenance, created_at, file_hash, needs_review)
+        VALUES (?, ?, ?, ?, ?, ?, 0)
         """,
-        (subject, kind, content, provenance, created_at),
+        (subject, kind, content, provenance, created_at, file_hash),
     )
     connection.commit()
     return cursor.lastrowid
+
+
+def flag_stale_artifacts(
+    connection: sqlite3.Connection,
+    file_path: str,
+    current_hash: str,
+) -> int:
+    """
+    Called by the ingestion pipeline after re-ingesting a file. Sets
+    needs_review=1 on any artifact whose subject contains file_path and
+    whose stored file_hash differs from current_hash. Returns count flagged.
+    """
+    cursor = connection.cursor()
+    cursor.execute(
+        """
+        UPDATE knowledge_artifacts
+        SET needs_review = 1
+        WHERE subject LIKE ?
+          AND file_hash IS NOT NULL
+          AND file_hash != ?
+          AND needs_review = 0
+        """,
+        (f"%{file_path}%", current_hash),
+    )
+    connection.commit()
+    return cursor.rowcount
 
 
 def get_artifacts(
@@ -115,14 +154,14 @@ def get_artifacts(
     cursor = connection.cursor()
     if kind:
         cursor.execute(
-            "SELECT id, subject, kind, content, provenance, created_at "
+            "SELECT id, subject, kind, content, provenance, created_at, file_hash, needs_review "
             "FROM knowledge_artifacts WHERE subject = ? AND kind = ? "
             "ORDER BY created_at DESC",
             (subject, kind),
         )
     else:
         cursor.execute(
-            "SELECT id, subject, kind, content, provenance, created_at "
+            "SELECT id, subject, kind, content, provenance, created_at, file_hash, needs_review "
             "FROM knowledge_artifacts WHERE subject = ? "
             "ORDER BY created_at DESC",
             (subject,),
@@ -155,7 +194,7 @@ def list_artifacts(
         params.append(provenance)
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     cursor.execute(
-        f"SELECT id, subject, kind, content, provenance, created_at "
+        f"SELECT id, subject, kind, content, provenance, created_at, file_hash, needs_review "
         f"FROM knowledge_artifacts {where} ORDER BY created_at DESC",
         params,
     )
@@ -199,4 +238,6 @@ def _row_to_dict(row) -> dict:
         "content": row[3],
         "provenance": row[4],
         "created_at": row[5],
+        "file_hash": row[6] if len(row) > 6 else None,
+        "needs_review": bool(row[7]) if len(row) > 7 else False,
     }
