@@ -113,8 +113,11 @@ def ground_question(question: str, oracle: "DBOracle", assessor: "Assessor") -> 
     if found_files:
         lines.append(f"  Files found: {', '.join(found_files[:8])}")
 
-    # Pull pre-built findings from knowledge.db for matched symbols
+    # Pull pre-built findings from knowledge.db for matched symbols and files
     known = _ground_findings(list(found_symbols.keys())[:5], assessor)
+    # Also pull file-level findings (subject is bare filename)
+    file_subjects = [fp.replace("\\", "/").split("/")[-1] for fp in found_files[:3]]
+    known += _ground_findings(file_subjects, assessor)
     if known:
         lines.append(f"  Known findings:")
         for line in known:
@@ -300,6 +303,7 @@ _HEURISTICS: list[tuple] = [
             re.I,
         ),
         lambda m: [
+            f"findings for {m.group(1).replace('/', '_').replace(chr(92), '_')}",
             f"what does {m.group(1)} do",
             f"symbols in {m.group(1)}",
         ],
