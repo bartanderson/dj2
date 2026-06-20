@@ -25,6 +25,7 @@ from tools.analysis.assessor.assessor import Assessor
 from tools.analysis.agent.agent_resolver import (
     parse_needs, resolve_and_expand, facts_to_text, ground_question,
 )
+from tools.analysis.agent.knowledge_status import coverage_summary, suggest_followups
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3.2:3b"
@@ -152,6 +153,7 @@ def _answer(
         print(f"\n[needs parsed] {needs}", flush=True)
 
     # Phase 2: RESOLVE
+    facts = []
     if needs:
         facts = resolve_and_expand(needs, oracle, assessor)
         if verbose:
@@ -164,6 +166,11 @@ def _answer(
     # Phase 3: ASSEMBLE
     assemble_msgs = _assemble_prompt(user_input, facts_text, history)
     answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
+
+    # Phase 4: SUGGEST
+    suggestions = suggest_followups(facts, oracle, assessor)
+    if suggestions:
+        answer = answer + "\n\n" + suggestions
 
     history.append({"role": "user",      "content": user_input})
     history.append({"role": "assistant", "content": answer})
@@ -186,7 +193,9 @@ def run(db_path: str, verbose: bool = False) -> None:
     root = oracle.get_project_root() or db_path
     print(f"Project root:   {root}")
     print(f"Model:          {OLLAMA_MODEL}")
-    print(f"\nType your question. 'clear' to reset. 'quit' to exit.\n")
+    print(f"\n{coverage_summary(oracle, assessor)}")
+    print(f"\nType your question. 'clear' to reset. 'quit' to exit.")
+    print(f"Special: 'what do you know?' | 'what haven't you explored?' | 'discover'\n")
 
     history: list[dict] = []
 
@@ -207,6 +216,30 @@ def run(db_path: str, verbose: bool = False) -> None:
         if user_input.lower() == "clear":
             history = []
             print("[conversation history cleared]\n")
+            continue
+
+        if user_input.lower() in ("what do you know?", "what do you know"):
+            print(f"\n{coverage_summary(oracle, assessor)}\n")
+            continue
+
+        if user_input.lower() in ("what haven't you explored?", "what havent you explored?",
+                                   "what haven't you explored", "unexplored"):
+            from tools.analysis.agent.knowledge_status import coverage_report
+            r = coverage_report(oracle, assessor)
+            unknown = r["unknown_files"]
+            if unknown:
+                print(f"\nUnexplored files ({len(unknown)} of {r['total_files']}):")
+                for f in unknown:
+                    print(f"  {f}")
+            else:
+                print("\nAll files have been surveyed.")
+            print()
+            continue
+
+        if user_input.lower() == "discover":
+            from tools.analysis.agent.discovery_agent import run as discover_run
+            discover_run(db_path, limit=5, verbose=True)
+            print(f"\n{coverage_summary(oracle, assessor)}\n")
             continue
 
         print("\nThinking...", flush=True)
