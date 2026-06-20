@@ -199,7 +199,8 @@ def run(db_path: str, verbose: bool = False) -> None:
     print(f"Model:          {OLLAMA_MODEL}")
     print(f"\n{coverage_summary(oracle, assessor)}")
     print(f"\nType your question. 'clear' to reset. 'quit' to exit.")
-    print(f"Special: 'what do you know?' | 'what haven't you explored?' | 'discover'\n")
+    print(f"Special: 'what do you know?' | 'what haven't you explored?' | 'discover'")
+    print(f"Workflow: 'what's next' | 'reprioritize' | 'add to backlog: <item>' | 'reorder as 3,1,2'\n")
 
     history: list[dict] = []
 
@@ -244,6 +245,25 @@ def run(db_path: str, verbose: bool = False) -> None:
             from tools.analysis.agent.discovery_agent import run as discover_run
             discover_run(db_path, limit=5, verbose=True)
             print(f"\n{coverage_summary(oracle, assessor)}\n")
+            continue
+
+        if user_input.lower() in ("reprioritize", "suggest priorities", "suggest order"):
+            status = assessor.workflow_status()
+            if status == "No active workflow items.":
+                print(f"\n{status}\n")
+                continue
+            msgs = [
+                {"role": "system", "content":
+                    "You are a project planning assistant. Given a list of workflow items, "
+                    "suggest a priority ordering with brief reasoning for each position. "
+                    "End with: 'To apply this order, type: reorder as <id>,<id>,...'"},
+                {"role": "user", "content":
+                    f"Here are the current workflow items:\n\n{status}\n\n"
+                    "Suggest a priority order for the active backlog/next_up items, "
+                    "considering dependencies and logical sequencing."},
+            ]
+            suggestion = _call_ollama(msgs, verbose=verbose, label="reprioritize")
+            print(f"\nAgent: {suggestion}\n")
             continue
 
         print("\nThinking...", flush=True)

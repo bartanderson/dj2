@@ -212,6 +212,22 @@ _PATTERNS = [
     (re.compile(r"(?:file\s+)?clusters?(?:\s+containing\s+\S+)?\s*$", re.I),
      "graph_clusters", None, None),
 
+    # "workflow status" / "what's next" / "current priorities" / "what am I working on"
+    (re.compile(r"(?:workflow\s+status|what'?s?\s+next|current\s+priorities|what\s+am\s+I\s+working\s+on)\s*$", re.I),
+     "workflow_status", None, None),
+
+    # "next_up" / "backlog" / "future_plan" / "session_decision" (direct kind query)
+    (re.compile(r"(?:show\s+)?(?:my\s+)?(next_up|backlog|future_plans?|session_decisions?)\s*$", re.I),
+     "workflow_status", "kind", 1),
+
+    # "add to backlog: X" / "remember as next_up: X" / "store workflow ..."
+    (re.compile(r"(?:add\s+to|remember\s+as|store\s+as)\s+(next_up|backlog|future_plan|session_decision)[:\s]+(.+)$", re.I),
+     "store_workflow_item", None, None),  # special: multi-group
+
+    # "reorder as 3,1,2" / "rerank 2,3,1"
+    (re.compile(r"(?:reorder|rerank)\s+(?:as\s+)?(\d[\d,\s]*)$", re.I),
+     "rerank_workflow", "order", 1),
+
     # "search <query>" / "find <query>" - fallback to search_symbols
     (re.compile(r"(?:search|find)\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "search_symbols", "query", 1),
@@ -310,6 +326,30 @@ _HEURISTICS: list[tuple] = [
         ],
     ),
 
+    # --- Workflow heuristics ---
+
+    # "what's next" / "what should I work on" / "what are my priorities"
+    (
+        re.compile(
+            r"(?:what'?s?\s+next|what\s+should\s+I\s+(?:work\s+on|do|focus\s+on)|"
+            r"(?:show\s+(?:me\s+)?)?(?:my\s+)?(?:current\s+)?priorities|"
+            r"workflow\s+status|what\s+am\s+I\s+working\s+on)",
+            re.I,
+        ),
+        lambda m: ["workflow status"],
+    ),
+
+    # "reprioritize" / "suggest order" / "what should I do first"
+    # Returns workflow status so Ollama can read it and suggest priority order
+    (
+        re.compile(
+            r"(?:reprioritize|re-prioritize|suggest\s+(?:priority\s+)?order|"
+            r"what\s+should\s+I\s+(?:do|tackle|start)\s+first)",
+            re.I,
+        ),
+        lambda m: ["workflow status", "entry points"],
+    ),
+
     # --- Breadth / survey heuristics ---
 
     # "what exists for X" / "find everything about X" / "what's related to X"
@@ -386,6 +426,20 @@ def resolve_need(need: str) -> tuple[str, dict] | None:
     for pattern, tool_name, arg_key, group_idx in _PATTERNS:
         m = pattern.search(need)
         if m:
+            # Special case: store_workflow_item - kind + content from two groups
+            if tool_name == "store_workflow_item":
+                groups = [g for g in m.groups() if g is not None]
+                if len(groups) >= 2:
+                    kind = groups[0].strip().lower().rstrip("s")  # normalize plural
+                    if kind == "future_plan":
+                        pass  # already correct
+                    return tool_name, {
+                        "kind": kind,
+                        "subject": groups[1].strip()[:60],
+                        "content": groups[1].strip(),
+                    }
+                continue
+
             # Special case: graph_path needs two named args (src, dst)
             if tool_name == "graph_path":
                 groups = [g for g in m.groups() if g is not None]

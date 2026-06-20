@@ -604,6 +604,47 @@ class Assessor:
             return False
         return _delete_artifact(self._knowledge_conn, artifact_id)
 
+    # =====================================================
+    # WORKFLOW STATE (mutable ranked planning items)
+    # =====================================================
+
+    def add_workflow_item(
+        self,
+        kind: str,
+        subject: str,
+        content: str,
+        rank: int = None,
+        provenance: str = "human",
+    ) -> int:
+        from tools.analysis.intent.workflow_store import add_item
+        if self._knowledge_conn is None:
+            raise RuntimeError("No knowledge DB configured on this Assessor.")
+        return add_item(self._knowledge_conn, kind, subject, content, rank, provenance)
+
+    def update_workflow_item(self, item_id: int, **kwargs) -> bool:
+        from tools.analysis.intent.workflow_store import update_item
+        if self._knowledge_conn is None:
+            return False
+        return update_item(self._knowledge_conn, item_id, **kwargs)
+
+    def rerank_workflow(self, ordered_ids: list) -> int:
+        from tools.analysis.intent.workflow_store import rerank_items
+        if self._knowledge_conn is None:
+            return 0
+        return rerank_items(self._knowledge_conn, ordered_ids)
+
+    def list_workflow_items(self, kind: str = None, status: str = "active") -> list:
+        from tools.analysis.intent.workflow_store import list_items
+        if self._knowledge_conn is None:
+            return []
+        return list_items(self._knowledge_conn, kind=kind, status=status)
+
+    def workflow_status(self) -> str:
+        from tools.analysis.intent.workflow_store import format_workflow_status
+        if self._knowledge_conn is None:
+            return "No knowledge DB configured."
+        return format_workflow_status(self._knowledge_conn)
+
     def highest_provenance_artifact(self, subject: str, kind: str = None) -> dict | None:
         """Return the highest-provenance artifact for a subject, or None."""
         artifacts = self.get_artifacts(subject, kind=kind)

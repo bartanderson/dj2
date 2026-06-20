@@ -381,6 +381,67 @@ def graph_clusters(oracle: "DBOracle", args: dict) -> str:
 
 
 # ------------------------------------------------------------------
+# WORKFLOW TOOLS
+# ------------------------------------------------------------------
+
+def workflow_status(assessor: "Assessor", args: dict) -> str:
+    """
+    workflow_status() - current next_up, backlog, and recent decisions.
+    Optional: kind filter via args['kind'].
+    """
+    kind = args.get("kind", "").strip() or None
+    from tools.analysis.intent.workflow_store import format_workflow_status, list_items
+    conn = getattr(assessor, "_knowledge_conn", None)
+    if conn is None:
+        return "No knowledge DB available."
+    if kind:
+        items = list_items(conn, kind=kind, status="active")
+        if not items:
+            return f"No active {kind} items."
+        lines = [f"Active {kind} items:"]
+        for item in items:
+            rank_str = f"[#{item['rank']}] " if item["rank"] else ""
+            lines.append(f"  {rank_str}{item['id']}. {item['subject']}: {item['content']}")
+        return "\n".join(lines)
+    return format_workflow_status(conn)
+
+
+def store_workflow_item(assessor: "Assessor", args: dict) -> str:
+    """
+    store_workflow_item(kind, subject, content, rank?) - add a workflow item.
+    kind: next_up | backlog | future_plan | session_decision
+    """
+    kind = args.get("kind", "").strip()
+    subject = args.get("subject", "").strip()
+    content = args.get("content", "").strip()
+    rank = args.get("rank")
+    if not kind or not subject or not content:
+        return "ERROR: kind, subject, and content are required"
+    try:
+        rank_int = int(rank) if rank is not None else None
+        item_id = assessor.add_workflow_item(kind, subject, content, rank_int, "ai-suggested")
+        return f"Stored {kind} item #{item_id}: {subject}"
+    except (ValueError, RuntimeError) as e:
+        return f"ERROR: {e}"
+
+
+def rerank_workflow(assessor: "Assessor", args: dict) -> str:
+    """
+    rerank_workflow(order) - rerank items by ID order.
+    order: comma-separated item IDs in desired priority order, e.g. "3,1,4,2"
+    """
+    order_str = args.get("order", "").strip()
+    if not order_str:
+        return "ERROR: order argument required (comma-separated item IDs)"
+    try:
+        ids = [int(x.strip()) for x in order_str.split(",") if x.strip()]
+        count = assessor.rerank_workflow(ids)
+        return f"Reranked {count} items: {' > '.join(str(i) for i in ids)}"
+    except ValueError:
+        return "ERROR: order must be comma-separated integers (item IDs)"
+
+
+# ------------------------------------------------------------------
 # TRUTH LAYER TOOL
 # ------------------------------------------------------------------
 
@@ -425,6 +486,9 @@ TOOLS = {
     "graph_most_connected": (graph_most_connected, "oracle"),
     "graph_subgraph":       (graph_subgraph,       "oracle"),
     "graph_clusters":       (graph_clusters,       "oracle"),
+    "workflow_status":      (workflow_status,      "assessor"),
+    "store_workflow_item":  (store_workflow_item,  "assessor"),
+    "rerank_workflow":      (rerank_workflow,      "assessor"),
 }
 
 

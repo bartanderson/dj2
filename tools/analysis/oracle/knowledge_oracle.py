@@ -29,9 +29,11 @@ class KnowledgeOracle:
     def _ensure_schema(self) -> None:
         from tools.analysis.intent.knowledge_artifact import ensure_knowledge_artifacts_table
         from tools.analysis.intent.semantic_summary import ensure_semantic_summaries_table
+        from tools.analysis.intent.workflow_store import ensure_workflow_items_table
         cursor = self.conn.cursor()
         ensure_knowledge_artifacts_table(cursor)
         ensure_semantic_summaries_table(cursor)
+        ensure_workflow_items_table(cursor)
         self.conn.commit()
 
     @classmethod
