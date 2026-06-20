@@ -184,17 +184,42 @@ def files_in_directory(oracle: "DBOracle", args: dict) -> str:
 def describe_file(assessor: "Assessor", args: dict) -> str:
     """
     describe_file(file_path) - AI semantic summary of a file.
-    file_path may be relative e.g. 'world/encounter_generator.py'.
-    Auto-reads source via Assessor (Layer 3). Falls back to heuristic
-    stub if Ollama is unavailable - result will say [heuristic].
+    file_path may be bare filename or relative path. Resolves against
+    corpus DB to get the canonical project-relative path before reading.
     """
     file_path = args.get("file_path", "").strip()
     if not file_path:
         return "ERROR: file_path argument required"
+
+    # Resolve bare filename to project-relative path via corpus DB
+    resolved = _resolve_file_path(assessor.oracle, file_path)
+    if resolved:
+        file_path = resolved
+
     result = assessor.semantic_summary(file_path, kind="file")
     content = result.get("content", "")
     cache_note = " [cached]" if result.get("cache_hit") else ""
     return f"Summary of '{file_path}'{cache_note}:\n{content}"
+
+
+def _resolve_file_path(oracle: "DBOracle", file_path: str) -> str | None:
+    """
+    Given a bare filename or partial path, return the project-relative path
+    (e.g. 'world/adjudication_engine.py') by looking it up in the corpus.
+    Returns None if not found or if input already looks like a path.
+    """
+    import os
+    # Already a path with directory component - use as-is
+    if "/" in file_path or "\\" in file_path:
+        return None
+    matches = oracle.find_files(pattern=file_path)
+    if not matches:
+        return None
+    root = (oracle.get_project_root() or "").replace("\\", "/").rstrip("/")
+    fp = matches[0]["file_path"].replace("\\", "/")
+    if root and fp.startswith(root + "/"):
+        fp = fp[len(root) + 1:]
+    return fp
 
 
 def symbol_intent(oracle: "DBOracle", args: dict) -> str:

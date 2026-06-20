@@ -196,6 +196,7 @@ class FakeAssessor:
     """
     def __init__(self, oracle):
         self._oracle = oracle
+        self.oracle = oracle  # _resolve_file_path accesses assessor.oracle
         self._knowledge_conn = oracle.conn
 
     def semantic_summary(self, subject, kind="file", source_text="", **_):
@@ -470,6 +471,7 @@ def test_dispatch_all_tools_registered():
         "ask_truth_layer",
         "graph_path", "graph_entry_points", "graph_most_connected",
         "graph_subgraph", "graph_clusters",
+        "workflow_status", "store_workflow_item", "rerank_workflow",
     }
     assert set(TOOLS.keys()) == expected
 
