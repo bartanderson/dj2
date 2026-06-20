@@ -67,10 +67,10 @@ def _direct_callers(conn, symbol: str) -> list[dict]:
         FROM graph_edges ge
         LEFT JOIN symbol_references sr
             ON ge.caller = sr.caller AND ge.callee = sr.callee
-        WHERE ge.callee = ?
+        WHERE ge.callee = ? OR ge.callee LIKE ?
         ORDER BY sr.file_path, ge.line_number
         """,
-        (symbol,),
+        (symbol, f"%.{symbol}"),
     )
     rows = cur.fetchall()
     return [{"caller": r[0], "file_path": r[1] or "?", "line_number": r[2]} for r in rows]

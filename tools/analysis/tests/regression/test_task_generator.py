@@ -84,6 +84,24 @@ def test_direct_callers_found():
     assert "dispatch.py" in callers[0]["file_path"]
 
 
+def test_direct_callers_found_via_qualified_name():
+    """Callee stored as 'module.symbol' must still match a bare-name query."""
+    import sqlite3
+    from tools.analysis.persistence.persistence_engine import ensure_schema
+    from tools.analysis.agent.task_generator import _direct_callers
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA journal_mode=MEMORY")
+    ensure_schema(conn)
+    conn.execute(
+        "INSERT INTO graph_edges (source_id, target_id, caller, callee, line_number) "
+        "VALUES ('caller_fn', 'mod.handler', 'caller_fn', 'mod.handler', 7)"
+    )
+    conn.commit()
+    callers = _direct_callers(conn, "handler")
+    assert len(callers) == 1
+    assert callers[0]["caller"] == "caller_fn"
+
+
 def test_direct_callers_empty_for_unknown_symbol():
     from tools.analysis.agent.task_generator import _direct_callers
     oracle = _make_oracle()
