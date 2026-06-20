@@ -6,27 +6,30 @@
 import os
 import sqlite3
 import tempfile
-from dataclasses import dataclass, field
-from typing import List
 
 from tools.analysis.persistence.persistence_engine import ensure_schema
 
 os.environ.setdefault("PYTHONPATH", ".")
 
 
-@dataclass
-class FakeEdge:
-    caller: str
-    callee: str
+class FakeOracle:
+    """Duck-type oracle for testing: holds a real sqlite conn + edge list."""
+    def __init__(self, conn, edges=()):
+        self.conn = conn
+        self._edges = list(edges)
 
+    def get_edge_maps(self):
+        forward, reverse = {}, {}
+        for caller, callee in self._edges:
+            forward.setdefault(caller, set()).add(callee)
+            reverse.setdefault(callee, set()).add(caller)
+        return forward, reverse
 
-@dataclass
-class FakeGraph:
-    edges: List[FakeEdge] = field(default_factory=list)
+    def discover_seed_symbols(self, text, limit=20):
+        return []
 
-
-def _find_symbols_stub(text, limit=20):
-    return []
+    def builtin_symbols(self):
+        return frozenset()
 
 
 SAMPLE_TASK_MD = """\
@@ -89,7 +92,7 @@ def test_parse_impact_zone_from_content():
 # DIFF: NO CHANGE
 # =========================================================
 
-def _make_db_with_dispatcher():
+def _make_oracle_with_dispatcher():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA journal_mode=MEMORY")
     ensure_schema(conn)
@@ -102,17 +105,16 @@ def _make_db_with_dispatcher():
         "VALUES ('dispatcher', 'handler', 'dispatcher', 'handler', 10)"
     )
     conn.commit()
-    return conn
+    return FakeOracle(conn, edges=[("dispatcher", "handler")])
 
 
 def test_diff_unchanged_when_db_matches():
     from tools.analysis.agent.task_rereferencer import diff_task_md
-    conn = _make_db_with_dispatcher()
+    oracle = _make_oracle_with_dispatcher()
     # Impact zone from route_query with seeds=[handler] - dispatcher calls handler,
     # route_query reverse-expands: dispatcher is the reverse neighbor.
     # middleware was in old task.md but NOT in the graph -> shows as removed.
-    graph = FakeGraph(edges=[FakeEdge("dispatcher", "handler")])
-    diff = diff_task_md(SAMPLE_TASK_MD, "handler", conn, graph, _find_symbols_stub)
+    diff = diff_task_md(SAMPLE_TASK_MD, "handler", oracle)
     # Direct callers: dispatcher is in both old and new -> no change
     assert "dispatcher" not in diff["direct_callers"]["added"]
     assert "dispatcher" not in diff["direct_callers"]["removed"]
@@ -120,22 +122,19 @@ def test_diff_unchanged_when_db_matches():
 
 def test_diff_detects_new_caller():
     from tools.analysis.agent.task_rereferencer import diff_task_md
-    conn = _make_db_with_dispatcher()
+    oracle = _make_oracle_with_dispatcher()
     # Add a second caller not in the sample task.md
-    conn.execute(
+    oracle.conn.execute(
         "INSERT INTO symbol_references (file_path, caller, callee, line_number, bucket) "
         "VALUES ('router.py', 'router_fn', 'handler', 30, 'project')"
     )
-    conn.execute(
+    oracle.conn.execute(
         "INSERT INTO graph_edges (source_id, target_id, caller, callee, line_number) "
         "VALUES ('router_fn', 'handler', 'router_fn', 'handler', 30)"
     )
-    conn.commit()
-    graph = FakeGraph(edges=[
-        FakeEdge("dispatcher", "handler"),
-        FakeEdge("router_fn", "handler"),
-    ])
-    diff = diff_task_md(SAMPLE_TASK_MD, "handler", conn, graph, _find_symbols_stub)
+    oracle.conn.commit()
+    oracle._edges.append(("router_fn", "handler"))
+    diff = diff_task_md(SAMPLE_TASK_MD, "handler", oracle)
     assert "router_fn" in diff["direct_callers"]["added"]
     assert diff["unchanged"] is False
 
@@ -147,8 +146,8 @@ def test_diff_detects_removed_caller():
     conn.execute("PRAGMA journal_mode=MEMORY")
     ensure_schema(conn)
     conn.commit()
-    graph = FakeGraph(edges=[])
-    diff = diff_task_md(SAMPLE_TASK_MD, "handler", conn, graph, _find_symbols_stub)
+    oracle = FakeOracle(conn, edges=[])
+    diff = diff_task_md(SAMPLE_TASK_MD, "handler", oracle)
     assert "dispatcher" in diff["direct_callers"]["removed"]
     assert diff["unchanged"] is False
 
@@ -189,14 +188,13 @@ def test_render_diff_md_with_changes():
 
 def test_rereference_reads_file_and_diffs():
     from tools.analysis.agent.task_rereferencer import rereference_task_md
-    conn = _make_db_with_dispatcher()
-    graph = FakeGraph(edges=[FakeEdge("dispatcher", "handler")])
+    oracle = _make_oracle_with_dispatcher()
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
         f.write(SAMPLE_TASK_MD)
         path = f.name
     try:
-        result = rereference_task_md(path, conn, graph, _find_symbols_stub)
+        result = rereference_task_md(path, oracle)
         assert result["symbol"] == "handler"
         assert "diff_md" in result
         assert "handler" in result["diff_md"]
@@ -206,14 +204,13 @@ def test_rereference_reads_file_and_diffs():
 
 def test_rereference_raises_on_bad_header():
     from tools.analysis.agent.task_rereferencer import rereference_task_md
-    conn = _make_db_with_dispatcher()
-    graph = FakeGraph()
+    oracle = FakeOracle(sqlite3.connect(":memory:"), edges=[])
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
         f.write("# not a valid task header\nsome content\n")
         path = f.name
     try:
         try:
-            rereference_task_md(path, conn, graph, _find_symbols_stub)
+            rereference_task_md(path, oracle)
             assert False, "expected ValueError"
         except ValueError as e:
             assert "symbol" in str(e).lower() or "header" in str(e).lower()

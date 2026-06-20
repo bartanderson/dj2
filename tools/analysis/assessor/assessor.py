@@ -476,26 +476,10 @@ class Assessor:
         return _explain_file(self.oracle.conn, file_path)
 
     def generate_task_md(self, symbol: str, out_path: str = None) -> str:
-        graph = self.snapshot()
-        return _generate_task_md(
-            symbol=symbol,
-            conn=self.oracle.conn,
-            graph=graph,
-            find_symbols_fn=self.oracle.discover_seed_symbols,
-            builtin_symbols=self.oracle.builtin_symbols(),
-            out_path=out_path,
-        )
+        return _generate_task_md(symbol=symbol, oracle=self.oracle, out_path=out_path)
 
     def rereference_task_md(self, task_md_path: str, diff_out_path: str = None) -> dict:
-        graph = self.snapshot()
-        return _rereference_task_md(
-            task_md_path=task_md_path,
-            conn=self.oracle.conn,
-            graph=graph,
-            find_symbols_fn=self.oracle.discover_seed_symbols,
-            builtin_symbols=self.oracle.builtin_symbols(),
-            diff_out_path=diff_out_path,
-        )
+        return _rereference_task_md(task_md_path=task_md_path, oracle=self.oracle, diff_out_path=diff_out_path)
 
     # =====================================================
     # INTENT LAYER - SUB-LAYER A: SEMANTIC SUMMARIES

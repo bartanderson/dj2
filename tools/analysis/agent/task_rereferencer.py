@@ -78,10 +78,7 @@ def _parse_impact_zone(content: str) -> set[str]:
 def diff_task_md(
     old_content: str,
     symbol: str,
-    conn,
-    graph,
-    find_symbols_fn,
-    builtin_symbols=frozenset(),
+    oracle,
 ) -> dict:
     """
     Compare old task.md content against a fresh query for `symbol`.
@@ -97,10 +94,10 @@ def diff_task_md(
     old_direct = _parse_direct_callers(old_content)
     old_impact = _parse_impact_zone(old_content)
 
-    new_direct_rows = _direct_callers(conn, symbol)
+    new_direct_rows = _direct_callers(oracle.conn, symbol)
     new_direct = {r["caller"] for r in new_direct_rows}
 
-    new_impact_list = _impact_zone(symbol, graph, find_symbols_fn, builtin_symbols)
+    new_impact_list = _impact_zone(symbol, oracle)
     # Exclude direct callers from impact zone (mirrors generate_task_md)
     new_impact = set(new_impact_list) - new_direct - {symbol}
 
@@ -185,10 +182,7 @@ def render_diff_md(diff: dict) -> str:
 
 def rereference_task_md(
     task_md_path: str,
-    conn,
-    graph,
-    find_symbols_fn,
-    builtin_symbols=frozenset(),
+    oracle,
     diff_out_path: Optional[str] = None,
 ) -> dict:
     """
@@ -209,7 +203,7 @@ def rereference_task_md(
             "Expected header: '# task: review impact of changes to `<symbol>`'"
         )
 
-    diff = diff_task_md(old_content, symbol, conn, graph, find_symbols_fn, builtin_symbols)
+    diff = diff_task_md(old_content, symbol, oracle)
     diff["diff_md"] = render_diff_md(diff)
 
     if diff_out_path:

@@ -288,6 +288,25 @@ class DBOracle:
             bucket_counts=bucket_counts
         )
 
+    def get_edge_maps(self):
+        """
+        Returns (forward, reverse) adjacency dicts built from graph_edges.
+        forward[caller] = set of callees; reverse[callee] = set of callers.
+        Pure data access - no GraphBundle dependency; used by the query path
+        to avoid importing from the graph engine layer.
+        """
+        cur = self.conn.cursor()
+        rows = cur.execute(
+            "SELECT caller, callee FROM graph_edges "
+            "WHERE caller IS NOT NULL AND callee IS NOT NULL"
+        ).fetchall()
+        forward = {}
+        reverse = {}
+        for r in rows:
+            forward.setdefault(r["caller"], set()).add(r["callee"])
+            reverse.setdefault(r["callee"], set()).add(r["caller"])
+        return forward, reverse
+
     def builtin_symbols(self) -> set:
         """
         Returns the set of all symbols that appear exclusively as builtins

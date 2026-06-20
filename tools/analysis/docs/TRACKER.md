@@ -35,7 +35,11 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Intent Layer sub-layers A+B (item 12b) - DONE 2026-06-19.
+**Recently done:** Engine/Assessor boundary completion (item 3, phases 3+4) - DONE 2026-06-19.
+`route_query` moved to `assessor/query_router.py` (Assessor-owned). Query path
+now uses `DBOracle.get_edge_maps()` - no `GraphBundle`/engine dependency. `task_generator`
+and `task_rereferencer` take `oracle` directly. `api/oracle_router.py` is now a thin
+re-export. Suite: 142/142. Before that: Intent Layer sub-layers A+B (item 12b) - DONE 2026-06-19.
 `semantic_summaries` + `knowledge_artifacts` tables, full Assessor wiring,
 27 regression tests. Suite: 142/142. Before that: Game-code corpora ingestion
 (Dashboard item 1) - DONE 2026-06-19. Ingested all four game corpus dirs (`world/` 65 files,
@@ -194,12 +198,22 @@ constraints. Status as of 2026-06-17:
   `assessor/query_session.py`; history persisted to a `query_sessions`
   table via `oracle/persist_query_session.py` (best-effort, never breaks
   the query contract).
-- [ ] move query execution fully into Assessor (route_query becomes
-  Assessor-owned, DBOracle becomes pure kernel only) - still open.
+- [x] move query execution fully into Assessor - DONE 2026-06-19.
+  `route_query` moved to `assessor/query_router.py`, takes `oracle` not
+  `(graph, find_symbols_fn)`. `api/oracle_router.py` is now a thin
+  re-export wrapper. `task_generator` and `task_rereferencer` also take
+  `oracle` directly. `DBOracle` is pure data access (get_edge_maps,
+  discover_seed_symbols, builtin_symbols) - no semantic interpretation.
+  All 21 regression test files pass.
 
 **PHASE 4 - ORACLE HARNESS STABILIZATION**
-- [ ] DB-only execution mode (no engine dependency in query path,
-  deterministic replay support) - still open.
+- [x] DB-only execution mode - DONE 2026-06-19 (same change as Phase 3).
+  `QuerySession.run_query()` no longer calls `get_snapshot_graph()` (which
+  returned a `GraphBundle` engine object). Expansion runs via
+  `DBOracle.get_edge_maps()` which returns plain `(forward, reverse)` dicts
+  directly from `graph_edges` - no `GraphBundle`/`GraphEdge` import in the
+  query path. `_bind_snapshot()` kept as a legacy stub for non-query
+  callers; the query path itself is engine-free.
 
 **PHASE 5 - REASONING TRACE EXPOSURE**
 - Partially active already: seed_paths, expansion trace, and node
@@ -562,18 +576,23 @@ distinct angles folded in.
      and `Assessor.all_views()` updated (now returns 7 views).
    - 7 regression tests in `tests/regression/test_intent_view_wiring.py`.
    - Full suite: 127/127 passing (was 120).
-3. **Engine/Assessor boundary completion** (merges old items 3, 4, and 7
-   - three angles on the same end-state, kept together since they're
-   sequential pieces of one boundary, not independent work):
-   - Move query execution fully into Assessor: `route_query` becomes
-     Assessor-owned, `DBOracle` becomes pure kernel only, no semantic
-     interpretation in the DB layer (old Phase 3 remainder).
-   - DB-only execution mode: no engine dependency in the query path,
-     deterministic replay support (old Phase 4).
-   - Architecture split groundwork this depends on: create a contracts
-     layer, create an assessor layer, move the query stack into
-     assessor, enforce the DB-only boundary, remove engine/query
-     coupling (old item 7, all still open).
+3. **Engine/Assessor boundary completion - DONE 2026-06-19** (merged old
+   items 3, 4, and 7):
+   - [x] Move query execution fully into Assessor: `route_query` moved to
+     `assessor/query_router.py`. New signature: `route_query(text, oracle, ...)`
+     - no graph/fn params. `api/oracle_router.py` is now a thin re-export.
+     `task_generator.generate_task_md` and `task_rereferencer.rereference_task_md`
+     take `oracle` directly. `Assessor.generate_task_md/rereference_task_md`
+     simplified (no longer fetch graph snapshot). DBOracle is pure data
+     access: `get_edge_maps`, `discover_seed_symbols`, `builtin_symbols`.
+   - [x] DB-only execution mode: `QuerySession.run_query()` no longer calls
+     `get_snapshot_graph()`. Expansion uses `DBOracle.get_edge_maps()` -
+     plain `(forward, reverse)` dicts from `graph_edges`, no GraphBundle.
+     `_bind_snapshot()` retained as legacy stub for non-query callers only.
+   - Old item 7 (architecture split / contracts layer): partially addressed
+     by moving routing to assessor layer. Remaining: enforce the DB-only
+     boundary more formally, formalize the contracts layer. Still open as
+     future cleanup (low urgency now that the query path is clean).
 4. **Engine refactor Phase 5:** formalize the existing trace data as
    first-class named API functions (`expansion_explanation()`,
    `seed_explanation()`, `intent_mapping_trace()`) - the underlying data

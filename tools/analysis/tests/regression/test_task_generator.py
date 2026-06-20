@@ -7,8 +7,6 @@
 import os
 import sqlite3
 import tempfile
-from dataclasses import dataclass, field
-from typing import List
 
 from tools.analysis.persistence.persistence_engine import ensure_schema
 
@@ -16,25 +14,34 @@ os.environ.setdefault("PYTHONPATH", ".")
 
 
 # =========================================================
-# MINIMAL GRAPH STUB
+# MINIMAL ORACLE STUB
 # =========================================================
 
-@dataclass
-class FakeEdge:
-    caller: str
-    callee: str
+class FakeOracle:
+    """Duck-type oracle for testing: holds a real sqlite conn + edge list."""
+    def __init__(self, conn, edges=()):
+        self.conn = conn
+        self._edges = list(edges)  # list of (caller, callee) tuples
 
+    def get_edge_maps(self):
+        forward, reverse = {}, {}
+        for caller, callee in self._edges:
+            forward.setdefault(caller, set()).add(callee)
+            reverse.setdefault(callee, set()).add(caller)
+        return forward, reverse
 
-@dataclass
-class FakeGraph:
-    edges: List[FakeEdge] = field(default_factory=list)
+    def discover_seed_symbols(self, text, limit=20):
+        return []
+
+    def builtin_symbols(self):
+        return frozenset()
 
 
 # =========================================================
 # FIXTURE
 # =========================================================
 
-def _make_db():
+def _make_oracle():
     """
     Real in-memory DB with schema.
     Graph: dispatcher -> handler -> helper
@@ -61,19 +68,7 @@ def _make_db():
             (caller, callee, caller, callee, line),
         )
     conn.commit()
-    return conn
-
-
-def _make_graph():
-    return FakeGraph(edges=[
-        FakeEdge("dispatcher", "handler"),
-        FakeEdge("handler", "helper"),
-    ])
-
-
-def _find_symbols_stub(text, limit=20):
-    # Returns empty list - seeds override will bypass this anyway
-    return []
+    return FakeOracle(conn, edges=[("dispatcher", "handler"), ("handler", "helper")])
 
 
 # =========================================================
@@ -82,8 +77,8 @@ def _find_symbols_stub(text, limit=20):
 
 def test_direct_callers_found():
     from tools.analysis.agent.task_generator import _direct_callers
-    conn = _make_db()
-    callers = _direct_callers(conn, "handler")
+    oracle = _make_oracle()
+    callers = _direct_callers(oracle.conn, "handler")
     assert len(callers) == 1
     assert callers[0]["caller"] == "dispatcher"
     assert "dispatch.py" in callers[0]["file_path"]
@@ -91,28 +86,22 @@ def test_direct_callers_found():
 
 def test_direct_callers_empty_for_unknown_symbol():
     from tools.analysis.agent.task_generator import _direct_callers
-    conn = _make_db()
-    callers = _direct_callers(conn, "nonexistent_symbol")
+    oracle = _make_oracle()
+    callers = _direct_callers(oracle.conn, "nonexistent_symbol")
     assert callers == []
 
 
 def test_impact_zone_excludes_seed():
     from tools.analysis.agent.task_generator import _impact_zone
-    graph = _make_graph()
-    zone = _impact_zone("handler", graph, _find_symbols_stub, frozenset())
+    oracle = _make_oracle()
+    zone = _impact_zone("handler", oracle)
     assert "handler" not in zone
 
 
 def test_generate_returns_markdown_string():
     from tools.analysis.agent.task_generator import generate_task_md
-    conn = _make_db()
-    graph = _make_graph()
-    md = generate_task_md(
-        symbol="handler",
-        conn=conn,
-        graph=graph,
-        find_symbols_fn=_find_symbols_stub,
-    )
+    oracle = _make_oracle()
+    md = generate_task_md(symbol="handler", oracle=oracle)
     assert isinstance(md, str)
     assert "handler" in md
     assert "Direct callers (confirmed)" in md
@@ -121,21 +110,19 @@ def test_generate_returns_markdown_string():
 
 def test_direct_callers_appear_in_output():
     from tools.analysis.agent.task_generator import generate_task_md
-    conn = _make_db()
-    graph = _make_graph()
-    md = generate_task_md("handler", conn, graph, _find_symbols_stub)
+    oracle = _make_oracle()
+    md = generate_task_md("handler", oracle)
     assert "dispatcher" in md
     assert "dispatch.py" in md
 
 
 def test_generate_writes_file():
     from tools.analysis.agent.task_generator import generate_task_md
-    conn = _make_db()
-    graph = _make_graph()
+    oracle = _make_oracle()
     with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as f:
         path = f.name
     try:
-        generate_task_md("handler", conn, graph, _find_symbols_stub, out_path=path)
+        generate_task_md("handler", oracle, out_path=path)
         with open(path, encoding="utf-8") as f:
             content = f.read()
         assert "handler" in content

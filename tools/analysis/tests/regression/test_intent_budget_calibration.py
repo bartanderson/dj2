@@ -23,28 +23,25 @@
 # traversal budgets themselves, independent of DB/discovery concerns
 # already covered by test_oracle_router_persistence_lock.py.
 
-from types import SimpleNamespace
-
 from tools.analysis.api.oracle_router import _route_expand
 
 
-def _edge(caller, callee):
-    return SimpleNamespace(caller=caller, callee=callee)
-
-
-def _graph(edges):
-    return SimpleNamespace(edges=edges)
+def _edge_maps(pairs):
+    """Build (forward, reverse) dicts from a list of (caller, callee) tuples."""
+    forward = {}
+    reverse = {}
+    for caller, callee in pairs:
+        forward.setdefault(caller, set()).add(callee)
+        reverse.setdefault(callee, set()).add(caller)
+    return forward, reverse
 
 
 def test_reverse_query_stops_at_one_hop():
     # chain: top -> mid -> seed   (caller -> callee)
     # reverse(seed) = mid (1 hop), reverse(mid) = top (2 hops)
-    graph = _graph([
-        _edge("top", "mid"),
-        _edge("mid", "seed"),
-    ])
+    forward, reverse = _edge_maps([("top", "mid"), ("mid", "seed")])
 
-    result = _route_expand(graph, ["seed"], "reverse_query")
+    result = _route_expand(forward, reverse, ["seed"], "reverse_query")
     nodes = set(result["nodes"])
 
     assert "mid" in nodes, "reverse_query must still reach the direct caller"
@@ -56,12 +53,9 @@ def test_reverse_query_stops_at_one_hop():
 
 def test_impact_query_reaches_two_hops():
     # same chain as above - impact_query keeps reverse_depth=2
-    graph = _graph([
-        _edge("top", "mid"),
-        _edge("mid", "seed"),
-    ])
+    forward, reverse = _edge_maps([("top", "mid"), ("mid", "seed")])
 
-    result = _route_expand(graph, ["seed"], "impact_query")
+    result = _route_expand(forward, reverse, ["seed"], "impact_query")
     nodes = set(result["nodes"])
 
     assert "mid" in nodes
@@ -74,12 +68,9 @@ def test_impact_query_reaches_two_hops():
 
 def test_surface_query_reaches_two_hops_forward():
     # chain: seed -> down1 -> down2   (caller -> callee)
-    graph = _graph([
-        _edge("seed", "down1"),
-        _edge("down1", "down2"),
-    ])
+    forward, reverse = _edge_maps([("seed", "down1"), ("down1", "down2")])
 
-    result = _route_expand(graph, ["seed"], "surface_query")
+    result = _route_expand(forward, reverse, ["seed"], "surface_query")
     nodes = set(result["nodes"])
 
     assert "down1" in nodes
@@ -92,14 +83,12 @@ def test_surface_query_reaches_two_hops_forward():
 def test_general_query_stays_at_one_hop_each_direction():
     # forward chain: seed -> down1 -> down2
     # reverse chain: top -> mid -> seed
-    graph = _graph([
-        _edge("seed", "down1"),
-        _edge("down1", "down2"),
-        _edge("top", "mid"),
-        _edge("mid", "seed"),
+    forward, reverse = _edge_maps([
+        ("seed", "down1"), ("down1", "down2"),
+        ("top", "mid"), ("mid", "seed"),
     ])
 
-    result = _route_expand(graph, ["seed"], "general_query")
+    result = _route_expand(forward, reverse, ["seed"], "general_query")
     nodes = set(result["nodes"])
 
     assert "down1" in nodes and "mid" in nodes, (
@@ -134,10 +123,10 @@ def test_two_hop_key_removed_from_all_budgets():
         "_apply_intent_weights stub"
     )
 
-    graph = _graph([_edge("seed", "down1")])
+    forward, reverse = _edge_maps([("seed", "down1")])
     for intent in ("surface_query", "impact_query", "reverse_query",
                    "general_query", "role_query", "some_unknown_intent"):
-        result = _route_expand(graph, ["seed"], intent)
+        result = _route_expand(forward, reverse, ["seed"], intent)
         assert "nodes" in result and "trace" in result
 
 

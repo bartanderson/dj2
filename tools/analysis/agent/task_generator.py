@@ -22,25 +22,20 @@ from typing import Optional
 
 def generate_task_md(
     symbol: str,
-    conn,
-    graph,
-    find_symbols_fn,
-    builtin_symbols=frozenset(),
+    oracle,
     out_path: Optional[str] = None,
 ) -> str:
     """
     Build a task.md checklist for `symbol`.
 
-    conn              - sqlite3 connection with the project DB (graph_edges table)
-    graph             - GraphBundle (has .edges attribute)
-    find_symbols_fn   - DBOracle.discover_seed_symbols (for route_query's fallback path)
-    builtin_symbols   - DBOracle.builtin_symbols() (noise filter)
-    out_path          - if given, write the markdown to this file path as well
+    oracle   - DBOracle (or duck-type with conn, get_edge_maps,
+               discover_seed_symbols, builtin_symbols).
+    out_path - if given, write the markdown to this file path as well.
 
     Returns the markdown string.
     """
-    direct = _direct_callers(conn, symbol)
-    impact = _impact_zone(symbol, graph, find_symbols_fn, builtin_symbols)
+    direct = _direct_callers(oracle.conn, symbol)
+    impact = _impact_zone(symbol, oracle)
 
     # Remove direct callers from the impact zone to avoid duplication
     direct_set = {(r["caller"], r["file_path"]) for r in direct}
@@ -82,18 +77,16 @@ def _direct_callers(conn, symbol: str) -> list[dict]:
 # TIER 2 - IMPACT ZONE
 # =========================================================
 
-def _impact_zone(symbol, graph, find_symbols_fn, builtin_symbols) -> list[str]:
+def _impact_zone(symbol, oracle) -> list[str]:
     """
     Reverse-closure neighborhood from exactly this symbol via route_query()
     with seeds override (bypasses token-match discovery).
     """
-    from tools.analysis.api.oracle_router import route_query
+    from tools.analysis.assessor.query_router import route_query
 
     result = route_query(
         text=f"what depends on {symbol}",
-        graph=graph,
-        find_symbols_fn=find_symbols_fn,
-        builtin_symbols=builtin_symbols,
+        oracle=oracle,
         seeds=[symbol],
     )
     # expanded_symbols includes the seed itself; exclude it

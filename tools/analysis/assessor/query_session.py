@@ -151,23 +151,18 @@ class QuerySession:
                 self.logger(f"[QuerySession] schema check failed (non-fatal): {e}")
 
     def _bind_snapshot(self):
-        """Bind the graph snapshot once at query time — not at construction."""
+        """Legacy method kept for callers that need a GraphBundle snapshot.
+        The query path no longer uses this - run_query() calls route_query(oracle)
+        directly (Phase 3 boundary completion).
+        """
         if self._graph is None:
             self._graph = self.oracle.get_snapshot_graph()
         return self._graph
 
     def run_query(self, text: str) -> QuerySessionResult:
-        from tools.analysis.api.oracle_router import route_query
+        from tools.analysis.assessor.query_router import route_query
 
-        graph = self._bind_snapshot()
-
-        route_result = route_query(
-            text,
-            graph,
-            self.oracle.discover_seed_symbols,
-            logger=self.logger,
-            builtin_symbols=self.oracle.builtin_symbols(),
-        )
+        route_result = route_query(text, self.oracle, logger=self.logger)
 
         expansion_trace = route_result.execution_plan.get("trace", {})
 
@@ -181,7 +176,7 @@ class QuerySession:
             expansion_trace=expansion_trace,
             primitives=route_result.execution_plan.get("primitives", []),
             execution_plan=route_result.execution_plan,
-            snapshot_edge_count=len(graph.edges),
+            snapshot_edge_count=route_result.edge_count,
             reasoning={
                 "seed_paths": expansion_trace.get("seed_paths", {}),
                 "edges": expansion_trace.get("edges", {}),
