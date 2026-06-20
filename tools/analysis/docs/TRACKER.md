@@ -35,7 +35,10 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Expansion noise + glob fixes - DONE 2026-06-20. `_symbols_from_result`
+**Recently done:** Full discovery + Q&A system DONE 2026-06-20. All 7 core pieces built:
+graph_utils, graph_viz, graph tools in resolver, Phase 2c LINK, extended Phase 0 grounding,
+discovery loop (finite batch/resume-safe), Phase 4 SUGGEST + knowledge_status. Items 8-12
+deferred to post-evaluation. Before that: Expansion noise + glob fixes - DONE 2026-06-20. `_symbols_from_result`
 now filters dunder methods and common boilerplate (`to_dict`, `from_dict`, etc.) before
 expanding. `resolve_need` strips glob chars (`*`, `?`) from `search_files`/`search_symbols`
 queries so `encounter_*` becomes a valid substring search. 5 new tests. Agent suite: 57/57.
