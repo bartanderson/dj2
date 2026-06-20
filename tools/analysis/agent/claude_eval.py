@@ -172,9 +172,22 @@ def auto_questions(
 
     if mode == "unknown":
         from tools.analysis.agent.knowledge_status import coverage_report
-        r = coverage_report(oracle, assessor)
-        for fname in r["unknown_files"][:limit]:
+        # Files with no symbols are package markers (__init__.py, etc.) - skip them
+        files_with_symbols = {
+            r["file_path"].replace("\\", "/").split("/")[-1]
+            for r in oracle.find_files()
+            if oracle.conn.execute(
+                "SELECT 1 FROM symbols WHERE file_path = ? LIMIT 1",
+                (r["file_path"],)
+            ).fetchone()
+        }
+        r = coverage_report(oracle, assessor, unknown_limit=limit * 3)
+        for fname in r["unknown_files"]:
+            if fname not in files_with_symbols:
+                continue
             questions.append(f"what does {fname} do")
+            if len(questions) >= limit:
+                break
 
     elif mode == "backlog":
         items = assessor.list_workflow_items(kind="backlog", status="active")

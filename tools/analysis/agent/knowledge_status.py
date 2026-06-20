@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # Coverage report
 # ------------------------------------------------------------------
 
-def coverage_report(oracle: "DBOracle", assessor: "Assessor") -> dict:
+def coverage_report(oracle: "DBOracle", assessor: "Assessor", unknown_limit: int = 10) -> dict:
     """
     Compare corpus contents against knowledge.db findings.
     Returns:
@@ -60,7 +60,7 @@ def coverage_report(oracle: "DBOracle", assessor: "Assessor") -> dict:
     return {
         "total_files": len(all_files),
         "known_files": len(known_files & all_files),
-        "unknown_files": sorted(all_files - known_files)[:10],
+        "unknown_files": sorted(all_files - known_files)[:unknown_limit],
         "total_symbols": len(all_syms),
         "known_symbols": len(known_syms & all_syms),
         "unknown_symbols": len(all_syms - known_syms),
