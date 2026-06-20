@@ -81,38 +81,70 @@ def build_messages(history: list[dict], user_input: str) -> list[dict]:
 
 def parse_tool_call(text: str) -> tuple[str, dict] | tuple[None, None]:
     """
-    Parse a TOOL/ARGS block from model output.
-    Returns (tool_name, args_dict) or (None, None) if not a tool call.
+    Parse a TOOL/ARGS block from model output. Tolerant of common small-model
+    formatting drift:
+      - case-insensitive TOOL/ARGS labels
+      - extra whitespace or blank lines between label and value
+      - args on same line as ARGS:
+      - JSON wrapped in markdown backticks
+      - single quotes instead of double quotes
+      - tool name with or without trailing colon
+      - missing braces on single-key args
 
-    Expected format anywhere in the text:
-        TOOL: tool_name
-        ARGS: {"key": "value"}
+    Returns (tool_name, args_dict) or (None, None) if no tool call found.
     """
     import json
     import re
 
-    # Allow the block to appear anywhere in the response
-    match = re.search(
-        r"TOOL:\s*(\w+)\s*\nARGS:\s*(\{[^}]*\})",
+    # Normalise: collapse \r, strip markdown code fences around JSON
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"```(?:json)?\s*", "", text)
+
+    # Find TOOL label (case-insensitive), optional colon, whitespace, then name
+    tool_match = re.search(
+        r"(?i)tool:?\s*([a-z_][a-z0-9_]*)",
         text,
-        re.DOTALL,
     )
-    if not match:
+    if not tool_match:
         return None, None
 
-    tool_name = match.group(1).strip()
-    args_str = match.group(2).strip()
+    tool_name = tool_match.group(1).strip().lower()
+
+    # Find ARGS label anywhere after the TOOL label
+    after_tool = text[tool_match.end():]
+    args_match = re.search(
+        r"(?i)args:?\s*(\{.*?\})",
+        after_tool,
+        re.DOTALL,
+    )
+
+    if not args_match:
+        # No args block found - return tool with empty args (some tools need none)
+        return tool_name, {}
+
+    args_str = args_match.group(1).strip()
+
+    # Normalise single quotes -> double quotes for JSON parsing
+    args_str = re.sub(r"'([^']*)'", lambda m: '"' + m.group(1).replace('"', '\\"') + '"', args_str)
+
     try:
         args = json.loads(args_str)
+        return tool_name, args
     except json.JSONDecodeError:
-        # Try to recover simple single-key cases
-        key_match = re.search(r'"(\w+)"\s*:\s*"([^"]*)"', args_str)
-        if key_match:
-            args = {key_match.group(1): key_match.group(2)}
-        else:
-            return tool_name, {}
+        pass
 
-    return tool_name, args
+    # Recovery pass: extract all "key": "value" pairs individually
+    pairs = re.findall(r'"([^"]+)"\s*:\s*"([^"]*)"', args_str)
+    if pairs:
+        return tool_name, dict(pairs)
+
+    # Last resort: treat whole args_str content as a single "query" value
+    # (handles model outputting ARGS: {"encounter"} without a key)
+    bare = args_str.strip("{}\"' ")
+    if bare:
+        return tool_name, {"query": bare}
+
+    return tool_name, {}
 
 
 def format_observation(tool_name: str, result: str) -> str:

@@ -64,6 +64,79 @@ def test_parse_tool_call_list_callers():
 
 
 # ------------------------------------------------------------------
+# Tolerance tests - common small-model drift patterns
+# ------------------------------------------------------------------
+
+def test_parse_lowercase_labels():
+    """Model outputs 'tool:' and 'args:' in lowercase."""
+    text = 'tool: search_symbols\nargs: {"query": "encounter"}'
+    name, args = parse_tool_call(text)
+    assert name == "search_symbols"
+    assert args["query"] == "encounter"
+
+
+def test_parse_mixed_case_labels():
+    text = 'Tool: search_files\nArgs: {"query": "world"}'
+    name, args = parse_tool_call(text)
+    assert name == "search_files"
+    assert args["query"] == "world"
+
+
+def test_parse_args_on_same_line_as_label():
+    """Model puts args immediately after ARGS: with no newline."""
+    text = 'TOOL: list_callers\nARGS: {"symbol": "generate_encounter"}'
+    name, args = parse_tool_call(text)
+    assert name == "list_callers"
+    assert args["symbol"] == "generate_encounter"
+
+
+def test_parse_json_in_markdown_backticks():
+    """Model wraps JSON in ```json ... ``` code fence."""
+    text = 'TOOL: search_symbols\nARGS: ```json\n{"query": "travel"}\n```'
+    name, args = parse_tool_call(text)
+    assert name == "search_symbols"
+    assert args["query"] == "travel"
+
+
+def test_parse_single_quotes_in_args():
+    """Model uses single quotes instead of double quotes in JSON."""
+    text = "TOOL: symbol_intent\nARGS: {'symbol': 'generate_encounter'}"
+    name, args = parse_tool_call(text)
+    assert name == "symbol_intent"
+    assert args["symbol"] == "generate_encounter"
+
+
+def test_parse_blank_line_between_tool_and_args():
+    """Model puts a blank line between TOOL and ARGS."""
+    text = 'TOOL: search_symbols\n\nARGS: {"query": "encounter"}'
+    name, args = parse_tool_call(text)
+    assert name == "search_symbols"
+    assert args["query"] == "encounter"
+
+
+def test_parse_no_args_block_returns_empty_dict():
+    """Model names a tool but forgets to include ARGS."""
+    text = "I will call TOOL: files_in_directory to look at the world folder."
+    name, args = parse_tool_call(text)
+    assert name == "files_in_directory"
+    assert isinstance(args, dict)
+
+
+def test_parse_tool_name_normalised_to_lowercase():
+    """Tool name should always come back lowercase regardless of model casing."""
+    text = 'TOOL: Search_Symbols\nARGS: {"query": "encounter"}'
+    name, args = parse_tool_call(text)
+    assert name == "search_symbols"
+
+
+def test_parse_extra_whitespace_in_tool_name():
+    text = 'TOOL:   describe_file\nARGS: {"file_path": "world/engine.py"}'
+    name, args = parse_tool_call(text)
+    assert name == "describe_file"
+    assert args["file_path"] == "world/engine.py"
+
+
+# ------------------------------------------------------------------
 # build_messages
 # ------------------------------------------------------------------
 
