@@ -1,11 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest *)",
-      "Bash(python tools/analysis/*)",
-      "Bash(ollama *)",
-      "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(*)",
+      "PowerShell(*)"
     ]
   }
 }

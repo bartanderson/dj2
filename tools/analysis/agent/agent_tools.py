@@ -216,7 +216,15 @@ def _resolve_file_path(oracle: "DBOracle", file_path: str) -> str | None:
     if not matches:
         return None
     root = (oracle.get_project_root() or "").replace("\\", "/").rstrip("/")
-    fp = matches[0]["file_path"].replace("\\", "/")
+
+    # Prefer exact basename match over substring match
+    # e.g. "utils.py" should not resolve to "ai_utils.py"
+    basename = file_path.split("/")[-1].split("\\")[-1]
+    exact = [m for m in matches
+             if m["file_path"].replace("\\", "/").split("/")[-1] == basename]
+    best = exact[0] if exact else matches[0]
+
+    fp = best["file_path"].replace("\\", "/")
     if root and fp.startswith(root + "/"):
         fp = fp[len(root) + 1:]
     return fp
@@ -224,27 +232,32 @@ def _resolve_file_path(oracle: "DBOracle", file_path: str) -> str | None:
 
 def symbol_intent(oracle: "DBOracle", args: dict) -> str:
     """
-    symbol_intent(symbol) - docstring for a function or class (Layer 2).
+    symbol_intent(symbol[, file_path]) - docstring for a function or class (Layer 2).
+    If file_path is given, prefer the symbol from that file (disambiguation).
     Returns None-equivalent message if no docstring exists.
     """
     symbol = args.get("symbol", "").strip()
     if not symbol:
         return "ERROR: symbol argument required"
-    row = oracle.conn.execute(
-        "SELECT name, file_path, line_number, docstring FROM functions WHERE name = ? LIMIT 1",
-        (symbol,),
-    ).fetchone()
+    file_hint = args.get("file_path", "").strip()
+
+    def _query(table: str, extra_where: str = "", params: tuple = ()) -> object:
+        sql = (f"SELECT name, file_path, line_number, docstring FROM {table} "
+               f"WHERE name = ? {extra_where} LIMIT 1")
+        return oracle.conn.execute(sql, (symbol,) + params).fetchone()
+
+    row = None
+    if file_hint:
+        # Try exact file first, then fall back to any file
+        row = (_query("functions", "AND file_path LIKE ?", (f"%{file_hint}",)) or
+               _query("classes",   "AND file_path LIKE ?", (f"%{file_hint}",)))
     if not row:
-        row = oracle.conn.execute(
-            "SELECT name, file_path, line_number, docstring FROM classes WHERE name = ? LIMIT 1",
-            (symbol,),
-        ).fetchone()
+        row = _query("functions") or _query("classes")
     if not row:
         return f"'{symbol}' not found in corpus"
-    if not row[3]:
-        file_short = row[1].replace("\\", "/").split("/")[-1]
-        return f"'{symbol}' in {file_short} line {row[2]}: no docstring"
     file_short = row[1].replace("\\", "/").split("/")[-1]
+    if not row[3]:
+        return f"'{symbol}' in {file_short} line {row[2]}: no docstring"
     return f"'{symbol}' in {file_short} line {row[2]}:\n{row[3]}"
 
 

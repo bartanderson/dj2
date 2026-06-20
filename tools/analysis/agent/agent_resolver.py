@@ -573,10 +573,15 @@ def _run_expansion(
     expansions = []
 
     if tool_name in ("search_symbols", "symbols_in_file", "list_callers"):
+        # When expanding from symbols_in_file, pass the source file so
+        # symbol_intent picks the right definition (disambiguation fix).
+        file_hint = args.get("file_path", "") if tool_name == "symbols_in_file" else ""
+        intent_args = {"symbol": None, "file_path": file_hint} if file_hint else {"symbol": None}
         for sym in _symbols_from_result(result):
+            intent_a = {**intent_args, "symbol": sym}
             for follow_tool, follow_args in [
                 ("list_callers",  {"symbol": sym}),
-                ("symbol_intent", {"symbol": sym}),
+                ("symbol_intent", intent_a),
             ]:
                 key = (follow_tool, tuple(sorted(follow_args.items())))
                 if key in seen:
