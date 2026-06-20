@@ -41,7 +41,8 @@ def generate_task_md(
     direct_set = {(r["caller"], r["file_path"]) for r in direct}
     impact_only = [s for s in impact if s not in {r["caller"] for r in direct}]
 
-    content = _render(symbol, direct, impact_only)
+    findings = _known_findings(oracle.conn, symbol)
+    content = _render(symbol, direct, impact_only, findings)
 
     if out_path:
         _write_utf8(out_path, content)
@@ -94,10 +95,34 @@ def _impact_zone(symbol, oracle) -> list[str]:
 
 
 # =========================================================
+# KNOWN FINDINGS (knowledge_artifacts)
+# =========================================================
+
+def _known_findings(conn, symbol: str) -> list[dict]:
+    """
+    Artifacts stored for this symbol, sorted by provenance rank (highest first).
+    Returns list of {kind, content, provenance}. Empty list if table absent.
+    """
+    _RANK = {"human-confirmed": 3, "ai-confirmed-by-human": 2, "ai-generated": 1}
+    try:
+        rows = conn.execute(
+            "SELECT kind, content, provenance FROM knowledge_artifacts "
+            "WHERE subject = ? ORDER BY created_at DESC",
+            (symbol,),
+        ).fetchall()
+    except Exception:
+        return []
+    results = [{"kind": r[0], "content": r[1], "provenance": r[2]} for r in rows]
+    results.sort(key=lambda r: _RANK.get(r["provenance"], 0), reverse=True)
+    return results
+
+
+# =========================================================
 # RENDER
 # =========================================================
 
-def _render(symbol: str, direct: list[dict], impact_only: list[str]) -> str:
+def _render(symbol: str, direct: list[dict], impact_only: list[str],
+            findings: list[dict] | None = None) -> str:
     today = date.today().isoformat()
     lines = [
         f"# task: review impact of changes to `{symbol}`",
@@ -133,6 +158,17 @@ def _render(symbol: str, direct: list[dict], impact_only: list[str]) -> str:
             lines.append(f"- [ ] `{sym}`")
     else:
         lines.append("- (no additional impact zone symbols found)")
+
+    if findings:
+        lines += [
+            "",
+            "## Known findings",
+            "",
+            "_Stored knowledge artifacts for this symbol (provenance-ranked)._",
+            "",
+        ]
+        for f in findings:
+            lines.append(f"- **[{f['kind']} / {f['provenance']}]** {f['content']}")
 
     lines += [
         "",

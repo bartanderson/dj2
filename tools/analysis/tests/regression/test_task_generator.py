@@ -161,6 +161,24 @@ def test_assessor_generate_task_md_wired():
             os.remove(tmp)
 
 
+def test_known_findings_appear_in_output():
+    from tools.analysis.agent.task_generator import generate_task_md
+    from tools.analysis.intent.knowledge_artifact import add_artifact
+    oracle = _make_oracle()
+    add_artifact(oracle.conn, "handler", "known_issue", "Handler silently drops errors.", "human-confirmed")
+    md = generate_task_md("handler", oracle)
+    assert "Known findings" in md
+    assert "Handler silently drops errors." in md
+    assert "human-confirmed" in md
+
+
+def test_no_findings_section_when_no_artifacts():
+    from tools.analysis.agent.task_generator import generate_task_md
+    oracle = _make_oracle()
+    md = generate_task_md("handler", oracle)
+    assert "Known findings" not in md
+
+
 if __name__ == "__main__":
     tests = [
         test_direct_callers_found,
@@ -170,6 +188,8 @@ if __name__ == "__main__":
         test_direct_callers_appear_in_output,
         test_generate_writes_file,
         test_assessor_generate_task_md_wired,
+        test_known_findings_appear_in_output,
+        test_no_findings_section_when_no_artifacts,
     ]
     for t in tests:
         t()

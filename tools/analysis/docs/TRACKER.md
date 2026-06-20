@@ -35,7 +35,11 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Engine/Assessor boundary completion (item 3, phases 3+4) - DONE 2026-06-19.
+**Recently done:** Knowledge artifacts wired into generate_task_md() - DONE 2026-06-19.
+`_known_findings()` fetches artifacts for the symbol; `_render()` adds "Known findings"
+section (provenance-ranked) when any exist. 2 new tests in `test_task_generator.py`. Suite: 148/148.
+Before that: Test suite hygiene (item 8, partial) - DONE 2026-06-19. Oracle CLI smoke test
+(`test_oracle_cli_smoke.py`, 4 tests). Suite: 146/146. Before that: Engine refactor Phase 5 (item 4) - DONE 2026-06-19.
 `route_query` moved to `assessor/query_router.py` (Assessor-owned). Query path
 now uses `DBOracle.get_edge_maps()` - no `GraphBundle`/engine dependency. `task_generator`
 and `task_rereferencer` take `oracle` directly. `api/oracle_router.py` is now a thin
@@ -280,11 +284,12 @@ correctly" which is now done).
 REASONING LAYER: expansion trace capture implemented [x], expose
 expansion reasoning view (node_reasons -> API surface, `_route_expand()`
 returns seed_paths/expansion trace/node inclusion reasons in
-`execution_plan["trace"]`) [x]. Still open: [ ] answer architectural
-questions from graph truth, [ ] expose deterministic reasoning primitives
-as named functions (seed selection explanation / expansion justification
-trace / intent->primitive mapping trace - the data exists in the trace
-dict, just not as named callable primitives yet), [ ] identify structural
+`execution_plan["trace"]`) [x]. Deterministic reasoning primitives exposed
+as named callables on `QuerySessionResult` [x]: `seed_explanation()`,
+`expansion_explanation()`, `intent_mapping_trace()`, `node_reasons()`,
+`seed_paths()`, `expansion_edges()` - all backed by live trace data
+(verified 2026-06-19, Phase 5 DONE). Still open: [ ] answer architectural
+questions from graph truth, [ ] identify structural
 influence and dependency zones, [ ] support oracle-style interrogation
 queries, [ ] oracle execution feedback loop (query -> refinement signal).
 
@@ -593,10 +598,12 @@ distinct angles folded in.
      by moving routing to assessor layer. Remaining: enforce the DB-only
      boundary more formally, formalize the contracts layer. Still open as
      future cleanup (low urgency now that the query path is clean).
-4. **Engine refactor Phase 5:** formalize the existing trace data as
-   first-class named API functions (`expansion_explanation()`,
-   `seed_explanation()`, `intent_mapping_trace()`) - the underlying data
-   already exists in `execution_plan["trace"]`.
+4. **Engine refactor Phase 5: DONE 2026-06-19.** Named reasoning primitives
+   (`seed_explanation()`, `expansion_explanation()`, `intent_mapping_trace()`,
+   `node_reasons()`, `seed_paths()`, `expansion_edges()`) are implemented on
+   `QuerySessionResult` and backed by live trace data from `_route_expand()`.
+   Verified: `node_reasons` and `seed_paths` are populated by `_route_expand`
+   and flow through `route_query` -> `run_query` -> `QuerySessionResult`.
 5. **Trace-weighted ranking (explicitly deferred - merges old items 6 and
    8, same upgrade described from two angles):** replace heuristic
    pruning/scoring with trace-weighted ranking derived from expansion
@@ -642,13 +649,19 @@ distinct angles folded in.
    graph truth directly; identify structural influence/dependency zones;
    support oracle-style interrogation queries; an oracle execution
    feedback loop (query -> refinement signal).
-8. **Test suite hygiene:** project symbol ordering must be DB-
-   deterministic (no insertion-order reliance anywhere); a minimal oracle
-   CLI smoke test harness; alias_map normalization consistency (currently
-   "under observation," not yet confirmed stable); unify the identity
-   factory entrypoint to a single creation path; unify classification
-   imports to a single source path; eliminate residual dual routing
-   paths in tests.
+8. **Test suite hygiene:**
+   - [x] Oracle CLI smoke test harness: DONE 2026-06-19.
+     `tests/regression/test_oracle_cli_smoke.py` (4 tests). Exercises
+     `DBOracle` + `route_query` + `QuerySession.run_query` against the
+     real self-corpus DB. Skips gracefully if DB absent. Suite: 146/146.
+   - [x] Symbol ordering DB-deterministic: verified 2026-06-19. All
+     production queries use `ORDER BY`; Python sorts used for
+     provenance ranking. No test asserts insertion-order positions.
+   - [ ] alias_map normalization consistency (under observation, not yet
+     confirmed stable).
+   - [ ] Unify identity factory entrypoint to a single creation path.
+   - [ ] Unify classification imports to a single source path.
+   - [ ] Eliminate residual dual routing paths in tests.
 9. **Truth Kernel Tier 3/4 (system replacement / closed-world complete):**
    all items open and explicitly future-state - Assessor fully on the
    Truth Layer exclusively, Oracle fully routed through it, engine
