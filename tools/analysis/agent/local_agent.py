@@ -24,6 +24,7 @@ from tools.analysis.oracle.db_oracle import DBOracle
 from tools.analysis.assessor.assessor import Assessor
 from tools.analysis.agent.agent_resolver import (
     parse_needs, resolve_and_expand, facts_to_text, ground_question,
+    detect_heuristic,
 )
 from tools.analysis.agent.knowledge_status import coverage_summary, suggest_followups
 
@@ -140,14 +141,17 @@ def _answer(
     if verbose and grounding:
         print(f"\n[phase0-ground]\n{grounding}\n[/phase0-ground]", flush=True)
 
-    # Phase 1: DECOMPOSE
-    decompose_msgs = _decompose_prompt(user_input, history, grounding=grounding)
-    needs_text = _call_ollama(decompose_msgs, verbose=verbose, label="phase1-decompose")
-
-    if needs_text.startswith("ERROR:"):
-        return needs_text, history
-
-    needs = parse_needs(needs_text)
+    # Phase 1: DECOMPOSE - try named heuristic first, fall back to Ollama
+    needs = detect_heuristic(user_input)
+    if needs:
+        if verbose:
+            print(f"\n[heuristic matched] {needs}", flush=True)
+    else:
+        decompose_msgs = _decompose_prompt(user_input, history, grounding=grounding)
+        needs_text = _call_ollama(decompose_msgs, verbose=verbose, label="phase1-decompose")
+        if needs_text.startswith("ERROR:"):
+            return needs_text, history
+        needs = parse_needs(needs_text)
 
     if verbose:
         print(f"\n[needs parsed] {needs}", flush=True)

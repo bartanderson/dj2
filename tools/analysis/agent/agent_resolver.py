@@ -218,6 +218,78 @@ _PATTERNS = [
 ]
 
 
+# ------------------------------------------------------------------
+# Named heuristics: high-level query patterns → pre-wired NEED sequences
+# Checked before Phase 1 (Ollama decompose). If matched, the NEED lines
+# are returned directly and the Ollama call is skipped entirely.
+# Each entry: (regex, builder_fn) where builder_fn(match) -> list[str]
+# ------------------------------------------------------------------
+
+_HEURISTICS: list[tuple] = [
+    # "trace X" / "how does X work" / "walk me through X" / "trace implementation of X"
+    (
+        re.compile(
+            r"(?:trace(?:\s+implementation\s+of)?|how\s+does\s+|walk\s+(?:me\s+)?through\s+)"
+            r"\s*['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"intent of {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(1)}",
+        ],
+    ),
+    # "what does X.py do" / "describe X.py" / "explain X.py" - file form FIRST
+    (
+        re.compile(
+            r"(?:what\s+does\s+|describe\s+(?:file\s+)?|explain\s+)"
+            r"['\"]?([A-Za-z_][\w/\\]*\.py)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"what does {m.group(1)} do",
+            f"symbols in {m.group(1)}",
+        ],
+    ),
+    # "what does X do" / "explain X" / "purpose of X" (symbol form - no .py)
+    (
+        re.compile(
+            r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"intent of {m.group(1)}",
+            f"brief for {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+    # "what calls X" / "callers of X" - direct shorthand (already a single NEED but
+    # heuristic adds symbol search for context)
+    (
+        re.compile(r"(?:what\s+calls|callers?\s+of)\s+['\"]?([A-Za-z_]\w*)['\"]?", re.I),
+        lambda m: [
+            f"what calls {m.group(1)}",
+            f"symbols named {m.group(1)}",
+        ],
+    ),
+]
+
+
+def detect_heuristic(question: str) -> list[str] | None:
+    """
+    Check if the question matches a named heuristic pattern.
+    Returns pre-wired NEED lines if matched, None otherwise.
+    Tries patterns in order; first match wins.
+    """
+    for pattern, builder in _HEURISTICS:
+        m = pattern.search(question)
+        if m:
+            return builder(m)
+    return None
+
+
 def parse_needs(model_output: str) -> list[str]:
     """
     Extract NEED lines from Phase 1 model output.
