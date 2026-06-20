@@ -226,6 +226,42 @@ _PATTERNS = [
 # ------------------------------------------------------------------
 
 _HEURISTICS: list[tuple] = [
+    # --- Connection (two-symbol) heuristics first - must beat single-symbol patterns ---
+
+    # "how does X relate to Y" / "how does X connect to Y" / "how does X reach Y"
+    (
+        re.compile(
+            r"how\s+does\s+['\"]?([A-Za-z_]\w*)['\"]?\s+"
+            r"(?:relate\s+to|connect\s+to|reach)\s+"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"path from {m.group(1)} to {m.group(2)}",
+            f"what calls {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(2)}",
+            f"callees of {m.group(2)}",
+        ],
+    ),
+    # "what connects X and Y" / "link X to Y" / "interface between X and Y"
+    (
+        re.compile(
+            r"(?:what\s+connects?\s+|link\s+|interface\s+between\s+)"
+            r"['\"]?([A-Za-z_]\w*)['\"]?\s+(?:to|and|with)\s+['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"path from {m.group(1)} to {m.group(2)}",
+            f"what calls {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(2)}",
+            f"callees of {m.group(2)}",
+        ],
+    ),
+
+    # --- Single-symbol depth heuristics ---
+
     # "trace X" / "how does X work" / "walk me through X" / "trace implementation of X"
     (
         re.compile(
@@ -240,7 +276,7 @@ _HEURISTICS: list[tuple] = [
             f"what calls {m.group(1)}",
         ],
     ),
-    # "what does X.py do" / "describe X.py" / "explain X.py" - file form FIRST
+    # "what does X.py do" / "describe X.py" / "explain X.py" - file form before symbol
     (
         re.compile(
             r"(?:what\s+does\s+|describe\s+(?:file\s+)?|explain\s+)"
@@ -252,7 +288,7 @@ _HEURISTICS: list[tuple] = [
             f"symbols in {m.group(1)}",
         ],
     ),
-    # "what does X do" / "explain X" / "purpose of X" (symbol form - no .py)
+    # "what does X do" / "explain X" / "purpose of X" (symbol form)
     (
         re.compile(
             r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)['\"]?([A-Za-z_]\w*)['\"]?",
@@ -265,13 +301,50 @@ _HEURISTICS: list[tuple] = [
             f"findings for {m.group(1)}",
         ],
     ),
-    # "what calls X" / "callers of X" - direct shorthand (already a single NEED but
-    # heuristic adds symbol search for context)
+    # "what calls X" / "callers of X"
     (
         re.compile(r"(?:what\s+calls|callers?\s+of)\s+['\"]?([A-Za-z_]\w*)['\"]?", re.I),
         lambda m: [
             f"what calls {m.group(1)}",
             f"symbols named {m.group(1)}",
+        ],
+    ),
+
+    # --- Breadth / survey heuristics ---
+
+    # "what exists for X" / "find everything about X" / "what's related to X"
+    # / "survey X" / "what's there for X"
+    (
+        re.compile(
+            r"(?:what\s+exists?\s+for\s+|"
+            r"find\s+(?:everything|all)\s+(?:about|for|related\s+to)\s+|"
+            r"what'?s?\s+(?:there\s+for|related\s+to)\s+|"
+            r"survey\s+)"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+
+    # "how would I add X" / "how do I implement X" / "how should I build X"
+    # / "where would I put X" / "how to extend X"
+    # Skips leading articles (a, an, the) before the subject word.
+    (
+        re.compile(
+            r"(?:how\s+(?:would\s+I|do\s+I|should\s+I|to)\s+(?:add|implement|extend|build|create|integrate)|"
+            r"where\s+would\s+I\s+put)"
+            r"\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+            f"entry points",
+            f"findings for {m.group(1)}",
         ],
     ),
 ]
