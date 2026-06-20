@@ -515,17 +515,32 @@ class Assessor:
     ) -> dict:
         """
         Return (and cache) an AI semantic summary for `subject`.
-        `source_text` is the raw content to summarise - the caller reads
-        the file; this method does not touch the filesystem directly.
+        For kind='file', reads the file automatically if source_text is
+        not supplied - resolves relative paths against the project root.
         Returns a dict with content, source_hash, model_version,
         generated_at, cache_hit.
         """
         from tools.analysis.persistence.persistence_engine import ensure_schema
         ensure_schema(self.oracle.conn)
+        if kind == "file" and not source_text:
+            source_text = self._read_source_file(subject)
         return _get_or_generate_summary(
             self.oracle.conn, subject, kind, source_text,
             force_refresh=force_refresh,
         )
+
+    def _read_source_file(self, subject: str) -> str:
+        """Read source file content, resolving relative paths via project root."""
+        from pathlib import Path
+        p = Path(subject)
+        if not p.is_absolute():
+            root = self.oracle.get_project_root()
+            if root:
+                p = Path(root) / subject
+        try:
+            return p.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return ""
 
     def semantic_summary_if_fresh(
         self,

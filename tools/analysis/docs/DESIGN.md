@@ -772,3 +772,214 @@ The three game corpus DBs (`world_corpus.db`, `engine_corpus.db`,
 once `_persist_graph_edges` supports per-file edge management (TRACKER item 3).
 Because `knowledge.db` is separate, that merge is a pure structural operation -
 findings survive untouched, no migration required.
+
+---
+
+## 8. Local conversational agent (design - 2026-06-20)
+
+### Purpose
+
+A local, Ollama-powered conversational agent that lets Bart interrogate any
+corpus DB in plain English, with conversation history held in memory for the
+session. The goal is to replace the need to involve Claude for routine
+codebase questions - "what touches encounters", "what is travel_to_location
+responsible for", "what do we already know about character creation" - by
+giving the model sharp, focused tools backed by the analysis layers already
+built, rather than asking it to reason over raw code.
+
+The model is `llama3.2:3b` (already running locally for semantic summaries
+and query compilation). It is small and will not reason well over large
+inputs. The design compensates by keeping every tool's output small and flat,
+and by decomposing questions into sequences of focused tool calls rather than
+one large context dump. The model orchestrates; the tools do the work.
+
+### Conversation model
+
+- History is a simple in-memory list of `{role, content}` messages for the
+  session. Volatile - intentionally cheap to restart.
+- Each turn: user input appended, model responds, model may call tools,
+  tool results fed back, model synthesizes final answer.
+- Pattern: ReAct loop (Reason -> Act -> Observe -> repeat until answer).
+  Model outputs a structured tool call, we execute it, feed the result back
+  as an observation, model decides next step or answers.
+- Session ends when user types `quit` / `exit` / `q`. No persistence of
+  conversation history across sessions - the knowledge.db is the durable
+  layer for anything worth keeping.
+
+### Tool set - each tool returns a small flat result
+
+**Discovery tools** - find what exists
+
+1. `search_symbols(query: str) -> list[{name, file, line, type}]`
+   Calls `oracle.find_symbols(query)`. Returns up to 20 matching symbols
+   across the corpus. Used when the model needs to locate a symbol by name
+   or partial name before doing anything else with it.
+
+2. `search_files(query: str) -> list[str]`
+   Calls `oracle.find_files(query)`. Returns matching file paths. Used for
+   "what files are in the encounter system" style questions.
+
+3. `list_callers(symbol: str) -> list[{caller, file, line}]`
+   Direct callers only - `graph_edges WHERE callee = ? OR callee LIKE
+   '%.symbol'` (same fix as task_generator). Returns who calls this symbol,
+   directly and by qualified name. Small result: direct graph edges only,
+   not the full impact zone.
+
+4. `list_callees(symbol: str) -> list[{callee, file, line}]`
+   What this symbol calls - `graph_edges WHERE caller = ?`. Lets the model
+   trace a call chain forward one step at a time.
+
+5. `symbols_in_file(file_path: str) -> list[{name, type, line, has_docstring}]`
+   All functions and classes defined in a file. Used when the model needs
+   to understand what a file contains before deciding which symbol to dig
+   into. `has_docstring` flag tells it whether intent data is available
+   without fetching it yet.
+
+**Understanding tools** - what does it mean
+
+6. `describe_file(file_path: str) -> str`
+   Calls `Assessor.semantic_summary(file_path, kind='file')`. Returns the
+   Ollama-generated summary (now working - auto-reads source). If Ollama
+   falls back to the heuristic stub, the result prefix says so and the
+   model should note it is structural only. This is the primary tool for
+   "what does X do" questions at the file level.
+
+7. `symbol_intent(symbol: str) -> {name, file, line, docstring} | None`
+   Returns the docstring for a specific function or class from the
+   `functions`/`classes` tables. Layer 2. Returns None if no docstring
+   exists - model should note the gap rather than guessing.
+
+8. `symbol_brief(symbol: str) -> str`
+   Calls `Assessor.generate_task_md(symbol)`. Returns the full two-tier
+   brief: direct callers (confirmed) + impact zone. The richest single-symbol
+   output the system can produce. Used when the model needs a complete
+   picture of one symbol rather than building it up tool by tool.
+
+**Knowledge tools** - what do we already know, what should we remember
+
+9. `get_findings(symbol: str) -> list[{kind, content, provenance, stale}]`
+   Calls `Assessor.get_artifacts(symbol)` against knowledge.db.
+   Returns stored artifacts provenance-ranked (human-confirmed first).
+   `stale=True` when `needs_review=1`. Model should surface stale findings
+   explicitly rather than treating them as current.
+
+10. `store_finding(symbol: str, kind: str, content: str) -> str`
+    Calls `Assessor.add_artifact(symbol, kind, content, provenance='ai-generated')`.
+    Writes a finding the model has derived during the session to knowledge.db
+    for future sessions. Model should use this when it has synthesized
+    something non-obvious that would cost tool calls to re-derive later.
+    Valid kinds: `file_purpose / strategy_decision / query_finding /
+    design_note / known_issue`. Returns confirmation string.
+    Provenance is always `ai-generated` - human can upgrade via direct DB
+    edit or future tool.
+
+**Navigation tools** - help decompose
+
+11. `files_in_directory(path: str) -> list[str]`
+    Lists `.py` files under a given directory path (e.g. `world/`,
+    `dungeon_neo/`). Does not recurse past one level. Used when the
+    model needs to survey a subsystem before picking which file to
+    describe or which symbol to chase.
+
+12. `ask_truth_layer(question: str) -> str`
+    Calls `Assessor.ask(question)` - the existing NL -> Truth Kernel
+    algebra path. Returns a structured answer from the 7 truth views
+    (STRUCTURE / STABILITY / INTEGRITY / SUMMARY / SUBSYSTEM / ROLE /
+    INTENT). Use when the question is about the codebase's structural
+    health, stability, or a system-wide view - not for per-symbol questions,
+    which the other tools handle more directly.
+
+### Tool call protocol (ReAct pattern for llama3.2:3b)
+
+The model does not natively output JSON tool calls reliably at 3b scale.
+We use a simple text protocol the system prompt defines and we parse:
+
+```
+TOOL: tool_name
+ARGS: {"key": "value"}
+```
+
+The agent loop:
+1. Build prompt from system prompt + conversation history
+2. Call Ollama, stream response
+3. Parse for TOOL/ARGS blocks in the response
+4. If found: execute tool, append observation to history, loop back to 2
+5. If not found (model is answering): print response, append to history,
+   wait for next user input
+
+The system prompt instructs the model to use exactly one tool call per
+response turn, reason briefly about why before calling it, and synthesize
+a final plain-English answer once it has enough information. This keeps
+individual Ollama calls small and the reasoning transparent.
+
+### System prompt design
+
+The system prompt must be short enough that llama3.2:3b can hold it in
+context alongside the conversation history and tool results without
+degrading. Key elements:
+
+- One-paragraph role statement: "You are a codebase analysis assistant for
+  a Python dungeon-master game project. You have tools to query a structural
+  analysis DB. Use them to answer questions factually. Do not guess - if you
+  don't know, call a tool."
+- Tool list: name, one-line description, argument names. No examples in the
+  system prompt - examples go in the tool protocol section.
+- Tool call format: the exact TOOL/ARGS syntax, with the rule "one tool
+  call per response, reason briefly first."
+- Synthesis rule: "Once you have enough information, answer in plain
+  English. Note when a finding is stale or when a tool returned no results."
+- Storage rule: "If you derive a non-obvious finding, store it with
+  store_finding before answering."
+
+### File layout
+
+```
+tools/analysis/
+  agent/
+    local_agent.py     - the agent loop, tool dispatch, Ollama calls
+    agent_tools.py     - tool function implementations (wrappers over existing layers)
+    agent_prompt.py    - system prompt and tool protocol definitions
+```
+
+`agent_tools.py` is the piece to build and test first, in isolation from
+the agent loop. Each tool is a plain function taking a corpus oracle + an
+input dict and returning a plain string or list. Test each tool against
+a real corpus DB (world_corpus.db) with known expected outputs before
+wiring into the agent loop.
+
+### Build order
+
+1. `agent_tools.py` - all 12 tool functions, each independently testable.
+   Verify each against world_corpus.db before moving on. Known expected
+   outputs: `search_symbols('encounter')` should return ~14 symbols;
+   `list_callers('get_ai_response')` should return handle_movement +
+   _generate_via_ai; `describe_file('world/encounter_generator.py')` should
+   return the Ollama summary we already confirmed works.
+
+2. `agent_prompt.py` - system prompt + tool call format. Tune the tool call
+   parsing against real llama3.2:3b output to confirm the TOOL/ARGS protocol
+   is reliably parseable before building the loop around it.
+
+3. `local_agent.py` - the ReAct loop. Wire tool dispatch, Ollama calls,
+   conversation history. Start with single-turn (one tool call per question)
+   before enabling multi-turn chains.
+
+4. Evaluation sessions - run real questions you would actually ask ("what
+   is the encounter system", "what calls get_ai_response", "what do we know
+   about character creation") and evaluate answers against your knowledge of
+   the code. Tune system prompt and tool set based on what breaks.
+
+5. `store_finding` tuning - verify the model actually uses it when it should
+   and doesn't use it for noise. May need a prompt nudge like "store findings
+   that took more than 2 tool calls to derive."
+
+### What this is not
+
+- Not a code editor or code writer. It answers questions, it does not
+  produce diffs or edits.
+- Not a replacement for ingestion. It queries existing DBs; it does not
+  re-ingest on the fly.
+- Not a replacement for task.md generation. `symbol_brief` calls the
+  existing generator; the agent doesn't reimplement it.
+- Not persistent across sessions by design. The knowledge.db is the
+  persistence layer; conversation history is intentionally volatile.

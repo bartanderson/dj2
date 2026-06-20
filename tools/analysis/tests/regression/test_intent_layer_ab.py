@@ -286,6 +286,42 @@ def test_add_artifact_invalid_provenance_raises():
         pass
 
 
+def test_assessor_semantic_summary_reads_file_automatically():
+    """Assessor.semantic_summary with kind='file' must read source without caller passing text."""
+    import tempfile, os
+    from tools.analysis.oracle.db_oracle import DBOracle
+    from tools.analysis.assessor.assessor import Assessor
+
+    # Write a real source file the assessor can read
+    src = "def greet():\n    '''Say hello.'''\n    return 'hello'\n"
+    with tempfile.NamedTemporaryFile(suffix=".py", delete=False, mode="w", encoding="utf-8") as f:
+        src_path = f.name
+        f.write(src)
+
+    tmp_db = tempfile.mktemp(suffix=".db")
+    try:
+        oracle = DBOracle(tmp_db)
+        ensure_schema(oracle.conn)
+        # semantic_summaries lives in the knowledge conn - wire it up
+        from tools.analysis.intent.semantic_summary import ensure_semantic_summaries_table
+        cur = oracle.conn.cursor()
+        ensure_semantic_summaries_table(cur)
+        oracle.conn.commit()
+        a = Assessor(oracle)
+        # Pass the absolute path directly - no source_text supplied
+        result = a.semantic_summary(src_path, kind="file")
+        # Must not be the "no source text provided" stub
+        assert "[no source text provided" not in result["content"], (
+            f"Assessor did not read the file: {result['content']}"
+        )
+        assert result["content"].strip() != ""
+    finally:
+        oracle.conn.close()
+        os.remove(src_path)
+        if os.path.exists(tmp_db):
+            os.remove(tmp_db)
+
+
 # ------------------------------------------------------------------
 # run directly
 # ------------------------------------------------------------------

@@ -125,7 +125,13 @@ history: HISTORY.md.
 
 **Direction and impact (opinionated - read before picking a task):**
 
-The stated end-goal is an AI agent that can reason about the game codebase.
+The stated end-goal is a local conversational agent (DESIGN.md section 8)
+that Bart can run against any corpus DB to answer plain-English questions
+about his game codebase without needing Claude. Design locked 2026-06-20.
+Build order: agent_tools.py -> agent_prompt.py -> local_agent.py ->
+evaluation sessions. See DESIGN.md section 8 for full spec.
+
+Previous open items below are still valid but subordinate to this goal.
 Every open item falls into one of three buckets:
 
 - **Capability work** - unlocks something the agent cannot do today. High
