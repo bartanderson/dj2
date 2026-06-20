@@ -1,7 +1,10 @@
 # tools/analysis/agent/local_agent.py
 #
 # Local conversational agent backed by Ollama (llama3.2:3b).
-# DESIGN.md section 8.
+# Three-phase pipeline (DESIGN.md section 8):
+#   Phase 1 DECOMPOSE - AI lists what it needs (NEED: lines)
+#   Phase 2 RESOLVE   - deterministic pattern router runs tool calls
+#   Phase 3 ASSEMBLE  - AI reads facts and writes plain English answer
 #
 # Usage:
 #   python tools/analysis/agent/local_agent.py world_corpus.db
@@ -9,47 +12,102 @@
 #
 # Type 'quit', 'exit', or 'q' to end the session.
 # Type 'clear' to reset conversation history.
-# Type 'tools' to list available tools.
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 
 import requests
 
 from tools.analysis.oracle.db_oracle import DBOracle
 from tools.analysis.assessor.assessor import Assessor
-from tools.analysis.agent.agent_tools import dispatch, TOOLS
-from tools.analysis.agent.agent_prompt import (
-    build_messages, parse_tool_call, format_observation,
+from tools.analysis.agent.agent_resolver import (
+    parse_needs, resolve_and_expand, facts_to_text, ground_question,
 )
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3.2:3b"
-OLLAMA_TIMEOUT = 30
-MAX_TOOL_TURNS = 8  # max tool calls per user question before forcing an answer
+OLLAMA_TIMEOUT = 60
+
+
+# ------------------------------------------------------------------
+# Phase 1 prompt - DECOMPOSE
+# ------------------------------------------------------------------
+
+_DECOMPOSE_SYSTEM = """\
+You are a code analysis assistant. Your job is to list what information
+you need to answer a question about a game codebase. Do NOT answer the
+question yet. Just list your needs.
+
+Output exactly one NEED: line per piece of information needed.
+Use only these patterns (copy exactly):
+  NEED: files in <directory>
+  NEED: files matching <substring>
+  NEED: symbols named <name>
+  NEED: symbols in <file.py>
+  NEED: what calls <symbol>
+  NEED: callees of <symbol>
+  NEED: what does <file.py> do
+  NEED: intent of <symbol>
+  NEED: findings for <symbol>
+  NEED: brief for <symbol>
+
+Extract all symbol and file names explicitly from the question.
+Output only NEED: lines, nothing else."""
+
+
+def _decompose_prompt(
+    question: str,
+    history: list[dict],
+    grounding: str = "",
+) -> list[dict]:
+    messages = [{"role": "system", "content": _DECOMPOSE_SYSTEM}]
+    for turn in history[-6:]:  # last 3 Q/A pairs
+        messages.append({"role": turn["role"], "content": turn["content"]})
+    user_content = question
+    if grounding:
+        user_content = f"{question}\n\n{grounding}"
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
+# ------------------------------------------------------------------
+# Phase 3 prompt - ASSEMBLE
+# ------------------------------------------------------------------
+
+_ASSEMBLE_SYSTEM = """\
+You are a code analysis assistant. Answer the question using ONLY
+the facts provided below. Be concise and direct. If the facts do not
+contain enough information to answer, say so."""
+
+
+def _assemble_prompt(question: str, facts_text: str, history: list[dict]) -> list[dict]:
+    messages = [{"role": "system", "content": _ASSEMBLE_SYSTEM}]
+    for turn in history[-6:]:
+        messages.append({"role": turn["role"], "content": turn["content"]})
+    content = f"Question: {question}\n\nFacts retrieved from the codebase:\n{facts_text}"
+    messages.append({"role": "user", "content": content})
+    return messages
 
 
 # ------------------------------------------------------------------
 # Ollama call
 # ------------------------------------------------------------------
 
-def _call_ollama(messages: list[dict], verbose: bool = False) -> str:
-    """Call Ollama chat endpoint. Returns the model's response text."""
+def _call_ollama(messages: list[dict], verbose: bool = False, label: str = "") -> str:
     payload = {
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": False,
-        "options": {"temperature": 0.1},  # low temp for deterministic tool calls
+        "options": {"temperature": 0.1},
     }
     try:
         resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT)
         resp.raise_for_status()
         text = resp.json()["message"]["content"].strip()
-        if verbose:
-            print(f"\n[model raw]\n{text}\n[/model raw]", flush=True)
+        if verbose and label:
+            print(f"\n[{label}]\n{text}\n[/{label}]", flush=True)
         return text
     except requests.exceptions.ConnectionError:
         return "ERROR: Ollama is not running. Start it with: ollama serve"
@@ -60,7 +118,7 @@ def _call_ollama(messages: list[dict], verbose: bool = False) -> str:
 
 
 # ------------------------------------------------------------------
-# Single question/answer cycle (ReAct loop)
+# Single question/answer cycle (three-phase)
 # ------------------------------------------------------------------
 
 def _answer(
@@ -71,58 +129,49 @@ def _answer(
     verbose: bool = False,
 ) -> tuple[str, list[dict]]:
     """
-    Run the ReAct loop for one user question.
+    Run three-phase pipeline for one user question.
     Returns (final_answer, updated_history).
-    History is extended in place with all turns (user, tool calls, observations,
-    final assistant response) so follow-up questions have full context.
+    History is a list of {role, content} dicts (user/assistant pairs),
+    extended in place with the (question, answer) pair.
     """
-    # Working copy of messages for this question's tool chain
-    messages = build_messages(history, user_input)
-    tool_turns = 0
+    # Phase 0: GROUND
+    grounding = ground_question(user_input, oracle, assessor)
+    if verbose and grounding:
+        print(f"\n[phase0-ground]\n{grounding}\n[/phase0-ground]", flush=True)
 
-    while tool_turns < MAX_TOOL_TURNS:
-        response = _call_ollama(messages, verbose=verbose)
+    # Phase 1: DECOMPOSE
+    decompose_msgs = _decompose_prompt(user_input, history, grounding=grounding)
+    needs_text = _call_ollama(decompose_msgs, verbose=verbose, label="phase1-decompose")
 
-        if response.startswith("ERROR:"):
-            return response, history
+    if needs_text.startswith("ERROR:"):
+        return needs_text, history
 
-        tool_name, args = parse_tool_call(response)
+    needs = parse_needs(needs_text)
 
-        if tool_name is None:
-            # Model is giving a final answer - no tool call in response
-            history.append({"role": "user",    "content": user_input})
-            history.append({"role": "assistant","content": response})
-            return response, history
+    if verbose:
+        print(f"\n[needs parsed] {needs}", flush=True)
 
-        # Model wants to call a tool
+    # Phase 2: RESOLVE
+    if needs:
+        facts = resolve_and_expand(needs, oracle, assessor)
         if verbose:
-            print(f"  [tool] {tool_name}({json.dumps(args)})", flush=True)
+            for f in facts:
+                print(f"  [tool={f['tool']} args={f['args']}] {f['result'][:120]}", flush=True)
+        facts_text = facts_to_text(facts)
+    else:
+        facts_text = "(no structured needs identified - answering from general knowledge)"
 
-        tool_result = dispatch(tool_name, args, oracle, assessor)
+    # Phase 3: ASSEMBLE
+    assemble_msgs = _assemble_prompt(user_input, facts_text, history)
+    answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
 
-        if verbose:
-            print(f"  [result] {tool_result[:200]}", flush=True)
-
-        # Feed result back as the next message and loop
-        observation = format_observation(tool_name, tool_result)
-        messages.append({"role": "assistant", "content": response})
-        messages.append({"role": "user",      "content": observation})
-        tool_turns += 1
-
-    # Hit the tool limit - ask for a final answer with what we have
-    messages.append({
-        "role": "user",
-        "content": "You have used enough tools. Please give your final answer now based on what you have found.",
-    })
-    response = _call_ollama(messages, verbose=verbose)
-
-    history.append({"role": "user",    "content": user_input})
-    history.append({"role": "assistant","content": response})
-    return response, history
+    history.append({"role": "user",      "content": user_input})
+    history.append({"role": "assistant", "content": answer})
+    return answer, history
 
 
 # ------------------------------------------------------------------
-# Main loop
+# Main REPL
 # ------------------------------------------------------------------
 
 def run(db_path: str, verbose: bool = False) -> None:
@@ -137,7 +186,7 @@ def run(db_path: str, verbose: bool = False) -> None:
     root = oracle.get_project_root() or db_path
     print(f"Project root:   {root}")
     print(f"Model:          {OLLAMA_MODEL}")
-    print(f"\nType your question. 'tools' to list tools. 'clear' to reset. 'quit' to exit.\n")
+    print(f"\nType your question. 'clear' to reset. 'quit' to exit.\n")
 
     history: list[dict] = []
 
@@ -160,13 +209,6 @@ def run(db_path: str, verbose: bool = False) -> None:
             print("[conversation history cleared]\n")
             continue
 
-        if user_input.lower() == "tools":
-            print("\nAvailable tools:")
-            for name in TOOLS:
-                print(f"  {name}")
-            print()
-            continue
-
         print("\nThinking...", flush=True)
         answer, history = _answer(user_input, history, oracle, assessor, verbose=verbose)
         print(f"\nAgent: {answer}\n")
@@ -180,14 +222,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Local codebase analysis agent backed by Ollama."
     )
-    parser.add_argument(
-        "db_path",
-        help="Path to corpus DB (e.g. world_corpus.db)",
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show raw model output and tool calls",
-    )
+    parser.add_argument("db_path", help="Path to corpus DB (e.g. world_corpus.db)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show phase outputs and tool calls")
     args = parser.parse_args()
     run(args.db_path, verbose=args.verbose)

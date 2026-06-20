@@ -35,7 +35,19 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Builtin noise filter extended - DONE 2026-06-20. `symbol_noise.py`
+**Recently done:** Expansion noise + glob fixes - DONE 2026-06-20. `_symbols_from_result`
+now filters dunder methods and common boilerplate (`to_dict`, `from_dict`, etc.) before
+expanding. `resolve_need` strips glob chars (`*`, `?`) from `search_files`/`search_symbols`
+queries so `encounter_*` becomes a valid substring search. 5 new tests. Agent suite: 57/57.
+Before that: Phase 0 GROUND - DONE 2026-06-20. `ground_question()` extracts keywords
+from the question, runs `search_symbols` + `search_files` on each, injects real corpus names
+into the Phase 1 prompt so the model selects from actual names instead of inventing them.
+7 new tests. Suite: 293/293. Before that: Phase 2b auto-expansion - DONE 2026-06-20. `expand_facts()` follows
+leads from Phase 2 results: symbols -> callers+intent, files -> symbols_in_file. 7 new tests.
+Suite: 287/287. Before that: Three-phase agent pipeline - DONE 2026-06-20. `agent_resolver.py` written
+(pattern router: NEED: lines -> tool calls, dedup, pure Python, 33 tests). `local_agent.py`
+rebuilt around DECOMPOSE/RESOLVE/ASSEMBLE phases (5 new smoke tests, old ReAct tests replaced).
+Full suite: 280/280. Before that: Builtin noise filter extended - DONE 2026-06-20. `symbol_noise.py`
 now checks Python's `builtins` module as a secondary filter, removing bare Python
 builtin names (e.g. `all`, `len`, `range`) from impact zones even when they appear
 in mixed DB buckets. Bare method names like `get` (dict.get()) are a separate class

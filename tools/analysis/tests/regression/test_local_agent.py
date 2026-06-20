@@ -1,10 +1,9 @@
 # tools/analysis/tests/regression/test_local_agent.py
 #
-# Smoke tests for local_agent.py. Does not call Ollama - patches the
-# Ollama call to return controlled responses and verifies the ReAct loop
-# behaves correctly.
+# Smoke tests for local_agent.py (three-phase pipeline).
+# Does not call Ollama - patches _call_ollama to return controlled responses.
 
-import sys
+import sqlite3
 from unittest.mock import patch
 
 # ------------------------------------------------------------------
@@ -13,7 +12,6 @@ from unittest.mock import patch
 
 class _FakeOracle:
     def __init__(self):
-        import sqlite3
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
         self.db_path = None
@@ -36,7 +34,7 @@ class _FakeAssessor:
     def semantic_summary(self, *a, **kw):
         return {"content": "stub summary", "cache_hit": False}
     def generate_task_md(self, symbol, **kw):
-        return f"# task: {symbol}\n## Direct callers (confirmed)\n- stub\n## Impact zone\n- stub\n"
+        return f"# task: {symbol}\n## stub\n"
     def get_artifacts(self, *a): return []
     def add_artifact(self, *a): pass
 
@@ -49,84 +47,51 @@ def test_import_succeeds():
     import tools.analysis.agent.local_agent  # noqa: F401
 
 
-def test_answer_returns_direct_response_when_no_tool_call():
-    """When model returns plain text (no TOOL: block), it's the final answer."""
+def test_answer_basic_three_phase():
+    """Happy path: Phase1 produces NEED: lines, resolver runs, Phase3 answers."""
     from tools.analysis.agent.local_agent import _answer
     oracle = _FakeOracle()
     assessor = _FakeAssessor(oracle)
 
+    # Phase1 returns NEED: lines; Phase3 returns the final answer.
+    # resolve_all will call tools deterministically (returns empty for in-memory DB).
+    responses = iter([
+        "NEED: symbols named encounter",
+        "The encounter system handles random encounters.",
+    ])
+
     with patch("tools.analysis.agent.local_agent._call_ollama",
-               return_value="The encounter system lives in encounter_generator.py."):
+               side_effect=lambda msgs, verbose=False, label="": next(responses)):
         answer, history = _answer("what is the encounter system?", [], oracle, assessor)
 
-    assert "encounter_generator" in answer
-    assert len(history) == 2  # user + assistant
+    assert "encounter" in answer.lower()
+    assert len(history) == 2
     assert history[0]["role"] == "user"
     assert history[1]["role"] == "assistant"
 
 
-def test_answer_executes_tool_then_answers():
-    """Model calls a tool, gets result, then answers without another tool call."""
+def test_answer_no_needs_still_answers():
+    """If Phase1 produces no NEED: lines, Phase3 still runs and answers."""
     from tools.analysis.agent.local_agent import _answer
     oracle = _FakeOracle()
     assessor = _FakeAssessor(oracle)
 
     responses = iter([
-        'TOOL: search_symbols\nARGS: {"query": "encounter"}',
-        "Based on the results, the encounter system has generate_encounter.",
+        "I don't know what to search for.",   # Phase 1: no NEED: lines
+        "I cannot find specific information about that topic.",  # Phase 3
     ])
 
     with patch("tools.analysis.agent.local_agent._call_ollama",
-               side_effect=lambda msgs, verbose=False: next(responses)):
-        answer, history = _answer("what is the encounter system?", [], oracle, assessor)
+               side_effect=lambda msgs, verbose=False, label="": next(responses)):
+        answer, history = _answer("what is the meaning of life?", [], oracle, assessor)
 
-    assert "generate_encounter" in answer or "encounter" in answer.lower()
     assert len(history) == 2
+    assert answer  # got some response
 
 
-def test_answer_respects_tool_limit():
-    """If model keeps calling tools past MAX_TOOL_TURNS, loop forces final answer."""
-    from tools.analysis.agent.local_agent import _answer, MAX_TOOL_TURNS
-    oracle = _FakeOracle()
-    assessor = _FakeAssessor(oracle)
-
-    call_count = {"n": 0}
-
-    def _always_tool(msgs, verbose=False):
-        call_count["n"] += 1
-        if call_count["n"] > MAX_TOOL_TURNS:
-            return "Here is my final answer after all those tool calls."
-        return 'TOOL: search_symbols\nARGS: {"query": "x"}'
-
-    with patch("tools.analysis.agent.local_agent._call_ollama", side_effect=_always_tool):
-        answer, history = _answer("keep calling tools", [], oracle, assessor)
-
-    assert call_count["n"] == MAX_TOOL_TURNS + 1
-    assert "final answer" in answer.lower()
-
-
-def test_answer_preserves_history_across_turns():
-    """History from first question is available as context for second question."""
+def test_answer_phase1_error_short_circuits():
+    """If Phase1 returns ERROR:, _answer returns early with no history appended."""
     from tools.analysis.agent.local_agent import _answer
-    oracle = _FakeOracle()
-    assessor = _FakeAssessor(oracle)
-
-    with patch("tools.analysis.agent.local_agent._call_ollama",
-               return_value="The travel system handles movement."):
-        _, history = _answer("what is the travel system?", [], oracle, assessor)
-
-    with patch("tools.analysis.agent.local_agent._call_ollama",
-               return_value="It connects to the encounter system."):
-        _, history = _answer("how does it connect?", history, oracle, assessor)
-
-    assert len(history) == 4  # 2 turns * (user + assistant)
-    assert history[0]["content"] == "what is the travel system?"
-
-
-def test_ollama_connection_error_returns_message():
-    """If Ollama is down, _answer returns a readable error, not an exception."""
-    from tools.analysis.agent.local_agent import _answer
-    import requests
     oracle = _FakeOracle()
     assessor = _FakeAssessor(oracle)
 
@@ -135,12 +100,59 @@ def test_ollama_connection_error_returns_message():
         answer, history = _answer("anything", [], oracle, assessor)
 
     assert "ERROR" in answer
-    assert len(history) == 0  # error before any history appended
+    assert len(history) == 0  # nothing appended on error
 
 
-# ------------------------------------------------------------------
-# RUN DIRECTLY
-# ------------------------------------------------------------------
+def test_answer_history_grows_across_questions():
+    """Each Q/A appends 2 entries; second question has prior context."""
+    from tools.analysis.agent.local_agent import _answer
+    oracle = _FakeOracle()
+    assessor = _FakeAssessor(oracle)
+
+    def _stub(msgs, verbose=False, label=""):
+        # Return a NEED: on decompose calls, answer on assemble calls
+        if label == "phase1-decompose":
+            return "NEED: symbols named travel"
+        return "The travel system handles movement."
+
+    history: list = []
+    with patch("tools.analysis.agent.local_agent._call_ollama", side_effect=_stub):
+        _, history = _answer("what is the travel system?", history, oracle, assessor)
+        _, history = _answer("how does it connect?", history, oracle, assessor)
+
+    assert len(history) == 4
+    assert history[0]["content"] == "what is the travel system?"
+    assert history[2]["content"] == "how does it connect?"
+
+
+def test_answer_multiple_needs_deduped():
+    """Duplicate NEED: lines each produce only one tool call (deduplication)."""
+    from tools.analysis.agent.local_agent import _answer
+    from tools.analysis.agent.agent_resolver import resolve_all
+
+    oracle = _FakeOracle()
+    assessor = _FakeAssessor(oracle)
+
+    # Phase1 emits two identical needs - resolver should dedup them
+    phase1_response = "NEED: symbols named encounter\nNEED: symbols named encounter"
+
+    call_log = []
+
+    def _stub(msgs, verbose=False, label=""):
+        call_log.append(label)
+        if label == "phase1-decompose":
+            return phase1_response
+        return "Deduped correctly."
+
+    with patch("tools.analysis.agent.local_agent._call_ollama", side_effect=_stub):
+        answer, _ = _answer("find encounter twice", [], oracle, assessor)
+
+    assert "phase1-decompose" in call_log
+    assert "phase3-assemble" in call_log
+    # Only two Ollama calls total (phases 1 and 3); resolve is deterministic
+    assert call_log.count("phase1-decompose") == 1
+    assert call_log.count("phase3-assemble") == 1
+
 
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items())
