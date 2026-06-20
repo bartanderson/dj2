@@ -161,6 +161,26 @@ _PATTERNS = [
     (re.compile(r"brief\s+for\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "symbol_brief", "symbol", 1),
 
+    # "path from X to Y" / "how does X reach Y"
+    (re.compile(r"(?:path\s+from|how\s+does\s+)\s*['\"]?(\S+?)['\"]?\s+(?:to\s+|reach\s+)['\"]?(\S+?)['\"]?\s*$", re.I),
+     "graph_path", None, None),  # special: two groups -> src + dst
+
+    # "entry points" / "system roots" / "what are the entry points"
+    (re.compile(r"(?:entry\s+points?|system\s+roots?|what\s+are\s+the\s+entry\s+points?)\s*$", re.I),
+     "graph_entry_points", None, None),
+
+    # "most connected" / "most connected in X" / "highest degree"
+    (re.compile(r"most\s+connected(?:\s+in\s+['\"]?([^'\"]*?)['\"]?)?\s*$", re.I),
+     "graph_most_connected", "filter", 1),
+
+    # "subgraph around X" / "neighbors of X"
+    (re.compile(r"(?:subgraph\s+around|neighbors?\s+of)\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
+     "graph_subgraph", "symbol", 1),
+
+    # "clusters" / "file clusters" / "cluster containing X"
+    (re.compile(r"(?:file\s+)?clusters?(?:\s+containing\s+\S+)?\s*$", re.I),
+     "graph_clusters", None, None),
+
     # "search <query>" / "find <query>" - fallback to search_symbols
     (re.compile(r"(?:search|find)\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "search_symbols", "query", 1),
@@ -190,17 +210,32 @@ def resolve_need(need: str) -> tuple[str, dict] | None:
     for pattern, tool_name, arg_key, group_idx in _PATTERNS:
         m = pattern.search(need)
         if m:
+            # Special case: graph_path needs two named args (src, dst)
+            if tool_name == "graph_path":
+                groups = [g for g in m.groups() if g is not None]
+                if len(groups) >= 2:
+                    return tool_name, {"src": groups[0].strip(), "dst": groups[1].strip()}
+                continue
+
+            # No-arg tools (entry points, clusters)
+            if arg_key is None:
+                return tool_name, {}
+
             if group_idx is None:
-                # multi-group: pick first non-None group
                 value = next((g for g in m.groups() if g is not None), "").strip()
             else:
-                value = m.group(group_idx).strip()
+                value = m.group(group_idx).strip() if m.group(group_idx) else ""
+
+            # Strip glob characters - the DB uses substring matching, not glob
+            if tool_name in ("search_files", "search_symbols"):
+                value = value.replace("*", "").replace("?", "").strip()
+
+            # No-arg tools where group is optional (e.g. most_connected with no filter)
+            if not value and tool_name in ("graph_most_connected",):
+                return tool_name, {}
+
             if value:
-                # Strip glob characters - the DB uses substring matching, not glob
-                if tool_name in ("search_files", "search_symbols"):
-                    value = value.replace("*", "").replace("?", "").strip()
-                if value:
-                    return tool_name, {arg_key: value}
+                return tool_name, {arg_key: value}
     return None
 
 

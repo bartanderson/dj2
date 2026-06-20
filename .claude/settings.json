@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest *)",
+      "Bash(python tools/analysis/*)",
+      "Bash(python scan_transcripts.py)",
+      "Bash(ollama *)"
+    ]
+  }
+}

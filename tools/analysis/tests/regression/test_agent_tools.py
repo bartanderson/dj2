@@ -468,6 +468,8 @@ def test_dispatch_all_tools_registered():
         "symbols_in_file", "files_in_directory", "describe_file",
         "symbol_intent", "symbol_brief", "get_findings", "store_finding",
         "ask_truth_layer",
+        "graph_path", "graph_entry_points", "graph_most_connected",
+        "graph_subgraph", "graph_clusters",
     }
     assert set(TOOLS.keys()) == expected
 

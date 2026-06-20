@@ -288,6 +288,99 @@ def store_finding(assessor: "Assessor", args: dict) -> str:
 
 
 # ------------------------------------------------------------------
+# GRAPH TOOLS
+# ------------------------------------------------------------------
+
+def graph_path(oracle: "DBOracle", args: dict) -> str:
+    """
+    graph_path(src, dst) - shortest call path from src to dst.
+    """
+    src = args.get("src", "").strip()
+    dst = args.get("dst", "").strip()
+    if not src or not dst:
+        return "ERROR: src and dst arguments required"
+    from tools.analysis.agent.graph_utils import shortest_path
+    path = shortest_path(oracle, src, dst)
+    if path is None:
+        return f"No call path found from '{src}' to '{dst}'"
+    return f"Call path from '{src}' to '{dst}':\n  " + " -> ".join(path)
+
+
+def graph_entry_points(oracle: "DBOracle", args: dict) -> str:
+    """
+    graph_entry_points() - symbols with no callers (system roots).
+    """
+    from tools.analysis.agent.graph_utils import find_entry_points
+    eps = find_entry_points(oracle)
+    if not eps:
+        return "No entry points found"
+    lines = [f"Entry points ({len(eps)} total):"]
+    for ep in eps[:20]:
+        fp = ep["file_path"].replace("\\", "/").split("/")[-1]
+        lines.append(f"  {ep['name']} ({ep['symbol_type']}) in {fp}")
+    if len(eps) > 20:
+        lines.append(f"  ... and {len(eps) - 20} more")
+    return "\n".join(lines)
+
+
+def graph_most_connected(oracle: "DBOracle", args: dict) -> str:
+    """
+    graph_most_connected(filter) - top symbols by call degree.
+    filter is an optional substring to limit results.
+    """
+    filter_str = args.get("filter", "").strip()
+    from tools.analysis.agent.graph_utils import most_connected
+    results = most_connected(oracle, n=15, filter_substr=filter_str)
+    if not results:
+        return f"No connected symbols found" + (f" matching '{filter_str}'" if filter_str else "")
+    label = f" matching '{filter_str}'" if filter_str else ""
+    lines = [f"Most connected symbols{label}:"]
+    for r in results:
+        fp = r["file_path"].replace("\\", "/").split("/")[-1] if r["file_path"] else "?"
+        lines.append(f"  {r['symbol']} in {fp}  (in={r['in_degree']} out={r['out_degree']})")
+    return "\n".join(lines)
+
+
+def graph_subgraph(oracle: "DBOracle", args: dict) -> str:
+    """
+    graph_subgraph(symbol, radius) - nodes and edges within radius hops.
+    Returns a text summary; use graph_viz for visual output.
+    """
+    symbol = args.get("symbol", "").strip()
+    radius = int(args.get("radius", 2))
+    if not symbol:
+        return "ERROR: symbol argument required"
+    from tools.analysis.agent.graph_utils import subgraph_around
+    sg = subgraph_around(oracle, symbol, radius=radius)
+    lines = [f"Subgraph around '{symbol}' (radius={radius}):"]
+    lines.append(f"  Nodes ({len(sg['nodes'])}): {', '.join(sorted(sg['nodes'])[:20])}")
+    if len(sg['nodes']) > 20:
+        lines[-1] += f" ... +{len(sg['nodes'])-20} more"
+    lines.append(f"  Edges ({len(sg['edges'])}):")
+    for src, dst in sg['edges'][:15]:
+        lines.append(f"    {src} -> {dst}")
+    if len(sg['edges']) > 15:
+        lines.append(f"    ... +{len(sg['edges'])-15} more")
+    return "\n".join(lines)
+
+
+def graph_clusters(oracle: "DBOracle", args: dict) -> str:
+    """
+    graph_clusters() - file pairs with heavy mutual call density.
+    """
+    from tools.analysis.agent.graph_utils import find_clusters
+    clusters = find_clusters(oracle, min_edges=2)
+    if not clusters:
+        return "No file clusters found (no file pairs share 2+ call edges)"
+    lines = [f"File clusters ({len(clusters)} pairs):"]
+    for c in clusters[:15]:
+        f1 = c['files'][0].replace("\\", "/").split("/")[-1]
+        f2 = c['files'][1].replace("\\", "/").split("/")[-1]
+        lines.append(f"  {f1} <-> {f2}  ({c['edge_count']} edges)")
+    return "\n".join(lines)
+
+
+# ------------------------------------------------------------------
 # TRUTH LAYER TOOL
 # ------------------------------------------------------------------
 
@@ -326,7 +419,12 @@ TOOLS = {
     "symbol_brief":      (symbol_brief,      "assessor"),
     "get_findings":      (get_findings,      "assessor"),
     "store_finding":     (store_finding,     "assessor"),
-    "ask_truth_layer":   (ask_truth_layer,   "assessor"),
+    "ask_truth_layer":      (ask_truth_layer,      "assessor"),
+    "graph_path":           (graph_path,           "oracle"),
+    "graph_entry_points":   (graph_entry_points,   "oracle"),
+    "graph_most_connected": (graph_most_connected, "oracle"),
+    "graph_subgraph":       (graph_subgraph,       "oracle"),
+    "graph_clusters":       (graph_clusters,       "oracle"),
 }
 
 
