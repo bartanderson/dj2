@@ -112,7 +112,38 @@ def ground_question(question: str, oracle: "DBOracle", assessor: "Assessor") -> 
         lines.append(f"  Symbols found: {sym_list}")
     if found_files:
         lines.append(f"  Files found: {', '.join(found_files[:8])}")
+
+    # Pull pre-built findings from knowledge.db for matched symbols
+    known = _ground_findings(list(found_symbols.keys())[:5], assessor)
+    if known:
+        lines.append(f"  Known findings:")
+        for line in known:
+            lines.append(f"    {line}")
+
     return "\n".join(lines)
+
+
+def _ground_findings(symbols: list[str], assessor: "Assessor") -> list[str]:
+    """Pull the most relevant knowledge.db findings for a list of symbol names."""
+    if assessor is None:
+        return []
+    try:
+        conn = getattr(assessor, "_knowledge_conn", None)
+        if conn is None:
+            return []
+        lines = []
+        for sym in symbols:
+            rows = conn.execute(
+                "SELECT kind, content FROM knowledge_artifacts "
+                "WHERE subject = ? OR subject LIKE ? "
+                "ORDER BY created_at DESC LIMIT 2",
+                (sym, f"%::{sym}"),
+            ).fetchall()
+            for row in rows:
+                lines.append(f"[{row[0]}] {sym}: {row[1][:120]}")
+        return lines
+    except Exception:
+        return []
 
 
 # ------------------------------------------------------------------
@@ -407,7 +438,61 @@ def resolve_and_expand(
     # Phase 2b - auto-expansion
     facts.extend(expand_facts(facts, oracle, assessor, seen))
 
+    # Phase 2c - LINK: find relationships between symbols discovered so far
+    facts.extend(link_facts(facts, oracle, seen))
+
     return facts
+
+
+def link_facts(
+    facts: list[dict],
+    oracle: "DBOracle",
+    seen: set[tuple],
+) -> list[dict]:
+    """
+    Phase 2c LINK: given the collected facts, find call paths between
+    discovered symbols and surface the most-connected one.
+    Adds connective tissue so Phase 3 sees relationships, not just a flat list.
+    Limits to avoid noise: max 3 paths, only between symbols that appear in
+    multiple fact results (i.e. genuinely relevant).
+    """
+    from tools.analysis.agent.graph_utils import shortest_path, most_connected
+
+    # Collect all symbol names mentioned across fact results
+    sym_freq: dict[str, int] = {}
+    for f in facts:
+        if f["tool"] == "unmatched" or not f["result"]:
+            continue
+        for name in _symbols_from_result(f["result"]):
+            sym_freq[name] = sym_freq.get(name, 0) + 1
+
+    # Only symbols mentioned in 2+ results are genuinely cross-cutting
+    hot_syms = [s for s, c in sym_freq.items() if c >= 2][:6]
+
+    links = []
+
+    # Find shortest paths between pairs of hot symbols
+    paths_found = 0
+    for i, src in enumerate(hot_syms):
+        for dst in hot_syms[i+1:]:
+            if paths_found >= 3:
+                break
+            key = ("graph_path", tuple(sorted([("dst", dst), ("src", src)])))
+            if key in seen:
+                continue
+            seen.add(key)
+            path = shortest_path(oracle, src, dst)
+            if path and 1 < len(path) <= 6:
+                result = f"Call path from '{src}' to '{dst}':\n  " + " -> ".join(path)
+                links.append({
+                    "need": f"[link] path {src} -> {dst}",
+                    "tool": "graph_path",
+                    "args": {"src": src, "dst": dst},
+                    "result": result,
+                })
+                paths_found += 1
+
+    return links
 
 
 def facts_to_text(facts: list[dict]) -> str:
