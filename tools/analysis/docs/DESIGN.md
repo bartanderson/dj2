@@ -947,31 +947,77 @@ input dict and returning a plain string or list. Test each tool against
 a real corpus DB (world_corpus.db) with known expected outputs before
 wiring into the agent loop.
 
+### Architecture decision - three-phase model (2026-06-20)
+
+The ReAct loop (model reasons → calls tool → reasons → calls tool) was
+built and tested but proved too demanding for llama3.2:3b: the model echoed
+the system prompt rather than using it. Root cause: the model is too small
+to hold a long system prompt + conversation history + reasoning in context
+simultaneously while also producing reliable tool call syntax.
+
+**Replacement: three-phase deterministic pipeline.**
+
+The model's job is narrowed to only two things it handles well at 3b scale:
+decomposing a question into information needs, and summarizing factual results.
+Everything in between is deterministic and not model-dependent.
+
+```
+Phase 1 - DECOMPOSE (AI, small output)
+  Model reads question, outputs a checklist of information needs:
+    NEED: files in the encounter system
+    NEED: symbols named encounter
+    NEED: what calls generate_encounter
+    NEED: what does encounter_generator.py do
+
+Phase 2 - RESOLVE (fully deterministic, no model)
+  Pattern router maps each NEED to a tool call and executes it:
+    "files in X"          -> files_in_directory(X)
+    "symbols named X"     -> search_symbols(X)
+    "symbols in X.py"     -> symbols_in_file(X)
+    "what calls X"        -> list_callers(X)
+    "callers of X"        -> list_callers(X)
+    "what does X.py do"   -> describe_file(X)
+    "summary of X"        -> describe_file(X)
+    "intent of X"         -> symbol_intent(X)
+    "findings for X"      -> get_findings(X)
+    "what do we know X"   -> get_findings(X)
+    "brief for X"         -> symbol_brief(X)
+  All matched tools execute; results collected as flat fact set.
+
+Phase 3 - ASSEMBLE (AI, reading comprehension only)
+  Model receives original question + all facts, writes plain English answer.
+  No tool calls, no reasoning about what to look up.
+```
+
+The NEED checklist from Phase 1 is inspectable - if the answer is wrong,
+you can see exactly what was and wasn't looked up. The resolver in Phase 2
+is independently testable with no model dependency.
+
 ### Build order
 
-1. `agent_tools.py` - all 12 tool functions, each independently testable.
-   Verify each against world_corpus.db before moving on. Known expected
-   outputs: `search_symbols('encounter')` should return ~14 symbols;
-   `list_callers('get_ai_response')` should return handle_movement +
-   _generate_via_ai; `describe_file('world/encounter_generator.py')` should
-   return the Ollama summary we already confirmed works.
+1. [DONE 2026-06-20] `agent_tools.py` - all 12 tool functions verified
+   against world_corpus.db. 31 regression tests passing.
 
-2. `agent_prompt.py` - system prompt + tool call format. Tune the tool call
-   parsing against real llama3.2:3b output to confirm the TOOL/ARGS protocol
-   is reliably parseable before building the loop around it.
+2. [DONE 2026-06-20] `agent_prompt.py` - system prompt + tolerant tool call
+   parser (handles lowercase, single quotes, backtick-wrapped JSON, missing
+   args block, extra whitespace). 20 regression tests passing.
 
-3. `local_agent.py` - the ReAct loop. Wire tool dispatch, Ollama calls,
-   conversation history. Start with single-turn (one tool call per question)
-   before enabling multi-turn chains.
+3. [DONE 2026-06-20] `local_agent.py` - ReAct loop built and smoke-tested
+   (6 tests). Proved insufficient for llama3.2:3b - see architecture
+   decision above. Loop shell stays; internals to be replaced with
+   three-phase pipeline.
 
-4. Evaluation sessions - run real questions you would actually ask ("what
-   is the encounter system", "what calls get_ai_response", "what do we know
-   about character creation") and evaluate answers against your knowledge of
-   the code. Tune system prompt and tool set based on what breaks.
+4. **[NEXT] Rebuild `local_agent.py` around three-phase pipeline:**
+   - Phase 1 prompt: short, focused - "list what you need to answer this,
+     one NEED: per line, extract any symbol/file names explicitly."
+   - Phase 2 resolver: pattern-match NEED lines to tool calls, execute all,
+     collect results. Pure Python, no model. Independently testable.
+   - Phase 3 prompt: "here is the question, here are the facts, answer
+     concisely." No tool call format needed - just reading comprehension.
+   - Conversation history: append (question, fact-set, answer) triples so
+     follow-up questions have context without re-running Phase 1/2.
 
-5. `store_finding` tuning - verify the model actually uses it when it should
-   and doesn't use it for noise. May need a prompt nudge like "store findings
-   that took more than 2 tool calls to derive."
+5. Evaluation sessions against world_corpus.db with real questions.
 
 ### What this is not
 
