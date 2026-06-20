@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "llama3.2:3b"
-OLLAMA_TIMEOUT = 15
+OLLAMA_TIMEOUT = 60
 
 VALID_KINDS = {"file", "module", "subsystem"}
 
@@ -194,16 +194,55 @@ def _store(
     connection.commit()
 
 
+def _extract_structure(source_text: str, max_chars: int = 6000) -> str:
+    """
+    Build a compact structural view of a Python file:
+      - imports block (first contiguous block of import/from/comment lines)
+      - every class/def/async def signature (one line each, no bodies)
+    Falls back to raw truncation if the result exceeds max_chars.
+    """
+    lines = source_text.splitlines()
+    out = []
+    i = 0
+    # Header: imports + module-level comments/docstrings
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith(("import ", "from ", "#", '"""', "'''")) or stripped == "":
+            out.append(lines[i])
+            i += 1
+        else:
+            break
+
+    # Signatures only: class/def/async def lines throughout the rest of file
+    while i < len(lines):
+        stripped = lines[i].lstrip()
+        if stripped.startswith(("class ", "def ", "async def ")):
+            out.append(lines[i])
+        i += 1
+
+    result = "\n".join(out)
+    if len(result) <= max_chars:
+        return result
+    return source_text[:max_chars]
+
+
 def _generate(subject: str, kind: str, source_text: str) -> str:
     """Call Ollama; fall back to a minimal heuristic stub on failure."""
     if not source_text.strip():
         return f"[no source text provided for {kind} {subject!r}]"
 
+    # Use a structured extract instead of raw truncation: top of file + key
+    # def/class lines + docstrings, to stay under ~6000 chars while covering
+    # the whole file's public API surface.
+    source_excerpt = _extract_structure(source_text, max_chars=10000)
     prompt = (
-        f"Summarise what this Python {kind} does in 2-3 sentences. "
-        f"Be concise and specific. Focus on purpose, not implementation details.\n\n"
-        f"{'File' if kind == 'file' else 'Module'}: {subject}\n\n"
-        f"Source:\n{source_text[:3000]}"
+        f"Analyse this Python {kind} and write 3-4 sentences describing:\n"
+        f"1. Its primary responsibility (what problem it solves)\n"
+        f"2. Key classes or entry-point functions and what they do\n"
+        f"3. Any notable design pattern (e.g. dispatcher, FSM, pub/sub)\n"
+        f"Be specific and concise. Use names from the code.\n\n"
+        f"File: {subject}\n\n"
+        f"Source structure:\n{source_excerpt}"
     )
 
     try:
