@@ -35,7 +35,17 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Design doc mining + codebase progress assessment DONE 2026-06-20.
+**Recently done (2026-06-20 session 2):** Full world corpus discovery pass COMPLETE.
+65/65 files covered in world_corpus.db. 3 tool bugs found and fixed during the pass:
+(1) symbol_intent disambiguation - file_path hint added, Phase 2b expansion threads it through;
+(2) describe_file basename match - prefers exact match over substring (fixes utils->ai_utils, resolver->entity_resolver);
+(3) 4 new known_issues stored (party overlap, PerlinNoise duplication, travel_system unconnected, world_session superseded).
+New future_plans stored: Cloudflare adversarial validation, PICK distinguishing-example pattern, Cope-and-Drag layout.
+interpretation_pipeline design note added. terrain_generation_history design note added (JS port round-trip explains duplication).
+tool_system_boundary design note added (AI tool-use contract layer identified).
+settings.json updated: Bash(*) + PowerShell(*) allow all commands without prompting.
+
+**Previously done (2026-06-20 session 1):** Design doc mining + codebase progress assessment DONE 2026-06-20.
 `mine_design_docs.py` created; 31 `design_note` / `human-confirmed` artifacts stored in knowledge.db
 for all major game systems (EventLog, EscalationEngine, ContextBuilder, EntityResolution, DialogSystem,
 QuestSystem, CombatSystem, NarrativeEngine, GameEngine phase cycle, WorldController, etc.).
