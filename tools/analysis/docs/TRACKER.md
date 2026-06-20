@@ -35,7 +35,22 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done:** Full discovery + Q&A system DONE 2026-06-20. All 7 core pieces built:
+**Recently done:** Design doc mining + codebase progress assessment DONE 2026-06-20.
+`mine_design_docs.py` created; 31 `design_note` / `human-confirmed` artifacts stored in knowledge.db
+for all major game systems (EventLog, EscalationEngine, ContextBuilder, EntityResolution, DialogSystem,
+QuestSystem, CombatSystem, NarrativeEngine, GameEngine phase cycle, WorldController, etc.).
+Design notes now surface in Phase 0 grounding - agent answers use design intent before code analysis.
+Codebase status stored as `development_progress` artifact: core truth layer complete;
+GameEngine phase cycle partial (movement done, buy/sell/teleport TODO); WorldController (2354L) is
+primary architectural debt; all major game systems exist with varying maturity.
+
+Before that: Named heuristics + workflow system + claude_eval.py - DONE 2026-06-20.
+`detect_heuristic()` with 9 named patterns skips Ollama decompose for common queries.
+`workflow_items` table (next_up/backlog/future_plan/session_decision), full CRUD, `rerank_items`.
+`claude_eval.py` with ask/batch/auto/store subcommands - Claude's non-interactive pipeline access.
+Bug fixes: `describe_file` bare filename resolution, file-level grounding, regex ordering.
+
+Before that: Full discovery + Q&A system DONE 2026-06-20. All 7 core pieces built:
 graph_utils, graph_viz, graph tools in resolver, Phase 2c LINK, extended Phase 0 grounding,
 discovery loop (finite batch/resume-safe), Phase 4 SUGGEST + knowledge_status. Items 8-12
 deferred to post-evaluation. Before that: Expansion noise + glob fixes - DONE 2026-06-20. `_symbols_from_result`
