@@ -259,10 +259,18 @@ def _compound_term(word1: str, word2: str | None) -> str | None:
     return None
 
 
+def _camel_variant(term: str) -> str | None:
+    """If term is snake_case, return CamelCase variant (world_controller -> WorldController)."""
+    if "_" in term:
+        return "".join(w.capitalize() for w in term.split("_"))
+    return None
+
+
 def _trace_needs(term: str, suffix: str | None = None) -> list[str]:
-    """Standard trace NEEDs. Uses compound as primary if suffix is a class suffix."""
+    """Standard trace NEEDs. Uses compound or CamelCase variant as primary when applicable."""
     compound = _compound_term(term, suffix)
-    primary = compound if compound else term
+    camel = _camel_variant(term) if not compound else None
+    primary = compound if compound else (camel if camel else term)
     needs = [
         f"symbols named {primary}",
         f"intent of {primary}",
@@ -270,15 +278,16 @@ def _trace_needs(term: str, suffix: str | None = None) -> list[str]:
         f"what calls {primary}",
         f"findings for {primary}",
     ]
-    if compound:
+    if compound or camel:
         needs.insert(1, f"symbols named {term}")  # bare term search as fallback
     return needs
 
 
 def _explain_needs(term: str, suffix: str | None = None) -> list[str]:
-    """Standard explain NEEDs. Uses compound as primary if suffix is a class suffix."""
+    """Standard explain NEEDs. Uses compound or CamelCase variant as primary when applicable."""
     compound = _compound_term(term, suffix)
-    primary = compound if compound else term
+    camel = _camel_variant(term) if not compound else None
+    primary = compound if compound else (camel if camel else term)
     needs = [
         f"symbols named {primary}",
         f"intent of {primary}",
@@ -286,7 +295,7 @@ def _explain_needs(term: str, suffix: str | None = None) -> list[str]:
         f"callees of {primary}",
         f"findings for {primary}",
     ]
-    if compound:
+    if compound or camel:
         needs.insert(1, f"symbols named {term}")  # bare term search as fallback
     return needs
 
