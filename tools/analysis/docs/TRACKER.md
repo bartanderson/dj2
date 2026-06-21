@@ -35,7 +35,16 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-21 session 8):** Vision capture + Phase A heuristics + cleanup (7 commits).
+**Recently done (2026-06-21 session 8, continued):** Phase A complete + Phase B items 4-5 (6 more commits).
+Phase A: pattern_similar heuristic ('find similar to X', 'how was X implemented' - uses _similar_needs()
+helper with same-suffix class search), impact heuristic ('if I change X what breaks', 'blast radius of X'
+- reuses existing task_generator ripple query via symbol_brief). Phase B item 4: git_log_for tool
+(resolves bare filenames via corpus, infers repo root via get_project_root(), shells to git log);
+git_history heuristic ('what changed recently in X'). Phase B item 5: missing_docstrings tool (corpus
+DB query for NULL docstrings), find_todos tool (TODO/FIXME in docstrings); quality heuristics wired.
+24 tools total. 279/279 regression tests passing throughout.
+
+**Previously done (2026-06-21 session 8, start):** Vision capture + Phase A heuristics + cleanup (7 commits).
 Design: Added DESIGN.md sections 9 (developer intelligence interface - standalone tool, code-agnostic,
 UI interaction model with answer-as-navigation, answer-typed rendering, proactive badges, breadcrumb)
 and 10 (code editing/refactoring - suggest->diff->approve->apply->verify safety model, corpus-backed
