@@ -642,6 +642,10 @@ def resolve_need(need: str) -> tuple[str, dict] | None:
             if tool_name in ("search_files", "search_symbols"):
                 value = value.replace("*", "").replace("?", "").strip()
 
+            # "files in X.py" is a file treated as a directory - redirect to describe_file
+            if tool_name == "files_in_directory" and value.endswith(".py"):
+                return "describe_file", {"file_path": value}
+
             # No-arg tools where group is optional (e.g. most_connected with no filter)
             if not value and tool_name in ("graph_most_connected",):
                 return tool_name, {}
