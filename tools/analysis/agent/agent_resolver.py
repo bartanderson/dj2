@@ -191,6 +191,10 @@ _PATTERNS = [
     (re.compile(r"(?:known\s+)?findings?\s+for\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "get_findings", "symbol", 1),
 
+    # "findings of kind <kind>" / "all <kind> findings"
+    (re.compile(r"(?:findings?\s+of\s+kind\s+|all\s+)([a-z_]+)(?:\s+findings?)?\s*$", re.I),
+     "list_findings_by_kind", "kind", 1),
+
     # "brief for <symbol>"
     (re.compile(r"brief\s+for\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "symbol_brief", "symbol", 1),
@@ -585,7 +589,11 @@ _HEURISTICS: list[tuple] = [
             r"dev(?:elopment)?\s+plan)",
             re.I,
         ),
-        lambda m: ["workflow status"],
+        lambda m: [
+            "workflow status",
+            "findings of kind future_plan",
+            "findings of kind known_issue",
+        ],
     ),
 
     # "reprioritize" / "suggest order" / "what should I do first"

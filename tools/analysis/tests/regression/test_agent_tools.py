@@ -472,6 +472,7 @@ def test_dispatch_all_tools_registered():
         "graph_path", "graph_entry_points", "graph_most_connected",
         "graph_subgraph", "graph_clusters",
         "workflow_status", "store_workflow_item", "rerank_workflow",
+        "list_findings_by_kind",
     }
     assert set(TOOLS.keys()) == expected
 

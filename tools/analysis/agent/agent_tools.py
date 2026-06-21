@@ -306,6 +306,26 @@ def get_findings(assessor: "Assessor", args: dict) -> str:
     return "\n".join(lines)
 
 
+def list_findings_by_kind(assessor: "Assessor", args: dict) -> str:
+    """
+    list_findings_by_kind(kind) - all stored artifacts of a given kind.
+    Valid kinds: future_plan / known_issue / design_note / file_purpose /
+    strategy_decision / query_finding / session_decision
+    """
+    kind = args.get("kind", "").strip()
+    if not kind:
+        return "ERROR: kind argument required"
+    artifacts = assessor.list_artifacts(kind=kind)
+    if not artifacts:
+        return f"No stored findings of kind '{kind}'"
+    lines = [f"All '{kind}' findings:"]
+    for a in artifacts:
+        stale = " [STALE]" if a.get("needs_review") else ""
+        lines.append(f"  [{a['subject']} / {a['provenance']}]{stale}")
+        lines.append(f"    {a['content']}")
+    return "\n".join(lines)
+
+
 def store_finding(assessor: "Assessor", args: dict) -> str:
     """
     store_finding(symbol, kind, content) - write a derived finding to knowledge.db.
@@ -524,6 +544,7 @@ TOOLS = {
     "graph_most_connected": (graph_most_connected, "oracle"),
     "graph_subgraph":       (graph_subgraph,       "oracle"),
     "graph_clusters":       (graph_clusters,       "oracle"),
+    "list_findings_by_kind": (list_findings_by_kind, "assessor"),
     "workflow_status":      (workflow_status,      "assessor"),
     "store_workflow_item":  (store_workflow_item,  "assessor"),
     "rerank_workflow":      (rerank_workflow,      "assessor"),
