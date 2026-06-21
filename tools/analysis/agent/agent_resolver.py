@@ -502,6 +502,34 @@ _HEURISTICS: list[tuple] = [
             f"files matching {m.group(1)}",
         ],
     ),
+    # "files that use X" / "list files that use X" / "list all files using X"
+    (
+        re.compile(
+            r"(?:(?:can\s+you\s+)?list\s+(?:all\s+)?)?files?\s+(?:that\s+|which\s+)?use\s+"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"what calls {m.group(1)}",
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+        ],
+    ),
+    # "show me how X is used" / "show me an example of how X" / "example of X usage"
+    # Must be before survey heuristic so 'show me' + skip-words don't capture 'example'
+    (
+        re.compile(
+            r"(?:show\s+me\s+(?:an?\s+)?(?:example\s+of\s+)?how\s+|example\s+of\s+how\s+)"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"what calls {m.group(1)}",
+            f"symbols named {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
 
     # --- Workflow heuristics ---
 

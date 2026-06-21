@@ -130,6 +130,10 @@ def _detect_heuristic_name(question: str) -> str:
         return "survey"
     if "dev plan" in q or "development plan" in q:
         return "workflow"
+    if "show me how" in q or "show me an example" in q or "example of how" in q:
+        return "callers"
+    if "files that use" in q or "files using" in q or "list all files" in q:
+        return "callers"
     if ("what exists" in q or "find everything" in q or "survey" in q
             or "current state of" in q or "status of" in q
             or q.startswith("show me")):
