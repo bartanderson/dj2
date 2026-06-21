@@ -108,6 +108,8 @@ def _detect_heuristic_name(question: str) -> str:
         return "connection"
     if "relate" in q and "to" in q:
         return "connection"
+    if "how do i" in q or "how would i" in q or "how should i" in q:
+        return "dev_plan"
     if "how does" in q or any(w in q for w in ("trace", "walk")):
         return "trace"
     if "how do" in q or "how is" in q:

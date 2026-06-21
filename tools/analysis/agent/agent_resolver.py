@@ -383,9 +383,10 @@ _HEURISTICS: list[tuple] = [
         ],
     ),
     # "how do/does X work" (multi-word "fsm states" etc - captures first significant word)
+    # Negative lookahead skips "I" - "how do I ..." is dev_plan, not trace
     (
         re.compile(
-            r"how\s+do(?:es)?\s+(?:a\s+|an\s+|the\s+)?"
+            r"how\s+do(?:es)?\s+(?:a\s+|an\s+|the\s+)?(?!I\b)"
             r"['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
@@ -426,9 +427,11 @@ _HEURISTICS: list[tuple] = [
     ),
     # "what symbols [are/exist] in X.py" / "list symbols in X.py" / "symbols in X.py"
     # also "what functions/classes are in X.py" / "what is in X.py"
+    # also "what are all the classes in X.py" / "what are the functions in X.py"
     (
         re.compile(
             r"(?:what\s+(?:symbols?|functions?|classes?|methods?|is)\s+(?:are\s+|exist\s+)?in\s+|"
+            r"what\s+are\s+(?:all\s+(?:the\s+)?)?(?:symbols?|functions?|classes?|methods?)\s+in\s+|"
             r"list\s+(?:a\s+|an\s+|the\s+)?(?:symbols?|functions?|classes?|methods?)\s+in\s+|"
             r"symbols?\s+in\s+)"
             r"['\"]?([A-Za-z_][\w/\\]*\.py)['\"]?",
