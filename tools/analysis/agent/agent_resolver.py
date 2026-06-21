@@ -617,10 +617,12 @@ _HEURISTICS: list[tuple] = [
 
     # "what modules/files exist in X/" / "what is in world/"
     # "list files in the X directory" / "what files are in the X folder"
+    # "how many files are in X"
     (
         re.compile(
             r"(?:what\s+(?:modules?|files?)\s+(?:exist|are)\s+in\s+|"
             r"list\s+(?:the\s+)?(?:modules?|files?)\s+in\s+|"
+            r"how\s+many\s+(?:files?|modules?)\s+are\s+in\s+|"
             r"what\s+is\s+in\s+)"
             r"(?:the\s+|a\s+|an\s+)?['\"]?([A-Za-z_][\w/]*/?)['\"]?"
             r"(?:\s+(?:folder|directory|dir|package|module))?",
@@ -643,7 +645,7 @@ _HEURISTICS: list[tuple] = [
             r"what\s+is\s+(?:the\s+)?(?:architecture|design|structure|overview)\s+of\s+(?:the\s+)?|"
             r"describe\s+(?:the\s+)?(?:architecture|design|structure|overview)\s+of\s+(?:the\s+)?|"
             r"tell\s+me\s+(?:more\s+)?about\s+(?:the\s+)?|"
-            r"what\s+is\s+|"
+            r"what\s+is\s+(?!(?:the\s+)?(?:most|least|best|worst|biggest|largest|smallest|simplest|hardest|easiest|fastest|slowest)\b)|"
             r"show\s+me\s+(?:all\s+|everything\s+(?:about|for)\s+)?(?:the\s+)?|"
             r"survey\s+)"
             r"(?:a\s+|an\s+|the\s+)?"
