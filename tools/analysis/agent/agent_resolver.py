@@ -268,6 +268,7 @@ def _trace_needs(term: str, suffix: str | None = None) -> list[str]:
         f"intent of {primary}",
         f"callees of {primary}",
         f"what calls {primary}",
+        f"findings for {primary}",
     ]
     if compound:
         needs.insert(1, f"symbols named {term}")  # bare term search as fallback
