@@ -35,7 +35,12 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-20 session 4):** ASSEMBLE fact-omission fixed + survey cross-file intelligence DONE.
+**Recently done (2026-06-20 session 5):** Game corpus depth audit DONE. Depth-2 is sufficient
+for world_corpus.db - max real chain depth is 3 (utility function, not architectural).
+DM->world->dungeon_neo concern is a per-corpus-DB split limitation, not a depth budget problem.
+Fix is merged game_corpus.db (item 3 prerequisite). No code change needed.
+
+**Previously done (2026-06-20 session 4):** ASSEMBLE fact-omission fixed + survey cross-file intelligence DONE.
 (1) Survey heuristic gets deterministic structured answer (bypass Ollama) - before: "The PartySystem class exists." (13 facts ignored),
 after: structured inventory of files, symbols, call relationships, stored findings.
 (2) General ASSEMBLE gets required-elements hint injected into prompt (files found, callers found).
@@ -709,10 +714,19 @@ distinct angles folded in.
      discovery is skipped. This makes "what depends on X" when X is a
      known symbol use X as the only seed, giving a true reverse closure
      from that specific symbol rather than a token-match neighborhood.
-   - Fix for game corpus: depth-2 may be insufficient for deeper game
-     call chains (DM -> world -> dungeon_neo). Audit `impact_query`
-     against the game corpus DB once a clear target symbol is available.
-     Add to item 10's pre-flight checklist before task.md ships.
+   - Game corpus depth audit DONE 2026-06-20: depth-2 is sufficient for
+     world_corpus.db. Max real game chain depth is 3 (random_fill_all ->
+     random_fill_field -> get_skill_list callers); depth-3 miss is a
+     low-level utility, not an architectural chokepoint. The <module>
+     depth-3 miss is noise (already filtered). The DM->world->dungeon_neo
+     concern is NOT a depth budget problem - it is a per-corpus-DB
+     limitation: cross-corpus calls (3 edges: calculate_movement ->
+     dungeon_neo.constants, generate_quest -> dungeon_neo.campaign.Quest,
+     __init__ -> dungeon_neo.movement_service.CharacterMovementService)
+     are recorded as callee names but dungeon_neo symbols have no entries
+     in world_corpus's symbols table, so reverse chains can't cross the
+     corpus boundary. Fix is the merged game_corpus.db (TRACKER item 3
+     prerequisite). Depth budget itself: no change needed.
 7. **Reasoning layer remainder:** answer architectural questions from
    graph truth directly; identify structural influence/dependency zones;
    support oracle-style interrogation queries; an oracle execution
