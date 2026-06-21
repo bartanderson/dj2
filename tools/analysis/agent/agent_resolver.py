@@ -285,7 +285,8 @@ _HEURISTICS: list[tuple] = [
     (
         re.compile(
             r"(?:trace(?:\s+implementation\s+of)?|how\s+does\s+|walk\s+(?:me\s+)?through\s+)"
-            r"\s*['\"]?([A-Za-z_]\w*)['\"]?",
+            r"(?:a\s+|an\s+|the\s+)?"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
         lambda m: [
@@ -298,7 +299,7 @@ _HEURISTICS: list[tuple] = [
     # "what does X.py do" / "describe X.py" / "explain X.py" - file form before symbol
     (
         re.compile(
-            r"(?:what\s+does\s+|describe\s+(?:file\s+)?|explain\s+)"
+            r"(?:what\s+does\s+|describe\s+(?:the\s+)?(?:file\s+)?|explain\s+)"
             r"['\"]?([A-Za-z_][\w/\\]*\.py)['\"]?",
             re.I,
         ),
@@ -411,7 +412,7 @@ _HEURISTICS: list[tuple] = [
         re.compile(
             r"(?:how\s+(?:would\s+I|do\s+I|should\s+I|to)\s+(?:add|implement|extend|build|create|integrate)|"
             r"where\s+would\s+I\s+put)"
-            r"\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            r"\s+(?:a\s+|an\s+|the\s+)?(?:new\s+|different\s+|custom\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
         lambda m: [
