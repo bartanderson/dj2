@@ -35,7 +35,23 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-21 session 7):** Systematic query-shape probing + heuristic expansion (9 commits).
+**Recently done (2026-06-21 session 8):** Vision capture + Phase A heuristics + cleanup (7 commits).
+Design: Added DESIGN.md sections 9 (developer intelligence interface - standalone tool, code-agnostic,
+UI interaction model with answer-as-navigation, answer-typed rendering, proactive badges, breadcrumb)
+and 10 (code editing/refactoring - suggest->diff->approve->apply->verify safety model, corpus-backed
+caller enumeration before rename, ast.parse hard stop). Hard boundary captured: tool is permanently
+separate from the game app. Code-agnostic constraint: heuristics use structural terms only, domain
+knowledge enters only via knowledge.db findings layer.
+Phase A: Added list_findings_by_kind tool + 'findings of kind X' NEED pattern. 'What should I work on'
+heuristic now pulls workflow_status + future_plan + known_issue findings together.
+Bug fixes: superlative queries ('what is the most X') no longer false-positive on survey heuristic.
+'How many files are in X' added to modules_in heuristic. snake_case->CamelCase lookup in
+_trace_needs/_explain_needs ('what does world_controller do' now finds WorldController class).
+Open item 15 added to TRACKER: token-aware symbol search (current workaround noted as tech debt).
+Cleanup: deleted all untracked scratch files (_store_batch*, _test_*, _check_*, _show_*, _list_*).
+279/279 regression tests passing throughout.
+
+**Previously done (2026-06-21 session 7):** Systematic query-shape probing + heuristic expansion (9 commits).
 Bug fixes: article-skip before directory name (modules_in), 'files in X.py' redirect to describe_file,
 workflow_status bypass (Ollama sometimes mangled output), 'how do I X' captured 'I' as symbol name.
 New heuristics: compare/diff two symbols ('compare X and Y', 'difference between X and Y'),
