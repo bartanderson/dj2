@@ -140,6 +140,10 @@ def _assemble_prompt(question: str, facts_text: str, history: list[dict],
 # ------------------------------------------------------------------
 
 def _is_survey_needs(needs: list[str]) -> bool:
+    # dev_plan heuristic has the same symbols/files/findings pattern but also has
+    # "entry points" - exclude those so they go through Ollama for synthesis
+    if any(n == "entry points" for n in needs):
+        return False
     return (any(n.startswith("symbols named ") for n in needs) and
             any(n.startswith("files matching ") for n in needs) and
             any(n.startswith("findings for ") for n in needs))
