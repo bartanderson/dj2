@@ -1166,3 +1166,76 @@ Phase C (longer-term):
 - Call graph and dependency tree renderers.
 - Findings dashboard.
 - Diff absorption pipeline.
+
+---
+
+## 10. Code editing and refactoring capability (vision - 2026-06-21)
+
+### Goal
+
+The tool can suggest, preview, apply, and verify simple code edits -
+docstring additions, new functions/classes following an existing pattern,
+symbol renames with caller updates. It never produces broken code and
+never applies anything without explicit approval.
+
+### The safety model: suggest -> diff -> approve -> apply -> verify
+
+Every edit follows this sequence without exception:
+
+1. **Suggest**: tool proposes the change in plain English, names every
+   file that will be touched and why.
+2. **Diff**: tool shows the complete unified diff across all affected
+   files before touching anything. Multi-file changes are shown together,
+   not one at a time.
+3. **Approve**: human explicitly confirms. No auto-apply, no "applying
+   in 3 seconds unless you say no."
+4. **Apply**: tool writes the change to disk.
+5. **Verify**: immediately after apply -
+   - ast.parse() on every changed file (syntax check, free, instant)
+   - re-ingest changed files into corpus DB
+   - compare symbol tables before/after: report any symbol that
+     disappeared unexpectedly or any new symbol not in the plan
+   - check all known callers of renamed/moved symbols are accounted for
+6. **Report**: "these symbols changed, these callers were updated, corpus
+   is consistent" - or "PROBLEM: X is now broken, here is why" with a
+   rollback offer.
+
+### What the corpus enables
+
+The corpus DB is what makes this safer than a naive editor:
+- Before renaming X, we know every caller of X across the whole codebase.
+  The rename suggestion includes all of them. Nothing is missed.
+- After editing, re-ingestion gives a symbol table diff. If a function
+  that existed before is gone after, the tool flags it rather than
+  silently succeeding.
+- Pattern-following edits: "add a system like QuestManager" -> tool
+  finds QuestManager in the corpus, extracts its structure (class shape,
+  __init__ signature, method names, registration pattern), generates a
+  template following those conventions, shows the diff.
+
+### What it will and will not do
+
+Safe operations (single-file or fully-enumerated multi-file):
+- Add/update a docstring on a function or class that lacks one
+- Insert a new function or class following a pattern found in corpus
+- Rename a symbol with full caller update across all files shown upfront
+- Extract a block into a named function within the same file
+- Add a parameter to a function with all call sites updated
+
+Will not attempt automatically:
+- Moving code across files (import chain updates are too error-prone
+  without a proper type-aware tool)
+- Changes touching more than ~5 files without step-by-step approval
+  for each file group
+- Editing files not yet in the corpus (no symbol table = no safety net;
+  ingest first)
+- Any change where ast.parse() fails on the result (hard stop, no apply)
+- Semantic correctness (the tool verifies structure, not behavior;
+  tests are the human's responsibility)
+
+### Code-agnostic constraint applies here too
+
+The edit/refactor capability works on any ingested Python codebase.
+Pattern discovery ("follow the shape of X") uses the corpus, not
+hardcoded game knowledge. The only domain-specific input is what the
+human types in the suggestion request.
