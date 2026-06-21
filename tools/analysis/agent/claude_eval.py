@@ -99,24 +99,34 @@ def run_question(
 def _detect_heuristic_name(question: str) -> str:
     """Best-effort label for which heuristic fired."""
     q = question.lower()
-    if "connect" in q or "relate" in q or "interface between" in q or "what connects" in q:
+    if "entry point" in q:
+        return "entry_points"
+    if "connect" in q or "interface between" in q or "what connects" in q:
         return "connection"
-    if any(w in q for w in ("trace", "how does", "walk")):
+    if "relate" in q and "to" in q:
+        return "connection"
+    if "how does" in q or any(w in q for w in ("trace", "walk")):
+        return "trace"
+    if "how do" in q or "how is" in q:
         return "trace"
     if "what does" in q and ".py" in q:
         return "describe_file"
+    if ("symbols" in q or "functions" in q or "classes" in q) and ".py" in q:
+        return "symbols_in_file"
     if "what does" in q or "explain" in q or "purpose of" in q:
         return "explain_symbol"
-    if "what calls" in q or "callers" in q:
+    if "what calls" in q or "callers" in q or "who calls" in q:
         return "callers"
+    if "where is" in q and ("triggered" in q or "called" in q or "used" in q):
+        return "callers"
+    if "what happens" in q:
+        return "trace"
+    if "what is responsible" in q or "find all files" in q or "find files" in q:
+        return "survey"
     if ("what exists" in q or "find everything" in q or "survey" in q
             or "current state of" in q or "status of" in q
             or q.startswith("show me")):
         return "survey"
-    if ("symbols" in q or "symbol" in q or "functions" in q or "classes" in q) and ".py" in q:
-        return "symbols_in_file"
-    if "who calls" in q or "where is" in q and "used" in q:
-        return "callers"
     if any(w in q for w in ("add", "implement", "build", "where would")):
         return "dev_plan"
     if "what's next" in q or "priorities" in q or "workflow" in q:

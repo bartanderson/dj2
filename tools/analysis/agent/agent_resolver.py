@@ -245,6 +245,16 @@ _PATTERNS = [
 # ------------------------------------------------------------------
 
 _HEURISTICS: list[tuple] = [
+    # --- Entry points ---
+    # "what are the entry points" / "list entry points" / "entry points for X"
+    (
+        re.compile(
+            r"(?:what\s+are\s+(?:the\s+)?|list\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?)?entry\s+points?",
+            re.I,
+        ),
+        lambda m: ["entry points"],
+    ),
+
     # --- Connection (two-symbol) heuristics first - must beat single-symbol patterns ---
 
     # "how does X relate to Y" / "how does X connect to Y" / "how does X reach Y"
@@ -281,6 +291,76 @@ _HEURISTICS: list[tuple] = [
 
     # --- Single-symbol depth heuristics ---
 
+    # "how is X handled" / "how is X done" / "how is X implemented"
+    # also "how is character creation handled" (optional extra word before verb)
+    (
+        re.compile(
+            r"how\s+is\s+(?:a\s+|an\s+|the\s+)?"
+            r"['\"]?([A-Za-z_]\w*)['\"]?"
+            r"(?:\s+[A-Za-z_]\w*)?\s+"
+            r"(?:handled|done|implemented|managed|processed|used)",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"intent of {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+    # "where is X triggered" / "where does X happen" / "where is X called"
+    (
+        re.compile(
+            r"where\s+(?:is\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?\s+(?:triggered|called|fired|invoked|initiated)|"
+            r"does\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?\s+happen)",
+            re.I,
+        ),
+        lambda m: [
+            f"what calls {m.group(1) or m.group(2)}",
+            f"symbols named {m.group(1) or m.group(2)}",
+        ],
+    ),
+    # "what happens when X" / "what happens if X"
+    (
+        re.compile(
+            r"what\s+happens\s+when\s+(?:a\s+|an\s+|the\s+)?(?:player\s+|user\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"what calls {m.group(1)}",
+            f"intent of {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+    # "what is responsible for X"
+    (
+        re.compile(
+            r"what\s+(?:is\s+)?responsible\s+for\s+(?:a\s+|an\s+|the\s+)?"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+    # "how do/does X work" (multi-word "fsm states" etc - captures first significant word)
+    (
+        re.compile(
+            r"how\s+do(?:es)?\s+(?:a\s+|an\s+|the\s+)?"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"intent of {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(1)}",
+        ],
+    ),
     # "trace X" / "how does X work" / "walk me through X" / "trace implementation of X"
     (
         re.compile(
@@ -384,6 +464,33 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # --- Breadth / survey heuristics ---
+
+    # "find all files related to X" / "find files about X"
+    (
+        re.compile(
+            r"find\s+(?:all\s+)?files?\s+(?:related\s+to|about|for|matching)\s+"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"files matching {m.group(1)}",
+            f"symbols named {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
+
+    # "what modules/files exist in X/" / "what is in world/"
+    (
+        re.compile(
+            r"(?:what\s+(?:modules?|files?)\s+(?:exist|are)\s+in\s+|"
+            r"list\s+(?:the\s+)?(?:modules?|files?)\s+in\s+)"
+            r"['\"]?([A-Za-z_][\w/]*/?)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"files in {m.group(1).rstrip('/')}",
+        ],
+    ),
 
     # "what exists for X" / "find everything about X" / "what's related to X"
     # / "survey X" / "what's there for X"
