@@ -109,7 +109,9 @@ def _detect_heuristic_name(question: str) -> str:
         return "explain_symbol"
     if "what calls" in q or "callers" in q:
         return "callers"
-    if "what exists" in q or "find everything" in q or "survey" in q:
+    if ("what exists" in q or "find everything" in q or "survey" in q
+            or "current state of" in q or "status of" in q
+            or q.startswith("show me")):
         return "survey"
     if ("symbols" in q or "symbol" in q or "functions" in q or "classes" in q) and ".py" in q:
         return "symbols_in_file"

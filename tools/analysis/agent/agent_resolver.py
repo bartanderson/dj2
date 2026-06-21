@@ -393,6 +393,8 @@ _HEURISTICS: list[tuple] = [
             r"(?:what\s+exists?\s+for\s+|"
             r"find\s+(?:everything|all)\s+(?:about|for|related\s+to)\s+|"
             r"what'?s?\s+(?:there\s+for|related\s+to)\s+|"
+            r"what\s+is\s+(?:the\s+)?(?:current\s+)?(?:state|status)\s+of\s+(?:the\s+)?|"
+            r"show\s+me\s+(?:all\s+|everything\s+(?:about|for)\s+)?(?:the\s+)?|"
             r"survey\s+)"
             r"(?:a\s+|an\s+|the\s+)?"
             r"['\"]?([A-Za-z_]\w*)['\"]?",
