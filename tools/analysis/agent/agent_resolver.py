@@ -358,12 +358,14 @@ _HEURISTICS: list[tuple] = [
 
     # "what exists for X" / "find everything about X" / "what's related to X"
     # / "survey X" / "what's there for X"
+    # Skips leading articles (a/an/the) before the key term.
     (
         re.compile(
             r"(?:what\s+exists?\s+for\s+|"
             r"find\s+(?:everything|all)\s+(?:about|for|related\s+to)\s+|"
             r"what'?s?\s+(?:there\s+for|related\s+to)\s+|"
             r"survey\s+)"
+            r"(?:a\s+|an\s+|the\s+)?"
             r"['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
