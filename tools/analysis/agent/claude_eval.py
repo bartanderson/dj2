@@ -31,6 +31,7 @@ from tools.analysis.agent.agent_resolver import (
 )
 from tools.analysis.agent.local_agent import (
     _decompose_prompt, _assemble_prompt, _call_ollama,
+    _postprocess_answer,
     OLLAMA_MODEL,
 )
 
@@ -76,6 +77,7 @@ def run_question(
     facts_text = facts_to_text(facts) if facts else "(no facts)"
     assemble_msgs = _assemble_prompt(question, facts_text, [])
     answer = _call_ollama(assemble_msgs, label="")
+    answer = _postprocess_answer(answer, facts)
 
     return {
         "question":        question,

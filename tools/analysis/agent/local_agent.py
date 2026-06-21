@@ -79,18 +79,56 @@ def _decompose_prompt(
 # ------------------------------------------------------------------
 
 _ASSEMBLE_SYSTEM = """\
-You are a code analysis assistant. Answer the question using ONLY
-the facts provided below. Be concise and direct. If the facts do not
-contain enough information to answer, say so."""
+You are a code analysis assistant. Answer the question using ONLY the facts below.
+Rules:
+- Base every claim on what the facts explicitly say. Do not add knowledge from training.
+- If the facts list callers (lines starting "Direct callers of"), name them in your answer.
+- If the facts say "No direct callers found", say so - do not invent callers.
+- If the facts contain a [file_purpose] or [design_note] finding, treat it as authoritative.
+- Be concise. One short paragraph is enough unless the question asks for more detail."""
 
 
 def _assemble_prompt(question: str, facts_text: str, history: list[dict]) -> list[dict]:
     messages = [{"role": "system", "content": _ASSEMBLE_SYSTEM}]
     for turn in history[-6:]:
         messages.append({"role": turn["role"], "content": turn["content"]})
-    content = f"Question: {question}\n\nFacts retrieved from the codebase:\n{facts_text}"
+    content = (
+        f"Question: {question}\n\n"
+        f"=== FACTS (use only these) ===\n{facts_text}\n=== END FACTS ==="
+    )
     messages.append({"role": "user", "content": content})
     return messages
+
+
+def _postprocess_answer(answer: str, facts: list[dict]) -> str:
+    """
+    Guard against fact-omission: if answer claims no callers but facts list callers,
+    append the correct caller list from facts. Pure string post-processing, no AI call.
+    """
+    import re
+    answer_lower = answer.lower()
+    no_caller_phrases = ("no direct caller", "no callers", "not called", "no caller found")
+    if not any(p in answer_lower for p in no_caller_phrases):
+        return answer
+
+    # Extract caller lines from facts
+    caller_lines = []
+    for f in facts:
+        if f.get("tool") != "list_callers" or not f.get("result"):
+            continue
+        result = f["result"]
+        if "No direct callers" in result:
+            continue
+        for line in result.splitlines():
+            line = line.strip()
+            if line and not line.startswith("Direct callers"):
+                caller_lines.append(line)
+
+    if not caller_lines:
+        return answer
+
+    injected = "\n\nNote: Facts show these direct callers: " + "; ".join(caller_lines[:5])
+    return answer + injected
 
 
 # ------------------------------------------------------------------
@@ -170,6 +208,7 @@ def _answer(
     # Phase 3: ASSEMBLE
     assemble_msgs = _assemble_prompt(user_input, facts_text, history)
     answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
+    answer = _postprocess_answer(answer, facts)
 
     # Phase 4: SUGGEST
     suggestions = suggest_followups(facts, oracle, assessor)
