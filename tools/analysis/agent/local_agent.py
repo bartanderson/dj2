@@ -321,8 +321,12 @@ def _answer(
 
     # Phase 3: ASSEMBLE
     # Survey queries get a deterministic structured answer (tiny model ignores facts otherwise).
+    # Workflow-only queries return the status fact directly - Ollama sometimes mangles it.
     if _is_survey_needs(needs):
         answer = build_survey_answer(facts)
+    elif needs == ["workflow status"]:
+        wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
+        answer = wf_fact if wf_fact else "(no workflow items found)"
     else:
         assemble_msgs = _assemble_prompt(user_input, facts_text, history, facts=facts)
         answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")

@@ -77,6 +77,9 @@ def run_question(
     facts_text = facts_to_text(facts) if facts else "(no facts)"
     if _is_survey_needs(needs):
         answer = build_survey_answer(facts)
+    elif needs == ["workflow status"]:
+        wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
+        answer = wf_fact if wf_fact else "(no workflow items found)"
     else:
         assemble_msgs = _assemble_prompt(question, facts_text, [], facts=facts)
         answer = _call_ollama(assemble_msgs, label="")
@@ -123,6 +126,8 @@ def _detect_heuristic_name(question: str) -> str:
         return "trace"
     if "what is responsible" in q or "find all files" in q or "find files" in q:
         return "survey"
+    if "dev plan" in q or "development plan" in q:
+        return "workflow"
     if ("what exists" in q or "find everything" in q or "survey" in q
             or "current state of" in q or "status of" in q
             or q.startswith("show me")):

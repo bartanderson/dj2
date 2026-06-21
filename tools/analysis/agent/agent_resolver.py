@@ -473,15 +473,30 @@ _HEURISTICS: list[tuple] = [
             f"symbols named {m.group(1)}",
         ],
     ),
+    # "what files import from X" / "what imports X" / "who imports X"
+    (
+        re.compile(
+            r"(?:what\s+(?:files?\s+)?(?:import\s+from|imports?)|who\s+imports?)\s+"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"what calls {m.group(1)}",
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+        ],
+    ),
 
     # --- Workflow heuristics ---
 
-    # "what's next" / "what should I work on" / "what are my priorities"
+    # "what's next" / "what should I work on" / "what are my priorities" / "dev plan"
     (
         re.compile(
             r"(?:what'?s?\s+next|what\s+should\s+I\s+(?:work\s+on|do|focus\s+on)|"
             r"(?:show\s+(?:me\s+)?)?(?:my\s+)?(?:current\s+)?priorities|"
-            r"workflow\s+status|what\s+am\s+I\s+working\s+on)",
+            r"workflow\s+status|what\s+am\s+I\s+working\s+on|"
+            r"(?:show\s+(?:me\s+)?(?:the\s+)?|what(?:'?s|\s+is)\s+(?:the\s+)?)"
+            r"dev(?:elopment)?\s+plan)",
             re.I,
         ),
         lambda m: ["workflow status"],
