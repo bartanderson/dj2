@@ -473,6 +473,7 @@ def test_dispatch_all_tools_registered():
         "graph_subgraph", "graph_clusters",
         "workflow_status", "store_workflow_item", "rerank_workflow",
         "list_findings_by_kind",
+        "git_log_for",
     }
     assert set(TOOLS.keys()) == expected
 

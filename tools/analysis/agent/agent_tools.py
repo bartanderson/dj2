@@ -439,6 +439,55 @@ def graph_clusters(oracle: "DBOracle", args: dict) -> str:
 
 
 # ------------------------------------------------------------------
+# GIT HISTORY TOOLS
+# ------------------------------------------------------------------
+
+def git_log_for(oracle: "DBOracle", args: dict) -> str:
+    """
+    git_log_for(path) - recent git commits touching a file or directory.
+    Returns last 10 commits: hash, date, author, message.
+    path is relative to the repo root inferred from the corpus DB location.
+    If only a bare filename is given, resolves it to a full path via the corpus.
+    """
+    import subprocess, os
+    path = args.get("path", "").strip()
+    if not path:
+        return "ERROR: path argument required"
+    # If bare filename (no directory separator), try to resolve via corpus
+    if "/" not in path and "\\" not in path:
+        try:
+            rows = oracle.conn.execute(
+                "SELECT file_path FROM files WHERE file_path LIKE ? LIMIT 1",
+                (f"%{path}",),
+            ).fetchall()
+            if rows:
+                path = rows[0][0].replace("\\", "/")
+        except Exception:
+            pass
+    # Get repo root from oracle (prefers value persisted at ingestion time)
+    try:
+        repo_root = oracle.get_project_root()
+    except Exception:
+        repo_root = None
+    if not repo_root:
+        return "ERROR: could not locate git repo root"
+    repo_root = repo_root.replace("\\", "/")
+    try:
+        result = subprocess.run(
+            ["git", "log", "--oneline", "--follow", "-10",
+             "--format=%h %ad %an: %s", "--date=short", "--", path],
+            cwd=repo_root,
+            capture_output=True, text=True, timeout=10,
+        )
+        output = result.stdout.strip()
+        if not output:
+            return f"No git history found for '{path}'"
+        return f"Recent commits touching '{path}':\n" + output
+    except Exception as e:
+        return f"ERROR running git log: {e}"
+
+
+# ------------------------------------------------------------------
 # WORKFLOW TOOLS
 # ------------------------------------------------------------------
 
@@ -545,6 +594,7 @@ TOOLS = {
     "graph_subgraph":       (graph_subgraph,       "oracle"),
     "graph_clusters":       (graph_clusters,       "oracle"),
     "list_findings_by_kind": (list_findings_by_kind, "assessor"),
+    "git_log_for":          (git_log_for,          "oracle"),
     "workflow_status":      (workflow_status,      "assessor"),
     "store_workflow_item":  (store_workflow_item,  "assessor"),
     "rerank_workflow":      (rerank_workflow,      "assessor"),

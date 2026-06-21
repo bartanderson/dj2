@@ -191,6 +191,11 @@ _PATTERNS = [
     (re.compile(r"(?:known\s+)?findings?\s+for\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "get_findings", "symbol", 1),
 
+    # "git history of <path>" / "recent commits for <path>"
+    (re.compile(r"(?:git\s+(?:history|log)\s+(?:of|for)\s+|recent\s+commits?\s+(?:for|to|in)\s+)"
+                r"['\"]?([^\s'\"]+)['\"]?\s*$", re.I),
+     "git_log_for", "path", 1),
+
     # "findings of kind <kind>" / "all <kind> findings"
     (re.compile(r"(?:findings?\s+of\s+kind\s+|all\s+)([a-z_]+)(?:\s+findings?)?\s*$", re.I),
      "list_findings_by_kind", "kind", 1),
@@ -602,6 +607,23 @@ _HEURISTICS: list[tuple] = [
             f"callees of {m.group(1)}",
             f"findings for {m.group(1)}",
         ],
+    ),
+
+    # "what changed in X" / "when was X last modified" / "recent changes to X"
+    (
+        re.compile(
+            r"(?:what\s+(?:changed?|was\s+changed?)\s+(?:recently\s+)?(?:in|to|for)\s+|"
+            r"when\s+was\s+(?:the\s+)?['\"]?(\S+?)['\"]?\s+(?:last\s+)?(?:changed?|modified?|updated?)|"
+            r"(?:recent|latest)\s+(?:changes?|commits?|updates?)\s+(?:to|in|for)\s+|"
+            r"show\s+(?:me\s+)?(?:the\s+)?(?:git\s+)?(?:history|log)\s+(?:of|for)\s+)"
+            r"(?:the\s+|a\s+|an\s+)?['\"]?([A-Za-z_][\w./]*)['\"]?",
+            re.I,
+        ),
+        lambda m: (lambda t: [
+            f"git history of {t}",
+            f"symbols named {t}",
+            f"findings for {t}",
+        ])(next(g for g in m.groups() if g)),
     ),
 
     # "how was X implemented" / "find something similar to X" / "what follows the same pattern as X"
