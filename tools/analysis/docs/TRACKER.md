@@ -35,7 +35,16 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-20 session 5):** Game corpus depth audit DONE. Depth-2 is sufficient
+**Recently done (2026-06-21 session 6):** Heuristic coverage major expansion + PICK command DONE.
+(1) Added 9 new heuristic patterns: symbols_in_file, callers (who calls/where is X used/triggered),
+survey (state/status/show-me/what-is-responsible), entry_points, find_files, modules_in, how_is_handled,
+what_happens, how_do. (2) Fixed article-skip bug in trace/describe-file heuristics ('how does the X'
+was capturing 'the' not 'X'). (3) Fixed survey bypass false positive on dev_plan queries (entry points
+presence now excludes survey detector). (4) Added PICK subcommand to claude_eval.py: run question twice,
+surface only disagreements (agreed=confident, disagreed=needs human review). (5) Verified 100% file coverage
+(auto --mode unknown returns no uncovered files). 51/51 regression tests passing throughout.
+
+**Previously done (2026-06-20 session 5):** Game corpus depth audit DONE. Depth-2 is sufficient
 for world_corpus.db - max real chain depth is 3 (utility function, not architectural).
 DM->world->dungeon_neo concern is a per-corpus-DB split limitation, not a depth budget problem.
 Fix is merged game_corpus.db (item 3 prerequisite). No code change needed.
