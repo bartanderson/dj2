@@ -1083,24 +1083,49 @@ Categories 6 and 10 are currently unaddressed. Category 7 (dev planning)
 is the highest-value gap: "what should I work on next" and "how was this
 pattern implemented elsewhere" are the questions a co-developer asks most.
 
-### Planned display modes
+### UI interaction model (decided 2026-06-21)
 
-Beyond plain text answers, the interface should support:
+Default mode is chat: plain text in, text out. But answers are typed,
+and the type determines the renderer automatically - the user never
+chooses a display format, the answer chooses it:
 
-- Drill-down navigation: every answer surfaces follow-up prompts
-  ("drill into callers / callees / file / findings") so exploration
-  is a tree, not a flat Q&A list.
-- Call graph view: nodes = symbols, edges = calls. Rendered for a
-  given symbol or file, showing the immediate neighborhood.
-- File dependency tree: which files import which, rendered as a
-  collapsible tree rooted at a chosen file.
-- Findings dashboard: all stored knowledge_artifacts surfaced by
-  category (design_note / known_issue / file_purpose / future_plan),
-  sortable and filterable.
-- Diff absorption: accept a git diff, re-ingest changed files,
-  re-run findings for touched symbols, report what changed and what
-  it may affect. Closes the loop: edit code -> tool tells you the
-  impact.
+- File list answer -> browsable list with drill-down buttons per file
+- Call relationship answer -> two-column card or inline graph
+- Findings answer -> card per finding, grouped by kind
+- Count/ranking answer -> sorted table
+- Survey answer -> structured sections with live symbol names
+
+**The answer IS the navigation.** Every symbol name, file name, or
+system name appearing in an answer is a live button. Clicking it fires
+the next query without typing. The chat input handles open-ended
+questions; buttons handle structured follow-through. The user never
+retypes a name they just saw in output.
+
+**Agent-suggested follow-ups.** Every answer ends with 2-3 suggested
+next queries rendered as buttons (e.g. "callers of X", "findings for X",
+"compare X and Y"). The user can click or ignore and type something else.
+This makes structured navigation feel conversational.
+
+**Proactive badges.** When a symbol or file is displayed anywhere, the
+UI shows passive badges without asking: "4 callers", "2 findings",
+"no docstring". Gaps are visible at a glance rather than discovered
+by querying.
+
+**Exploration breadcrumb.** Drill-down is a tree. The UI keeps the
+full path visible (WorldController -> SessionSystem -> __init__) so
+the user knows how they arrived and can navigate back up any branch,
+not just linear back.
+
+**Display modes (planned):**
+- Call graph: nodes = symbols, edges = calls, immediate neighborhood
+  of any chosen symbol. Clickable nodes fire identity queries.
+- File dependency tree: collapsible, rooted at any chosen file.
+- Findings dashboard: all knowledge_artifacts by category
+  (design_note / known_issue / file_purpose / future_plan),
+  sortable and filterable, each card with drill-down buttons.
+- Diff absorption panel: accept a git diff, re-ingest changed files,
+  surface what changed and what it may break. Closes the loop:
+  edit code -> tool tells you the impact.
 
 ### Build order
 
