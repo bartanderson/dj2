@@ -600,6 +600,8 @@ _HEURISTICS: list[tuple] = [
             r"what\s+is\s+(?:the\s+)?(?:current\s+)?(?:state|status)\s+of\s+(?:the\s+)?|"
             r"what\s+is\s+(?:the\s+)?(?:architecture|design|structure|overview)\s+of\s+(?:the\s+)?|"
             r"describe\s+(?:the\s+)?(?:architecture|design|structure|overview)\s+of\s+(?:the\s+)?|"
+            r"tell\s+me\s+(?:more\s+)?about\s+(?:the\s+)?|"
+            r"what\s+is\s+|"
             r"show\s+me\s+(?:all\s+|everything\s+(?:about|for)\s+)?(?:the\s+)?|"
             r"survey\s+)"
             r"(?:a\s+|an\s+|the\s+)?"

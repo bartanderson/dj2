@@ -62,7 +62,8 @@ def test_answer_basic_three_phase():
 
     with patch("tools.analysis.agent.local_agent._call_ollama",
                side_effect=lambda msgs, verbose=False, label="": next(responses)):
-        answer, history = _answer("what is the encounter system?", [], oracle, assessor)
+        # Use a question that doesn't trigger any heuristic so Ollama decompose fires
+        answer, history = _answer("count the encounter modules", [], oracle, assessor)
 
     assert "encounter" in answer.lower()
     assert len(history) == 2
