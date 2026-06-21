@@ -278,6 +278,66 @@ def cmd_auto(args, oracle, assessor):
         print()
 
 
+def cmd_pick(args, oracle, assessor):
+    """
+    PICK: run a question twice, surface only what the two answers disagree on.
+    Survey questions (deterministic) are shown once with a note.
+    Ollama questions are run twice and diffed at the sentence level.
+    """
+    question = args.question
+
+    # First run
+    r1 = run_question(question, oracle, assessor)
+    if r1.get("error"):
+        print(f"ERROR on run 1: {r1['error']}")
+        return
+
+    # Survey questions are deterministic - no point running twice
+    if _is_survey_needs(r1["needs"]):
+        print(f"QUESTION: {question}")
+        print(f"PICK: survey heuristic (deterministic - showing once)")
+        print(format_result(r1, show_facts=False))
+        return
+
+    # Second run
+    r2 = run_question(question, oracle, assessor)
+    if r2.get("error"):
+        print(f"ERROR on run 2: {r2['error']}")
+        return
+
+    a1 = r1["answer"].strip()
+    a2 = r2["answer"].strip()
+
+    # Find disagreements at sentence level
+    import re
+    def sentences(text):
+        return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+
+    sents1 = set(sentences(a1))
+    sents2 = set(sentences(a2))
+    only_in_1 = sents1 - sents2
+    only_in_2 = sents2 - sents1
+    agreed = sents1 & sents2
+
+    print(f"QUESTION: {question}")
+    print(f"PICK: {len(agreed)} agreed | {len(only_in_1)} only-in-run1 | {len(only_in_2)} only-in-run2")
+    print(f"NEEDS: {' | '.join(r1['needs'][:6])}")
+    print()
+    if agreed:
+        print("AGREED (confident):")
+        for s in sorted(agreed):
+            print(f"  + {s}")
+        print()
+    if only_in_1 or only_in_2:
+        print("DISAGREEMENT (needs human review):")
+        for s in sorted(only_in_1):
+            print(f"  run1: {s}")
+        for s in sorted(only_in_2):
+            print(f"  run2: {s}")
+    else:
+        print("PICK: answers identical - high confidence")
+
+
 def cmd_store(args, oracle, assessor):
     if args.workflow:
         # --workflow kind subject content
@@ -326,6 +386,10 @@ def main():
     p_auto.add_argument("--list-only", action="store_true",
                         help="Print questions without running them")
 
+    # pick
+    p_pick = sub.add_parser("pick", help="Run question twice, show only disagreements (PICK pattern)")
+    p_pick.add_argument("question", help="The question to ask")
+
     # store
     p_store = sub.add_parser("store", help="Write a human-confirmed finding or workflow item")
     p_store.add_argument("subject", nargs="?", help="Symbol or file name")
@@ -351,6 +415,8 @@ def main():
         cmd_batch(args, oracle, assessor)
     elif args.cmd == "auto":
         cmd_auto(args, oracle, assessor)
+    elif args.cmd == "pick":
+        cmd_pick(args, oracle, assessor)
     elif args.cmd == "store":
         cmd_store(args, oracle, assessor)
 
