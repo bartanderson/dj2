@@ -35,9 +35,14 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-20 session 3):** Survey heuristic article-skip fix DONE.
-`what exists for the movement pipeline` was capturing "the" not "movement" - regex now skips
-optional leading articles (a/an/the) before the key term. Scratch files cleaned up.
+**Recently done (2026-06-20 session 4):** ASSEMBLE fact-omission fixed + survey cross-file intelligence DONE.
+(1) Survey heuristic gets deterministic structured answer (bypass Ollama) - before: "The PartySystem class exists." (13 facts ignored),
+after: structured inventory of files, symbols, call relationships, stored findings.
+(2) General ASSEMBLE gets required-elements hint injected into prompt (files found, callers found).
+(3) Phase 2b expansion now fetches get_findings per file found by search_files - survey answers now include
+file_purpose and design_note artifacts from discovery pass. "what exists for the narrative system"
+now returns both narrative_engine.py and narrative_system.py with full design notes and symbol inventory.
+Survey heuristic article-skip fix also DONE (session 3): skips a/an/the before key term.
 
 **Previously done (2026-06-20 session 2):** Full world corpus discovery pass COMPLETE.
 65/65 files covered in world_corpus.db. 4 tool bugs found and fixed during the pass:
