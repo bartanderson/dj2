@@ -136,6 +136,7 @@ def _detect_heuristic_name(question: str) -> str:
         return "callers"
     if ("what exists" in q or "find everything" in q or "survey" in q
             or "current state of" in q or "status of" in q
+            or "architecture of" in q or "structure of" in q or "design of" in q
             or q.startswith("show me")):
         return "survey"
     if any(w in q for w in ("add", "implement", "build", "where would")):
