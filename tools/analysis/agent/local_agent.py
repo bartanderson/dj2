@@ -88,16 +88,126 @@ Rules:
 - Be concise. One short paragraph is enough unless the question asks for more detail."""
 
 
-def _assemble_prompt(question: str, facts_text: str, history: list[dict]) -> list[dict]:
+def _required_elements(facts: list[dict]) -> str:
+    """
+    Extract files and callers found in facts and return a 'you must mention' hint
+    for the ASSEMBLE prompt. Empty string if nothing notable found.
+    """
+    files = []
+    callers = []
+    for f in facts:
+        tool = f.get("tool", "")
+        result = f.get("result", "") or ""
+        if tool == "search_files" and result and not result.startswith("No "):
+            for line in result.splitlines()[1:]:
+                line = line.strip()
+                if line:
+                    files.append(line.split("(")[0].strip().split("/")[-1])
+        elif tool == "list_callers" and result and "No direct callers" not in result:
+            lines = result.splitlines()
+            callee = lines[0].replace("Direct callers of", "").strip().strip("':").strip("'")
+            for line in lines[1:]:
+                line = line.strip()
+                if line:
+                    callers.append(f"{callee} <- {line}")
+    parts = []
+    if files:
+        parts.append("Files found: " + ", ".join(files))
+    if callers:
+        parts.append("Callers found: " + "; ".join(callers[:5]))
+    return "\n".join(parts)
+
+
+def _assemble_prompt(question: str, facts_text: str, history: list[dict],
+                     facts: list[dict] | None = None) -> list[dict]:
     messages = [{"role": "system", "content": _ASSEMBLE_SYSTEM}]
     for turn in history[-6:]:
         messages.append({"role": turn["role"], "content": turn["content"]})
+    required = _required_elements(facts) if facts else ""
+    required_block = f"\nMust include in answer:\n{required}\n" if required else ""
     content = (
-        f"Question: {question}\n\n"
+        f"Question: {question}\n"
+        f"{required_block}\n"
         f"=== FACTS (use only these) ===\n{facts_text}\n=== END FACTS ==="
     )
     messages.append({"role": "user", "content": content})
     return messages
+
+
+# ------------------------------------------------------------------
+# Survey bypass: build structured answer directly from facts
+# (bypasses Ollama for survey heuristic - tiny model ignores facts)
+# ------------------------------------------------------------------
+
+def _is_survey_needs(needs: list[str]) -> bool:
+    return (any(n.startswith("symbols named ") for n in needs) and
+            any(n.startswith("files matching ") for n in needs) and
+            any(n.startswith("findings for ") for n in needs))
+
+
+def build_survey_answer(facts: list[dict]) -> str:
+    """
+    Deterministic survey answer built directly from facts.
+    Used when survey heuristic fires to avoid Ollama ignoring the fact set.
+    """
+    files: list[str] = []
+    symbols: list[str] = []
+    callers: list[str] = []
+    findings: list[str] = []
+
+    for f in facts:
+        tool = f.get("tool", "")
+        result = f.get("result", "") or ""
+        if not result:
+            continue
+
+        if tool == "search_files":
+            if not result.startswith("No "):
+                for line in result.splitlines()[1:]:
+                    line = line.strip()
+                    if line:
+                        files.append(line)
+
+        elif tool == "search_symbols":
+            if not result.startswith("No "):
+                seen = set()
+                for line in result.splitlines()[1:]:
+                    line = line.strip()
+                    if line and line not in seen:
+                        seen.add(line)
+                        symbols.append(line)
+
+        elif tool == "list_callers":
+            if "No direct callers" not in result:
+                lines = result.splitlines()
+                callee = lines[0].replace("Direct callers of", "").strip().strip("':").strip("'")
+                for line in lines[1:]:
+                    line = line.strip()
+                    if line:
+                        callers.append(f"  {callee} <- {line}")
+
+        elif tool == "get_findings":
+            if "No stored" not in result:
+                findings.append(result)
+
+    sections: list[str] = []
+
+    sections.append("Files:\n" + ("\n".join(f"  {f}" for f in files) if files else "  (none found)"))
+
+    if symbols:
+        sections.append("Symbols:\n" + "\n".join(f"  {s}" for s in symbols))
+    else:
+        sections.append("Symbols: (none found)")
+
+    if callers:
+        sections.append("Call relationships:\n" + "\n".join(callers))
+
+    if findings:
+        sections.append("Stored findings:\n" + "\n".join(f"  {f}" for f in findings))
+    else:
+        sections.append("Stored findings: (none - run discovery pass to populate)")
+
+    return "\n\n".join(sections)
 
 
 def _postprocess_answer(answer: str, facts: list[dict]) -> str:
@@ -206,9 +316,13 @@ def _answer(
         facts_text = "(no structured needs identified - answering from general knowledge)"
 
     # Phase 3: ASSEMBLE
-    assemble_msgs = _assemble_prompt(user_input, facts_text, history)
-    answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
-    answer = _postprocess_answer(answer, facts)
+    # Survey queries get a deterministic structured answer (tiny model ignores facts otherwise).
+    if _is_survey_needs(needs):
+        answer = build_survey_answer(facts)
+    else:
+        assemble_msgs = _assemble_prompt(user_input, facts_text, history, facts=facts)
+        answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
+        answer = _postprocess_answer(answer, facts)
 
     # Phase 4: SUGGEST
     suggestions = suggest_followups(facts, oracle, assessor)
