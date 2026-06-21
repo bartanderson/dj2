@@ -257,6 +257,41 @@ _HEURISTICS: list[tuple] = [
 
     # --- Connection (two-symbol) heuristics first - must beat single-symbol patterns ---
 
+    # "compare X and Y" / "what is the difference between X and Y" / "X vs Y"
+    (
+        re.compile(
+            r"(?:compare\s+|what\s+(?:is\s+the\s+)?difference\s+between\s+|difference\s+between\s+)"
+            r"['\"]?([A-Za-z_]\w*)['\"]?\s+(?:and|vs\.?|versus)\s+['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"intent of {m.group(1)}",
+            f"findings for {m.group(1)}",
+            f"symbols named {m.group(2)}",
+            f"intent of {m.group(2)}",
+            f"findings for {m.group(2)}",
+            f"path from {m.group(1)} to {m.group(2)}",
+        ],
+    ),
+    # "what is the relationship between X and Y" / "relationship between X and Y"
+    (
+        re.compile(
+            r"(?:what\s+is\s+(?:the\s+)?)?(?:relationship|connection|link|interaction)\s+between\s+"
+            r"['\"]?([A-Za-z_]\w*)['\"]?\s+and\s+['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"path from {m.group(1)} to {m.group(2)}",
+            f"what calls {m.group(1)}",
+            f"callees of {m.group(1)}",
+            f"what calls {m.group(2)}",
+            f"callees of {m.group(2)}",
+            f"findings for {m.group(1)}",
+            f"findings for {m.group(2)}",
+        ],
+    ),
+
     # "how does X relate to Y" / "how does X connect to Y" / "how does X reach Y"
     (
         re.compile(
