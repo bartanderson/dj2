@@ -1029,3 +1029,96 @@ is independently testable with no model dependency.
   existing generator; the agent doesn't reimplement it.
 - Not persistent across sessions by design. The knowledge.db is the
   persistence layer; conversation history is intentionally volatile.
+
+---
+
+## 9. Developer intelligence interface (vision - 2026-06-21)
+
+### The primary interface
+
+The analysis tool is headed toward becoming a standalone developer
+workbench - the primary interface Bart uses to understand, navigate,
+and plan work on the game codebase. Everything built so far
+(corpus ingestion, Truth Kernel, conversational agent, knowledge.db,
+PICK validation, heuristics) is backend infrastructure that this
+interface sits on top of.
+
+"Primary interface" means: when Bart wants to know what to work on
+next, how a system works, what calls what, what the findings say, or
+how a pattern was implemented before - he opens this tool, not a
+separate file browser or grep session.
+
+### Separation from the game (hard boundary)
+
+The tool is a separate application - separate process, separate UI,
+no runtime dependency on the dungeon app. The game does not know the
+tool exists. This boundary is permanent: the tool interrogates the
+game's source as a corpus, it does not run inside the game or share
+its runtime.
+
+The only legitimate coupling points:
+- The game may expose test hooks (inspection endpoints, state dumps)
+  as part of its own testing infrastructure. The tool may query those
+  hooks. The game exposes them for testing; the tool exploits them.
+  The game never imports from tools/analysis/.
+- Shared utility code (pure functions, data structures) may be copied
+  into both codebases, not imported across the boundary.
+
+### Query taxonomy and coverage (as of 2026-06-21)
+
+Ten categories of question the interface must answer well:
+
+1. Identity/definition - "what is X", "where is X defined"
+2. Structure/composition - "what files are in X/", "what classes in X.py"
+3. Relationships/dependencies - "who calls X", "what imports X", "compare X and Y"
+4. Behavioral/trace - "how does X work", "trace X", "show me how X is used"
+5. Survey/landscape - "tell me about the quest system", "architecture of X"
+6. Evolutionary/history - "what changed in X", "when was X last modified" (GAP)
+7. Development planning - "what should I work on", "how was X done elsewhere" (partial)
+8. Ranking/complexity - "most complex file", "most tightly coupled" (partial)
+9. Quality/issues - "findings for X", "what has TODOs", "what has no docstrings" (partial)
+10. Pattern/convention - "how is X typically done here", "find similar to X" (GAP)
+
+Categories 6 and 10 are currently unaddressed. Category 7 (dev planning)
+is the highest-value gap: "what should I work on next" and "how was this
+pattern implemented elsewhere" are the questions a co-developer asks most.
+
+### Planned display modes
+
+Beyond plain text answers, the interface should support:
+
+- Drill-down navigation: every answer surfaces follow-up prompts
+  ("drill into callers / callees / file / findings") so exploration
+  is a tree, not a flat Q&A list.
+- Call graph view: nodes = symbols, edges = calls. Rendered for a
+  given symbol or file, showing the immediate neighborhood.
+- File dependency tree: which files import which, rendered as a
+  collapsible tree rooted at a chosen file.
+- Findings dashboard: all stored knowledge_artifacts surfaced by
+  category (design_note / known_issue / file_purpose / future_plan),
+  sortable and filterable.
+- Diff absorption: accept a git diff, re-ingest changed files,
+  re-run findings for touched symbols, report what changed and what
+  it may affect. Closes the loop: edit code -> tool tells you the
+  impact.
+
+### Build order
+
+Phase A (near-term, low effort):
+- "What should I work on" heuristic: pulls workflow_items + findings
+  to produce a prioritized answer.
+- "How was X done elsewhere" heuristic: uses callers + examples to
+  show prior implementations of a pattern.
+- Impact analysis trigger: "if I change X what breaks" -> task_generator
+  ripple query (already exists, just needs a heuristic entry point).
+
+Phase B (medium-term):
+- Drill-down structured responses with follow-up prompt suggestions.
+- Quality sweep heuristics: TODOs, missing docstrings, unfinished items.
+- Git history heuristic: thin wrapper over git log for evolutionary queries.
+
+Phase C (longer-term):
+- Standalone UI application (separate from the dungeon app).
+- Call graph and dependency tree renderers.
+- Findings dashboard.
+- Diff absorption pipeline.
