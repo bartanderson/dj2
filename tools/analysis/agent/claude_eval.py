@@ -111,6 +111,10 @@ def _detect_heuristic_name(question: str) -> str:
         return "callers"
     if "what exists" in q or "find everything" in q or "survey" in q:
         return "survey"
+    if ("symbols" in q or "symbol" in q or "functions" in q or "classes" in q) and ".py" in q:
+        return "symbols_in_file"
+    if "who calls" in q or "where is" in q and "used" in q:
+        return "callers"
     if any(w in q for w in ("add", "implement", "build", "where would")):
         return "dev_plan"
     if "what's next" in q or "priorities" in q or "workflow" in q:

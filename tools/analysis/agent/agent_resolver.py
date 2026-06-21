@@ -308,10 +308,27 @@ _HEURISTICS: list[tuple] = [
             f"symbols in {m.group(1)}",
         ],
     ),
-    # "what does X do" / "explain X" / "purpose of X" (symbol form)
+    # "what symbols [are/exist] in X.py" / "list symbols in X.py" / "symbols in X.py"
+    # also "what functions/classes are in X.py" / "what is in X.py"
     (
         re.compile(
-            r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)['\"]?([A-Za-z_]\w*)['\"]?",
+            r"(?:what\s+(?:symbols?|functions?|classes?|methods?|is)\s+(?:are\s+|exist\s+)?in\s+|"
+            r"list\s+(?:a\s+|an\s+|the\s+)?(?:symbols?|functions?|classes?|methods?)\s+in\s+|"
+            r"symbols?\s+in\s+)"
+            r"['\"]?([A-Za-z_][\w/\\]*\.py)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols in {m.group(1)}",
+            f"findings for {m.group(1).replace('/', '_').replace(chr(92), '_')}",
+        ],
+    ),
+    # "what does X do" / "explain X" / "purpose of X" (symbol form, skips a/an/the)
+    (
+        re.compile(
+            r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)"
+            r"(?:a\s+|an\s+|the\s+)?"
+            r"['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
         lambda m: [
@@ -321,9 +338,20 @@ _HEURISTICS: list[tuple] = [
             f"findings for {m.group(1)}",
         ],
     ),
-    # "what calls X" / "callers of X"
+    # "what calls X" / "callers of X" / "who calls X"
     (
-        re.compile(r"(?:what\s+calls|callers?\s+of)\s+['\"]?([A-Za-z_]\w*)['\"]?", re.I),
+        re.compile(
+            r"(?:what\s+calls|callers?\s+of|who\s+calls)\s+['\"]?([A-Za-z_]\w*)['\"]?",
+            re.I,
+        ),
+        lambda m: [
+            f"what calls {m.group(1)}",
+            f"symbols named {m.group(1)}",
+        ],
+    ),
+    # "where is X used"
+    (
+        re.compile(r"where\s+is\s+['\"]?([A-Za-z_]\w*)['\"]?\s+used", re.I),
         lambda m: [
             f"what calls {m.group(1)}",
             f"symbols named {m.group(1)}",
