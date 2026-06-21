@@ -35,7 +35,17 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-21 session 6):** Heuristic coverage major expansion + PICK command DONE.
+**Recently done (2026-06-21 session 7):** Systematic query-shape probing + heuristic expansion (9 commits).
+Bug fixes: article-skip before directory name (modules_in), 'files in X.py' redirect to describe_file,
+workflow_status bypass (Ollama sometimes mangled output), 'how do I X' captured 'I' as symbol name.
+New heuristics: compare/diff two symbols ('compare X and Y', 'difference between X and Y'),
+relationship ('relationship between X and Y'), imports_from ('what files import from X'),
+files_that_use ('files that use X'), show_me_how ('show me how X is used'),
+where_is_defined ('where is X defined/located'), modules_in extended ('what is in the X folder'),
+survey extended (architecture/design/structure of X, 'what is X', 'tell me about X').
+279/279 regression tests passing throughout.
+
+**Previously done (2026-06-21 session 6):** Heuristic coverage major expansion + PICK command DONE.
 (1) Added 9 new heuristic patterns: symbols_in_file, callers (who calls/where is X used/triggered),
 survey (state/status/show-me/what-is-responsible), entry_points, find_files, modules_in, how_is_handled,
 what_happens, how_do. (2) Fixed article-skip bug in trace/describe-file heuristics ('how does the X'
