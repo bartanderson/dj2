@@ -410,9 +410,14 @@ def test_expand_facts_produces_callers_and_intent():
     assert "list_callers" in tools_run
     assert "symbol_intent" in tools_run
 
-def test_expand_facts_files_does_not_expand():
-    """files_in_directory results are NOT auto-expanded - too cascading."""
+def test_expand_facts_files_expands_to_findings():
+    """files_in_directory results now expand to get_findings per file."""
     from tools.analysis.agent.agent_resolver import expand_facts
+
+    class _Assessor:
+        def get_artifacts(self, subject):
+            return []
+        _knowledge_conn = None
 
     facts = [{
         "need": "files in world",
@@ -421,8 +426,9 @@ def test_expand_facts_files_does_not_expand():
         "result": "Files in 'world/':\n  world/encounter_generator.py (120 lines)\n",
     }]
     seen = {("files_in_directory", (("path", "world"),))}
-    new_facts = expand_facts(facts, None, None, seen)
-    assert new_facts == []
+    new_facts = expand_facts(facts, None, _Assessor(), seen)
+    tools_run = [f["tool"] for f in new_facts]
+    assert "get_findings" in tools_run
 
 def test_expand_facts_deduplicates():
     """expand_facts does not re-run tool calls already in seen."""

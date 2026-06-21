@@ -752,10 +752,22 @@ class DBOracle:
             conditions.append("symbol_type = ?")
             params.append(symbol_type)
 
+        where = " AND ".join(conditions)
+        # Rank by project reference count so the most architecturally
+        # central symbols surface first. Three callee forms are checked:
+        # exact name, module.name suffix (qualified imports), and
+        # name.self.obj prefix (method call chains). Falls back to
+        # file/line for ties.
         query = (
-            "SELECT name, file_path, symbol_type, line_number, signature, "
-            "canonical_id FROM symbols WHERE " + " AND ".join(conditions) +
-            " ORDER BY file_path, line_number LIMIT ?"
+            "SELECT s.name, s.file_path, s.symbol_type, s.line_number, "
+            "s.signature, s.canonical_id, "
+            "(SELECT COUNT(*) FROM symbol_references sr "
+            " WHERE sr.bucket = 'project' "
+            "   AND (sr.callee = s.name "
+            "        OR sr.callee LIKE '%.' || s.name "
+            "        OR sr.callee LIKE s.name || '.%')) AS caller_count "
+            f"FROM symbols s WHERE {where} "
+            "ORDER BY caller_count DESC, s.file_path, s.line_number LIMIT ?"
         )
         params.append(limit)
 
