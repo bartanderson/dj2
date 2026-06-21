@@ -1012,6 +1012,23 @@ distinct angles folded in.
     state) loses the bucket on the same fixture, proving this test would
     have caught the original bug. Full regression suite: 80/80 after.
 
+15. **Agent search layer: token-aware symbol lookup (open).** Current
+    `search_symbols` uses substring matching on the full term. This means
+    `world_controller` finds `set_world_controller` (a function) before
+    `WorldController` (the class), because no substring of the class name
+    matches the snake_case query. The CamelCase conversion in
+    `_camel_variant()` (added 2026-06-21) is a workaround for the common
+    case, but doesn't generalize: a query with tokens that don't form a
+    clean CamelCase class name still hits the wrong symbol. The principled
+    fix is a token-aware search: split `world_controller` into
+    `["world", "controller"]`, find all symbols containing both tokens,
+    rank by type (class > function > variable). Side benefit: would surface
+    naming-convention relationships (`WorldController` class vs
+    `set_world_controller` function) as useful context rather than a
+    collision to route around. Requires changes to `search_symbols` in
+    `agent_tools.py` and the NEED-resolution path in `agent_resolver.py`.
+    Defer until substring workaround proves insufficient on more queries.
+
 ---
 
 ## 4. Chronological session log
