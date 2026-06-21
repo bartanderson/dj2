@@ -480,11 +480,14 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "what modules/files exist in X/" / "what is in world/"
+    # "list files in the X directory" / "what files are in the X folder"
     (
         re.compile(
             r"(?:what\s+(?:modules?|files?)\s+(?:exist|are)\s+in\s+|"
-            r"list\s+(?:the\s+)?(?:modules?|files?)\s+in\s+)"
-            r"['\"]?([A-Za-z_][\w/]*/?)['\"]?",
+            r"list\s+(?:the\s+)?(?:modules?|files?)\s+in\s+|"
+            r"what\s+is\s+in\s+)"
+            r"(?:the\s+|a\s+|an\s+)?['\"]?([A-Za-z_][\w/]*/?)['\"]?"
+            r"(?:\s+(?:folder|directory|dir|package|module))?",
             re.I,
         ),
         lambda m: [
