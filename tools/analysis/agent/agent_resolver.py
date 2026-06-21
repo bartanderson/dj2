@@ -244,6 +244,52 @@ _PATTERNS = [
 # Each entry: (regex, builder_fn) where builder_fn(match) -> list[str]
 # ------------------------------------------------------------------
 
+# Suffix words that form meaningful compound class names (e.g. "adjudication engine" -> AdjudicationEngine)
+_CLASS_SUFFIXES = frozenset({
+    "engine", "system", "manager", "handler", "controller", "service",
+    "generator", "builder", "parser", "router", "resolver", "tracker",
+    "monitor", "processor", "dispatcher", "coordinator", "registry",
+})
+
+
+def _compound_term(word1: str, word2: str | None) -> str | None:
+    """Return CamelCase compound if word2 is a class suffix, else None."""
+    if word2 and word2.lower() in _CLASS_SUFFIXES:
+        return word1.capitalize() + word2.capitalize()
+    return None
+
+
+def _trace_needs(term: str, suffix: str | None = None) -> list[str]:
+    """Standard trace NEEDs. Uses compound as primary if suffix is a class suffix."""
+    compound = _compound_term(term, suffix)
+    primary = compound if compound else term
+    needs = [
+        f"symbols named {primary}",
+        f"intent of {primary}",
+        f"callees of {primary}",
+        f"what calls {primary}",
+    ]
+    if compound:
+        needs.insert(1, f"symbols named {term}")  # bare term search as fallback
+    return needs
+
+
+def _explain_needs(term: str, suffix: str | None = None) -> list[str]:
+    """Standard explain NEEDs. Uses compound as primary if suffix is a class suffix."""
+    compound = _compound_term(term, suffix)
+    primary = compound if compound else term
+    needs = [
+        f"symbols named {primary}",
+        f"intent of {primary}",
+        f"brief for {primary}",
+        f"callees of {primary}",
+        f"findings for {primary}",
+    ]
+    if compound:
+        needs.insert(1, f"symbols named {term}")  # bare term search as fallback
+    return needs
+
+
 _HEURISTICS: list[tuple] = [
     # --- Entry points ---
     # "what are the entry points" / "list entry points" / "entry points for X"
@@ -382,35 +428,25 @@ _HEURISTICS: list[tuple] = [
             f"findings for {m.group(1)}",
         ],
     ),
-    # "how do/does X work" (multi-word "fsm states" etc - captures first significant word)
+    # "how do/does X [Y] work" - captures compound like "adjudication engine"
     # Negative lookahead skips "I" - "how do I ..." is dev_plan, not trace
     (
         re.compile(
             r"how\s+do(?:es)?\s+(?:a\s+|an\s+|the\s+)?(?!I\b)"
-            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            r"['\"]?([A-Za-z_]\w*)['\"]?(?:\s+([A-Za-z_]\w*))?",
             re.I,
         ),
-        lambda m: [
-            f"symbols named {m.group(1)}",
-            f"intent of {m.group(1)}",
-            f"callees of {m.group(1)}",
-            f"what calls {m.group(1)}",
-        ],
+        lambda m: _trace_needs(m.group(1), m.group(2)),
     ),
-    # "trace X" / "how does X work" / "walk me through X" / "trace implementation of X"
+    # "trace X [Y]" / "how does X [Y] work" / "walk me through X [Y]"
     (
         re.compile(
             r"(?:trace(?:\s+implementation\s+of)?|how\s+does\s+|walk\s+(?:me\s+)?through\s+)"
             r"(?:a\s+|an\s+|the\s+)?"
-            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            r"['\"]?([A-Za-z_]\w*)['\"]?(?:\s+([A-Za-z_]\w*))?",
             re.I,
         ),
-        lambda m: [
-            f"symbols named {m.group(1)}",
-            f"intent of {m.group(1)}",
-            f"callees of {m.group(1)}",
-            f"what calls {m.group(1)}",
-        ],
+        lambda m: _trace_needs(m.group(1), m.group(2)),
     ),
     # "what does X.py do" / "describe X.py" / "explain X.py" - file form before symbol
     (
@@ -442,20 +478,16 @@ _HEURISTICS: list[tuple] = [
             f"findings for {m.group(1).replace('/', '_').replace(chr(92), '_')}",
         ],
     ),
-    # "what does X do" / "explain X" / "purpose of X" (symbol form, skips a/an/the)
+    # "what does X [Y] do" / "explain X [Y]" / "purpose of X [Y]" (symbol form)
+    # Captures optional second word for compound terms like "escalation engine"
     (
         re.compile(
             r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)"
             r"(?:a\s+|an\s+|the\s+)?"
-            r"['\"]?([A-Za-z_]\w*)['\"]?",
+            r"['\"]?([A-Za-z_]\w*)['\"]?(?:\s+([A-Za-z_]\w*))?",
             re.I,
         ),
-        lambda m: [
-            f"intent of {m.group(1)}",
-            f"brief for {m.group(1)}",
-            f"callees of {m.group(1)}",
-            f"findings for {m.group(1)}",
-        ],
+        lambda m: _explain_needs(m.group(1), m.group(2)),
     ),
     # "what calls X" / "callers of X" / "who calls X"
     (
