@@ -439,6 +439,59 @@ def graph_clusters(oracle: "DBOracle", args: dict) -> str:
 
 
 # ------------------------------------------------------------------
+# QUALITY SWEEP TOOLS
+# ------------------------------------------------------------------
+
+def missing_docstrings(oracle: "DBOracle", args: dict) -> str:
+    """
+    missing_docstrings(limit?) - functions and classes with no docstring.
+    Returns up to limit items (default 20), sorted by file then line.
+    """
+    limit = int(args.get("limit", 20))
+    rows = oracle.conn.execute(
+        "SELECT 'function' as kind, name, file_path, line_number FROM functions "
+        "WHERE docstring IS NULL OR docstring = '' "
+        "UNION ALL "
+        "SELECT 'class', name, file_path, line_number FROM classes "
+        "WHERE docstring IS NULL OR docstring = '' "
+        "ORDER BY file_path, line_number LIMIT ?",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "All functions and classes have docstrings."
+    root = oracle.get_project_root() or ""
+    lines = [f"Functions/classes missing docstrings ({len(rows)} shown, limit {limit}):"]
+    for kind, name, fpath, lineno in rows:
+        rel = fpath.replace("\\", "/").replace(root.replace("\\", "/") + "/", "")
+        lines.append(f"  {kind} {name} in {rel} line {lineno}")
+    return "\n".join(lines)
+
+
+def find_todos(oracle: "DBOracle", args: dict) -> str:
+    """
+    find_todos(limit?) - functions whose docstring or body contains TODO/FIXME/HACK/XXX.
+    Searches the docstring column; body-level TODOs require a file scan (not available here).
+    """
+    limit = int(args.get("limit", 20))
+    rows = oracle.conn.execute(
+        "SELECT name, file_path, line_number, docstring FROM functions "
+        "WHERE docstring LIKE '%TODO%' OR docstring LIKE '%FIXME%' "
+        "OR docstring LIKE '%HACK%' OR docstring LIKE '%XXX%' "
+        "LIMIT ?",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        return "No TODO/FIXME/HACK/XXX found in function docstrings."
+    root = oracle.get_project_root() or ""
+    lines = [f"Functions with TODO/FIXME in docstring ({len(rows)} found):"]
+    for name, fpath, lineno, doc in rows:
+        rel = fpath.replace("\\", "/").replace(root.replace("\\", "/") + "/", "")
+        snippet = (doc or "")[:80].replace("\n", " ")
+        lines.append(f"  {name} in {rel} line {lineno}: {snippet}")
+    return "\n".join(lines)
+
+
+# ------------------------------------------------------------------
 # GIT HISTORY TOOLS
 # ------------------------------------------------------------------
 
@@ -594,6 +647,8 @@ TOOLS = {
     "graph_subgraph":       (graph_subgraph,       "oracle"),
     "graph_clusters":       (graph_clusters,       "oracle"),
     "list_findings_by_kind": (list_findings_by_kind, "assessor"),
+    "missing_docstrings":   (missing_docstrings,   "oracle"),
+    "find_todos":           (find_todos,           "oracle"),
     "git_log_for":          (git_log_for,          "oracle"),
     "workflow_status":      (workflow_status,      "assessor"),
     "store_workflow_item":  (store_workflow_item,  "assessor"),

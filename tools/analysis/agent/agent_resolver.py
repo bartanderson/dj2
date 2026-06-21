@@ -196,6 +196,14 @@ _PATTERNS = [
                 r"['\"]?([^\s'\"]+)['\"]?\s*$", re.I),
      "git_log_for", "path", 1),
 
+    # "missing docstrings" / "no docstrings"
+    (re.compile(r"missing\s+docstrings?\s*$|no\s+docstrings?\s*$", re.I),
+     "missing_docstrings", None, None),
+
+    # "find todos" / "show todos"
+    (re.compile(r"(?:find|show|list)\s+(?:all\s+)?(?:todos?|fixmes?|hacks?)\s*$", re.I),
+     "find_todos", None, None),
+
     # "findings of kind <kind>" / "all <kind> findings"
     (re.compile(r"(?:findings?\s+of\s+kind\s+|all\s+)([a-z_]+)(?:\s+findings?)?\s*$", re.I),
      "list_findings_by_kind", "kind", 1),
@@ -607,6 +615,28 @@ _HEURISTICS: list[tuple] = [
             f"callees of {m.group(1)}",
             f"findings for {m.group(1)}",
         ],
+    ),
+
+    # "what has no docstrings" / "what functions are missing docstrings" / "undocumented code"
+    (
+        re.compile(
+            r"(?:what\s+(?:functions?|classes?|symbols?|code)\s+(?:have?|has|are?|is)\s+"
+            r"(?:no|missing|without|lacking)\s+docstrings?|"
+            r"(?:undocumented|missing\s+docstrings?|no\s+docstrings?))",
+            re.I,
+        ),
+        lambda m: ["missing docstrings"],
+    ),
+
+    # "what has TODOs" / "find all TODOs" / "what is unfinished" / "show me FIXMEs"
+    (
+        re.compile(
+            r"(?:what\s+(?:has|have|contains?)\s+(?:todos?|fixmes?|hacks?)|"
+            r"(?:find|show|list)\s+(?:all\s+)?(?:todos?|fixmes?|hacks?|unfinished)|"
+            r"what\s+is\s+unfinished|what\s+needs?\s+(?:to\s+be\s+)?(?:done|fixed|finished))",
+            re.I,
+        ),
+        lambda m: ["find todos", "findings of kind known_issue"],
     ),
 
     # "what changed in X" / "when was X last modified" / "recent changes to X"

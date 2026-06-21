@@ -146,8 +146,12 @@ def _detect_heuristic_name(question: str) -> str:
         return "workflow"
     if "reprioritize" in q or "suggest order" in q:
         return "reprioritize"
-    if "what changed" in q or "when was" in q and "modified" in q or "recent changes" in q:
+    if "what changed" in q or ("when was" in q and "modified" in q) or "recent changes" in q:
         return "git_history"
+    if "no docstring" in q or "missing docstring" in q or "undocumented" in q:
+        return "quality_docstrings"
+    if "todo" in q or "fixme" in q or "unfinished" in q:
+        return "quality_todos"
     if ("find similar" in q or "similar to" in q or "same pattern as" in q
             or "how was" in q and "implemented" in q or "other things like" in q):
         return "pattern_similar"
