@@ -270,6 +270,33 @@ def _camel_variant(term: str) -> str | None:
     return None
 
 
+def _similar_needs(term: str) -> list[str]:
+    """
+    NEEDs for 'how was X done / find similar to X' queries.
+    Looks up X's structure, its callers (who uses the pattern), and similarly-named
+    symbols (same suffix class, e.g. QuestManager -> other *Manager classes).
+    Note: 'similar' means same name-pattern or same usage site, not same purpose -
+    semantic similarity would require embeddings not available here.
+    """
+    camel = _camel_variant(term)
+    primary = camel if camel else term
+    # Find the suffix if term ends with a known class suffix word
+    suffix_match = next(
+        (s for s in _CLASS_SUFFIXES if primary.lower().endswith(s)),
+        None,
+    )
+    needs = [
+        f"symbols named {primary}",
+        f"what calls {primary}",
+        f"callees of {primary}",
+        f"findings for {primary}",
+    ]
+    if suffix_match:
+        # Search for other symbols sharing the same suffix (e.g. other *Manager classes)
+        needs.append(f"symbols named {suffix_match}")
+    return needs
+
+
 def _trace_needs(term: str, suffix: str | None = None) -> list[str]:
     """Standard trace NEEDs. Uses compound or CamelCase variant as primary when applicable."""
     compound = _compound_term(term, suffix)
@@ -575,6 +602,41 @@ _HEURISTICS: list[tuple] = [
             f"callees of {m.group(1)}",
             f"findings for {m.group(1)}",
         ],
+    ),
+
+    # "how was X implemented" / "find something similar to X" / "what follows the same pattern as X"
+    # "show me an example of X being done" / "how do other things like X work"
+    (
+        re.compile(
+            r"(?:how\s+(?:was|were|is|are)\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?"
+            r"\s+(?:implemented|built|structured|designed|done)|"
+            r"find\s+(?:something\s+)?similar\s+to\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"what\s+(?:else\s+)?follows\s+(?:the\s+)?(?:same\s+)?pattern\s+(?:as\s+|of\s+)"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:other|similar)\s+(?:things?|classes?|modules?)\s+like\s+"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?)",
+            re.I,
+        ),
+        lambda m: _similar_needs(next(g for g in m.groups() if g)),
+    ),
+
+    # "if I change X what breaks" / "what depends on X" / "impact of changing X"
+    # Already have symbol_brief -> task_generator ripple query; just needs a trigger.
+    (
+        re.compile(
+            r"(?:if\s+I\s+(?:change|modify|refactor|rename|remove|delete)\s+"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:what|which)\s+(?:breaks?|depends?\s+on|is\s+affected\s+by|would\s+break)\s+"
+            r"(?:if\s+I\s+(?:change|modify)?\s*)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"impact\s+of\s+(?:changing\s+)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:ripple|blast\s+radius)\s+(?:of\s+|from\s+)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?)",
+            re.I,
+        ),
+        lambda m: (lambda t: [
+            f"brief for {t}",
+            f"what calls {t}",
+            f"findings for {t}",
+        ])(next(g for g in m.groups() if g)),
     ),
 
     # --- Workflow heuristics ---

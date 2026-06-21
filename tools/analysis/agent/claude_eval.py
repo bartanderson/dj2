@@ -146,6 +146,12 @@ def _detect_heuristic_name(question: str) -> str:
         return "workflow"
     if "reprioritize" in q or "suggest order" in q:
         return "reprioritize"
+    if ("find similar" in q or "similar to" in q or "same pattern as" in q
+            or "how was" in q and "implemented" in q or "other things like" in q):
+        return "pattern_similar"
+    if ("if I change" in q or "what breaks" in q or "what depends on" in q
+            or "impact of" in q or "blast radius" in q or "ripple" in q):
+        return "impact"
     return "unknown"
 
 
