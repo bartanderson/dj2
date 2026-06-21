@@ -476,6 +476,19 @@ _HEURISTICS: list[tuple] = [
             f"symbols named {m.group(1)}",
         ],
     ),
+    # "where is X defined" / "where is X located" / "where is X implemented"
+    (
+        re.compile(
+            r"where\s+is\s+(?:the\s+|a\s+|an\s+)?['\"]?([A-Za-z_]\w*)['\"]?"
+            r"\s+(?:defined|located|implemented|declared|found)",
+            re.I,
+        ),
+        lambda m: [
+            f"symbols named {m.group(1)}",
+            f"files matching {m.group(1)}",
+            f"findings for {m.group(1)}",
+        ],
+    ),
     # "what files import from X" / "what imports X" / "who imports X"
     (
         re.compile(
