@@ -99,10 +99,10 @@ def run_question(
 def _detect_heuristic_name(question: str) -> str:
     """Best-effort label for which heuristic fired."""
     q = question.lower()
+    if "connect" in q or "relate" in q or "interface between" in q or "what connects" in q:
+        return "connection"
     if any(w in q for w in ("trace", "how does", "walk")):
         return "trace"
-    if "connect" in q or "relate" in q or "interface between" in q:
-        return "connection"
     if "what does" in q and ".py" in q:
         return "describe_file"
     if "what does" in q or "explain" in q or "purpose of" in q:
