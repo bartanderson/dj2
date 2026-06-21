@@ -569,10 +569,28 @@ def _run_expansion(
     Given one Phase 2 result, produce follow-up facts (Phase 2b).
     Expansion rules:
       search_symbols / symbols_in_file -> list_callers + symbol_intent per symbol
-      files_in_directory / search_files -> symbols_in_file per file
+      files_in_directory / search_files -> symbols_in_file + get_findings per file
       list_callers                      -> symbol_intent per caller name
     """
     expansions = []
+
+    if tool_name in ("files_in_directory", "search_files"):
+        for fpath in _files_from_result(result):
+            fname = fpath.replace("\\", "/").split("/")[-1]
+            for follow_tool, follow_args in [
+                ("get_findings", {"symbol": fname}),
+            ]:
+                key = (follow_tool, tuple(sorted(follow_args.items())))
+                if key in seen:
+                    continue
+                seen.add(key)
+                r = dispatch(follow_tool, follow_args, oracle, assessor)
+                expansions.append({
+                    "need": f"[auto] {follow_tool}({fname})",
+                    "tool": follow_tool,
+                    "args": follow_args,
+                    "result": r,
+                })
 
     if tool_name in ("search_symbols", "symbols_in_file", "list_callers"):
         # When expanding from symbols_in_file, pass the source file so
