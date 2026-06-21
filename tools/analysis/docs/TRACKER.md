@@ -35,11 +35,16 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-20 session 2):** Full world corpus discovery pass COMPLETE.
-65/65 files covered in world_corpus.db. 3 tool bugs found and fixed during the pass:
+**Recently done (2026-06-20 session 3):** Survey heuristic article-skip fix DONE.
+`what exists for the movement pipeline` was capturing "the" not "movement" - regex now skips
+optional leading articles (a/an/the) before the key term. Scratch files cleaned up.
+
+**Previously done (2026-06-20 session 2):** Full world corpus discovery pass COMPLETE.
+65/65 files covered in world_corpus.db. 4 tool bugs found and fixed during the pass:
 (1) symbol_intent disambiguation - file_path hint added, Phase 2b expansion threads it through;
 (2) describe_file basename match - prefers exact match over substring (fixes utils->ai_utils, resolver->entity_resolver);
-(3) 4 new known_issues stored (party overlap, PerlinNoise duplication, travel_system unconnected, world_session superseded).
+(3) ASSEMBLE fact-omission - stronger system prompt + postprocess guard injecting caller list;
+(4) 4 new known_issues stored (party overlap, PerlinNoise duplication, travel_system unconnected, world_session superseded).
 New future_plans stored: Cloudflare adversarial validation, PICK distinguishing-example pattern, Cope-and-Drag layout.
 interpretation_pipeline design note added. terrain_generation_history design note added (JS port round-trip explains duplication).
 tool_system_boundary design note added (AI tool-use contract layer identified).
