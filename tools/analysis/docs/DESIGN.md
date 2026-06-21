@@ -1034,11 +1034,30 @@ is independently testable with no model dependency.
 
 ## 9. Developer intelligence interface (vision - 2026-06-21)
 
+### Code-agnostic design (hard constraint)
+
+The tool is corpus-agnostic by design. It has no knowledge of the game,
+its domain, or its conventions. It works by ingesting any Python codebase
+into a corpus DB and letting the agent query that DB. The game corpus is
+the current test subject, but the tool should work identically on Flask,
+SQLAlchemy, a medical records system, or anything else.
+
+Consequences:
+- Heuristics must be phrased in structural terms (callers, files, symbols,
+  findings) not game terms.
+- The knowledge.db findings layer is how domain knowledge enters the system -
+  a human or prior session stores facts about THIS codebase, and future
+  queries draw on them. That is the only domain-specific layer.
+- The UI makes no assumptions about what the corpus contains. "Files",
+  "symbols", "callers", "findings" are the universal vocabulary.
+- When evaluating a new feature, ask: would this work on Flask too?
+  If not, it belongs in the knowledge layer, not the tool itself.
+
 ### The primary interface
 
 The analysis tool is headed toward becoming a standalone developer
-workbench - the primary interface Bart uses to understand, navigate,
-and plan work on the game codebase. Everything built so far
+workbench - the primary interface a developer uses to understand,
+navigate, and plan work on ANY codebase. Everything built so far
 (corpus ingestion, Truth Kernel, conversational agent, knowledge.db,
 PICK validation, heuristics) is backend infrastructure that this
 interface sits on top of.
