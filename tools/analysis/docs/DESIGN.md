@@ -1239,3 +1239,51 @@ The edit/refactor capability works on any ingested Python codebase.
 Pattern discovery ("follow the shape of X") uses the corpus, not
 hardcoded game knowledge. The only domain-specific input is what the
 human types in the suggestion request.
+
+---
+
+## 11. Git access: current state and the credential boundary
+
+### Today: local-read-only, zero secrets
+
+The tool's only git capability is `git_log_for` (agent_tools.py), which
+shells out to `git log` on the already-present local repo. This is a
+local filesystem read of `.git` - no network, no credentials. The same
+is true of any future `git diff` / `git show` / `git blame` and even
+local `git commit`: none of these need a secret.
+
+The credential question only becomes real the day a tool talks to a
+**remote** (fetch / pull / push). That does not exist yet and should
+not be added without revisiting this section.
+
+### When remote access is added (the rules)
+
+Two distinct properties to preserve, by different mechanisms:
+
+1. **Secret away from the AI (by architecture, not hiding).** The tool
+   must never *handle* the token. Let the OS credential layer hold it -
+   on Windows, Git Credential Manager backs to Windows Credential Manager
+   (DPAPI, tied to the user account). The tool runs `git push`; git
+   supplies the credential at the network call. The token never enters
+   the tool's memory, a constructed `https://token@host` URL, any log,
+   knowledge.db, or the AI's context window. You cannot leak what you
+   never hold.
+
+2. **AI can trigger but not perform the privileged action.** Even with
+   the token invisible, a misbehaving/injected AI could still *invoke*
+   push (wrong branch, force-push, garbage). So:
+   - `git_push` is NOT in the agent tool-dispatch table. Pushing is not
+     an agent capability. The local Ollama agent never gets it.
+   - Push lives only in the human-controlled UI action layer: the AI
+     produces a push-request artifact (branch, commits, diff); the human
+     approves; the tool (not the AI) executes. This is the §10
+     suggest -> diff -> approve -> apply -> verify model with push as the
+     most-privileged "apply" step.
+   - Guardrails: never `--force`, branch allowlist, refuse protected
+     branches.
+
+3. **Token hygiene.** Fine-grained PAT scoped to one repo, Contents
+   read/write only, with expiry; or a per-repo SSH deploy key with a
+   passphrase in ssh-agent. Optionally a dedicated bot account so
+   tool-made pushes are independently revocable. Append-only audit log
+   of every push the tool performs.
