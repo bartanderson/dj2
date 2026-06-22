@@ -35,7 +35,16 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-21 session 8, final):** Determinism work from PICK validation + git design (5 commits).
+**Recently done (2026-06-22 session 9):** Adversarial validation layer + prioritize_work tool (3 commits).
+prioritize_work tool: signal-based inference (in-progress > rank hint > kind order) replaces hand-ranked list;
+deterministic bypass like PICK/survey. Hygiene: marked 4 stale workflow items done. ADVERSARIAL command in
+claude_eval.py: 10 suites / 49 variants, compares needs (actual tool calls fired) not heuristic name labels.
+Suite found 9 real routing gaps; all fixed (callers synonyms, impact synonyms, git_history synonyms,
+pattern_similar synonyms, prioritize synonyms, docstrings synonyms, dev_plan synonyms, describe X).
+Also fixed broken CamelCase lookahead in explain_symbol (re.I defeated it). Result: 32/49 variants pass;
+remaining 9 needs-breaks are legitimate ambiguity or Ollama variance, not routing bugs. 287/287 tests passing.
+
+**Previously done (2026-06-21 session 8, final):** Determinism work from PICK validation + git design (5 commits).
 PICK validation run on 8 questions surfaced two real failures (git_history: Ollama ignored the log fact;
 impact: Ollama degraded the symbol_brief). Both fixed with deterministic bypasses (return git log /
 symbol_brief directly, like survey/workflow already do); PICK now skips the second run for both.
