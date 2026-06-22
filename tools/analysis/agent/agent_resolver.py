@@ -171,8 +171,8 @@ _PATTERNS = [
     (re.compile(r"symbols?\s+in\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "symbols_in_file", "file_path", 1),
 
-    # "what calls <symbol>" / "callers of <symbol>"
-    (re.compile(r"(?:what\s+calls|callers?\s+of)\s+['\"]?(\S+?)['\"]?\s*$", re.I),
+    # "what calls <symbol>" / "callers of <symbol>" / "what invokes <symbol>" / "what uses <symbol>"
+    (re.compile(r"(?:what\s+(?:calls|invokes?|uses?)|callers?\s+of)\s+['\"]?(\S+?)['\"]?\s*$", re.I),
      "list_callers", "symbol", 1),
 
     # "what <symbol> calls" / "callees of <symbol>"
@@ -536,21 +536,21 @@ _HEURISTICS: list[tuple] = [
             f"findings for {m.group(1).replace('/', '_').replace(chr(92), '_')}",
         ],
     ),
-    # "what does X [Y] do" / "explain X [Y]" / "purpose of X [Y]" (symbol form)
+    # "what does X [Y] do" / "explain X [Y]" / "purpose of X [Y]" / "describe X" (symbol form)
     # Captures optional second word for compound terms like "escalation engine"
     (
         re.compile(
-            r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+)"
+            r"(?:what\s+does\s+|explain\s+|purpose\s+of\s+|describe\s+(?:the\s+)?)"
             r"(?:a\s+|an\s+|the\s+)?"
             r"['\"]?([A-Za-z_]\w*)['\"]?(?:\s+([A-Za-z_]\w*))?",
             re.I,
         ),
         lambda m: _explain_needs(m.group(1), m.group(2)),
     ),
-    # "what calls X" / "callers of X" / "who calls X"
+    # "what calls X" / "callers of X" / "who calls X" / "what invokes X" / "what uses X"
     (
         re.compile(
-            r"(?:what\s+calls|callers?\s+of|who\s+calls)\s+['\"]?([A-Za-z_]\w*)['\"]?",
+            r"(?:what\s+(?:calls|invokes?|uses?)|callers?\s+of|who\s+calls)\s+['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
         lambda m: [
@@ -622,10 +622,13 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "what has no docstrings" / "what functions are missing docstrings" / "undocumented code"
+    # "show me functions without docstrings" / "find undocumented functions"
     (
         re.compile(
             r"(?:what\s+(?:functions?|classes?|symbols?|code)\s+(?:have?|has|are?|is)\s+"
             r"(?:no|missing|without|lacking)\s+docstrings?|"
+            r"(?:show\s+(?:me\s+)?)?(?:functions?|classes?|symbols?|code)\s+(?:without|with\s+no|missing|lacking)\s+docstrings?|"
+            r"(?:find|list|show)\s+(?:all\s+)?undocumented\s+(?:functions?|classes?|symbols?|code)|"
             r"(?:undocumented|missing\s+docstrings?|no\s+docstrings?))",
             re.I,
         ),
@@ -644,11 +647,13 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "what changed in X" / "when was X last modified" / "recent changes to X"
+    # "what was modified in X" / "git history for X"
     (
         re.compile(
-            r"(?:what\s+(?:changed?|was\s+changed?)\s+(?:recently\s+)?(?:in|to|for)\s+|"
+            r"(?:what\s+(?:changed?|was\s+(?:changed?|modified?))\s+(?:recently\s+)?(?:in|to|for)\s+|"
             r"when\s+was\s+(?:the\s+)?['\"]?(\S+?)['\"]?\s+(?:last\s+)?(?:changed?|modified?|updated?)|"
             r"(?:recent|latest)\s+(?:changes?|commits?|updates?)\s+(?:to|in|for)\s+|"
+            r"(?:git\s+)?(?:history|log)\s+(?:of|for)\s+|"
             r"show\s+(?:me\s+)?(?:the\s+)?(?:git\s+)?(?:history|log)\s+(?:of|for)\s+)"
             r"(?:the\s+|a\s+|an\s+)?['\"]?([A-Za-z_][\w./]*)['\"]?",
             re.I,
@@ -661,12 +666,14 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "how was X implemented" / "find something similar to X" / "what follows the same pattern as X"
-    # "show me an example of X being done" / "how do other things like X work"
+    # "same pattern as X" / "what is similar to X" / "other things like X"
     (
         re.compile(
             r"(?:how\s+(?:was|were|is|are)\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?"
             r"\s+(?:implemented|built|structured|designed|done)|"
             r"find\s+(?:something\s+)?similar\s+to\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:what\s+is\s+)?similar\s+to\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:same\s+pattern\s+as|same\s+as)\s+(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
             r"what\s+(?:else\s+)?follows\s+(?:the\s+)?(?:same\s+)?pattern\s+(?:as\s+|of\s+)"
             r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
             r"(?:other|similar)\s+(?:things?|classes?|modules?)\s+like\s+"
@@ -677,15 +684,17 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "if I change X what breaks" / "what depends on X" / "impact of changing X"
-    # Already have symbol_brief -> task_generator ripple query; just needs a trigger.
+    # "what would break if I modify X" / "blast radius of X" / "ripple effect of X"
     (
         re.compile(
             r"(?:if\s+I\s+(?:change|modify|refactor|rename|remove|delete)\s+"
             r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
             r"(?:what|which)\s+(?:breaks?|depends?\s+on|is\s+affected\s+by|would\s+break)\s+"
             r"(?:if\s+I\s+(?:change|modify)?\s*)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"what\s+would\s+break\s+if\s+I\s+(?:change|modify|refactor)\s+"
+            r"(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
             r"impact\s+of\s+(?:changing\s+)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?|"
-            r"(?:ripple|blast\s+radius)\s+(?:of\s+|from\s+)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?)",
+            r"(?:ripple(?:\s+effect)?|blast\s+radius)\s+(?:of\s+|from\s+)?(?:a\s+|an\s+|the\s+)?['\"]?([A-Za-z_]\w*)['\"]?)",
             re.I,
         ),
         lambda m: (lambda t: [
@@ -698,9 +707,12 @@ _HEURISTICS: list[tuple] = [
     # --- Workflow heuristics ---
 
     # "what's next" / "what should I work on" / "what are my priorities" / "dev plan"
+    # "what's next on the backlog" / "what is the top priority" / "what should I do next"
     (
         re.compile(
-            r"(?:what'?s?\s+next|what\s+should\s+I\s+(?:work\s+on|do|focus\s+on)|"
+            r"(?:what'?s?\s+next(?:\s+on\s+(?:the\s+)?(?:backlog|list|queue))?|"
+            r"what\s+should\s+I\s+(?:work\s+on|do(?:\s+next)?|focus\s+on)|"
+            r"what\s+(?:is|are)\s+(?:the\s+)?(?:my\s+)?(?:top\s+)?priorit(?:y|ies)|"
             r"(?:show\s+(?:me\s+)?)?(?:my\s+)?(?:current\s+)?priorities|"
             r"workflow\s+status|what\s+am\s+I\s+working\s+on|"
             r"(?:show\s+(?:me\s+)?(?:the\s+)?|what(?:'?s|\s+is)\s+(?:the\s+)?)"
@@ -782,13 +794,14 @@ _HEURISTICS: list[tuple] = [
     ),
 
     # "how would I add X" / "how do I implement X" / "how should I build X"
-    # / "where would I put X" / "how to extend X"
+    # / "where would I add/put X" / "implement a new X" / "build a new X"
     # Skips leading articles (a, an, the) before the subject word.
     (
         re.compile(
             r"(?:how\s+(?:would\s+I|do\s+I|should\s+I|to)\s+(?:add|implement|extend|build|create|integrate)|"
-            r"where\s+would\s+I\s+put)"
-            r"\s+(?:a\s+|an\s+|the\s+)?(?:new\s+|different\s+|custom\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
+            r"where\s+would\s+I\s+(?:add|put|place)|"
+            r"(?:implement|build|create)\s+(?:a\s+|an\s+|the\s+)?(?:new\s+|different\s+|custom\s+)?(?=[A-Za-z_]))"
+            r"\s*(?:a\s+|an\s+|the\s+)?(?:new\s+|different\s+|custom\s+)?['\"]?([A-Za-z_]\w*)['\"]?",
             re.I,
         ),
         lambda m: [

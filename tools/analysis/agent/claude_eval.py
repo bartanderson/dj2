@@ -390,6 +390,242 @@ def cmd_pick(args, oracle, assessor):
         print("PICK: answers identical - high confidence")
 
 
+# ------------------------------------------------------------------
+# Adversarial validation suite
+# ------------------------------------------------------------------
+
+# Each entry: (canonical_question, [variant, ...], expected_heuristic_substring)
+# Variants should produce the same heuristic and overlapping answer content.
+# expected_heuristic_substring: substring of _detect_heuristic_name output,
+#   or None to skip routing check (content-only).
+_ADVERSARIAL_SUITE = [
+    # --- identity / explain_symbol ---
+    (
+        "what does WorldController do",
+        [
+            "what is WorldController",
+            "explain WorldController",
+            "purpose of WorldController",
+            "what is the WorldController class",
+            "what does world_controller do",
+            "describe WorldController",
+        ],
+        "explain_symbol",
+    ),
+    # --- callers ---
+    (
+        "what calls adjudicate_action",
+        [
+            "who calls adjudicate_action",
+            "what invokes adjudicate_action",
+            "callers of adjudicate_action",
+            "where is adjudicate_action called",
+            "what uses adjudicate_action",
+            "show me callers of adjudicate_action",
+        ],
+        "callers",
+    ),
+    # --- trace / behavioral ---
+    (
+        "how does the authority system work",
+        [
+            "how does authority work",
+            "explain the authority system",
+            "walk me through authority",
+            "trace the authority system",
+            "how is authority implemented",
+        ],
+        None,  # Ollama-assembled; check content overlap only
+    ),
+    # --- survey ---
+    (
+        "what exists for combat",
+        [
+            "which files are responsible for combat",
+            "what is responsible for combat",
+            "find all files related to combat",
+            "survey combat",
+            "tell me about combat",
+        ],
+        "survey",
+    ),
+    # --- git_history (deterministic bypass) ---
+    (
+        "what changed recently in adjudication_engine.py",
+        [
+            "recent changes in adjudication_engine.py",
+            "what was modified in adjudication_engine.py",
+            "git history for adjudication_engine.py",
+            "when was adjudication_engine.py last changed",
+        ],
+        "git_history",
+    ),
+    # --- impact (deterministic bypass) ---
+    (
+        "if I change adjudicate_action what breaks",
+        [
+            "blast radius of adjudicate_action",
+            "what depends on adjudicate_action",
+            "impact of changing adjudicate_action",
+            "what would break if I modify adjudicate_action",
+            "ripple effect of adjudicate_action",
+        ],
+        "impact",
+    ),
+    # --- quality ---
+    (
+        "what functions are missing docstrings",
+        [
+            "what has no docstring",
+            "find undocumented functions",
+            "what is undocumented",
+            "missing docstrings",
+            "show me functions without docstrings",
+        ],
+        "quality_docstrings",
+    ),
+    # --- dev_plan ---
+    (
+        "how would I add a new item type",
+        [
+            "how do I add a new item type",
+            "how should I add a new item type",
+            "where would I add a new item type",
+            "implement a new item type",
+            "build a new item type",
+        ],
+        "dev_plan",
+    ),
+    # --- pattern_similar ---
+    (
+        "find similar to CharacterManager",
+        [
+            "what is similar to CharacterManager",
+            "same pattern as CharacterManager",
+            "other things like CharacterManager",
+            "how was CharacterManager implemented",
+        ],
+        "pattern_similar",
+    ),
+    # --- prioritize (deterministic bypass) ---
+    (
+        "what should I work on",
+        [
+            "what should I do next",
+            "what is the top priority",
+            "what are my priorities",
+            "what's next on the backlog",
+        ],
+        "prioritize",
+    ),
+]
+
+
+def _answer_overlap(a1: str, a2: str) -> float:
+    """Fraction of content words in a1 that also appear in a2 (order-independent)."""
+    import re
+    stop = {"the", "a", "an", "is", "in", "of", "to", "for", "and", "or", "it",
+            "this", "that", "with", "on", "at", "by", "from", "as", "are", "be",
+            "has", "have", "its", "not", "do", "does", "was", "were", "what",
+            "how", "which", "where", "who"}
+    def words(text):
+        return {w.lower() for w in re.findall(r'\w+', text) if w.lower() not in stop and len(w) > 2}
+    w1, w2 = words(a1), words(a2)
+    if not w1:
+        return 1.0
+    return len(w1 & w2) / len(w1)
+
+
+def cmd_adversarial(args, oracle, assessor):
+    """
+    ADVERSARIAL: run each canonical question + variants, report routing and content breaks.
+
+    Routing break: variant triggers a different heuristic than canonical.
+    Content break: variant answer shares < 30% content words with canonical answer.
+    """
+    suite = _ADVERSARIAL_SUITE
+    if args.question:
+        # Single custom question mode
+        variants = args.variants or []
+        suite = [(args.question, variants, None)]
+
+    CONTENT_THRESHOLD = 0.30
+    total_variants = sum(len(variants) for _, variants, _ in suite)
+    routing_breaks = []
+    content_breaks = []
+    passes = 0
+
+    print(f"ADVERSARIAL: {len(suite)} suites, {total_variants} total variants\n")
+
+    for canonical, variants, expected_heuristic in suite:
+        print(f"{'='*60}")
+        print(f"CANONICAL: {canonical}")
+        r_canon = run_question(canonical, oracle, assessor)
+        if r_canon.get("error"):
+            print(f"  ERROR (canonical): {r_canon['error']}")
+            continue
+
+        canon_heuristic = r_canon["heuristic"] or "unknown"
+        canon_answer = r_canon["answer"]
+        print(f"  heuristic={canon_heuristic}  needs={r_canon['needs'][:3]}")
+        print(f"  answer_preview: {canon_answer[:120].replace(chr(10), ' ')}")
+        print()
+
+        for variant in variants:
+            r_var = run_question(variant, oracle, assessor)
+            if r_var.get("error"):
+                print(f"  [ERROR] {variant!r}: {r_var['error']}")
+                continue
+
+            var_heuristic = r_var["heuristic"] or "unknown"
+            overlap = _answer_overlap(canon_answer, r_var["answer"])
+            # Compare actual needs (tools to be called) not heuristic name labels.
+            # Heuristic names are human-readable tags; needs are the ground truth.
+            needs_mismatch = set(r_var["needs"]) != set(r_canon["needs"])
+            broke_content = overlap < CONTENT_THRESHOLD
+
+            if needs_mismatch or broke_content:
+                tag = []
+                if needs_mismatch:
+                    tag.append(f"NEEDS({canon_heuristic}->{var_heuristic})")
+                if broke_content:
+                    tag.append(f"CONTENT({overlap:.0%})")
+                label = " ".join(tag)
+                print(f"  [BREAK {label}] {variant!r}")
+                if needs_mismatch:
+                    routing_breaks.append((canonical, variant, r_canon["needs"], r_var["needs"]))
+                if broke_content:
+                    content_breaks.append((canonical, variant, overlap))
+            else:
+                print(f"  [OK  overlap={overlap:.0%}] {variant!r}")
+                passes += 1
+
+    print(f"\n{'='*60}")
+    print(f"ADVERSARIAL SUMMARY")
+    print(f"  Total variants: {total_variants}")
+    print(f"  Passed:  {passes}")
+    print(f"  Routing breaks: {len(routing_breaks)}")
+    print(f"  Content breaks: {len(content_breaks)}")
+
+    if routing_breaks:
+        print(f"\nNEEDS BREAKS (different tools would be called):")
+        for canon, variant, needs1, needs2 in routing_breaks:
+            print(f"  canonical={canon!r}")
+            print(f"  variant  ={variant!r}")
+            only1 = set(needs1) - set(needs2)
+            only2 = set(needs2) - set(needs1)
+            if only1:
+                print(f"    canonical only: {sorted(only1)}")
+            if only2:
+                print(f"    variant only:   {sorted(only2)}")
+            print()
+
+    if content_breaks:
+        print(f"\nCONTENT BREAKS (answer diverged):")
+        for canon, variant, overlap in content_breaks:
+            print(f"  canonical={canon!r}  variant={variant!r}  overlap={overlap:.0%}")
+
+
 def cmd_store(args, oracle, assessor):
     if args.workflow:
         # --workflow kind subject content
@@ -442,6 +678,11 @@ def main():
     p_pick = sub.add_parser("pick", help="Run question twice, show only disagreements (PICK pattern)")
     p_pick.add_argument("question", help="The question to ask")
 
+    # adversarial
+    p_adv = sub.add_parser("adversarial", help="Run built-in adversarial variant suite, report routing/content breaks")
+    p_adv.add_argument("--question", default=None, help="Custom canonical question (runs built-in suite if omitted)")
+    p_adv.add_argument("--variants", nargs="*", help="Variants for custom question")
+
     # store
     p_store = sub.add_parser("store", help="Write a human-confirmed finding or workflow item")
     p_store.add_argument("subject", nargs="?", help="Symbol or file name")
@@ -469,6 +710,8 @@ def main():
         cmd_auto(args, oracle, assessor)
     elif args.cmd == "pick":
         cmd_pick(args, oracle, assessor)
+    elif args.cmd == "adversarial":
+        cmd_adversarial(args, oracle, assessor)
     elif args.cmd == "store":
         cmd_store(args, oracle, assessor)
 
