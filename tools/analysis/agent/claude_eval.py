@@ -32,6 +32,8 @@ from tools.analysis.agent.agent_resolver import (
 from tools.analysis.agent.local_agent import (
     _decompose_prompt, _assemble_prompt, _call_ollama,
     _postprocess_answer, _is_survey_needs, build_survey_answer,
+    _is_git_history_needs, build_git_history_answer,
+    _is_impact_needs, build_impact_answer,
     OLLAMA_MODEL,
 )
 
@@ -77,6 +79,10 @@ def run_question(
     facts_text = facts_to_text(facts) if facts else "(no facts)"
     if _is_survey_needs(needs):
         answer = build_survey_answer(facts)
+    elif _is_git_history_needs(needs):
+        answer = build_git_history_answer(facts)
+    elif _is_impact_needs(needs):
+        answer = build_impact_answer(facts)
     elif needs == ["workflow status"]:
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
@@ -327,10 +333,17 @@ def cmd_pick(args, oracle, assessor):
         print(f"ERROR on run 1: {r1['error']}")
         return
 
-    # Survey questions are deterministic - no point running twice
-    if _is_survey_needs(r1["needs"]):
+    # Deterministic heuristics - no point running twice
+    _det = (
+        ("survey", _is_survey_needs(r1["needs"])),
+        ("git_history", _is_git_history_needs(r1["needs"])),
+        ("impact", _is_impact_needs(r1["needs"])),
+        ("workflow", r1["needs"] == ["workflow status"]),
+    )
+    det_name = next((name for name, hit in _det if hit), None)
+    if det_name:
         print(f"QUESTION: {question}")
-        print(f"PICK: survey heuristic (deterministic - showing once)")
+        print(f"PICK: {det_name} heuristic (deterministic - showing once)")
         print(format_result(r1, show_facts=False))
         return
 

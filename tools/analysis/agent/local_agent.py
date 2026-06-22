@@ -214,6 +214,59 @@ def build_survey_answer(facts: list[dict]) -> str:
     return "\n\n".join(sections)
 
 
+# ------------------------------------------------------------------
+# git_history bypass: the git log output IS the answer.
+# Ollama ignores the log fact and talks about callers instead, so
+# we return the log directly (same rationale as survey/workflow).
+# ------------------------------------------------------------------
+
+def _is_git_history_needs(needs: list[str]) -> bool:
+    return any(n.startswith("git history of ") for n in needs)
+
+
+def build_git_history_answer(facts: list[dict]) -> str:
+    """Deterministic git-history answer: return the git_log_for result directly."""
+    git_fact = next(
+        (f["result"] for f in facts if f["tool"] == "git_log_for" and f["result"]),
+        None,
+    )
+    return git_fact if git_fact else "(no git history found)"
+
+
+# ------------------------------------------------------------------
+# impact bypass: symbol_brief (task_generator output) already IS the
+# impact analysis - direct callers + impact zone. Ollama degrades it
+# (can't synthesize "no direct callers" into "this is an entry point").
+# Return the brief directly, append knowledge.db findings for context.
+# ------------------------------------------------------------------
+
+def _is_impact_needs(needs: list[str]) -> bool:
+    # impact NEEDs: "brief for X" + "what calls X" + "findings for X", no "symbols named"
+    # (distinguishes from explain, which has "brief for" but also "symbols named")
+    return (any(n.startswith("brief for ") for n in needs) and
+            any(n.startswith("what calls ") for n in needs) and
+            not any(n.startswith("symbols named ") for n in needs))
+
+
+def build_impact_answer(facts: list[dict]) -> str:
+    """Deterministic impact answer: the symbol_brief (task_generator output) is the
+    impact analysis - it already includes direct callers, impact zone, and findings.
+    Fall back to raw callers + findings only if the brief is missing."""
+    brief = next(
+        (f["result"] for f in facts if f["tool"] == "symbol_brief" and f["result"]),
+        None,
+    )
+    if brief:
+        return brief
+    callers = next((f["result"] for f in facts if f["tool"] == "list_callers"), "")
+    findings = [
+        f["result"] for f in facts
+        if f["tool"] == "get_findings" and f["result"] and "No stored" not in f["result"]
+    ]
+    parts = [p for p in ([callers] + findings) if p]
+    return "\n\n".join(parts) if parts else "(no impact data found)"
+
+
 def _postprocess_answer(answer: str, facts: list[dict]) -> str:
     """
     Guard against fact-omission: if answer claims no callers but facts list callers,
@@ -320,10 +373,13 @@ def _answer(
         facts_text = "(no structured needs identified - answering from general knowledge)"
 
     # Phase 3: ASSEMBLE
-    # Survey queries get a deterministic structured answer (tiny model ignores facts otherwise).
-    # Workflow-only queries return the status fact directly - Ollama sometimes mangles it.
+    # Several heuristics get a deterministic answer (tiny model ignores or degrades facts).
     if _is_survey_needs(needs):
         answer = build_survey_answer(facts)
+    elif _is_git_history_needs(needs):
+        answer = build_git_history_answer(facts)
+    elif _is_impact_needs(needs):
+        answer = build_impact_answer(facts)
     elif needs == ["workflow status"]:
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
