@@ -35,7 +35,17 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-21 session 8, continued):** Phase A complete + Phase B items 4-5 (6 more commits).
+**Recently done (2026-06-21 session 8, final):** Determinism work from PICK validation + git design (5 commits).
+PICK validation run on 8 questions surfaced two real failures (git_history: Ollama ignored the log fact;
+impact: Ollama degraded the symbol_brief). Both fixed with deterministic bypasses (return git log /
+symbol_brief directly, like survey/workflow already do); PICK now skips the second run for both.
+Assembly hints (_assembly_hint) added for genuine synthesis cases (pattern_similar, workflow-multi) -
+per-heuristic Phase 3 focus instruction; pattern_similar now consistent on substance. PRIMARY fact
+labeling skipped as redundant (bypasses absorbed its use case). DESIGN.md section 11 added: git is
+local-read-only today, credential boundary documented for future remote access. Finding: 'what should
+I work on' varies because workflow items lack explicit ranks (data fix, not prompt). 279/279 tests passing.
+
+**Previously done (2026-06-21 session 8, continued):** Phase A complete + Phase B items 4-5 (6 more commits).
 Phase A: pattern_similar heuristic ('find similar to X', 'how was X implemented' - uses _similar_needs()
 helper with same-suffix class search), impact heuristic ('if I change X what breaks', 'blast radius of X'
 - reuses existing task_generator ripple query via symbol_brief). Phase B item 4: git_log_for tool
