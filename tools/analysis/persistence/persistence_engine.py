@@ -162,7 +162,8 @@ def initialize_database(connection: sqlite3.Connection) -> None:
         caller TEXT,
         callee TEXT,
 
-        line_number INTEGER
+        line_number INTEGER,
+        caller_file TEXT
     )
     """)
 
@@ -284,6 +285,12 @@ def create_indexes(connection: sqlite3.Connection, include_composite: bool = Tru
         ])
     for sql in indexes:
         cursor.execute(sql)
+
+    # migrate existing DBs that predate the caller_file column
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(graph_edges)")}
+    if "caller_file" not in existing:
+        cursor.execute("ALTER TABLE graph_edges ADD COLUMN caller_file TEXT")
+
     connection.commit()
 
 
@@ -679,15 +686,23 @@ def _persist_file_analysis(connection, file_analyses, project_prefixes):
 def _persist_graph_edges(connection, graph):
     cursor = connection.cursor()
 
-    # -----------------------------------------
-    # GRAPH TABLE RESET (NOT file_edges)
-    # -----------------------------------------
-    cursor.execute("DELETE FROM graph_edges")
+    edges = getattr(graph, "edges", [])
 
-    # -----------------------------------------
-    # INSERT CALL GRAPH
-    # -----------------------------------------
-    for edge in getattr(graph, "edges", []):
+    # collect the set of source files in this run
+    files_in_run = {e.caller_file for e in edges if getattr(e, "caller_file", "")}
+
+    if files_in_run:
+        # scoped delete: only remove edges from files being re-ingested
+        placeholders = ",".join("?" * len(files_in_run))
+        cursor.execute(
+            f"DELETE FROM graph_edges WHERE caller_file IN ({placeholders})",
+            list(files_in_run),
+        )
+    else:
+        # legacy path: no caller_file info, fall back to full reset
+        cursor.execute("DELETE FROM graph_edges")
+
+    for edge in edges:
         source_id, target_id = edge_identity(edge.caller, edge.callee)
         cursor.execute("""
         INSERT INTO graph_edges (
@@ -695,14 +710,16 @@ def _persist_graph_edges(connection, graph):
             target_id,
             caller,
             callee,
-            line_number
-        ) VALUES (?, ?, ?, ?, ?)
+            line_number,
+            caller_file
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """, (
             source_id,
             target_id,
             edge.caller,
             edge.callee,
-            getattr(edge, "line_number", None)
+            getattr(edge, "line_number", None),
+            getattr(edge, "caller_file", None),
         ))
 
     connection.commit()

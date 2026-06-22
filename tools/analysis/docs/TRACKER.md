@@ -35,6 +35,15 @@ repeated each other.
 
 ## Dashboard - at a glance
 
+**Recently done (2026-06-22 session 9, continued):** game_corpus.db merge DONE.
+Added `caller_file` column to `graph_edges` (schema + idempotent migration in `ensure_schema`).
+`GraphEdge` + `add_reference` carry caller_file; `run_engine.py` populates it from `analysis.file_path`.
+`_persist_graph_edges` now does scoped delete (by caller_file) instead of full-table reset, so multiple
+corpora can coexist in one DB. `game_corpus.db` created: world/ (2100 edges, 65 files) + dungeon_neo/
+(384 edges, 13 files) = 2484 edges, 78 files, 874 functions - exact additive match vs split DBs.
+9 cross-corpus edges (world->dungeon_neo) now visible and traceable. Old split DBs kept for validation.
+279/279 regression tests passing.
+
 **Recently done (2026-06-22 session 9):** Adversarial validation layer + prioritize_work tool (3 commits).
 prioritize_work tool: signal-based inference (in-progress > rank hint > kind order) replaces hand-ranked list;
 deterministic bypass like PICK/survey. Hygiene: marked 4 stale workflow items done. ADVERSARIAL command in

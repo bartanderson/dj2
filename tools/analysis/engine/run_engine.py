@@ -94,6 +94,7 @@ class EngineRunner:
                     callee=ref.callee,
                     line_number=ref.line_number,
                     bucket=getattr(ref, "bucket", "unknown"),
+                    caller_file=analysis.file_path,
                 )
 
         graph = builder.build()
