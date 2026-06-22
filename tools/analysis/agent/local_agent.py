@@ -131,10 +131,8 @@ def _assembly_hint(needs: list[str]) -> str:
         return ("Name the similar symbols found and what makes them structurally similar "
                 "(same name suffix / role). Show their callers. Do not claim similarity "
                 "the facts do not support.")
-    # workflow-multi ("what should I work on"): workflow status + findings of kind
-    if any(n == "workflow status" for n in needs) and has("findings of kind"):
-        return ("Prioritize concretely: active next_up items first, then known issues, "
-                "then future plans. End with one specific recommendation for what to do next.")
+    # (workflow prioritization is now handled deterministically by the prioritize_work
+    #  tool + bypass, so no assembly hint is needed for it.)
     return ""
 
 
@@ -406,6 +404,9 @@ def _answer(
     elif needs == ["workflow status"]:
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
+    elif needs == ["prioritize work"]:
+        pw_fact = next((f["result"] for f in facts if f["tool"] == "prioritize_work"), None)
+        answer = pw_fact if pw_fact else "(no work items found)"
     else:
         assemble_msgs = _assemble_prompt(user_input, facts_text, history, facts=facts, needs=needs)
         answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")

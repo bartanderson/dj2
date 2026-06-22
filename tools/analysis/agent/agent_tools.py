@@ -566,6 +566,87 @@ def workflow_status(assessor: "Assessor", args: dict) -> str:
     return format_workflow_status(conn)
 
 
+_WIP_MARKERS = ("in progress", "in-progress", "wip", "underway", "started")
+
+
+def prioritize_work(assessor: "Assessor", args: dict) -> str:
+    """
+    prioritize_work() - infer what to work on next from workflow signals.
+
+    The tool's own priority reasoning (not a human-assigned rank readback).
+    Deterministic. Signals, in order:
+      1. In-progress items (finish what's started) - detected from item text.
+      2. The human's declared structure: next_up before backlog, by rank.
+      3. known_issue findings surfaced alongside (not folded into the single
+         pick - bugs-vs-features is the human's call).
+    Returns a single RECOMMENDED item with the reason, then the full breakdown.
+    """
+    from tools.analysis.intent.workflow_store import list_items
+    conn = getattr(assessor, "_knowledge_conn", None)
+    if conn is None:
+        return "No knowledge DB available."
+
+    def is_wip(item: dict) -> bool:
+        text = (item["subject"] + " " + item["content"]).lower()
+        return any(m in text for m in _WIP_MARKERS)
+
+    next_up = list_items(conn, kind="next_up", status="active", limit=20)
+    backlog = list_items(conn, kind="backlog", status="active", limit=20)
+    future  = list_items(conn, kind="future_plan", status="active", limit=20)
+    issues  = assessor.list_artifacts(kind="known_issue") if assessor else []
+
+    wip          = [i for i in (next_up + backlog) if is_wip(i)]
+    next_up_rest = [i for i in next_up if not is_wip(i)]
+    backlog_rest = [i for i in backlog if not is_wip(i)]
+
+    # Single recommendation: in-progress > next_up > backlog > (else) first issue.
+    # Declared workflow outranks incidental issue notes for the single pick.
+    if wip:
+        rec, reason = wip[0], "already in progress - finish what's started"
+    elif next_up_rest:
+        rec, reason = next_up_rest[0], "highest-priority declared next_up item"
+    elif backlog_rest:
+        rec, reason = backlog_rest[0], "top of backlog (no next_up items remain)"
+    elif issues:
+        rec, reason = None, None
+    else:
+        rec, reason = None, None
+
+    lines: list[str] = []
+    if rec:
+        lines.append(f">>> RECOMMENDED: {rec['subject']} ({reason})")
+        lines.append(f"    {rec['content']}")
+    elif issues:
+        lines.append(f">>> RECOMMENDED: fix '{issues[0]['subject']}' "
+                     f"(open confirmed issue, no active workflow items)")
+        lines.append(f"    {issues[0]['content'][:200]}")
+    else:
+        lines.append(">>> No active work items. Add next_up items or run discovery.")
+    lines.append("")
+
+    def emit(title: str, items: list[dict]):
+        lines.append(title)
+        for i in items:
+            r = f"#{i['rank']} " if i.get("rank") else ""
+            lines.append(f"  {r}{i['id']}. {i['subject']}: {i['content'][:80]}")
+
+    if wip:
+        emit("IN PROGRESS (finish first):", wip)
+    if next_up_rest:
+        emit("NEXT UP (declared priority):", next_up_rest)
+    if backlog_rest:
+        emit("BACKLOG:", backlog_rest[:5])
+    if issues:
+        lines.append(f"OPEN ISSUES (known_issue findings, {len(issues)}):")
+        for a in issues[:5]:
+            lines.append(f"  {a['subject']}: {a['content'][:80]}")
+    if future:
+        lines.append(f"FUTURE PLANS ({len(future)}):")
+        for i in future[:5]:
+            lines.append(f"  {i['id']}. {i['subject']}: {i['content'][:60]}")
+    return "\n".join(lines)
+
+
 def store_workflow_item(assessor: "Assessor", args: dict) -> str:
     """
     store_workflow_item(kind, subject, content, rank?) - add a workflow item.
@@ -651,6 +732,7 @@ TOOLS = {
     "find_todos":           (find_todos,           "oracle"),
     "git_log_for":          (git_log_for,          "oracle"),
     "workflow_status":      (workflow_status,      "assessor"),
+    "prioritize_work":      (prioritize_work,      "assessor"),
     "store_workflow_item":  (store_workflow_item,  "assessor"),
     "rerank_workflow":      (rerank_workflow,      "assessor"),
 }

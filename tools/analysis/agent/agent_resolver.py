@@ -196,6 +196,10 @@ _PATTERNS = [
                 r"['\"]?([^\s'\"]+)['\"]?\s*$", re.I),
      "git_log_for", "path", 1),
 
+    # "prioritize work" / "what to work on"
+    (re.compile(r"prioriti[sz]e\s+work\s*$", re.I),
+     "prioritize_work", None, None),
+
     # "missing docstrings" / "no docstrings"
     (re.compile(r"missing\s+docstrings?\s*$|no\s+docstrings?\s*$", re.I),
      "missing_docstrings", None, None),
@@ -703,11 +707,7 @@ _HEURISTICS: list[tuple] = [
             r"dev(?:elopment)?\s+plan)",
             re.I,
         ),
-        lambda m: [
-            "workflow status",
-            "findings of kind future_plan",
-            "findings of kind known_issue",
-        ],
+        lambda m: ["prioritize work"],
     ),
 
     # "reprioritize" / "suggest order" / "what should I do first"

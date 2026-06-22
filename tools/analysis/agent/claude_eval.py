@@ -86,6 +86,9 @@ def run_question(
     elif needs == ["workflow status"]:
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
+    elif needs == ["prioritize work"]:
+        pw_fact = next((f["result"] for f in facts if f["tool"] == "prioritize_work"), None)
+        answer = pw_fact if pw_fact else "(no work items found)"
     else:
         assemble_msgs = _assemble_prompt(question, facts_text, [], facts=facts, needs=needs)
         answer = _call_ollama(assemble_msgs, label="")
@@ -339,6 +342,7 @@ def cmd_pick(args, oracle, assessor):
         ("git_history", _is_git_history_needs(r1["needs"])),
         ("impact", _is_impact_needs(r1["needs"])),
         ("workflow", r1["needs"] == ["workflow status"]),
+        ("prioritize", r1["needs"] == ["prioritize work"]),
     )
     det_name = next((name for name, hit in _det if hit), None)
     if det_name:
