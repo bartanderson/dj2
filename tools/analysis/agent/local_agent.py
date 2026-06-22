@@ -118,16 +118,39 @@ def _required_elements(facts: list[dict]) -> str:
     return "\n".join(parts)
 
 
+def _assembly_hint(needs: list[str]) -> str:
+    """
+    Per-heuristic focus instruction injected into the ASSEMBLE prompt. Steers Ollama
+    on genuine synthesis cases (deterministic cases bypass assembly entirely).
+    In-code for now; could migrate to knowledge.db for data-level tuning once stable.
+    """
+    has = lambda p: any(n.startswith(p) for n in needs)
+    # pattern_similar: callees + what-calls + findings + symbols-named, no intent, no brief
+    if (has("callees of") and has("what calls") and has("findings for")
+            and has("symbols named") and not has("intent of") and not has("brief for")):
+        return ("Name the similar symbols found and what makes them structurally similar "
+                "(same name suffix / role). Show their callers. Do not claim similarity "
+                "the facts do not support.")
+    # workflow-multi ("what should I work on"): workflow status + findings of kind
+    if any(n == "workflow status" for n in needs) and has("findings of kind"):
+        return ("Prioritize concretely: active next_up items first, then known issues, "
+                "then future plans. End with one specific recommendation for what to do next.")
+    return ""
+
+
 def _assemble_prompt(question: str, facts_text: str, history: list[dict],
-                     facts: list[dict] | None = None) -> list[dict]:
+                     facts: list[dict] | None = None,
+                     needs: list[str] | None = None) -> list[dict]:
     messages = [{"role": "system", "content": _ASSEMBLE_SYSTEM}]
     for turn in history[-6:]:
         messages.append({"role": turn["role"], "content": turn["content"]})
     required = _required_elements(facts) if facts else ""
     required_block = f"\nMust include in answer:\n{required}\n" if required else ""
+    hint = _assembly_hint(needs) if needs else ""
+    hint_block = f"\nFocus for this question type:\n{hint}\n" if hint else ""
     content = (
         f"Question: {question}\n"
-        f"{required_block}\n"
+        f"{required_block}{hint_block}\n"
         f"=== FACTS (use only these) ===\n{facts_text}\n=== END FACTS ==="
     )
     messages.append({"role": "user", "content": content})
@@ -384,7 +407,7 @@ def _answer(
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
     else:
-        assemble_msgs = _assemble_prompt(user_input, facts_text, history, facts=facts)
+        assemble_msgs = _assemble_prompt(user_input, facts_text, history, facts=facts, needs=needs)
         answer = _call_ollama(assemble_msgs, verbose=verbose, label="phase3-assemble")
         answer = _postprocess_answer(answer, facts)
 

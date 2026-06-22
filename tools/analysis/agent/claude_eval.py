@@ -87,7 +87,7 @@ def run_question(
         wf_fact = next((f["result"] for f in facts if f["tool"] == "workflow_status"), None)
         answer = wf_fact if wf_fact else "(no workflow items found)"
     else:
-        assemble_msgs = _assemble_prompt(question, facts_text, [], facts=facts)
+        assemble_msgs = _assemble_prompt(question, facts_text, [], facts=facts, needs=needs)
         answer = _call_ollama(assemble_msgs, label="")
         answer = _postprocess_answer(answer, facts)
 
