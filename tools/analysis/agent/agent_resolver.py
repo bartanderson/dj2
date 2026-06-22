@@ -897,6 +897,43 @@ def resolve_need(need: str) -> tuple[str, dict] | None:
     return None
 
 
+# Tools that take a symbol name as their primary arg - eligible for root resolution
+_SYMBOL_ARG_TOOLS = frozenset({
+    "list_callers", "list_callees", "symbol_intent", "symbol_brief",
+    "get_findings", "graph_subgraph",
+})
+
+
+def _resolve_to_symbol(keyword: str, oracle: "DBOracle") -> str:
+    """
+    Given a bare keyword, try to find the actual symbol name in the corpus.
+    Priority: exact match > starts-with match > substring match > original.
+    Returns the best symbol name found, or the original keyword unchanged.
+    """
+    if not keyword:
+        return keyword
+    try:
+        rows = oracle.find_symbols(keyword, limit=20)
+    except Exception:
+        return keyword
+    if not rows:
+        return keyword
+
+    kw_lower = keyword.lower()
+    exact = [r["name"] for r in rows if r["name"].lower() == kw_lower]
+    if exact:
+        return exact[0]
+
+    # Prefer symbols that START with the keyword (e.g. "authority" -> "AuthoritySystem")
+    starts = [r["name"] for r in rows if r["name"].lower().startswith(kw_lower)]
+    if starts:
+        # Among prefix matches, prefer shorter names (more specific root)
+        return min(starts, key=len)
+
+    # Fall back to first substring match
+    return rows[0]["name"]
+
+
 def resolve_all(
     needs: list[str],
     oracle: "DBOracle",
@@ -918,6 +955,15 @@ def resolve_all(
             continue
 
         tool_name, args = resolved
+
+        # Root resolution: if the tool takes a symbol name, resolve bare keywords
+        # to actual corpus symbol names (e.g. "authority" -> "AuthoritySystem").
+        if tool_name in _SYMBOL_ARG_TOOLS:
+            arg_key = next((k for k in ("symbol", "src", "dst") if k in args), None)
+            if arg_key and args[arg_key]:
+                args = dict(args)
+                args[arg_key] = _resolve_to_symbol(args[arg_key], oracle)
+
         dedup_key = (tool_name, tuple(sorted(args.items())))
         if dedup_key in seen:
             continue
