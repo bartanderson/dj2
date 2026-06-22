@@ -516,12 +516,57 @@ def run(db_path: str, verbose: bool = False) -> None:
 # Entry point
 # ------------------------------------------------------------------
 
+def _ingest_source(source_dir: str) -> str:
+    """Ingest a source directory into a corpus DB, return the DB path."""
+    import re
+    from pathlib import Path
+    from tools.analysis.engine.run_engine import EngineRunner
+    from tools.analysis.persistence.persistence_engine import create_database
+
+    src = Path(source_dir).resolve()
+    if not src.is_dir():
+        print(f"ERROR: --source path is not a directory: {source_dir}")
+        sys.exit(1)
+
+    # derive a safe DB name from the directory name
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", src.name)
+    db_path = f"{safe}_corpus.db"
+
+    print(f"Ingesting {src} -> {db_path} ...")
+    db = create_database(db_path)
+    corpus = type("Corpus", (), {"root_path": str(src)})()
+    EngineRunner().run(corpus=corpus, project_prefixes=[], repo_root=str(src), connection=db)
+    db.close()
+    print(f"Ingestion complete: {db_path}")
+    return db_path
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Local codebase analysis agent backed by Ollama."
     )
-    parser.add_argument("db_path", help="Path to corpus DB (e.g. world_corpus.db)")
+    parser.add_argument("db_path", nargs="?",
+                        help="Path to corpus DB (e.g. world_corpus.db). "
+                             "Omit when using --source.")
+    parser.add_argument("--source", metavar="DIR",
+                        help="Source directory to ingest; DB is derived automatically.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Show phase outputs and tool calls")
+    parser.add_argument("--ui", action="store_true",
+                        help="Start the browser-based dev console instead of the REPL")
+    parser.add_argument("--port", type=int, default=5050,
+                        help="Port for the UI server (default: 5050)")
     args = parser.parse_args()
-    run(args.db_path, verbose=args.verbose)
+
+    if args.source:
+        db_path = _ingest_source(args.source)
+    elif args.db_path:
+        db_path = args.db_path
+    else:
+        parser.error("Provide db_path or --source <dir>.")
+
+    if args.ui:
+        from tools.analysis.ui.ui_server import run_server
+        run_server(db_path, port=args.port)
+    else:
+        run(db_path, verbose=args.verbose)

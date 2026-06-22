@@ -62,7 +62,7 @@ def _file_path_to_module(file_path: str, project_root: str = "") -> str:
 
 class DBOracle:
     def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.db_path = db_path
         self._project_root = None  # lazily resolved, see get_project_root()
