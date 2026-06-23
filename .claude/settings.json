@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash",
-      "PowerShell"
+      "PowerShell",
+      "mcp__ccd_session_mgmt__search_session_transcripts",
+      "mcp__ccd_session_mgmt__list_sessions"
     ]
   },
   "hooks": {
