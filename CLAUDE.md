@@ -1,5 +1,29 @@
 # Project Context (read this first, every session)
 
+## SESSION START CHECKLIST — do this before anything else, every session
+
+**Step 1 — Read SESSION_STATE.md**
+Read `SESSION_STATE.md` at the repo root. This is the handoff artifact from the
+prior session. It tells you what was done, what is next, and what is pinned.
+Do not answer "what's next" or make any plan until you have read it.
+
+**Step 2 — Verify recall is running**
+Check the system-reminder at the top of the conversation for:
+`SessionStart:startup hook success: Recall is active for this project.`
+If it says recall is active, logging is running - no action needed.
+If it does NOT say that, tell Bart immediately: "Recall is not running this session."
+Do not proceed silently with recall inactive.
+
+**Step 3 — Confirm memory is loaded**
+The auto-memory index (`MEMORY.md`) is loaded automatically via the system context.
+If Bart asks about prior decisions, preferences, or constraints, check memory entries
+before answering - do not re-derive from conversation or guess.
+
+These three steps are non-negotiable. Do not skip them. Do not reorder them.
+Do not substitute TRACKER.md for SESSION_STATE.md.
+
+---
+
 ## Identity
 - Repo: https://github.com/bartanderson/dj2
 - Local working copy (Bart's machine): `C:\Users\bartl\dev\dj2`

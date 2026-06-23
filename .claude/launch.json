@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-console-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5051", "--directory", "tools/analysis/ui"],
+      "port": 5051
+    }
+  ]
+}

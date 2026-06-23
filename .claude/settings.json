@@ -1,8 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
-      "PowerShell(*)"
+      "Bash",
+      "PowerShell"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/session_start_hook.py",
+            "shell": "bash",
+            "statusMessage": "Loading session state...",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
