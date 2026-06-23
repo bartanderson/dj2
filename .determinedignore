@@ -1,0 +1,33 @@
+# dj2 .determinedignore
+# Determined skips dot-folders automatically (.git, .venv, .claude, etc.)
+# Add project-specific directories to skip below.
+
+# The analysis tool itself — not game code
+tools
+
+# Archives and one-off experiments
+archive
+tools.old
+og_system
+recovered_code
+codebase_analyzer
+external_corpora
+
+# Generated output — not source
+generated_images
+out
+output
+reports
+logs
+
+# Test scratch files at root (not in tests/)
+goals
+prompts
+tmp_check.py
+
+# Corpora and knowledge DBs — not source
+ai_context
+
+# Old venv artifacts at repo root (dj2 has a root-level venv)
+Lib
+Scripts
