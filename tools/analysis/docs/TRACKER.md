@@ -646,7 +646,12 @@ merged from the prior numbering to remove duplication while preserving
 every source document's nuance - see each merged item's body for the
 distinct angles folded in.
 
-1. **[TOP PRIORITY, NEW 2026-06-18] Evaluate widening the ingestion test
+1. **[LOW, 2026-06-23] Triage broken test files** — `tests/test_ai_dungeon_master.py`
+   and `tests/test_character_creation.py` have genuine syntax errors (stray closing
+   braces, truncated `with` blocks) and are silently skipped by the Determined
+   ingestion pipeline. Determine whether they have value, then fix or delete.
+
+2. **[TOP PRIORITY, NEW 2026-06-18] Evaluate widening the ingestion test
    corpus.** The analysis tool has so far only ever ingested itself (157
    files, its own self-corpus) plus regression fixtures - DESIGN.md
    section 3 flags this explicitly as an open assumption: the reasoning
@@ -1081,6 +1086,35 @@ distinct angles folded in.
     collision to route around. Requires changes to `search_symbols` in
     `agent_tools.py` and the NEED-resolution path in `agent_resolver.py`.
     Defer until substring workaround proves insufficient on more queries.
+
+16. **"Why was this file included?" explainability on context bundles (open).**
+    Every retrieved node should carry a `reason_included` annotation - e.g.,
+    "included because `run_analysis_pipeline` imports `scan_project_files`."
+    Currently only `query_session.py` mentions this concept; the context
+    assembly layer does not surface traversal reasons on its output. This is
+    a real debugging aid when AI retrieval goes wrong - the LLM (and the
+    developer) can see why a file is present, not just that it is. Gap
+    identified 2026-06-23 from Tool Plan.md section 3.2.
+
+17. **Retrieval modes: heuristic profiles per task type (open).**
+    The idea: different traversal heuristics for `debugging`, `refactor`,
+    `feature_addition`, and `mutation_analysis` modes. Today context assembly
+    appears to be one-size-fits-all. If that's true, this is a clean
+    next-level improvement - each mode would weight call-graph depth,
+    mutation exposure, or sibling-file proximity differently depending on
+    the declared task. Gap identified 2026-06-23 from Tool Plan.md section 6.2.
+    Verify whether the context assembly layer already has any mode switching
+    before implementing.
+
+18. **Safe-zone / hot-zone risk annotation on context output (open).**
+    The recon-report concept (from an earlier new-idea doc) included tagging
+    files as "safe to modify" vs "requires architectural review" based on
+    phase violations and mutation paths - not just including them, but
+    annotating *why* they are risky at the point of consumption. This is
+    distinct from flagging violations in the Truth layer; it is surfacing that
+    risk in the context bundle the LLM or developer actually reads. Worth
+    wiring into context bundle output once items 16 and 17 have shape.
+    Gap identified 2026-06-23.
 
 ---
 
