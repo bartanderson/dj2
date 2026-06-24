@@ -687,10 +687,16 @@ distinct angles folded in.
    outward into document design space; the kernel projects inward from code.
    Mac-only (Swift). Lower priority. Explore after sync loop (item 5) is solid.
 
-7. **[LOW/MAC-ONLY, 2026-06-23] md-utils integration** — Bart's md-utils repo
-   (details TBD — repo not found publicly, may be private). Described as
-   complementary to treedocs, projecting from truth to YAML/markdown with stale
-   detection. Revisit once Bart clarifies the repo and its current state.
+7. **[LOW/MAC-ONLY, 2026-06-23] md-utils integration** — DandyLyons/md-utils
+   (https://github.com/DandyLyons/md-utils). Swift CLI + library for programmatic
+   Markdown manipulation: frontmatter CRUD (12+ subcommands, JMESPath search),
+   TOC generation, section reordering, Obsidian wikilink parsing + broken link
+   detection, Open Knowledge Format (OKF) bundle support. Not staleness-checking
+   itself, but the infrastructure that staleness detection sits on top of.
+   Relationship to this system: truth kernel produces facts per file; treedocs
+   records them in treedocs.yaml; md-utils is the machinery for keeping that
+   document in sync (read frontmatter, update it, flag stale entries). The sync
+   loop (item 5) drives all three. Mac/Swift, lower priority.
 
 2. **[TOP PRIORITY, NEW 2026-06-18] Evaluate widening the ingestion test
    corpus.** The analysis tool has so far only ever ingested itself (157
