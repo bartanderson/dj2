@@ -403,6 +403,7 @@ def graph_subgraph(oracle: "DBOracle", args: dict) -> str:
     """
     graph_subgraph(symbol, radius) - nodes and edges within radius hops.
     Returns a text summary; use graph_viz for visual output.
+    Each node annotated with why it was included (reason_included).
     """
     symbol = args.get("symbol", "").strip()
     radius = int(args.get("radius", 2))
@@ -410,10 +411,14 @@ def graph_subgraph(oracle: "DBOracle", args: dict) -> str:
         return "ERROR: symbol argument required"
     from tools.analysis.agent.graph_utils import subgraph_around
     sg = subgraph_around(oracle, symbol, radius=radius)
+    reasons = sg.get("reasons", {})
     lines = [f"Subgraph around '{symbol}' (radius={radius}):"]
-    lines.append(f"  Nodes ({len(sg['nodes'])}): {', '.join(sorted(sg['nodes'])[:20])}")
+    lines.append(f"  Nodes ({len(sg['nodes'])}):")
+    for node in sorted(sg['nodes'])[:20]:
+        reason = reasons.get(node, "included via graph traversal")
+        lines.append(f"    {node}  [{reason}]")
     if len(sg['nodes']) > 20:
-        lines[-1] += f" ... +{len(sg['nodes'])-20} more"
+        lines.append(f"    ... +{len(sg['nodes'])-20} more")
     lines.append(f"  Edges ({len(sg['edges'])}):")
     for src, dst in sg['edges'][:15]:
         lines.append(f"    {src} -> {dst}")
