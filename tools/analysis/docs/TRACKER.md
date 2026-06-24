@@ -35,7 +35,11 @@ repeated each other.
 
 ## Dashboard - at a glance
 
-**Recently done (2026-06-23 session 15):** Item 17 done - debug_query and mutation_query intents.
+**Recently done (2026-06-23 session 15):** Items 17+18 done - intent routing profiles + risk annotation.
+Item 17: debug_query/mutation_query intents in query_router.py + agent_resolver.py heuristics.
+Item 18: risk_annotator.py (HOT/WARM/SAFE scoring), wired into symbol_brief output, risk_profile tool.
+
+**Previously done (session 15 earlier):** Item 17 done - debug_query and mutation_query intents.
 Added to `query_router.py` (`_detect_intent`, `intent_budget`, `_select_primitives`) and matching
 heuristics in `agent_resolver.py`. Debug queries get reverse-heavy traversal + findings/todos/callers.
 Mutation queries get balanced traversal + callers/callees. 279/279 tests passing.
@@ -1186,15 +1190,17 @@ distinct angles folded in.
     that map natural-language debug/mutation questions to pre-wired NEED sequences
     (findings, todos, callers, callees). 279/279 regression tests passing.
 
-18. **Safe-zone / hot-zone risk annotation on context output (open).**
-    The recon-report concept (from an earlier new-idea doc) included tagging
-    files as "safe to modify" vs "requires architectural review" based on
-    phase violations and mutation paths - not just including them, but
-    annotating *why* they are risky at the point of consumption. This is
-    distinct from flagging violations in the Truth layer; it is surfacing that
-    risk in the context bundle the LLM or developer actually reads. Worth
-    wiring into context bundle output once items 16 and 17 have shape.
-    Gap identified 2026-06-23.
+18. **Safe-zone / hot-zone risk annotation on context output (done 2026-06-23).**
+    New `risk_annotator.py` with `score_risk(oracle, symbol)`: pure DB scoring
+    (in_degree, out_degree, mutation_count) -> HOT/WARM/SAFE + reasons.
+    HOT: in_degree >= 5, or (in_degree >= 3 AND mutations > 0).
+    WARM: in_degree >= 2, or mutations > 0. SAFE: everything else.
+    Wired into `symbol_brief` (risk line prepended to every brief output).
+    New `risk_profile` standalone tool registered in TOOLS dispatch table.
+    Pattern added to _PATTERNS ("risk profile for X"), heuristic added to
+    _HEURISTICS for "is X safe to modify / how risky is X / blast radius of X".
+    Smoke test on self-corpus: _detect_intent correctly scores WARM (2 callers).
+    279/279 regression tests passing.
 
 ---
 

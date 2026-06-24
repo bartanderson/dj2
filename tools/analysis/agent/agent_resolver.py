@@ -252,6 +252,10 @@ _PATTERNS = [
     (re.compile(r"(?:reorder|rerank)\s+(?:as\s+)?(\d[\d,\s]*)$", re.I),
      "rerank_workflow", "order", 1),
 
+    # "risk profile for X" / "risk of X"
+    (re.compile(r"(?:risk\s+profile\s+(?:for|of)|risk\s+of)\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
+     "risk_profile", "symbol", 1),
+
     # "search <query>" / "find <query>" - fallback to search_symbols
     (re.compile(r"(?:search|find)\s+['\"]?([^'\"]+?)['\"]?\s*$", re.I),
      "search_symbols", "query", 1),
@@ -357,6 +361,25 @@ _HEURISTICS: list[tuple] = [
             re.I,
         ),
         lambda m: ["entry points"],
+    ),
+
+    # --- Risk heuristics ---
+
+    # "is X safe to modify/change" / "how risky is X" / "can I safely change X"
+    # / "risk profile for X" / "what is the blast radius of X"
+    (
+        re.compile(
+            r"(?:is\s+['\"]?([A-Za-z_]\w*)['\"]?\s+safe\s+to\s+(?:modify|change|edit|touch)|"
+            r"(?:how\s+risky|what\s+is\s+the\s+risk)\s+(?:is\s+|of\s+)['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"can\s+I\s+safely\s+(?:change|modify|edit)\s+['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"(?:blast\s+radius|change\s+risk)\s+(?:of|for)\s+['\"]?([A-Za-z_]\w*)['\"]?)",
+            re.I,
+        ),
+        lambda m: (lambda t: [
+            f"risk profile for {t}",
+            f"symbols named {t}",
+            f"what calls {t}",
+        ])(next(g for g in m.groups() if g)),
     ),
 
     # --- Debug heuristics ---

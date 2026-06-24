@@ -477,6 +477,7 @@ def test_dispatch_all_tools_registered():
         "missing_docstrings",
         "find_todos",
         "git_log_for",
+        "risk_profile",
     }
     assert set(TOOLS.keys()) == expected
 
