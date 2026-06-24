@@ -651,6 +651,47 @@ distinct angles folded in.
    braces, truncated `with` blocks) and are silently skipped by the Determined
    ingestion pipeline. Determine whether they have value, then fix or delete.
 
+2. **[NEXT, 2026-06-23] Run stub projector against game corpus** — re-ingest
+   `world/`, `engine/`, `dungeon_neo/` and run `stub_projector.py --all` against
+   the result. Game code is the actual target domain; stubs there are real work
+   items, not fixtures. Evaluate projection quality in context Bart can judge.
+
+3. **[MEDIUM, 2026-06-23] Collaborative editor surface** — minimal editing panel
+   in the Determined UI where AI projection and human edits meet. Projection is
+   the opening move; both parties edit within the visible constraints (contracts,
+   callers, callees shown alongside). Key property: edits committed here feed
+   back into truth via re-ingestion of the changed file — not a scratchpad, a
+   commit surface. Lives as a panel in the existing Determined UI next to query area.
+
+4. **[MEDIUM, 2026-06-23] Wire stub projector into Determined UI** — "fill stub"
+   button or sidebar shortcut that picks the highest-priority stub (by neighbor
+   complexity from stub_density chart) and shows projection in the collab editor
+   surface (item 3 above). Prerequisite for item 3 to be useful.
+
+5. **[MEDIUM, 2026-06-23] Live sync loop: edit -> re-analyze -> update truth** —
+   When a file is edited and applied (via collab editor or directly), re-ingest
+   only that file, propagate changes through the truth kernel, and update all
+   downstream projections (YAML, stubs, docs). Before application: speculative
+   "what-if" mode. After application: authoritative — truth changes and all
+   recordings of it must match. Stale projections show red. This is what makes
+   the system live rather than a one-shot analysis snapshot.
+   Requires: file watching or explicit "apply" trigger, incremental re-ingestion
+   (single file, not full corpus), propagation through graph edges to find
+   downstream affected symbols.
+
+6. **[LOW/MAC-ONLY, 2026-06-23] treedocs integration** — dandylyons/treedocs
+   (https://dandylyons.github.io/treedocs/) is a Swift CLI that maintains a
+   `treedocs.yaml` mapping the repo file tree with human-readable descriptions,
+   version-controlled, with staleness detection (descriptions that no longer match
+   files show red). Complementary to the truth kernel: treedocs projects truth
+   outward into document design space; the kernel projects inward from code.
+   Mac-only (Swift). Lower priority. Explore after sync loop (item 5) is solid.
+
+7. **[LOW/MAC-ONLY, 2026-06-23] md-utils integration** — Bart's md-utils repo
+   (details TBD — repo not found publicly, may be private). Described as
+   complementary to treedocs, projecting from truth to YAML/markdown with stale
+   detection. Revisit once Bart clarifies the repo and its current state.
+
 2. **[TOP PRIORITY, NEW 2026-06-18] Evaluate widening the ingestion test
    corpus.** The analysis tool has so far only ever ingested itself (157
    files, its own self-corpus) plus regression fixtures - DESIGN.md
