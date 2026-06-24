@@ -3,8 +3,18 @@
     "allow": [
       "Bash",
       "PowerShell",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "ToolSearch",
       "mcp__ccd_session_mgmt__search_session_transcripts",
-      "mcp__ccd_session_mgmt__list_sessions"
+      "mcp__ccd_session_mgmt__list_sessions",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget"
     ]
   },
   "hooks": {

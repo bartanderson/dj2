@@ -27,8 +27,9 @@ Do not substitute TRACKER.md for SESSION_STATE.md.
 ## Identity
 - Repo: https://github.com/bartanderson/dj2
 - Local working copy (Bart's machine): `C:\Users\bartl\dev\dj2`
-- This is a DM/AI dungeon-game project. The active work area is `tools/analysis/` —
-  a static-analysis / code-graph engine intended to eventually power a real AI agent.
+- This is a DM/AI dungeon-game project. The static-analysis / code-graph engine
+  has been migrated to the Determined repo (`C:\Users\bartl\dev\Determined`).
+  Active tool work happens there. This repo is now game code only.
 
 ## Resuming a session
 If `SESSION_STATE.md` exists at the repo root, read it first - it's a high-density
@@ -45,63 +46,15 @@ made - cross-check before trusting it: use `mcp__session_info__list_sessions`
 and `read_transcript` to read the latest prior session's actual outcome, rather
 than guessing from this file's claims alone.
 
-## Where to look for status, every session
-Before doing anything else in `tools/analysis/`, read the docs in
-`tools/analysis/docs/`:
-- `DESIGN.md` - architecture and design: Truth Kernel / query algebra layers,
-  the Authority Model, the shadow/observability layer, and the conceptual
-  framing worth keeping from earlier exploratory drafts.
-- `TRACKER.md` - the single source of truth for status, kept deliberately
-  lean. A `## Dashboard` section at the very top gives an at-a-glance
-  recently-done / now-next list - read this first. Below that: section 1
-  holds the phase/tier status tables (engine refactor, Truth Kernel tiers,
-  Truth verification phases); section 2 is a short operational summary of
-  standing environment bugs (stale `.pyc` caches - read this before
-  debugging anything that "looks impossible"); section 3
-  is open items / next steps, numbered in rough priority order - closed
-  items are trimmed to "what shipped + proof," not re-argued in prose,
-  since the fix is the embodiment of the design once it's in code and
-  DESIGN.md reflects it. Updated in place (checkboxes, dated entries) as
-  work lands - do not just re-derive status from conversation memory, read
-  this file.
-- `HISTORY.md` - the full historical record split out of TRACKER.md
-  2026-06-18: the complete incident-by-incident write-tooling defect log,
-  and the complete dated chronological session log (what actually
-  happened, session by session). Nothing was deleted in the split, only
-  relocated - read this when you need the full story behind a closed
-  TRACKER item, not for current status.
-
-These replaced five older per-topic docs (REFACTOR OPS BOARD.md, Truth
-Kernel Board.md, Truth.md, TRUTH KERNEL v1.md, todo-done.md) plus a handful
-of older exploratory/proposal docs. The consolidation was cross-checked
-(2026-06-17, three independent passes) for anything factual that didn't make
-it across before the old docs were removed - nothing was found missing.
-If a stray reference to one of those old filenames turns up anywhere
-(including elsewhere in this file), it's stale - DESIGN.md/TRACKER.md/
-HISTORY.md is the current pointer.
-
-These are git-versioned and human-reviewable on purpose: update them as part of
-finishing work, so Bart can see what changed via `git diff`, and so a future session
-(mine) doesn't need conversation history to know where things stand.
+## Where to look for tool status
+The analysis engine docs (DESIGN.md, TRACKER.md, HISTORY.md) now live in
+`C:\Users\bartl\dev\Determined\docs\`. Read them there for tool status,
+open items, and architecture decisions. Do not look for them here.
 
 ## DB management (standing rule)
-When a new corpus DB is needed, create it fresh - delete any stale `.db`
-files for that corpus first (or overwrite in place). Do not ask Bart
-whether to clean up; just clean and create. The only DB that is never
-auto-deleted is `ai_context/knowledge.db` (unrelated to this tool).
-The self-corpus DB (`C_Users_bartl_dev_dj2_tools_analysis.db`) is the
-primary development DB and should not be deleted unless explicitly
-rebuilding it. All other `.db` files at the repo root are expendable
-ingestion artifacts.
-
-Game corpora use one DB per directory (2026-06-19): `world_corpus.db`,
-`engine_corpus.db`, `dungeon_neo_corpus.db`. (`resolver/` is a single
-file with no graph edges - not worth a DB.) This
-is because `_persist_graph_edges` does a full table reset per run, so
-combining corpora into one DB silently drops all but the last corpus's
-graph_edges. Revisit and merge into a single `game_corpus.db` once the
-ingestion layer supports per-file edge management (item 3 / architecture
-boundary work).
+The only DB that is never auto-deleted is `ai_context/knowledge.db` (unrelated
+to the analysis tool). Corpus DBs for the analysis engine now live in
+`C:\Users\bartl\dev\Determined\` - see that repo's CLAUDE.md for DB rules.
 
 ## Working agreement
 - I (Claude) have direct read/write access to this folder when it's connected to a
@@ -116,8 +69,7 @@ boundary work).
 - I can run things in my own sandbox to verify (syntax checks, regression tests), but
   final confirmation on his actual Windows hardware is his to do, since some bugs
   (e.g. sqlite3 file-handle behavior) only reproduce there.
-- Regression tests live under `tools/analysis/tests/regression/` — plain Python,
-  `assert`-based `test_*` functions, runnable directly via `python3 file.py` or pytest.
+- Regression tests for the analysis engine live under `Determined/tests/regression/`.
 - Before ending any session that did substantive work, the last action is rewriting
   `SESSION_STATE.md` in full with current status and next steps - mandatory, not
   just a convention. A session that does real work and skips this leaves the next
@@ -165,13 +117,6 @@ non-UTF-8 codepage (Windows OEM/CP437) somewhere in the write path. Avoid this:
   these docs — it's not worth the encoding risk for punctuation.
 
 ## Status history
-Session-by-session history (what changed, when, why, including the
-doc-consolidation/cleanup work) lives in
-HISTORY.md (split out of TRACKER.md section 4, 2026-06-18) - read it there,
-don't re-derive it from conversation memory, and don't duplicate it here: an
-inline copy in this file will drift the moment HISTORY.md is updated and
-this file isn't.
-
-Next steps: see TRACKER.md's `## Dashboard` section for the at-a-glance
-view, or section 3 ("Open items / next steps") for the full numbered,
-priority-ordered list across the whole project.
+Session-by-session history for the analysis engine lives in
+`Determined/docs/HISTORY.md`. Next steps for the tool: see
+`Determined/docs/TRACKER.md` Dashboard section.
