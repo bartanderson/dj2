@@ -697,6 +697,34 @@ distinct angles folded in.
    outward into document design space; the kernel projects inward from code.
    Mac-only (Swift). Lower priority. Explore after sync loop (item 5) is solid.
 
+8. **[FUTURE, 2026-06-23] Self-Harness pattern for autonomous eval improvement**
+   — arXiv 2606.09498. Three-stage loop: mine failure patterns from execution
+   traces, propose minimal harness changes, validate via regression before
+   accepting. Direct application: the ADVERSARIAL suite in claude_eval.py
+   currently finds routing gaps that are fixed by hand. Self-Harness is the
+   version where the agent proposes the fix itself. Prerequisite: traces must
+   be trustworthy signal, meaning the tool needs to be stable first. Good
+   upgrade target once the tool is past active development churn.
+
+9. **[CONSIDER, 2026-06-23] showDirectoryPicker for collab editor** —
+   File System Access API (Chrome). Instead of typing a path into Determined's
+   Analyze field, user clicks and picks a folder via OS dialog. Local-first,
+   no upload. Relevant when building the collab editor surface (item 3).
+   Chrome-only currently, which is fine for a local dev tool.
+
+10. **[HOLD, 2026-06-23] Caplets (progressive MCP tool disclosure)** —
+    caplets.dev. Presents agents with capability cards instead of full tool
+    schemas upfront; claims 72% fewer tokens while maintaining task completion.
+    Interesting if Determined's agent grows large enough that tool selection
+    becomes a bottleneck. Not now — running Ollama-local 3B, economics differ
+    from API-billed agents. Revisit if tool count grows past ~30.
+
+11. **[FILE AWAY, 2026-06-23] HTTP QUERY method (RFC 10008)** — safe+idempotent
+    GET with a request body. Correct semantic for read-only queries with complex
+    payloads (no URL length limits, cacheable, retryable). Not applicable now
+    (Determined uses SocketIO internally). Relevant if Determined ever exposes
+    a REST API (e.g. find_stubs?complexity=high style endpoints).
+
 7. **[LOW/MAC-ONLY, 2026-06-23] md-utils integration** — DandyLyons/md-utils
    (https://github.com/DandyLyons/md-utils). Swift CLI + library for programmatic
    Markdown manipulation: frontmatter CRUD (12+ subcommands, JMESPath search),
