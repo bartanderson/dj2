@@ -39,15 +39,16 @@ def _get_stub(conn: sqlite3.Connection, name: str) -> Optional[dict]:
 
 
 def _get_callers(conn: sqlite3.Connection, stub_name: str, limit: int = 5) -> list[dict]:
+    # callee may be stored as bare name OR fully-qualified (module.name)
     rows = conn.execute(
         """
         SELECT DISTINCT ge.caller, f.file_path, f.docstring
         FROM graph_edges ge
         LEFT JOIN functions f ON f.name = ge.caller
-        WHERE ge.callee = ? AND ge.caller != ?
+        WHERE (ge.callee = ? OR ge.callee LIKE ?) AND ge.caller != ?
         LIMIT ?
         """,
-        (stub_name, stub_name, limit),
+        (stub_name, f"%.{stub_name}", stub_name, limit),
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -64,17 +65,20 @@ def _get_sibling_callees(conn: sqlite3.Connection, stub_name: str, file_path: st
         """,
         (file_path, stub_name, limit),
     ).fetchall()
-    return [r[0] for r in rows]
+    # strip module prefix so names are usable in prompt
+    return [r[0].rsplit(".", 1)[-1] if "." in r[0] else r[0] for r in rows]
 
 
 def _get_contracts(conn: sqlite3.Connection, function_names: list[str]) -> list[dict]:
     if not function_names:
         return []
-    placeholders = ",".join("?" * len(function_names))
+    # strip module prefixes so bare names match behavioral_contracts.function_name
+    bare_names = list({n.rsplit(".", 1)[-1] for n in function_names})
+    placeholders = ",".join("?" * len(bare_names))
     rows = conn.execute(
         f"SELECT function_name, description, side_effects_json, raises_json, testable_behaviors_json "
         f"FROM behavioral_contracts WHERE function_name IN ({placeholders})",
-        function_names,
+        bare_names,
     ).fetchall()
     return [dict(r) for r in rows]
 
