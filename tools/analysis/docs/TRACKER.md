@@ -712,18 +712,6 @@ distinct angles folded in.
    no upload. Relevant when building the collab editor surface (item 3).
    Chrome-only currently, which is fine for a local dev tool.
 
-10. **[HOLD, 2026-06-23] Caplets (progressive MCP tool disclosure)** —
-    caplets.dev. Presents agents with capability cards instead of full tool
-    schemas upfront; claims 72% fewer tokens while maintaining task completion.
-    Interesting if Determined's agent grows large enough that tool selection
-    becomes a bottleneck. Not now — running Ollama-local 3B, economics differ
-    from API-billed agents. Revisit if tool count grows past ~30.
-
-11. **[FILE AWAY, 2026-06-23] HTTP QUERY method (RFC 10008)** — safe+idempotent
-    GET with a request body. Correct semantic for read-only queries with complex
-    payloads (no URL length limits, cacheable, retryable). Not applicable now
-    (Determined uses SocketIO internally). Relevant if Determined ever exposes
-    a REST API (e.g. find_stubs?complexity=high style endpoints).
 
 7. **[LOW/MAC-ONLY, 2026-06-23] md-utils integration** — DandyLyons/md-utils
    (https://github.com/DandyLyons/md-utils). Swift CLI + library for programmatic
