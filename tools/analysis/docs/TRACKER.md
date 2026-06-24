@@ -651,10 +651,20 @@ distinct angles folded in.
    braces, truncated `with` blocks) and are silently skipped by the Determined
    ingestion pipeline. Determine whether they have value, then fix or delete.
 
-2. **[NEXT, 2026-06-23] Run stub projector against game corpus** — re-ingest
-   `world/`, `engine/`, `dungeon_neo/` and run `stub_projector.py --all` against
-   the result. Game code is the actual target domain; stubs there are real work
-   items, not fixtures. Evaluate projection quality in context Bart can judge.
+2. **[DONE, 2026-06-23] Run stub projector against game corpus** — ingested
+   `world/` + `dungeon_neo/` into `game_corpus.db`, ran projector against 6 stubs.
+   Found and fixed caller resolution bug (qualified vs bare callee names in graph_edges).
+   Results: stub with resolved caller (semantic_match_subrace) produced best output;
+   others got plausible-but-generic results from sibling context. Pattern confirmed:
+   more caller context = better projections. Temp DB cleaned up.
+
+3. **[READY, 2026-06-23] Cut over tools/analysis/ui -> Determined, then prune** —
+   `local_agent.py --ui` (line 569) is the last live wire to `tools/analysis/ui/`.
+   Cutover: redirect that import to `determined.ui.ui_server` (or remove the flag
+   if Determined is the canonical entry point now). Then delete `tools/analysis/ui/`
+   (4 source files: ui_server.py, console.html, style.css, preview.html, __init__.py).
+   Determined UI has full feature parity + more. Gate: smoke test --ui flag works
+   after redirect before deleting old files.
 
 3. **[MEDIUM, 2026-06-23] Collaborative editor surface** — minimal editing panel
    in the Determined UI where AI projection and human edits meet. Projection is
