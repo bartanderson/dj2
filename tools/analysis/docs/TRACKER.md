@@ -35,6 +35,13 @@ repeated each other.
 
 ## Dashboard - at a glance
 
+**Recently done (2026-06-23 session 15):** Item 17 done - debug_query and mutation_query intents.
+Added to `query_router.py` (`_detect_intent`, `intent_budget`, `_select_primitives`) and matching
+heuristics in `agent_resolver.py`. Debug queries get reverse-heavy traversal + findings/todos/callers.
+Mutation queries get balanced traversal + callers/callees. 279/279 tests passing.
+Also earlier this session: stub detection (is_stub field), stub projector (Ollama-driven), explainability
+on graph_subgraph (reason_included per node), auto-discovery to completion (loop until stalled/done).
+
 **Recently done (2026-06-22 session 9, continued):** game_corpus.db merge DONE.
 Added `caller_file` column to `graph_edges` (schema + idempotent migration in `ensure_schema`).
 `GraphEdge` + `add_reference` carry caller_file; `run_engine.py` populates it from `analysis.file_path`.
@@ -1169,15 +1176,15 @@ distinct angles folded in.
     developer) can see why a file is present, not just that it is. Gap
     identified 2026-06-23 from Tool Plan.md section 3.2.
 
-17. **Retrieval modes: heuristic profiles per task type (open).**
-    The idea: different traversal heuristics for `debugging`, `refactor`,
-    `feature_addition`, and `mutation_analysis` modes. Today context assembly
-    appears to be one-size-fits-all. If that's true, this is a clean
-    next-level improvement - each mode would weight call-graph depth,
-    mutation exposure, or sibling-file proximity differently depending on
-    the declared task. Gap identified 2026-06-23 from Tool Plan.md section 6.2.
-    Verify whether the context assembly layer already has any mode switching
-    before implementing.
+17. **Retrieval modes: heuristic profiles per task type (done 2026-06-23).**
+    Added `debug_query` and `mutation_query` intents to `query_router.py`:
+    detection in `_detect_intent`, traversal budgets in `intent_budget`,
+    primitive selection in `_select_primitives`. `debug_query` gets
+    reverse-heavy traversal (depth 2) + findings/impact/context primitives.
+    `mutation_query` gets balanced traversal + mutations/impact/context primitives.
+    Both have matching heuristic patterns in `agent_resolver.py` `_HEURISTICS`
+    that map natural-language debug/mutation questions to pre-wired NEED sequences
+    (findings, todos, callers, callees). 279/279 regression tests passing.
 
 18. **Safe-zone / hot-zone risk annotation on context output (open).**
     The recon-report concept (from an earlier new-idea doc) included tagging

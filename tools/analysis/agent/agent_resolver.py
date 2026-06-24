@@ -359,6 +359,44 @@ _HEURISTICS: list[tuple] = [
         lambda m: ["entry points"],
     ),
 
+    # --- Debug heuristics ---
+
+    # "why is X broken/failing/wrong" / "what's wrong with X" / "why does X fail/error/crash"
+    (
+        re.compile(
+            r"(?:why\s+(?:is|does|did|won'?t|doesn'?t|can'?t)\s+['\"]?([A-Za-z_]\w*)['\"]?\s+"
+            r"(?:fail|break|crash|error|hang|not\s+work|return\s+wrong|throw)|"
+            r"what'?s?\s+wrong\s+with\s+['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"['\"]?([A-Za-z_]\w*)['\"]?\s+(?:is\s+)?(?:broken|failing|crashed|erroring|not\s+working))",
+            re.I,
+        ),
+        lambda m: (lambda t: [
+            f"symbols named {t}",
+            f"findings for {t}",
+            "find todos",
+            f"what calls {t}",
+            f"brief for {t}",
+        ])(next(g for g in m.groups() if g)),
+    ),
+
+    # --- Mutation heuristics ---
+
+    # "what mutates X" / "who mutates X" / "where is X modified/changed/set" / "what changes X"
+    (
+        re.compile(
+            r"(?:what|who|where)\s+(?:mutates?|modifi(?:es|ed)|changes?|sets?|writes?\s+to)\s+"
+            r"['\"]?([A-Za-z_]\w*)['\"]?|"
+            r"['\"]?([A-Za-z_]\w*)['\"]?\s+(?:is\s+)?(?:mutated|modified|changed|set)\s+(?:by|in|where)",
+            re.I,
+        ),
+        lambda m: (lambda t: [
+            f"symbols named {t}",
+            f"findings for {t}",
+            f"what calls {t}",
+            f"callees of {t}",
+        ])(next(g for g in m.groups() if g)),
+    ),
+
     # --- Connection (two-symbol) heuristics first - must beat single-symbol patterns ---
 
     # "compare X and Y" / "what is the difference between X and Y" / "X vs Y"
