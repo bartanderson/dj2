@@ -334,3 +334,22 @@ Every future session should start by stating:
 We are in implementation stabilization, not architecture invention.
 
 That one sentence alone will prevent a huge amount of drift.
+
+---
+
+📌 DESIGN NOTE — AI LAYER (load when reaching Session 3+)
+
+Before implementing the AI/DM layer, read:
+
+docs\design\00E AI_LAYER_OPPORTUNITIES.md
+
+Key decisions captured there:
+- Tool-calling DM (model queries world, does not receive context dump)
+- EventLog as AI memory (query_recent_events, query_character_knowledge)
+- Structured outputs for intent/adjudication (typed AdjudicationRequest)
+- NPCs as deterministic state, LLM renders dialogue only
+- Persona UI widget evaluation (Session 4)
+- Trust boundary rules for AI tool calls
+
+These do not change the constitution or authority hierarchy.
+They change how the AI layer is wired in.
