@@ -65,12 +65,24 @@ Branch: ui/corpus-map (Determined), 2 commits ahead of main
 Tests: 321/322 passing (1 pre-existing stale fixture failure, unrelated)
 Main: stable, all prior items merged
 
-## What is next (priority order)
+## FIRST THING NEXT SESSION - do this before anything else
 
-1. Validate corpus map in running UI - start server with dj2 corpus, check
-   that Roots/Core panel appears and is useful. Merge to main if good.
-   Command: cd C:\Users\bartl\dev\Determined && .venv\Scripts\python.exe -m determined.agent.local_agent --ui
-   Load corpus: C_Users_bartl_dev_dj2.db
+Start the server, load the dj2 corpus, look at the corpus map panel.
+
+   cd C:\Users\bartl\dev\Determined
+   .venv\Scripts\python.exe -m determined.agent.local_agent --ui
+   Load: C_Users_bartl_dev_dj2.db  (via Resume button)
+
+Does the Roots/Core panel orient you to the codebase, or is it noise?
+This verdict shapes everything that follows. If it orients, the ambient
+structural knowledge approach works and items 22-24 build on top of it.
+If it is noise, we learn what "useful" actually requires before building more.
+
+Report what you see before starting any other work.
+
+## What is next (after the verdict)
+
+1. Merge ui/corpus-map to main if panel is useful. Revise if not.
 
 2. Item 22 - Design doc extraction - read dj2 design docs, build extractor
    that uses 3B model to pull invariants/rules/boundaries into design_note
