@@ -1,5 +1,18 @@
 # Project Context (read this first, every session)
 
+## Environment
+
+- **OS**: Windows 11 - use **PowerShell** tool for all server starts, Python runs, and any command with a `C:\` path. Bash tool uses Git Bash and fails on Windows paths.
+- **`&&` chaining**: Not valid in PowerShell 5.1. Use `; if ($?) { cmd2 }` or just `;`.
+- **Python**: No `python3` on Windows. Use `python` or the full venv path (e.g. `.venv\Scripts\python.exe`). Full path is safest.
+- **`python -c`**: Only works cleanly for single-line one-liners. Quoting across multiple lines on Windows is a pain. For anything beyond a trivial expression, write a `.py` script to the scratchpad and run that instead.
+- **`/dev/null`**: Use `$null` in PowerShell (`2>$null` to suppress stderr).
+- **Env vars**: `$env:VAR` not `$VAR` in PowerShell.
+- **Paths with `~`**: Use `$env:USERPROFILE` or full path when passing to scripts.
+- **Git and PowerShell** work normally; `ls`/`cat`/`rm` are aliased in PS but take different flags than Linux.
+
+
+
 ## SESSION START CHECKLIST — do this before anything else, every session
 
 **Step 1 — Read SESSION_STATE.md**
@@ -76,6 +89,20 @@ to the analysis tool). Corpus DBs for the analysis engine now live in
   session relying on a stale snapshot it has no way to detect from the file alone.
   This is a standing instruction, not something to ask permission for each time -
   just do it as part of finishing the work.
+
+## Design reference: The Shape of the System
+
+The authoritative engineering philosophy for this project lives in Determined:
+`C:\Users\bartl\dev\Determined\docs\sots.md` (source: https://shapeofthesystem.com/)
+
+The 25 tenets are ingested into Determined's `knowledge.db` and surface automatically
+via frame comparison when analyzing code. Consult them for architectural decisions:
+new boundaries, resource management, irreversible operations, module interfaces.
+Not for routine changes.
+
+Resolution rule when tenets conflict: minimize cognitive load vs. bound blast radius,
+weighted by who controls the input. Caller-controlled + wide blast radius: pay now.
+Self-controlled + contained: defer, but write down why.
 
 ## Coding guidelines
 General behavioral defaults, merged in 2026-06-18. These bias toward caution over
