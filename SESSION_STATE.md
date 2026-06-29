@@ -1,29 +1,29 @@
-# SESSION STATE - session 31 handoff
+# SESSION STATE - session 36 handoff
 _Overwrite completely each session. Not authoritative - see Determined/docs/TRACKER.md for truth._
 
-## What happened this session (session 31)
+## Determined status
 
-**Planning and grounding session -- no code written.**
+**All numbered items closed as of session 36 (2026-06-29).**
+No open action items remain in TRACKER.md.
 
-Reviewed full open-item landscape for Determined. Decided to build items 9, 10, 19
-in order, with a self-audit step as the validation gate for item 19.
+For Determined status, open items, and history, read these files directly:
+- `C:\Users\bartl\dev\Determined\docs\TRACKER.md` - canonical open items + dashboard
+- `C:\Users\bartl\dev\Determined\docs\HISTORY.md` - session-by-session history
+- `C:\Users\bartl\dev\Determined\SESSION_STATE.md` - last session handoff
 
-Identified that SOTS tenets were wired into Determined's analysis tools but not
-into the planning/coding workflow for building Determined itself. Closed that gap
-by strengthening Determined's CLAUDE.md: sots.md is now a mandatory read before
-any plan or design, same weight as the session checklist.
+Do NOT rely on this file for Determined status - it will be stale.
 
-## FIRST THING NEXT SESSION
+## What happened this session (session 36)
 
-Work is in Determined repo. Start there.
-Read Determined/SESSION_STATE.md for the full handoff.
-Read docs/sots.md before planning (now mandatory per CLAUDE.md).
-Then build item 9 (distillation pass).
+- Item 1 done: `_classify_role()` in parse_ast.py, role now populated at ingest
+- Migration guards removed from persistence_engine (no persistent DBs)
+- `param_types_json` moved from ALTER TABLE guard into CREATE TABLE schema
+- Items 2 and 3 explicitly deferred (no active need)
+- 323 tests pass, 1 pre-existing Windows flake
 
-## Current state
+## dj2 current state
 
-dj2: game code only, no active work this session
-Determined: main branch, all committed and pushed, items 9/10/19 queued
+Game code only, no active work. Ready to resume game work whenever tool is done.
 
 ## Two-terminal reminder
 Determined: C:\Users\bartl\dev\Determined, venv at .venv\Scripts\python.exe
