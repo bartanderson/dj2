@@ -924,7 +924,7 @@ def setup_world_system():
     
     try:
         # 1. Initialize base AI system
-        base_ai = BaseAI(ollama_host="http://localhost:11434", seed=42)
+        base_ai = BaseAI(seed=42)
         print("[OK] Base AI system initialized")
         
         # 2. Set up image generation paths

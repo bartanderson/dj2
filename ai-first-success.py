@@ -3,8 +3,8 @@ import asyncio
 
 async def main():
     llm = ChatOpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="ollama",
+        base_url="http://localhost:8080/v1",
+        api_key="none",
         model="llama3.2:3b",
         temperature=0.0
     )

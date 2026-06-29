@@ -6,7 +6,8 @@ import uuid
 import random
 import numpy as np
 from typing import Dict, Any, Optional
-from ollama import Client
+from . import llm_client
+from . import embedding_model
 from pgvector.psycopg2 import register_vector
 from .tool_system import ToolRegistry, tool
 from .dm_tools import DMTools
@@ -15,8 +16,7 @@ from .world_map import Location
 from .campaign import Quest, Faction, CampaignState
 
 class BaseAI:
-    def __init__(self, ollama_host="http://localhost:11434", seed=42):
-        self.ollama = Client(host=ollama_host)
+    def __init__(self, seed=42):
         self.seed = seed
         self.tool_registry = ToolRegistry()
         self.system_prompt = self._create_system_prompt()
@@ -34,14 +34,12 @@ class BaseAI:
     #     return None
 
     def generate_embedding(self, text):
-        """Generate text embedding using Ollama's API"""
+        """Generate text embedding using all-MiniLM-L6-v2 (384-dim)."""
         try:
-            response = self.ollama.embeddings(model='all-minilm:l6-v2', prompt=text)
-            return response['embedding']
+            return embedding_model.embed_text(text).tolist()
         except Exception as e:
             print(f"Error generating embedding: {e}")
-            # Fallback to a simple zero vector
-            return [0.0] * 384  # all-minilm:l6-v2 has 384 dimensions
+            return [0.0] * 384
     
     def save_context_with_embedding(world_id, player_id, context_type, content, embedding):
         """Save context with embedding to database"""
@@ -106,19 +104,15 @@ class BaseAI:
         """Generate structured data with deterministic seeding"""
         system_prompt = f"Respond ONLY with JSON matching this format:\n{json.dumps(response_format, indent=2)}"
         
-        response = self.ollama.generate(
-            model="llama3.2:3b",
-            system=system_prompt,
-            prompt=prompt,
-            format="json",
-            options={"temperature": 0.7, "seed": self.seed}
-        )
-        
+        raw = llm_client.chat([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]) or ""
+
         try:
-            return json.loads(response["response"])
+            return json.loads(raw)
         except json.JSONDecodeError:
-            # Fallback extraction
-            match = re.search(r'\{.*\}', response["response"], re.DOTALL)
+            match = re.search(r'\{.*\}', raw, re.DOTALL)
             return json.loads(match.group()) if match else {"error": "Invalid JSON"}
 
     def generate_text(self, prompt: str, temperature: float = 0.7, max_retries: int = 2) -> str:
@@ -135,13 +129,11 @@ class BaseAI:
         ]
         for attempt in range(max_retries + 1):
             try:
-                response = self.ollama.generate(
-                    model="llama3.2:3b",
-                    system="You are a helpful Assistant. Provide clear, informative responses, but you do not give away secrets, plots, story arcs or anything that will majorly further the character or party. If that is what is asked for, gently nudge the player into making a decision on their own.",
-                    prompt=prompt,
-                    options={"temperature": temperature, "seed": self.seed}
-                )
-                return response["response"]
+                result = llm_client.chat([
+                    {"role": "system", "content": "You are a helpful Assistant. Provide clear, informative responses, but you do not give away secrets, plots, story arcs or anything that will majorly further the character or party. If that is what is asked for, gently nudge the player into making a decision on their own."},
+                    {"role": "user", "content": prompt},
+                ])
+                return result or random.choice(responses)
             except Exception as e:
                 if attempt == max_retries:
                     print(f"AI text generation failed after {max_retries} attempts: {e}")
@@ -160,17 +152,13 @@ class BaseAI:
         # Get tools specification
         tools_spec = self.tool_registry.get_tools_spec()
         
-        # Generate AI response
-        response = self.ollama.generate(
-            model="llama3.2:3b",
-            system=self.system_prompt,
-            prompt=natural_language,
-            format="json",
-            options={"temperature": 0.1}
-        )
-        
+        raw = llm_client.chat([
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": natural_language},
+        ]) or ""
+
         try:
-            response_json = json.loads(response["response"])
+            response_json = json.loads(raw)
             tool_name = response_json["tool"]
             arguments = response_json["arguments"]
             
@@ -179,7 +167,7 @@ class BaseAI:
             result["ai_response"] = response_json
             return result
         except Exception as e:
-            return {"success": False, "message": f"Error: {str(e)}", "response": response}
+            return {"success": False, "message": f"Error: {str(e)}", "response": raw}
     
     def _create_system_prompt(self) -> str:
         """Base system prompt (to be overridden by subclasses)"""

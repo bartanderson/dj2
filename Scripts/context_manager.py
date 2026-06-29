@@ -16,6 +16,8 @@ import argparse
 
 PROJECT_ROOT = Path(r"C:\Users\bartl\dev\dj2")
 os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
+import dungeon_neo.llm_client as llm_client
 
 class ContextManager:
     def __init__(self, verbose: bool = False):
@@ -495,93 +497,79 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
         if target == "auto":
             estimated_tokens = len(package['formatted']) // 4
             if estimated_tokens < 115000:
-                success = self.send_to_ollama(package)
+                success = self.send_to_llm(package)
                 return success, None
             # fallback
             result, path = self.send_to_deepseek(package['formatted'], keep_open)
             return result is not None, path
-        elif target in ("ollama", "local"):
-            success = self.send_to_ollama(package)
+        elif target in ("llm", "local"):
+            success = self.send_to_llm(package)
             return success, None
         else:  # deepseek
             result, path = self.send_to_deepseek(package['formatted'], keep_open)
             return result is not None, path
     
-    def send_to_ollama(self, package: dict, max_context_chars: int = 393216) -> bool:
+    def send_to_llm(self, package: dict, max_context_chars: int = 393216) -> bool:
         """
-        Send context to local Ollama (128K context window assumed).
-        
+        Send context to local llama-server (OpenAI-compatible, localhost:8080).
+
         Uses unique naming to avoid conflict with DeepSeek files:
         - localctx_for_ai.txt (context)
         - localcur_session.json (current session)
         - local_response.txt (AI response)
         - session_localarch_YYYYMMDD_HHMMSS.json (archive)
         """
-        try:
-            sys.path.insert(0, str(PROJECT_ROOT / "tools"))
-            from ollama_client import get_ollama_client, ServiceNotRunningError
-        except ImportError as e:
-            print(f"[OLLAMA] Cannot import ollama_client: {e}")
+        if not llm_client.is_available():
+            print("[LLM] llama-server not available at localhost:8080")
             return False
-        
-        client = get_ollama_client(auto_start=True)
-        
-        if not client.ensure_running():
-            print("[OLLAMA] Service not available")
-            return False
-        
+
         # Truncate context to fit (98K safe limit)
         full_context = package['formatted']
         if len(full_context) > max_context_chars:
-            print(f"[OLLAMA] Truncating: {len(full_context)} -> {max_context_chars} chars")
+            print(f"[LLM] Truncating: {len(full_context)} -> {max_context_chars} chars")
             truncated = full_context[:max_context_chars]
             truncated += "\n\n[Note: Context truncated. Use DeepSeek for full analysis.]"
         else:
             truncated = full_context
-        
+
         # Save local context (unique naming)
         local_context_file = self.session_dir / "localctx_for_ai.txt"
         local_response_file = self.session_dir / "local_response.txt"
-        
+
         with open(local_context_file, 'w', encoding='utf-8') as f:
             f.write(truncated)
-        
-        print(f"[OLLAMA] Context saved: {local_context_file}")
-        print(f"[OLLAMA] Sending {len(truncated)} chars (~{len(truncated)//4} tokens)...")
-        
+
+        print(f"[LLM] Context saved: {local_context_file}")
+        print(f"[LLM] Sending {len(truncated)} chars (~{len(truncated)//4} tokens)...")
+
         try:
             query = package.get('query', 'Analyze this codebase')
-            
-            response = client.generate(
-                truncated,
-                system="You are a senior Python developer. Be specific and actionable.",
-                temperature=0.7,
-                max_tokens=1500
-            )
-            
+
+            response_text = llm_client.chat([
+                {"role": "system", "content": "You are a senior Python developer. Be specific and actionable."},
+                {"role": "user", "content": truncated},
+            ])
+
+            if response_text is None:
+                print("[LLM] No response received")
+                return False
+
             # Save response
             with open(local_response_file, 'w', encoding='utf-8') as f:
                 f.write(f"Query: {query}\n")
-                f.write(f"Model: {response.model}\n")
-                f.write(f"Speed: {response.tokens_per_second:.1f} tokens/sec\n")
                 f.write("="*70 + "\n\n")
-                f.write(response.text)
-            
-            print(f"[OLLAMA] Response saved: {local_response_file}")
-            print(f"[OLLAMA] Generated {response.eval_count} tokens "
-                  f"({response.tokens_per_second:.1f}/sec)")
-            
+                f.write(response_text)
+
+            print(f"[LLM] Response saved: {local_response_file}")
+
             # Archive and save session
             self._archive_local_session()
-            self._save_local_session(package, response.text)
-            
+            self._save_local_session(package, response_text)
+
             return True
-            
-        except ServiceNotRunningError as e:
-            print(f"[OLLAMA] ✗ {e}")
-            return False
+
         except Exception as e:
-            print(f"[OLLAMA] ✗ Error: {e}")
+            print(f"[LLM] Error: {e}")
             return False
     
     def _archive_local_session(self):
@@ -614,22 +602,22 @@ Active phases: {', '.join(project_status['active_phases']) if project_status['ac
             "updated": datetime.now().isoformat(),
             "context_size": len(package.get('formatted', '')),
             "response_preview": response_text[:200] + "..." if len(response_text) > 200 else response_text,
-            "backend": "ollama"
+            "backend": "llama-server"
         }
-        
+
         try:
             with open(session_file, 'w', encoding='utf-8') as f:
                 json.dump(session_data, f, indent=2)
         except Exception as e:
-            print(f"[OLLAMA] Session save warning: {e}")
+            print(f"[LLM] Session save warning: {e}")
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--query", "-q", required=True, help="Topic/question")
     parser.add_argument("--target", "-t", 
-                   choices=["auto", "ollama", "deepseek"],
+                   choices=["auto", "llm", "local", "deepseek"],
                    default="auto",
-                   help="AI backend: auto=smart routing, ollama=local, deepseek=web")
+                   help="AI backend: auto=smart routing, llm/local=llama-server, deepseek=web")
     parser.add_argument("--send", "-s", action="store_true",
                        help="Send to AI (uses --target, default: auto)")
     parser.add_argument("--keep-open", "-k", action="store_true", help="Leave browser open")
@@ -646,7 +634,7 @@ def main():
     
     if args.send or args.target != "auto":
         # Build package for send() method
-        package = mgr.build_package(args.query, target="ollama" if args.target in ("ollama", "auto") else "deepseek")
+        package = mgr.build_package(args.query, target="llm" if args.target in ("llm", "local", "auto") else "deepseek")
         
         success = mgr.send(package, target=args.target, keep_open=args.keep_open)
         

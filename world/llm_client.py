@@ -1,0 +1,52 @@
+# world/llm_client.py
+#
+# Thin LLM backend shim. All inference calls go through here.
+# Backend: llama-server (llama.cpp built-in OpenAI-compatible server).
+# Start: llama-server.exe -m <model.gguf> --port 8080
+
+from __future__ import annotations
+
+import logging
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+LLM_BASE_URL = "http://localhost:8080"
+LLM_TIMEOUT  = 60
+
+
+def generate(prompt: str, timeout: int = LLM_TIMEOUT) -> str | None:
+    try:
+        resp = requests.post(
+            f"{LLM_BASE_URL}/v1/completions",
+            json={"prompt": prompt, "stream": False},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["text"].strip() or None
+    except Exception as exc:
+        logger.warning("llm_client.generate failed: %s", exc)
+        return None
+
+
+def chat(messages: list[dict], timeout: int = LLM_TIMEOUT) -> str | None:
+    try:
+        resp = requests.post(
+            f"{LLM_BASE_URL}/v1/chat/completions",
+            json={"messages": messages, "stream": False},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip() or None
+    except Exception as exc:
+        logger.warning("llm_client.chat failed: %s", exc)
+        return None
+
+
+def is_available(timeout: int = 5) -> bool:
+    try:
+        resp = requests.get(f"{LLM_BASE_URL}/health", timeout=timeout)
+        return resp.status_code == 200
+    except Exception:
+        return False

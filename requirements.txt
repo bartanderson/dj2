@@ -171,7 +171,6 @@ networkx==3.5
 numba==0.61.2
 numpy==1.26.4
 oauthlib==3.3.1
-ollama==0.5.3
 omegaconf==2.1.1
 open-clip-torch==2.0.2
 openai==2.24.0
@@ -202,7 +201,6 @@ opentelemetry-instrumentation-marqo==0.52.3
 opentelemetry-instrumentation-mcp==0.52.3
 opentelemetry-instrumentation-milvus==0.52.3
 opentelemetry-instrumentation-mistralai==0.52.3
-opentelemetry-instrumentation-ollama==0.52.3
 opentelemetry-instrumentation-openai==0.52.3
 opentelemetry-instrumentation-openai-agents==0.52.3
 opentelemetry-instrumentation-pinecone==0.52.3

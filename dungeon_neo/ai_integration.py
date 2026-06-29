@@ -4,7 +4,7 @@
 
 from world.tool_system import ToolRegistry, tool
 ##from .tool_system import ToolRegistry, tool # local tool_registry.py is removed in favor of identical version in world
-from ollama import Client
+from . import llm_client
 from .dm_tools import DMTools
 from .overlay import Overlay
 import re
@@ -12,10 +12,8 @@ import json
 import time
 
 class DungeonAI:
-    def __init__(self, dungeon_state, ollama_host="http://localhost:11434"):
+    def __init__(self, dungeon_state):
         self.state = dungeon_state
-        #self._current_party_id = party_id  # If we need it for party split/join have to add it back
-        self.ollama = Client(host=ollama_host)
         self.tool_registry = ToolRegistry()
         
         # Register tools from this class
@@ -382,17 +380,10 @@ Rules:
             self.pending_action = None
         
         # ===== STEP 3: Normal AI processing =====
-        response_chunks = self.ollama.generate(
-            model="llama3.2:3b",
-            system=self.system_prompt,
-            prompt=natural_language,
-            format="json",
-            options={"temperature": 0.1},
-            stream=True
-        )
-        full_response = ""
-        for chunk in response_chunks:
-            full_response += chunk.get("response", "")
+        full_response = llm_client.chat([
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": natural_language},
+        ]) or ""
         print(f"AI DBG Response{full_response}")
         
         try:
@@ -435,22 +426,10 @@ Do NOT start your response with any label like "AI:" or "DM:". Start directly wi
 """
 
                     system_prompt = "You are a narrator. Respond directly with the narrative, without any labels or prefixes."
-                    narrative_response = self.ollama.generate(
-                        model="llama3.2:3b",
-                        system=system_prompt,
-                        prompt=narrative_prompt,
-                        options={"temperature": 0.7},
-                        stream=True
-                    )
-                    narrative = ""
-                    for chunk in narrative_response:
-                        # Extract the 'response' attribute correctly
-                        if hasattr(chunk, 'response'):
-                            narrative += chunk.response
-                        elif isinstance(chunk, dict):
-                            narrative += chunk.get("response", "")
-                        else:
-                            narrative += str(chunk)
+                    narrative = llm_client.chat([
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": narrative_prompt},
+                    ]) or ""
                     print(f"[DEBUG] Raw narrative from model: {repr(narrative)}") 
                     result['message'] = narrative.strip() if narrative.strip() else result.get('message', 'Action completed.')
                 except Exception as e:
@@ -478,20 +457,10 @@ Do NOT start your response with any label like "AI:" or "DM:". Start directly wi
         Do not include any other text or explanations.
         """
         
-        # Generate response
-        response_chunks = self.ollama.generate(
-            model="llama3.2:3b",
-            system=system_prompt,
-            prompt=prompt,
-            format="json",
-            options={"temperature": 0.7},  # More creative for world building
-            stream=True
-        )
-        
-        # Collect response
-        full_response = ""
-        for chunk in response_chunks:
-            full_response += chunk.get("response", "")
+        full_response = llm_client.chat([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]) or ""
         
         try:
             return json.loads(full_response)
