@@ -1,73 +1,81 @@
-# SESSION STATE - session 52 handoff
+# SESSION STATE - session 54 handoff
 _Overwrite completely each session. Not authoritative - see Determined/docs/TRACKER.md for truth._
 
 ## Active branch: main (both repos)
 Clean state. Committed.
 
-## What happened this session (session 52)
+## What happened this session (session 54)
 
-### Model swap: 27B -> 8B for quality tier
-- 27B (Qwen3.6-27B-Q4_K_M, ~15GB) could not generate in <120s on RTX 3070 Ti (8GB VRAM)
-- Replaced with Qwen3-8B-Q4_K_M (~5GB, fits in VRAM entirely)
-- File: C:\Users\bartl\models\gguf\Qwen_Qwen3-8B-Q4_K_M.gguf
-- Bat file updated: C:\Users\bartl\models\start-quality-llm.bat
-- Response time: ~5-9s for typical prompts
+### LLM services — both now NSSM services
+- Renamed old `llama-server` service to `llama-server-3b` (delete+recreate; NSSM has no rename)
+- Created `llama-server-8b` as new NSSM service (demand start, not auto)
+- Both verified running simultaneously: port 8080 (3B) and 8081 (8B)
+- Key lesson: use `""` not backticks for quoting in NSSM AppParameters from PowerShell
+- Saved to memory: project_llm_services.md
 
-### Fixed: Qwen3 thinking mode emptying content field
-- Qwen3 runs chain-of-thought by default: puts reasoning in reasoning_content, leaves content empty
-- chat_quality() in llm_client.py now prepends /no_think to system message
-- Fallback: reads reasoning_content if content is empty
-- File: determined/agent/llm_client.py
+### Evaluate kernel — built, tested, committed (Determined)
+- New file: `determined/agent/evaluator.py`
+  - `evaluate(claim, evidence_items, question, llm_fn) -> Judgment`
+  - `retrieve_evidence(query, conn, surfaces, top_n, threshold) -> list[str]`
+  - `Judgment` dataclass: verdict, reasoning, confidence, evidence_used
+  - Verdicts: VIOLATES / CONFIRMS / EXPLAINS / MATCHES_PATTERN / UNRELATED / UNCERTAIN
+  - Uses `chat()` not `generate()` — completion endpoint sees closing `}` as done
+  - LLM unavailability raises RuntimeError (hard fail, not silent None)
+  - Regex fallback parser for partial/malformed JSON from 3B
+- Tests: 20 unit tests (no LLM), 3 live tests in tests/integration/
+- All passing. Committed: cfcdd58
 
-### Fixed: distill_corpus producing garbage summaries
-- Root cause 1: example in prompt was echoed verbatim for unrelated files
-- Root cause 2: content[:800] input was already-bad chatbot output from summarizer
-- Root cause 3: 3B ignoring "Output ONLY" instruction; going into chatbot/LaTeX mode
-- Fix: new # {subject}\n{skeleton}\n\n# Purpose: prompt (code-comment framing)
-- Fix: _source_skeleton() extracts import + class/def signatures only
-- Fix: distill_corpus now reads source from disk instead of using stored content
-- Fix: distill_corpus re-distills ALL rows to overwrite stale cache
-- Re-ran distill_corpus: 154 files distilled, ~1-2s each
-- File: determined/agent/agent_tools.py
+### evaluate_claim tool + corpus_synthesis gap filtering (Determined)
+- `evaluate_claim(assessor, args)` in agent_tools.py
+  - Args: claim, question (both required), surfaces (default: design_note), top_n (default: 5)
+  - Wired into TOOLS and REGISTRY
+- `_filter_gaps_by_design_intent(assessor, analysis_text)` helper
+  - Splits 27B gap output on `---` separator into individual gap blocks
+  - Evaluates each block title as a claim against design_notes
+  - CONFIRMS/EXPLAINS -> filtered to noise section
+  - VIOLATES/UNCERTAIN/UNRELATED -> kept as real gaps with verdict annotation
+- Live test: Gap 1 (AI->Navigation) correctly filtered as EXPLAINS (90%)
+- 353 regression tests passing. Committed: 06a3422
 
-### corpus_synthesis now works end-to-end
-- Pass 1 (3B): 154 files -> 10 subsystems (AI, Database, Game State, Engine, I/O,
-  Language Processing, Navigation, Narrative, Pathfinding, Questing)
-- Pass 2 (8B): 7 architectural gaps found, stored as backlog item in corpus DB
-- Result stored in workflow_items table, subject=corpus_synthesis::gaps (latest row)
+### MCTS reasoning architecture — saved to memory
+- Future direction for unfamiliar domains (audio, images, etc.)
+- evaluate() kernel is already the evaluator node — no retrofitting needed
+- Rust/C++ search kernel + Python LLM calls design
+- Memory file: project_mcts_reasoning.md
 
 ## Hardware facts (unchanged)
 - GPU: NVIDIA RTX 3070 Ti, 8192MB VRAM
-- nvidia-smi path: C:\Windows\System32\nvidia-smi.exe
-- 3B NSSM service: -ngl 0 (CPU only), port 8080
-- 8B bat file: C:\Users\bartl\models\start-quality-llm.bat, port 8081, -ngl 99, ctx 4096
+- llama-server-3b: NSSM auto service, port 8080, -ngl 0 (CPU only)
+- llama-server-8b: NSSM manual service, port 8081, -ngl 99, ctx 4096
+- Start 8B: `nssm start llama-server-8b` (admin PowerShell)
+- Health: `(Invoke-WebRequest http://localhost:808X/health).Content`
 
 ## Corpus state (dj2)
-- 154 files distilled (fresh, good quality)
+- 154 files distilled, 268 design_notes ingested
 - DB: C:\Users\bartl\dev\Determined\C_Users_bartl_dev_dj2.db
-- determined.cfg: fast_ctx=16384, quality_ctx=4096
 
 ## Next session plan
 
-### Step 1: Read the stored corpus_synthesis gaps result
-Write and run a .py script in scratchpad:
-  import sqlite3
-  conn = sqlite3.connect(r'C:\Users\bartl\dev\Determined\C_Users_bartl_dev_dj2.db')
-  row = conn.execute("SELECT content FROM workflow_items WHERE subject='corpus_synthesis::gaps' ORDER BY created_at DESC LIMIT 1").fetchone()
-  print(row[0])
+### Phase 3: infer_behavior tool for undocumented symbols
+Add `infer_behavior(assessor, args)` to agent_tools.py:
+1. First: add role pattern library to corpus DB as kind='pattern' artifacts
+   Roles: coordinator, boundary, pipeline-stage, adjudicator, factory, observer
+   Use ingest_design_docs pattern or a small seed script
+2. Assemble calling context for symbol: callers, callees, param names, file stem
+3. retrieve_evidence(context_query, conn, surfaces=["pattern"], top_n=3)
+4. evaluate(context_summary, evidence, "What role does this calling profile suggest?")
+5. Returns role label + confidence + evidence
+6. Wire into TOOLS, REGISTRY, test against known undocumented symbol in dj2
 
-### Step 2: Triage the 7 gaps
-Decide which are real work items for dj2 vs noise (gap 6 AI->zoom is likely noise).
-File real ones as TRACKER items in Determined/docs/TRACKER.md.
-
-### Step 3: Wire corpus_synthesis into the UI (optional)
-corpus_synthesis is CLI-only. Could expose via the dj2 tools panel.
+### Phase 4 (later): data flow tracing
+Linear walk of call graph accumulating mutation state, evaluate at each step.
+MCTS wrapper goes here when single-pass proves insufficient.
 
 ## Two-terminal reminder
 Determined: C:\Users\bartl\dev\Determined, venv at .venv\Scripts\python.exe
 dj2: C:\Users\bartl\dev\dj2, packages installed directly, use `python`
-3B: Windows NSSM service, port 8080, -ngl 0 (CPU)
-8B: start C:\Users\bartl\models\start-quality-llm.bat, port 8081
+3B: NSSM service llama-server-3b, port 8080 (auto-starts)
+8B: NSSM service llama-server-8b, port 8081 (manual: nssm start llama-server-8b)
 Determined agent: .venv\Scripts\python.exe -m determined.agent.local_agent C_Users_bartl_dev_dj2.db
 Active branch in both repos: main
 Use PowerShell tool (not Bash). NEVER use python -c with inner quotes - always write a .py script.
