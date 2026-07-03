@@ -1,77 +1,64 @@
-# SESSION STATE - session 61 handoff
+# SESSION STATE - session 63 handoff
 _Overwrite completely each session. Not authoritative - see Determined/docs/TRACKER.md for truth._
 
 ## Active branch: main (both repos)
 Clean state. All commits landed.
 
-## What happened this session (session 61)
+## What happened this session (session 63)
 
-### Frontier graph - fixed and shipped (commits f1bda3f, 18029f1)
-- Root cause found: `resolved=1` in graph_edges means annotation-derived, NOT "is a project
-  function." Original frontier query was built on a wrong assumption.
-- Fix: suffix-match JOIN on target_id (`LIKE '%.' || f_callee.name`), no resolved filter.
-  Verified on test program (3 edges) and dj2 (14 real frontier edges).
-- dj2 frontier: validate_action (5 callers), get_player_by_session (4), on_arc_completed,
-  _register_world_tools, semantic_match_subrace, others.
-- TRACKER item 28 closed (evaluate() split already landed in f902ff2).
-- TRACKER item 29 filed: ABC/abstract-method frontier shape (needs class hierarchy schema).
+### Reasoning pipeline R1-R4 (commits 041b8e3, 48fd0f2)
+New file: `determined/agent/reasoning_engine.py`
+- **Decomposer** (R1): calls quality LLM (port 8081) to break an architectural question
+  into sub-questions with routing hints (db vs evaluate)
+- **Router** (R2): dispatches each sub-question to deterministic DB query or evaluate() kernel
+  - DB routes: caller_count, callee_count, class_membership, sibling_pattern, import_coupling, is_stub
+  - evaluate routes: sots_match, design_judgment
+- **Synthesizer** (R3): calls quality LLM with assembled findings, produces recommendation + confidence
+- **reason_about()**: full pipeline function, accepts optional knowledge_conn for persistence
+- **RM8 persistence**: _store_chain() writes reasoning_chain artifacts to knowledge_artifacts
+- **Staleness detection**: _check_stale_chain() compares stored vs current caller_count
 
-### Frontier tab - extended (commit 18029f1)
-Three Tier 1 connections from DISCOVERY_MODEL composability audit:
-1. **Mode selector**: Direct (functional->stub) / Chain (stub->stub) / All. Mode change
-   reloads graph. Chain nodes shown in gray.
-2. **Project button**: appears when a red stub node is selected. Calls
-   `project_stub_request` socket event -> `stub_projector.project_stub()` -> shows
-   suggested implementation in collapsible panel below graph.
-3. **Queue button**: calls `frontier_to_queue` socket event -> `list_stubs()` ranked by
-   caller count -> writes each as `workflow_items` next_up entry. Connects frontier ranking
-   to `prioritize_work()` planning system.
+`determined/agent/agent_tools.py`: reason_about tool registered in TOOLS, passes knowledge_conn
 
-### DISCOVERY_MODEL.md (commits fa504a3, 8f0906c)
-New design document at Determined/docs/DISCOVERY_MODEL.md. Five concepts with exploration
-checklists and disposition fields:
-- Topology, Frontier, Implementation Queue, Access Paths, Waypoints
-- Composability audit section: what already exists vs. what needs connecting
-- Mining Priority: Tier 1 (connect existing) > Tier 2 (new prompt) > Tier 3 (new UI) >
-  Tier 4 (schema)
+### UI wiring (commit 8a53fd2)
+`stub_projector.py`: _strip_fences() removes markdown code fences from suggested_body
 
-## Key existing pieces discovered (composability audit)
+`ui_server.py`: two new socket handlers:
+- `stub_score_quick` - fast DB-only score (caller_count, is_stub, risk_level), no LLM
+- `reason_about_request` - full pipeline, emits reason_about_result
 
-Already built in Determined, directly reusable:
-- `list_stubs()` - ranks stubs by caller count (Q1 done)
-- `stub_projector.py` / `project_stub` tool - implementation scaffold (Q6 done)
-- `evaluate_claim()` - Observe->Situate->Evaluate kernel (Q3 backbone)
-- `gather_context()` in stub_projector - collects callers + contracts for a stub
-- `prioritize_work()` + `workflow_items` + `add_item()` - planning system (Q5 backbone)
-- `knowledge_artifacts` + `store_finding()` - generic artifact store (W6 backbone)
-- `symbol_context()` - everything known about a symbol (A4 backbone)
+`console.html` Frontier tab:
+- "Reason" button alongside "Project" (shown only when stub selected)
+- Node tap fires stub_score_quick; result shows HOT/WARM/SAFE badge + caller count in status bar
+- reason_about_result renders in same fg-projection panel as project output
+- fgLoad_ hides both buttons on reload
 
-## Next session: Tier 2 and Tier 3 from DISCOVERY_MODEL
+### REASONING_MODEL.md updated
+RM1-RM4 marked done with disposition notes. RM5 (UI) is next but backend is now solid.
 
-### Tier 2 - new prompt on existing kernel (~30 lines)
-**Q3 stub scorer**: `gather_context(stub)` -> format as claim -> `evaluate_claim(claim,
-question="how central is implementing this to making the system runnable?")`.
-New agent tool `score_stub` that sequences these two. Adds a "Score" column to
-the build queue.
+## DB routes verified against dj2 corpus (validate_action)
+- 7 callers, is_stub=yes, standalone function, 2 validate* siblings, 0 import coupling
 
-### Tier 3 - new UI rendering of existing data
-- **A4 sub-menu popover**: hover any `<span data-sym="X">` -> emit symbol_context ->
-  render as floating panel. No new backend. ~40 lines JS + CSS.
-- **Q5 Build queue tab**: new tab reading `workflow_items WHERE kind='next_up'` as
-  a sortable table. Same data `prioritize_work()` reads, better presentation.
-- **W3 Waypoints panel**: new tab reading `knowledge_artifacts WHERE kind='waypoint'`.
+## Testing needed (manual, on Windows hardware)
+1. Start Determined server + load dj2 corpus
+2. Load Frontier tab, click a stub node
+   - Status bar should show HOT/WARM/SAFE badge + caller count immediately
+   - "Project" and "Reason" buttons should appear
+3. Click "Project" - projection should show clean code (no markdown fences)
+4. Click "Reason" - reasoning panel shows sub-questions + recommendation (~60s with 8B cold)
+5. Run `reason_about question="should validate_action be a standalone function?" symbol=validate_action` in chat
+6. Check knowledge_artifacts for kind='reasoning_chain' after step 4/5
 
-### After Tier 3: Tier 4 (schema)
-- **A1**: add `is_project_call BOOLEAN` to graph_edges. Converge `list_stubs` (uses
-  `callee` column) and frontier query (uses `target_id`) into one canonical lookup.
-
-## graph_edges schema reminder
-Columns: id, source_id (caller name), target_id (callee name), caller, callee,
-         line_number, caller_file, resolved (annotation-derived bool, NOT is_project_call)
+## Remaining REASONING_MODEL items
+- RM5: UI panel refinements (incorporate Build queue, Pins, score into cohesive layout)
+- RM6: 3B vs 8B benchmark on Router evaluate() calls
+- RM7: confidence aggregation test (deliberately conflicting sub-answers)
+- RM8: done (persistence implemented)
+- RM9: connect to Q4 MCTS (future)
 
 ## Hardware facts (unchanged)
 - llama-server-3b: NSSM auto service, port 8080
-- llama-server-8b: NSSM manual service, port 8081
+- llama-server-8b: NSSM manual service, port 8081 (quality tier, needed for Decomposer + Synthesizer)
 - Start 8B: `nssm start llama-server-8b` (admin PowerShell)
 
 ## Corpus state (dj2)
