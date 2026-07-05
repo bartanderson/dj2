@@ -59,10 +59,13 @@ made - cross-check before trusting it: use `mcp__session_info__list_sessions`
 and `read_transcript` to read the latest prior session's actual outcome, rather
 than guessing from this file's claims alone.
 
-## Where to look for tool status
-The analysis engine docs (DESIGN.md, TRACKER.md, HISTORY.md) now live in
-`C:\Users\bartl\dev\Determined\docs\`. Read them there for tool status,
-open items, and architecture decisions. Do not look for them here.
+## Where to look for work status
+dj2's own open items live in `TRACKER.md` at the repo root.
+Game design docs live in `docs/`.
+
+The Determined analysis tool is a separate repo (`C:\Users\bartl\dev\Determined`).
+Its TRACKER/DESIGN/HISTORY are only relevant when working on Determined itself —
+do not consult them for dj2 work.
 
 ## DB management (standing rule)
 The only DB that is never auto-deleted is `ai_context/knowledge.db` (unrelated
