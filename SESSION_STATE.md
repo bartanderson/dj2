@@ -37,10 +37,9 @@ World (events wired) → Character Creation → World Exploration → Dungeon
 
 G5 (Semantic Genome) and G6 (Voice) are designed but deferred until G1-G4 stable.
 
-## Hardware facts (unchanged)
-- llama-server-3b: NSSM auto service, port 8080
-- llama-server-8b: NSSM manual service, port 8081
-- Start 8B: `nssm start llama-server-8b` (admin PowerShell)
+## Hardware facts
+- LLM: Qwen3-8B, on-demand subprocess started by Determined UI on launch (port 8081)
+- No NSSM services. Model managed by Determined via llm_client.py.
 
 ## Two-terminal reminder
 Determined: C:\Users\bartl\dev\Determined, venv at .venv\Scripts\python.exe

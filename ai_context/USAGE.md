@@ -44,9 +44,8 @@ scripts\activate.bat
 python scripts\context_manager.py --query "WorldState to CampaignState refactor" --target deepseek
 :: Then open context_for_ai.txt and paste into DeepSeek web
 
-:: Generate for Local Ollama (direct pipe)
+:: Generate for local LLM (pipe to llama-server via Determined UI)
 python scripts\context_manager.py --query "Phase violations in DMChatHandler" --target ollama --output session.txt
-type session.txt | ollama run llama3.2:3b
 ```
 
 Method C: Workflow Orchestration (Full Sessions)

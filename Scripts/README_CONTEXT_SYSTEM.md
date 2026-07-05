@@ -20,10 +20,9 @@ python scripts\context_manager.py --query "How to refactor WorldState?" --target
 
 Then open context_for_ai.txt and paste into DeepSeek.
 
-2. For Local Ollama:
+2. For Local LLM (via Determined UI):
 cmd
 python scripts\context_manager.py --query "Phase violations in DMChatHandler" --target ollama --output session.txt
-type session.txt | ollama run llama3.2:3b
 ```
 3. Quick Tool Discovery:
 ```cmd
