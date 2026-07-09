@@ -1,41 +1,35 @@
-# SESSION STATE - session 65 handoff
+# SESSION STATE - session 67 handoff
 _Overwrite completely each session. Not authoritative - see dj2/TRACKER.md for truth._
 
 ## Active branch: main
 Clean state. No code changes this session.
 
-## What happened this session (session 65)
+## What happened this session (session 67)
 
-### Housekeeping
-- CLAUDE.md fixed: removed stale redirect to Determined's TRACKER for dj2 work
-- SESSION_STATE.md fixed: updated "source of truth" pointer from Determined to dj2/TRACKER.md
-- dj2/TRACKER.md populated with 7 backlog items (G1-G7) from Bart's desktop idea files
+### World Compiler / Semantic Runtime architecture ingested
 
-### Ideas ingested from desktop files
-Six files reviewed and distilled into TRACKER items:
-- enhancements to add to world-dungeon project.txt → G3, G4, G6, G7
-- Gaia RAG and Narration.txt → G3
-- Game NPC Voice AI - Kimi.txt → G6
-- kitten TTS github or Owhisper in Hyprnote.txt → G6 (KittenTTS + FastRTC noted)
-- dungeon and world decoration and overlays.txt → G2
-- DnD addition.md → G5 (Semantic Genome)
+Bart shared a detailed architecture proposal: Semantic Runtime and World Compiler.
+Key insight: the world description language becomes the language of the system,
+not code for elements of it. Compiler generates runtime machinery from declarative
+schemas rather than hand-wiring it.
 
-### Items evaluated and dropped
-- copapy: overkill for dice math, skip
-- Google ADK: cloud-oriented, duplicates existing 7-phase architecture
-- Critic quality loop for runtime narration: too slow at runtime, fine for offline batch
-- dnd-character library: pending compatibility check before adopting
+**New item filed:**
+- G0: World Description Language and IR — foundation layer, precedes G1/G2/G3
+  - Research gate: Inform 7 entity model, Souffle (Datalog), Bevy ECS scheduler,
+    Greg Young on event sourcing
+  - Scope: define entity schema format + event consequence model only
+  - Deliverable: design note with Door/Goblin/Torch examples + compile target
+  - Shape rules: no Turing-complete schemas, keep IR and runtime separate
 
-### Dependency chain confirmed
-World (events wired) → Character Creation → World Exploration → Dungeon
+**Dependency chain updated:**
+G0 -> G1/G2 -> G3 -> G4 -> World Exploration -> Dungeon
 
 ## Next session priorities
-1. G1: Analyze world event chain — find what's wired vs stub vs disconnected
-2. G2: World decoration/overlay system (design is complete, ready to implement)
+1. G0: Research gate (Inform 7, Souffle, Bevy scheduler, Greg Young event sourcing)
+   then write the design note specifying entity schema and event consequence formats
+2. G1: Analyze world event chain (blocked on G0 schema decisions for new wiring)
+2. G2: World decoration/overlay system (Door schema is a G0 deliverable example)
 3. G3: NarrativeService (CONSEQUENCE phase narration, single-shot LLM)
-4. G4: Conversational character creation (text-first, voice deferred)
-
-G5 (Semantic Genome) and G6 (Voice) are designed but deferred until G1-G4 stable.
 
 ## Hardware facts
 - LLM: Qwen3-8B, on-demand subprocess started by Determined UI on launch (port 8081)

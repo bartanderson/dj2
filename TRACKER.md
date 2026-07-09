@@ -6,14 +6,65 @@ Active game work items. Finished items get deleted; history goes to HISTORY.md i
 
 ## Dependency chain (build order)
 
-World (decorated, navigable, events wired)
-  → Conversational Character Creation
+World Description Language + IR (G0)
+  → World (decorated, navigable, events wired) (G1/G2)
+  → NarrativeService (G3)
+  → Conversational Character Creation (G4)
   → World Exploration
   → Dungeon (destination within world)
 
 ---
 
 ## Open items
+
+---
+
+### G0. World Description Language and IR — foundation layer
+
+**Motivation:** The current codebase hand-wires entity behavior, event consequences,
+and system connections. The World Compiler concept treats these as generated artifacts
+from a declarative schema — the schema becomes the language of the system, not code
+for elements of it. This item must precede G1/G2/G3 work that touches entity
+definitions or event wiring, because it determines the shape everything else must fit.
+
+**Scope (narrow — do not expand):**
+1. Define the entity schema format (how entities declare components and behavior)
+2. Define the event consequence model (how events declare what they produce)
+
+These two decisions determine the IR. Everything else — compiler passes, semantic
+daemons, indexes — is downstream of them.
+
+**Research gate — do this before specifying anything:**
+
+Read these, in order, with the schema format question in mind:
+
+- **Inform 7 entity model** — world description language that compiles to a runtime.
+  Study the type system and relationship inference. Failure mode to note: natural
+  language syntax becomes opaque at scale. Keep our schema closer to structured data.
+- **Souffle (Datalog dialect)** — declarative consequence propagation. "Door opens →
+  who can see what" is a Datalog query. Evaluate before hand-rolling consequence
+  chains. https://souffle-lang.github.io/
+- **Bevy ECS scheduler** — most mature implementation of the consumes/produces
+  pattern already in G1. Read scheduler docs before designing ours.
+  https://bevyengine.org/learn/quick-start/getting-started/
+- **Greg Young on event sourcing** — canonical event log as source of truth,
+  projection models, snapshot strategies. Prevents common mistakes in the event store.
+
+**Shape rules (don't violate these):**
+- Schema language must NOT be Turing-complete. No conditionals in entity definitions.
+  The moment you add if/else, you've built a programming language instead of a world
+  description language.
+- IR and runtime must stay separate. IR is what you reason about. Runtime is what
+  executes. Never conflate them.
+- Consequence propagation should be evaluated against Datalog before building custom.
+
+**Deliverable:** A short design note (can live in docs/) that specifies:
+- Entity schema format (example: Goblin, Door, Torch each expressed in it)
+- Event consequence format (example: DoorOpened → what it declares it produces)
+- How these compile into the Truth Transformer consumes/produces pattern from G1
+
+**Verify:** A human can read a Door schema and predict exactly what systems will run
+when a DoorOpened event fires, without reading any Python.
 
 ---
 
