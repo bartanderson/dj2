@@ -32,6 +32,27 @@ dialog → quest → perception).
 **Use Determined** to map the actual call graph and surface stubs once Determined
 analysis is ready to direct this work.
 
+**Wiring model to follow — Truth Transformers:** each system declares what events
+it consumes and what it produces. Nothing calls systems directly. The scheduler
+sees a new event, finds all systems that consume it, runs them, collects their
+output events, repeats. Example:
+```python
+class VisibilitySystem:
+    consumes = [LightingChanged, PlayerMoved]
+    produces = [VisibilityChanged]
+```
+Nobody calls VisibilitySystem. The scheduler does, when its inputs arrive.
+Use this pattern when wiring the modules in this item.
+
+**Scheduler not Planner:** a deterministic game doesn't need a planner ("what
+should I do?"). It needs a scheduler ("what work is now eligible to run?").
+The escalation engine IS the scheduler. Keep it that way.
+
+**No-chat architecture:** the runtime loop is not request/response. It is:
+`while alive: listen → update world → run tools → queue scheduler → stream answer
+→ continue listening → cancel if interrupted → repeat`. Events, not conversation.
+("queue scheduler" not "queue planner" — see Scheduler not Planner note above.)
+
 **Verify:** A player moves on the world map, an event fires, the escalation engine
 reacts, narrative output appears.
 
@@ -73,6 +94,9 @@ cracks, debris, damage marks, moss, scorch, blood stain, snow, mud.
 2. Convert door system to state-based
 3. Add 3 overlays: crack, debris, damage marks
 4. Add knowledge-gated rendering (hidden things render as normal until discovered)
+   — Truth/Observation split: Truth is `Door.Hidden = True`. Observation is what
+   the player's character actually perceives given their skills/position/light.
+   The renderer draws from the Observation layer, never directly from Truth.
 5. World hex overlay rules (camp, ruins, tracks, settlement)
 
 ---
@@ -103,6 +127,19 @@ describes it — never decides anything.
 - `describe_room(room, party)` — max 3 sentences, only describe provided elements
 - `describe_combat_result(event)` — max 2 sentences, outcome only
 - `describe_event(event)` — max 2 sentences, no new facts
+
+**Three-layer model the narrator must respect:**
+- Truth: raw world state (`Torch.Intensity = 0.28`, `Door.Open = False`)
+- Derived: deterministic transformations of truth (`Room is dim`, `Door is closed`)
+- Observation: what the player's character perceives given position/skills/light
+
+The narrator receives **observations only** — never truth, never raw state.
+A FactAggregator sits between the simulation and the narrator: it collects
+post-event derived facts, runs deterministic perception transforms (darkvision
+range check, current light level, character Perception skill result, stealth
+contest outcome), and packages the resulting observation bundle. These transforms
+are pure functions over character stats and world state — no LLM involved.
+The narrator cannot invent facts because it never sees the underlying truth layer.
 
 Hallucination guard: extract allowed terms from source dict, reject output
 containing unknown 4+ letter words (with common filler whitelist). Fallback:
@@ -226,9 +263,27 @@ From: Game NPC Voice AI - Kimi.txt
 
 **Local stack:**
 - STT: faster-whisper (medium) — 200-400ms
-- TTS: KittenTTS (15M params, <25MB, CPU-only) for NPC chatter;
-  Kokoro-82M for DM narrator voice where quality matters
+- TTS: Kokoro (small, CPU-only) preferred — don't assume GPU on the far end.
+  In multiplayer, players run on hardware we don't control. Kokoro stays off
+  the GPU entirely, which avoids contention with the LLM on the host machine
+  and works on player machines of unknown spec.
 - Orchestration: custom asyncio, no Pipecat needed
+
+**Semantic Recovery layer** (sits between STT output and LLM/verb registry):
+Raw transcript is noisy. Don't feed it directly to the DM. Instead, a recovery
+step extracts structured intent before the LLM sees anything:
+```
+"I sort of sneak over there quietly maybe..."
+  → Intent(action=MOVE, mode=stealth, target=door, confidence=0.91)
+```
+The LLM maps recovered intent to verb registry tokens (G10), not raw speech.
+This means the DM never sees noise — only structured facts with confidence scores.
+Uncertain parts are flagged for clarification, not guessed.
+
+**Background tasks / perceived latency:** emit an acknowledgment immediately
+("Looking around..."), then run workers in parallel. Player can interrupt
+mid-task and the partial result is discarded cleanly via InterruptManager.
+This is what makes a voice agent feel responsive even when work takes 2-3s.
 
 **Priority dispatcher:** sits in front of all workers. Categorizes incoming
 requests by tier, manages queues, handles graceful degradation when workers are
@@ -268,6 +323,17 @@ and we know where the cancel points are. Don't model it speculatively.
 **Social turn adjudication:** NPCs bid for speaking rights by urgency + social rank
 + player attention + agenda importance. Adjudicated as a priority queue, not
 fought in the audio channel.
+
+**Crosstalk recovery / DM reset:** When multiple players talk over each other the
+audio layer will produce garbage. The DM needs a deterministic interrupt path:
+detect overlapping audio (energy + VAD on multiple streams simultaneously), discard
+partial transcripts, and emit a DM_RESET event that interrupts all pending speech
+and plays a pre-generated reset phrase ("Hold on — who has advantage here?" /
+"Everyone roll a d20, highest goes first."). This is not an AI decision — it is a
+rule: overlap detected → reset phrase chosen from a small authored pool → requeue
+players by some fair rule (initiative order, d20 roll, oldest-waiting-first).
+The reset phrase pool lives in a flat file so Bart can author them without code
+changes. The interrupt itself maps to the existing InterruptManager design above.
 
 **FastRTC** (fastrtc.org): for multi-user audio streaming when that becomes relevant.
 
@@ -344,6 +410,122 @@ session state that the AI DM reads when evaluating which rules to prioritize.
 Neither requires new subsystems — both extend what's already designed.
 
 **Reference:** docs/design/02 escalation engine v1.3.md, world/escalation_engine.py
+
+---
+
+### G10. Verb registry — actions as first-class entities
+
+From: architecture discussion 2026-07-07 (Ragel/beagle-ext ideas session)
+
+Currently player actions are handled as ad hoc strings or implicit code paths.
+The idea: make every action in the game a named, registered verb object with
+declared structure. Not a command parser — a canonical vocabulary the whole
+system shares.
+
+**What a verb object carries:**
+- Name and aliases (attack, strike, hit → ATTACK)
+- Preconditions (has_weapon, target_in_range, not_stunned)
+- Semantic tokens it emits to the event log (ATTACK_INITIATED, DAMAGE_DEALT, etc.)
+- Effects on world state (target.hp -= damage)
+- Context it requires (who, what, how, where)
+
+**Why this pays off:**
+- LLM interpretation layer has a bounded vocabulary to map to (not open-ended)
+- Event log references canonical tokens, not freeform strings
+- Semantic sensors (G11) subscribe to verb tokens, not text patterns
+- New actions are added in one place; all subscribers pick them up automatically
+- Determined can analyze the verb registry as a first-class surface
+
+**What this is NOT:** a command parser. Players still speak freely.
+The LLM maps "I quietly ease the door open with my shield up" → OPEN(door, stealth=True).
+The verb registry defines what OPEN means and what it emits — not how to recognize it.
+
+**Build order:** verb registry schema → seed with 20-30 core verbs → wire into
+LLM interpretation output → wire event log to consume verb tokens.
+
+**Reference:** G11 (semantic sensors) depends on this; build G10 first.
+
+---
+
+### G11. Semantic sensor layer — DFA pattern detection over event stream
+
+From: architecture discussion 2026-07-07 (Ragel/beagle-ext ideas session)
+
+The escalation engine (G9) currently fires rules based on individual events.
+This item adds a layer that recognizes *patterns across multiple events* —
+higher-level semantic facts that emerge from sequences, not single triggers.
+
+**Core idea:** each gameplay concept (Ambush, Suspicion, TacticalWithdrawal,
+TrapNeutralized, CoordinatedAssault) is a declarative pattern spec that gets
+compiled into an executable detector. The detector watches the event stream and
+emits a higher-level semantic event when the pattern completes.
+
+**Pattern spec format (declarative, not code):**
+```yaml
+concept: Ambush
+pattern:
+  - PLAYER_ENTERS_AREA
+  - ENEMY_HIDDEN
+  - ENEMY_ATTACKS
+  - PLAYER_UNAWARE
+emit: AMBUSH_OCCURRED
+```
+
+**Why not just more ECA rules in escalation_engine.py:**
+ECA rules handle one event → one consequence. Semantic sensors handle
+N events across time → one recognized fact. They're a recognition layer,
+not a reaction layer. The escalation engine subscribes to sensor output
+the same way it subscribes to raw events.
+
+**Implementation path:**
+1. Define a SemanticSensor class: pattern (ordered/unordered event list with
+   wildcards), emit token, optional time window
+2. SensorRegistry: load from YAML specs, subscribe to event log
+3. EventLog feeds each new event to all registered sensors
+4. Sensor fires emit token back into event log when pattern completes
+5. Seed with 10-15 sensors covering combat, stealth, social, trap scenarios
+
+**Tooling note:** Ragel (C DFA compiler) is overkill for this use case.
+A Python dict-of-dicts state machine or the `transitions` library is the
+right implementation. The *conceptual model* from Ragel (declarative spec →
+compiled recognizer) is what we're borrowing, not the C codegen.
+
+**Depends on:** G10 (verb registry provides the canonical token vocabulary).
+**Feeds into:** G9 (escalation engine subscribes to sensor output),
+G3 (narrative layer gets richer semantic context).
+
+---
+
+### G12. AttentionManager — working memory over facts, not conversation history
+
+Instead of growing a conversation transcript and stuffing it into the model
+context window, keep a structured working memory:
+- Current audio buffer
+- Current transcript (short-lived, discarded after semantic recovery)
+- Current semantic graph: the structured intent output from Semantic Recovery
+  (G6) currently being processed — e.g. `Intent(action=MOVE, mode=stealth,
+  target=door, confidence=0.91)` plus any unresolved ambiguities flagged for
+  clarification
+- Current world state snapshot (relevant slice, not whole world)
+- Long-term memories (vector store, retrieved by relevance)
+- Pending tasks (background workers in flight)
+- Event log (authoritative, append-only)
+
+Older events decay out of active attention by recency — recent events stay hot,
+older ones drop to long-term memory unless re-referenced (a new event names the
+same entity, a player explicitly asks about it, or a completing background task
+links back to it). Long-term memories live in the vector store and are retrieved
+by semantic similarity to the current world state slice + active intent. This
+prevents ever-growing context without losing important state.
+
+**Why this matters for DJ2 specifically:** the game is long-running. A
+multi-hour session will produce hundreds of events. Naive conversation history
+bloats context fast. The event log already IS the authoritative record — the
+AttentionManager just decides which slice of it is currently in working memory.
+
+**Depends on:** G10 (verb tokens give it a clean vocabulary), G11 (semantic
+sensors give it higher-level events to track). Not urgent — design when G3
+narration is working and context window pressure becomes real.
 
 ---
 
