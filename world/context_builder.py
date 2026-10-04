@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Set
 
 from world.event_log import Event, get_event_log, EventLog
 from world.escalation_engine import EscalationEngine
+from world.db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,29 @@ logger = logging.getLogger(__name__)
 MAX_SCAN = 1000          # maximum number of events to scan backwards
 SALIENT_LIMIT = 20       # number of salient events to collect
 
+# not a class function
+def get_spell_from_db(spell_name: str) -> dict | None:
+    """Fetch a spell definition from the database by name."""
+    conn = Database.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name, school, base_cost, description, scaling_text, tags FROM spells WHERE name = %s",
+                (spell_name,)
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "name": row[0],
+                "school": row[1],
+                "base_cost": row[2],
+                "description": row[3],
+                "scaling_text": row[4],
+                "tags": row[5],
+            }
+    finally:
+        Database.return_connection(conn)
 
 class ContextBuilder:
     def __init__(self, world_controller, event_log: EventLog, escalation_engine: EscalationEngine):

@@ -1,0 +1,149 @@
+# dj2/.determined/decisions.toml
+# Architectural commitments for Dungeon Journey 2.
+# Loaded by Determined on every corpus init — edits are reflected after corpus reload.
+# Format: [[decisions]] and [[name_resolutions]] sections.
+
+# ── PRIORITY ORDER ─────────────────────────────────────────────────────────────
+
+[[decisions]]
+subject = "_get_encounter_context"
+content = """
+MUST implement before encounter resolution closes.
+_get_encounter_context (context_builder.py) is the blocking dependency for encounter
+adjudication. Everything in the encounter FSM that resolves player actions reads from
+this context object. Until it exists, encounter resolution returns empty context and
+adjudication_engine.py cannot produce meaningful outcomes.
+Priority: first stub to implement in the encounter domain.
+"""
+tags = ["priority:critical", "domain:encounter", "action:implement"]
+
+[[decisions]]
+subject = "_get_combat_context"
+content = """
+Implement after _get_encounter_context.
+_get_combat_context (context_builder.py) is structurally parallel to _get_encounter_context.
+Both are on the ContextBuilder class. Implement together to avoid making two passes over
+the same logic. Combat context feeds resolve_flee and any combat adjudication path.
+"""
+tags = ["domain:encounter", "domain:combat", "action:implement"]
+
+[[decisions]]
+subject = "process_consequences"
+content = """
+Implement in the second pass after context_builder stubs close.
+process_consequences (ai_dungeon_master.py) is the AI DM's consequence pipeline.
+It receives adjudication output and translates it into narrative + state changes.
+It has no callers yet, so it is not on the critical path — but it must exist before
+the AI DM can produce coherent post-encounter narration.
+"""
+tags = ["domain:ai_dm", "action:implement"]
+
+[[decisions]]
+subject = "_register_world_tools"
+content = """
+Implement when AI tool integration is activated.
+_register_world_tools (ai_integration.py) registers game-world functions as AI tool
+call targets. The signal is noisy (ai_integration.py has tools.old history); verify
+the tools list against the current adjudication surface before implementing.
+Do not implement until the adjudication_engine tool API is stable.
+"""
+tags = ["domain:ai_integration", "action:implement", "note:verify-tools-list-first"]
+
+[[decisions]]
+subject = "on_arc_completed"
+content = """
+Implement in the narrative arc pass.
+on_arc_completed (narrative_engine.py) fires when a story arc closes. No callers exist
+yet — it is not blocking any other system. Implement after the encounter and consequence
+paths are closed and the narrative engine has real arc data to report on.
+"""
+tags = ["domain:narrative", "action:implement"]
+
+# ── SUBRACE STUBS (DELETE CANDIDATES) ──────────────────────────────────────────
+
+[[decisions]]
+subject = "subrace_stubs"
+content = """
+The five subrace stubs in dnd_data.py are delete candidates when dj2 coding starts.
+They exist from earlier design exploration; subraces are not in the current game scope.
+Functions: get_race_for_subrace, get_subraces_for_race, semantic_match_fighting_style,
+semantic_match_subrace, subraces (all in world/dnd_data.py).
+Decision: delete all five when the character creation pass starts. Do not implement.
+If subraces become in-scope later, re-derive from the D&D data layer, do not recover these stubs.
+"""
+tags = ["domain:character", "action:delete", "scope:out-of-scope"]
+
+# ── TEST MOCKS (ACCEPTED AS-IS) ─────────────────────────────────────────────────
+
+[[decisions]]
+subject = "test_mock_stubs"
+content = """
+Three stubs in test files are accepted as permanent test mocks — do not implement as
+production code. They exist as scaffolding for test scenarios, not as missing production stubs.
+Functions: check_parley (test_encounter_fsm.py), get_player_by_session (test_economy.py),
+test_encounter_parley_failure (test_economy.py).
+"""
+tags = ["domain:testing", "action:accept", "note:test-scaffolding"]
+
+# ── PHASE SYSTEM (DESIGN-COMPLETE ABSTRACTS) ────────────────────────────────────
+
+[[decisions]]
+subject = "phases_abstract_methods"
+content = """
+engine/phases.py defines the phase interface for the game engine via ABC abstract methods.
+The design is complete — all phase contracts (Input, Interpretation, Authority,
+StateMutation, Consequence, Persistence, ViewProjection) are specified.
+Decision: these are design-complete islands. Implement concrete classes that inherit
+from these ABCs; do not change the interface. Start with ConsequencePhase (trigger_encounter)
+and AuthorityPhase (validate_action, roll_dice) as the encounter path requires them first.
+"""
+tags = ["domain:engine", "action:implement-concrete-classes", "note:design-complete"]
+
+# ── FSM JSON CALLBACK STUBS (DESIGN-COMPLETE ISLANDS) ──────────────────────────
+
+[[decisions]]
+subject = "fsm_json_callback_stubs"
+content = """
+12 FSM callback stubs are defined in JSON specification files, not Python source.
+These are not missing implementations — they are the designed callback contracts
+that concrete Python code must satisfy when the FSM engine wires them in.
+
+EncounterFSM (encounter.json, 5 stubs):
+  start_combat, resolve_flee, resolve_parley (actions)
+  flee_possible, parley_possible (guards)
+
+TradeFSM (trade.json, 4 stubs):
+  update_price, execute_buy (actions)
+  price_too_low, price_acceptable (guards)
+
+BarterFSM (barter.json, 3 stubs):
+  add_gold, execute_barter (actions)
+  need_more_gold (guard)
+
+None of these stubs has a live Python caller — they are invoked by the FSM engine
+at runtime via string dispatch, not static call graph edges. Determined correctly
+classifies them as stubs. They are design-complete islands.
+
+Decision: implement the Python callback functions when the corresponding FSM
+domain becomes active. EncounterFSM callbacks after the encounter context stubs
+close; TradeFSM and BarterFSM after the economy pass.
+Do not implement ahead of the domain — the JSON spec is the source of truth.
+"""
+tags = ["domain:fsm", "domain:encounter", "domain:economy", "action:implement-when-domain-active", "note:design-complete-island"]
+
+# ── ENCOUNTER SUBSYSTEM SEQUENCING ──────────────────────────────────────────────
+
+[[decisions]]
+subject = "encounter_implementation_order"
+content = """
+Encounter subsystem implementation order, derived from dependency graph:
+1. _get_encounter_context (context_builder.py) — everything reads from this
+2. _get_combat_context (context_builder.py) — parallel to encounter context
+3. ConsequencePhase.trigger_encounter (engine/phases.py concrete class) — needs context
+4. process_consequences (ai_dungeon_master.py) — needs adjudication output
+5. on_arc_completed (narrative_engine.py) — needs consequence pipeline
+
+_register_world_tools and _action_trigger_encounter fire asynchronously and are not
+on the critical path for basic encounter resolution.
+"""
+tags = ["domain:encounter", "action:sequence"]

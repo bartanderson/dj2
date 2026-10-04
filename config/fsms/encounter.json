@@ -14,7 +14,7 @@
     },
     "fight": {
       "transitions": [
-        {"from": "awaiting_choice", "to": "resolving_fight", "actions": ["start_combat"]}
+        {"from": "awaiting_choice", "to": "resolving_fight", "cond": "fight_possible", "actions": ["start_combat"]}
       ]
     },
     "flee": {
@@ -24,7 +24,7 @@
     },
     "parley": {
       "transitions": [
-        {"from": "awaiting_choice", "to": "completed", "actions": ["resolve_parley"]}
+        {"from": "awaiting_choice", "to": "completed", "cond": "parley_possible", "actions": ["resolve_parley"]}
       ]
     },
     "combat_ended": {

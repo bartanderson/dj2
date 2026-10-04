@@ -194,6 +194,51 @@ def create_tables():
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
         );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS races (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(50) UNIQUE NOT NULL,
+            traits JSONB,       -- from 03_races.json
+            speed INTEGER,
+            ability_bonuses JSONB
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS classes (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(50) UNIQUE NOT NULL,
+            hit_die INTEGER,
+            primary_attribute VARCHAR(20),
+            features JSONB       -- level-up features
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS skills (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(50) UNIQUE NOT NULL,
+            description TEXT,
+            governing_attribute VARCHAR(20)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS spells (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100) UNIQUE NOT NULL,
+            school VARCHAR(50),
+            base_cost INTEGER,
+            description TEXT,
+            scaling_text TEXT,
+            tags TEXT[],
+            requires_action_stub BOOLEAN DEFAULT false
+        );
+        """,
+        # --- Safely add foreign keys to the existing 'characters' table ---
+        """
+        ALTER TABLE characters ADD COLUMN IF NOT EXISTS race_id INTEGER REFERENCES races(id)
+        """,
+        """
+        ALTER TABLE characters ADD COLUMN IF NOT EXISTS class_id INTEGER REFERENCES classes(id)
         """
     ]
     
@@ -212,6 +257,16 @@ def create_tables():
         "CREATE INDEX IF NOT EXISTS idx_narrative_embedding ON narrative_context USING ivfflat (embedding)",
         "CREATE INDEX IF NOT EXISTS idx_characters_player_id ON characters(player_id)",
         "CREATE INDEX IF NOT EXISTS idx_intent_examples_embedding ON intent_examples USING ivfflat (embedding vector_cosine_ops);"
+        # --- Indexes for new OG reference tables ---
+        "CREATE INDEX IF NOT EXISTS idx_races_name ON races(name)",
+        "CREATE INDEX IF NOT EXISTS idx_classes_name ON classes(name)",
+        "CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name)",
+        "CREATE INDEX IF NOT EXISTS idx_spells_name ON spells(name)",
+        "CREATE INDEX IF NOT EXISTS idx_spells_school ON spells(school)",
+        "CREATE INDEX IF NOT EXISTS idx_spells_tags ON spells USING GIN (tags)",
+        # --- Foreign key indexes for the altered characters table ---
+        "CREATE INDEX IF NOT EXISTS idx_characters_race_id ON characters(race_id)",
+        "CREATE INDEX IF NOT EXISTS idx_characters_class_id ON characters(class_id)"
     ]
     
     try:

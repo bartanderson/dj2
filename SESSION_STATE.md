@@ -13,6 +13,9 @@ Key insight: the world description language becomes the language of the system,
 not code for elements of it. Compiler generates runtime machinery from declarative
 schemas rather than hand-wiring it.
 
+New item to be added, Bart manually put this here, not sure where else it might go.
+https://github.com/openai/openai-python/blob/main/httpx2.md
+
 **New item filed:**
 - G0: World Description Language and IR — foundation layer, precedes G1/G2/G3
   - Research gate: Inform 7 entity model, Souffle (Datalog), Bevy ECS scheduler,

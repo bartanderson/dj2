@@ -417,6 +417,64 @@ at that scale. Decision point when voice is running with multiple players:
 - If bottleneck is IO-bound (waiting on LLM responses) → asyncio already handles this
 Don't decide now. Measure first.
 
+**Implementation patterns worth stealing (from Symbolon/MCTS literature):**
+
+The source insight is the Symbolon symbolic-execution framework (UChicago CIRRUS lab,
+arXiv 2606.29108). Symbolon doesn't execute programs — it transforms them into
+representations that are easier for an execution engine to explore, learning which
+transformations help offline and applying them at scale. The parallel here: MCTS
+doesn't play the game — it transforms the state space into a representation that makes
+the best next action findable before the player sees any consequences. The four patterns
+below are the parts of that approach that survive transplanting into dj2's architecture.
+
+- **`__slots__` on the node class.**
+  Python creates a `__dict__` for every object by default. In a shallow MCTS tree
+  (hundreds of nodes) this is invisible. In a deep NPC-agenda simulation or encounter
+  balancer (thousands of nodes expanded per decision) it becomes the dominant memory
+  cost and slows attribute access measurably. Declare `__slots__` on the node class
+  with every attribute named explicitly. The tradeoff: you cannot add ad hoc attributes
+  later, which is fine — node structure should be fixed by design. This is not a
+  premature optimization; it is a design commitment that the node schema is stable.
+
+- **Deterministic legal-action pruning in the node constructor — this is where G0
+  schema rules live at MCTS runtime.**
+  The node's `__init__` computes `untried_actions` by filtering the full action space
+  against world-state invariants before the search loop ever starts. Example: an NPC
+  cannot launch a night ambush if it is daytime AND the faction sentiment is not at
+  maximum hostility — this is a G0 schema rule, not a search heuristic. By encoding
+  it here, the search never wastes iterations on illegal branches. The quiet part: this
+  is the runtime expression of G0. The schema you write in G0 must be translatable into
+  these constructor filters, or the schema is underspecified. If you cannot write the
+  filter, the schema rule is not concrete enough yet.
+
+- **Freeze the winning node into a typed dataclass before the narrator sees it.**
+  Once MCTS selects a path, the winning node's state is compiled into a
+  `@dataclass(frozen=True, slots=True)` containing only the facts the narrator needs:
+  event description, environmental context, faction sentiment as semantic strings (not
+  raw floats), outcome. The narrator (G3 NarrativeService) receives ONLY this frozen
+  packet — never the live node, never the raw world state, never any mutable object.
+  The quiet part: this IS G3's FactAggregator + observation bundle, just extended to
+  cover MCTS-selected futures rather than only past events. The same frozen-packet
+  pattern should be used for both: post-event narration (G3 as currently designed)
+  and MCTS-selected future-state narration (this item). One pattern, two call sites.
+  The narrator cannot hallucinate facts it was never given.
+
+- **Reward function: score narrative tension, penalize systemic collapse hard.**
+  Symbolon's reward is test coverage per solver query. The game equivalent is not
+  "most exciting outcome" — it is "most structurally sound outcome that preserves
+  player agency and keeps the world coherent." A starting shape:
+  ```
+  R = sum(abs(sentiment[f]) for f in factions)          # tension: high is good
+      - 5.0 * count(f for f in factions if sentiment[f] <= -1.0)  # collapse: very bad
+      - resource_cost_of_action                          # efficiency term
+  ```
+  The unsolved part is the coherence term: how to score "this outcome fits the
+  established fiction" without an LLM in the loop. Options deferred: (a) author
+  coherence rules as preconditions on ECA rules (escalation engine already has this
+  structure), (b) use faction relationship graph distance as a proxy, (c) measure
+  how many established plot hooks the outcome advances vs. forecloses. Do not
+  implement until one of these is chosen and testable without an LLM call.
+
 **Status:** keep watching. Don't implement until evaluation function is designed.
 Relationship to Determined's RM9 (Q4 MCTS): same pattern, different domain.
 
