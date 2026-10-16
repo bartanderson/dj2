@@ -51,7 +51,7 @@ class AdjudicationEngine:
             get_item_from_merchant=True,
             price_func=lambda item, merchant, rel, ctx: self.world._compute_price(item, merchant, rel, ctx),
             guard_registry={'price_too_low': builtins.price_lt, 'price_acceptable': builtins.price_ge},
-            action_registry={'update_price': builtins.update_price, 'execute_buy': builtins.execute_buy},
+            action_registry={'store_offer': builtins.store_offer, 'execute_purchase': builtins.execute_buy},
         )
         self.sell_config = TransactionConfig(
             name='sell',
