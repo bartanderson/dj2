@@ -86,7 +86,7 @@ class GenericFSM:
     def send_event(self, event_name: str, event_data: Optional[Dict] = None):
         method = getattr(self._machine, event_name)
         if event_data:
-            method(**event_data)
+            method(event_data)
         else:
             method()
         return self

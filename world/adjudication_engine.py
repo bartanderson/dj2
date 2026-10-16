@@ -169,6 +169,7 @@ class AdjudicationEngine:
                 'give_item_obj': give_item,
                 'receive_item_obj': want_item,
                 'engine': self,
+                'session_id': session_id,
             }
             if config.context_updates:
                 context.update(config.context_updates)

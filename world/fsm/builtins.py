@@ -56,6 +56,23 @@ def shortage_met(instance, event_data):
     shortage = instance.context.get('shortage', 0)
     return offered >= shortage
 
+# ========== Event emission helper ==========
+
+def _emit_event(instance, event_type, source_system, extra=None):
+    """
+    Emit an event through the engine's EventLog, merging session_id from
+    the FSM context. Silently no-ops when the engine or its event_log is
+    absent (isolated unit tests).
+    """
+    engine = instance.context.get('engine')
+    if engine is None or not hasattr(engine, 'event_log'):
+        return
+    data = {'session_id': instance.context.get('session_id', '')}
+    if extra:
+        data.update(extra)
+    engine.event_log.emit(event_type, data, source_system=source_system)
+
+
 # ========== Actions ==========
 
 def store_offer(instance, event_data):
@@ -72,6 +89,8 @@ def add_gold(instance, event_data):
     instance.context['offered_extra'] = extra
     shortage = instance.context.get('shortage', 0)
     instance.context['shortage'] = shortage - extra
+    _emit_event(instance, 'state.resource.changed', 'economy',
+                {'resource': 'gold', 'delta': extra})
     return instance.context
 
 def execute_purchase(instance, event_data):
@@ -106,6 +125,10 @@ def execute_barter(instance, event_data):
             instance.context['receive_item_obj'],
             instance.context.get('offered_extra', 0)
         )
+    merchant = instance.context.get('merchant')
+    merchant_id = getattr(merchant, 'id', '') if merchant is not None else ''
+    _emit_event(instance, 'interaction.trade.completed', 'economy',
+                {'merchant_id': merchant_id})
     return instance.context
 
 # ========== Encounter helpers ==========
