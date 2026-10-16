@@ -93,7 +93,7 @@ def add_gold(instance, event_data):
                 {'resource': 'gold', 'delta': extra})
     return instance.context
 
-def execute_purchase(instance, event_data):
+def execute_buy(instance, event_data):
     engine = instance.context.get('engine')
     if engine and hasattr(engine, '_execute_purchase'):
         engine._execute_purchase(
@@ -101,6 +101,17 @@ def execute_purchase(instance, event_data):
             instance.context['merchant'],
             instance.context['item'],
             instance.context.get('price', instance.context.get('current_price', 0))
+        )
+    if engine is not None and hasattr(engine, 'event_log'):
+        merchant = instance.context.get('merchant')
+        merchant_id = getattr(merchant, 'id', '') if merchant is not None else ''
+        engine.event_log.emit(
+            'interaction.trade.completed',
+            {
+                'session_id': instance.context.get('session_id', ''),
+                'merchant_id': merchant_id,
+            },
+            source_system='economy',
         )
     return instance.context
 
