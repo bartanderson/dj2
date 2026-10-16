@@ -564,18 +564,22 @@ class AdjudicationEngine:
         if session_id in self.active_fsms:
             return {"success": False, "message": "Already in an encounter."}
         guard_reg = {
-            'flee_possible': builtins.flee_possible,
+            'fight_possible':  builtins.fight_possible,
+            'flee_possible':   builtins.flee_possible,
             'parley_possible': builtins.parley_possible,
         }
         action_reg = {
-            'start_combat': builtins.start_combat,
-            'resolve_flee': builtins.resolve_flee,
-            'resolve_parley': builtins.resolve_parley,
+            'begin_encounter': builtins.begin_encounter,
+            'start_combat':    builtins.start_combat,
+            'resolve_flee':    builtins.resolve_flee,
+            'resolve_parley':  builtins.resolve_parley,
         }
         char = self.world._get_active_character(session_id)
+        encounter_id = encounter_data.get('encounter_id') or f"enc::{session_id}"
         context = {
             'description': encounter_data.get('description', ''),
-            'encounter_data': encounter_data,   # store the full data
+            'encounter_data': encounter_data,
+            'encounter_id': encounter_id,
             'monsters': encounter_data.get('monsters', []),
             'engine': self,
             'session_id': session_id,

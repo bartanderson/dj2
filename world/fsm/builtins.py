@@ -108,12 +108,42 @@ def execute_barter(instance, event_data):
         )
     return instance.context
 
-# Encounter actions (simple stubs)
+# ========== Encounter helpers ==========
+
+def _emit_encounter(instance, event_type, extra=None):
+    """
+    Emit an event through the engine's EventLog. All initial event types
+    require session_id and encounter_id in data (config/events/initial_events.json).
+    Silently no-ops when the engine is absent (e.g. in isolated unit tests).
+    """
+    engine = instance.context.get('engine')
+    if engine is None or not hasattr(engine, 'event_log'):
+        return
+    data = {
+        'session_id':   instance.context.get('session_id', ''),
+        'encounter_id': instance.context.get('encounter_id', ''),
+    }
+    if extra:
+        data.update(extra)
+    engine.event_log.emit(event_type, data, source_system='encounter')
+
+
+# ========== Encounter guards ==========
+
+def fight_possible(instance, event_data):
+    """True unless the engine provides _check_fight and it says no."""
+    engine = instance.context.get('engine')
+    if engine and hasattr(engine, '_check_fight'):
+        return engine._check_fight(instance.context.get('encounter_data'))
+    return True
+
+
 def flee_possible(instance, event_data):
     engine = instance.context.get('engine')
     if engine and hasattr(engine, '_check_flee'):
         return engine._check_flee(instance.context.get('encounter_data'))
     return False
+
 
 def parley_possible(instance, event_data):
     engine = instance.context.get('engine')
@@ -121,14 +151,32 @@ def parley_possible(instance, event_data):
         return engine._check_parley(instance.context.get('encounter_data'))
     return False
 
-def start_combat(instance, event_data):
-    engine = instance.context.get('engine')
-    if engine and hasattr(engine, '_start_combat'):
-        engine._start_combat(instance.context.get('encounter_data'))
+
+# ========== Encounter actions ==========
+
+def begin_encounter(instance, event_data):
+    """Emit encounter.started with the encounter description."""
+    _emit_encounter(instance, 'encounter.started', {
+        'description': instance.context.get('description', ''),
+    })
     return instance.context
+
+
+def start_combat(instance, event_data):
+    """Emit combat.initiation.triggered. Combat rules are not implemented here."""
+    _emit_encounter(instance, 'combat.initiation.triggered')
+    return instance.context
+
 
 def resolve_flee(instance, event_data):
+    """Emit encounter.updated then encounter.ended (outcome=fled)."""
+    _emit_encounter(instance, 'encounter.updated')
+    _emit_encounter(instance, 'encounter.ended', {'outcome': 'fled'})
     return instance.context
 
+
 def resolve_parley(instance, event_data):
+    """Emit encounter.updated then encounter.ended (outcome=parleyed)."""
+    _emit_encounter(instance, 'encounter.updated')
+    _emit_encounter(instance, 'encounter.ended', {'outcome': 'parleyed'})
     return instance.context

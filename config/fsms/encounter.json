@@ -9,7 +9,7 @@
   "events": {
     "next": {
       "transitions": [
-        {"from": "initiating", "to": "awaiting_choice"}
+        {"from": "initiating", "to": "awaiting_choice", "actions": ["begin_encounter"]}
       ]
     },
     "fight": {
@@ -34,6 +34,10 @@
     }
   },
   "guards": {
+    "fight_possible": {
+      "parameters": {},
+      "description": "True if combat can begin."
+    },
     "flee_possible": {
       "parameters": {},
       "description": "True if flee attempt succeeds."
@@ -44,20 +48,25 @@
     }
   },
   "actions": {
+    "begin_encounter": {
+      "parameters": {},
+      "context_uses": ["engine"],
+      "description": "Emits encounter.started when the machine leaves initiating."
+    },
     "start_combat": {
       "parameters": {},
       "context_uses": ["engine"],
-      "description": "Triggers combat system."
+      "description": "Emits combat.initiation.triggered; no combat rules run here."
     },
     "resolve_flee": {
       "parameters": {},
       "context_uses": ["engine"],
-      "description": "Resolves flee success."
+      "description": "Emits encounter.updated then encounter.ended with outcome=fled."
     },
     "resolve_parley": {
       "parameters": {},
       "context_uses": ["engine"],
-      "description": "Resolves parley success."
+      "description": "Emits encounter.updated then encounter.ended with outcome=parleyed."
     }
   }
 }
