@@ -1,0 +1,115 @@
+"""
+Unit tests for ContextBuilder._get_encounter_context and _get_combat_context.
+
+Per spec dj2-fsm-completion ("Context-builder encounter and combat stubs are
+filled only to the contract"), these methods read the EventLog and return
+a snapshot; no mutation, no entity re-resolution, no database access.
+
+world/context_builder.py imports world.db at module level, which requires
+psycopg2 in a production environment. These tests do not exercise that
+import path, so world.db is stubbed out before context_builder loads.
+"""
+import sys
+from unittest.mock import MagicMock
+
+sys.modules.setdefault('world.db', MagicMock())
+
+from world.event_log import EventLog  # noqa: E402
+from world.context_builder import ContextBuilder  # noqa: E402
+
+
+class StubWorld:
+    current_location = None
+    campaign_state = None
+
+
+class StubEscalation:
+    def get_active_effects(self):
+        return []
+
+
+def _make_builder():
+    world = StubWorld()
+    log = EventLog()
+    esc = StubEscalation()
+    return ContextBuilder(world, log, esc), log
+
+
+def _start(log, session_id='s1', encounter_id='enc::1',
+           description='A goblin attacks!'):
+    log.emit('encounter.started',
+             {'session_id': session_id,
+              'encounter_id': encounter_id,
+              'description': description},
+             source_system='encounter')
+
+
+def _end(log, session_id='s1', encounter_id='enc::1', outcome='fled'):
+    log.emit('encounter.ended',
+             {'session_id': session_id,
+              'encounter_id': encounter_id,
+              'outcome': outcome},
+             source_system='encounter')
+
+
+def test_encounter_context_empty_when_no_events():
+    cb, _ = _make_builder()
+    assert cb._get_encounter_context('s1') == {}
+
+
+def test_encounter_context_snapshot_when_started():
+    cb, log = _make_builder()
+    _start(log)
+    ctx = cb._get_encounter_context('s1')
+    assert ctx['encounter_id'] == 'enc::1'
+    assert ctx['description'] == 'A goblin attacks!'
+    assert ctx['in_progress'] is True
+    assert 'started_at' in ctx
+
+
+def test_encounter_context_empty_after_ended():
+    cb, log = _make_builder()
+    _start(log)
+    _end(log)
+    assert cb._get_encounter_context('s1') == {}
+
+
+def test_encounter_context_ignores_other_sessions():
+    cb, log = _make_builder()
+    _start(log, session_id='other', encounter_id='enc::x')
+    assert cb._get_encounter_context('s1') == {}
+
+
+def test_encounter_context_reflects_update():
+    cb, log = _make_builder()
+    _start(log)
+    log.emit('encounter.updated',
+             {'session_id': 's1', 'encounter_id': 'enc::1'},
+             source_system='encounter')
+    ctx = cb._get_encounter_context('s1')
+    assert 'last_update_at' in ctx
+
+
+def test_combat_context_empty_when_no_initiation():
+    cb, _ = _make_builder()
+    assert cb._get_combat_context('s1') == {}
+
+
+def test_combat_context_snapshot_after_initiation():
+    cb, log = _make_builder()
+    log.emit('combat.initiation.triggered',
+             {'session_id': 's1', 'encounter_id': 'enc::1'},
+             source_system='encounter')
+    ctx = cb._get_combat_context('s1')
+    assert ctx['encounter_id'] == 'enc::1'
+    assert ctx['in_progress'] is True
+    assert 'initiated_at' in ctx
+
+
+def test_combat_context_empty_after_encounter_ends():
+    cb, log = _make_builder()
+    log.emit('combat.initiation.triggered',
+             {'session_id': 's1', 'encounter_id': 'enc::1'},
+             source_system='encounter')
+    _end(log, outcome='fought')
+    assert cb._get_combat_context('s1') == {}

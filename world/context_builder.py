@@ -189,13 +189,70 @@ class ContextBuilder:
         }
 
     def _get_encounter_context(self, session_id: str) -> dict:
-        """Query active EncounterFSM for context."""
-        # This will be implemented when encounter system is built.
-        return {}
+        """
+        Read the EventLog for this session's active encounter, if any.
+
+        Returns a snapshot when the most recent encounter.started for this
+        session has no matching encounter.ended, or {} otherwise. Pure read
+        of the log: no mutation, no entity re-resolution, no database access
+        (per docs/design/04 context builder v1.3.md).
+        """
+        current_started = None
+        last_updated = None
+        for event in self.event_log.get_all_events():
+            data = event.data if hasattr(event.data, 'get') else {}
+            if data.get('session_id') != session_id:
+                continue
+            if event.type == 'encounter.started':
+                current_started = event
+                last_updated = None
+            elif event.type == 'encounter.updated' and current_started is not None:
+                last_updated = event
+            elif event.type == 'encounter.ended':
+                current_started = None
+                last_updated = None
+
+        if current_started is None:
+            return {}
+
+        data = current_started.data if hasattr(current_started.data, 'get') else {}
+        snapshot = {
+            "encounter_id": data.get('encounter_id', ''),
+            "description":  data.get('description', ''),
+            "started_at":   current_started.timestamp,
+            "in_progress":  True,
+        }
+        if last_updated is not None:
+            snapshot["last_update_at"] = last_updated.timestamp
+        return snapshot
 
     def _get_combat_context(self, session_id: str) -> dict:
-        """Query active CombatFSM for context."""
-        return {}
+        """
+        Read the EventLog for this session's active combat, if any.
+
+        Combat is considered in progress between combat.initiation.triggered
+        and the next encounter.ended for the same session. Pure read of the
+        log; no mutation, no database access.
+        """
+        initiation = None
+        for event in self.event_log.get_all_events():
+            data = event.data if hasattr(event.data, 'get') else {}
+            if data.get('session_id') != session_id:
+                continue
+            if event.type == 'combat.initiation.triggered':
+                initiation = event
+            elif event.type == 'encounter.ended':
+                initiation = None
+
+        if initiation is None:
+            return {}
+
+        data = initiation.data if hasattr(initiation.data, 'get') else {}
+        return {
+            "encounter_id": data.get('encounter_id', ''),
+            "initiated_at": initiation.timestamp,
+            "in_progress":  True,
+        }
 
     def _get_timestamp(self) -> str:
         from datetime import datetime, timezone
