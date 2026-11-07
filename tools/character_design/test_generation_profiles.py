@@ -9,14 +9,14 @@ from __future__ import annotations
 from random import Random
 import unittest
 
-from tools.character_design.generation_profiles import (
+from generation_profiles import (
     MAX_SCORE,
     MIN_SCORE,
     ProfileName,
     generate_balanced,
     generate_pool,
 )
-from tools.character_design.simulate_generation_profiles import simulate
+from simulate_generation_profiles import simulate
 
 
 class GenerationProfileTests(unittest.TestCase):
