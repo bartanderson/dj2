@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict
 from random import Random
 from statistics import mean, median
 
-from generation_profiles import PROFILES, ProfileName, generate_pool
+from tools.character_design.generation_profiles import PROFILES, ProfileName, generate_pool
 
 
 @dataclass(frozen=True)
