@@ -300,6 +300,49 @@ This redesign must remain consistent with the project authority hierarchy:
 - AI interprets and presents; it does not become mechanical authority
 - narration presents resolved facts and does not alter outcomes
 
+## Numerical Design Workbench (Candidate Rules Under Test)
+
+The following candidates have been implemented in a **non-production** simulation
+workbench. They are hypotheses under measurement, not yet canonical character rules.
+
+Location:
+
+- `tools/character_design/generation_profiles.py`
+- `tools/character_design/simulate_generation_profiles.py`
+- `tools/character_design/test_generation_profiles.py`
+
+Candidate generation profiles currently under test:
+
+1. **Balanced Character** — fixed array: `[15, 14, 13, 12, 10, 8]`.
+2. **Guided Character Creation** — the same fixed balanced pool; the distinction is
+   conversational concept capture and deterministic assignment, not hidden statistical power.
+3. **Random Destiny** — six independent `4d6, drop lowest` scores.
+4. **Concept-Guided Generation** — Random Destiny; if no generated score reaches 15,
+   one additional `4d6, drop lowest` candidate may replace the pool's lowest score
+   only when higher.
+5. **Heroic Character** — generate seven `4d6, drop lowest` scores and discard the
+   lowest result.
+
+The workbench measures:
+
+- total-score distribution
+- modifier economy
+- probabilities of 15/16/17/18 highs
+- weak-score probabilities
+- probability of multiple weaknesses
+- concept-shape thresholds such as one 15 plus one 13, and one 16 plus two 13s
+- seeded reproducibility
+
+Run from the repository root:
+
+```
+python -m unittest tools.character_design.test_generation_profiles
+python tools/character_design/simulate_generation_profiles.py --trials 100000 --seed 20261107
+```
+
+Do not treat a candidate profile as approved merely because the code exists. The next
+decision is based on the resulting distributions and representative-character analysis.
+
 ## Next Work
 
 Before implementation:
