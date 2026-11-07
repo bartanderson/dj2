@@ -19,6 +19,7 @@ MAX_SCORE = 18
 
 class ProfileName(str, Enum):
     BALANCED = "balanced"
+    GUIDED_CHARACTER_CREATION = "guided_character_creation"
     RANDOM_DESTINY = "random_destiny"
     CONCEPT_GUIDED = "concept_guided"
     HEROIC = "heroic"
@@ -48,6 +49,15 @@ def _validate_pool(pool: tuple[int, ...]) -> tuple[int, ...]:
 def generate_balanced(_: Random) -> tuple[int, ...]:
     """Fixed, predictable baseline used as the reference profile."""
     return _validate_pool((15, 14, 13, 12, 10, 8))
+
+
+def generate_guided_character_creation(rng: Random) -> tuple[int, ...]:
+    """Default conversational profile uses the balanced pool before deterministic assignment.
+
+    The AI conversation supplies confirmed priorities; this generation phase deliberately
+    adds no hidden statistical advantage.
+    """
+    return generate_balanced(rng)
 
 
 def generate_random_destiny(rng: Random) -> tuple[int, ...]:
@@ -87,6 +97,11 @@ PROFILES: dict[ProfileName, GenerationProfile] = {
         ProfileName.BALANCED,
         "Fixed array: 15, 14, 13, 12, 10, 8.",
         generate_balanced,
+    ),
+    ProfileName.GUIDED_CHARACTER_CREATION: GenerationProfile(
+        ProfileName.GUIDED_CHARACTER_CREATION,
+        "Fixed balanced pool for conversational concept capture and deterministic assignment.",
+        generate_guided_character_creation,
     ),
     ProfileName.RANDOM_DESTINY: GenerationProfile(
         ProfileName.RANDOM_DESTINY,
