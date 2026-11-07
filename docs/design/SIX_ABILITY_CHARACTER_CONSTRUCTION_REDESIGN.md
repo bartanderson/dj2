@@ -336,7 +336,7 @@ The workbench measures:
 Run from the repository root:
 
 ```
-python -m unittest tools.character_design.test_generation_profiles
+python -m unittest discover -s tools/character_design -p "test_*.py"
 python tools/character_design/simulate_generation_profiles.py --trials 100000 --seed 20261107
 ```
 
