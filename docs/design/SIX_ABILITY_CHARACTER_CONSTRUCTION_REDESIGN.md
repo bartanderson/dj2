@@ -1,5 +1,20 @@
 # Six-Ability Character Construction Redesign
 
+## RESUME POINT FOR NEXT CHATGPT SESSION
+
+**Current state:** Conceptual architecture is settled enough to begin numerical design; implementation has not started.
+
+**Last settled decision:** Character creation should be conversational at the player interface but deterministic underneath. The AI DM extracts and confirms the player's concept and priorities; deterministic rules choose the generation profile, perform permitted random generation/concept protection, and exhaustively assign the resulting six-score pool across STR/DEX/CON/INT/WIS/CHA.
+
+**Exact next task:** Define the concrete generation profiles and their numerical rules, then test them with executable probability/balance simulations.
+
+**Do not restart from:** whether to use four or six abilities; whether creation can be conversational; whether AI directly grants scores; whether generation and assignment are separate. Those decisions are already recorded below.
+
+**Repository:** bartanderson/dj2
+
+**How to resume:** Read this document first, then continue with the exact next task. Consult the authoritative design hierarchy and only relevant existing code when numerical rules need integration constraints.
+
+
 ## Status
 
 **Design specification in progress. No implementation cutover yet.**
