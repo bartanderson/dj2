@@ -1,0 +1,1 @@
+python -c "from world.character_builder import CharacterBuilder; from world import dnd_data; b = CharacterBuilder(None); c = b._create_character_impl('o', {'name':'t','race':'Dwarf','class':'Warrior','abilities':{'STR':14,'DEX':12,'CON':13,'INT':10,'WIS':11,'CHA':8},'racial_choice':['STR']}); print(c.abilities)"

@@ -1,208 +1,147 @@
-# character_generator.py – OG System version with enforced caps
+"""character_generator.py — Form-data → Character bridge.
 
+All character creation goes through CharacterBuilder._create_character_impl.
+This module exists only to adapt HTML form input to that canonical pipeline.
+"""
 import random
 import logging
+
 from world import dnd_data
-from world.character import Character
 
 logger = logging.getLogger(__name__)
 
-# ----------------------------------------------------------------------
-# Attribute point buy (OG System: 4 points, max 3 per attribute)
-# ----------------------------------------------------------------------
-def random_attributes():
-    """
-    Generate a random distribution of 4 points among the four attributes,
-    each between 0 and 4, with no single attribute exceeding 3.
-    Returns a dict with keys 'brawn', 'finesse', 'wits', 'will'.
-    """
-    points = 4
-    attrs = {'brawn': 0, 'finesse': 0, 'wits': 0, 'will': 0}
-    # Distribute points randomly, respecting max 3
-    for _ in range(points):
-        eligible = [k for k in attrs if attrs[k] < 3]
-        if not eligible:
-            break
-        chosen = random.choice(eligible)
-        attrs[chosen] += 1
-    return attrs
+ABILITIES = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
 
-# ----------------------------------------------------------------------
-# Random skill selection
-# ----------------------------------------------------------------------
-def random_skills():
-    """
-    Return a list of 2–3 randomly chosen skills from the OG skill list.
-    """
+
+def random_abilities():
+    """Roll 4d6 drop lowest, six times. Scores 3-18."""
+    scores = []
+    for _ in range(6):
+        rolls = sorted(random.randint(1, 6) for _ in range(4))
+        scores.append(sum(rolls[1:]))
+    return dict(zip(ABILITIES, scores))
+
+
+def random_skills(count=3):
     all_skills = dnd_data.get_skill_list()
-    count = random.randint(2, 3)
     return random.sample(all_skills, min(count, len(all_skills)))
 
-# ----------------------------------------------------------------------
-# Random fill for a single field (used by random_fill_all)
-# ----------------------------------------------------------------------
+
 def random_fill_field(field, current_data=None):
-    """
-    Generate a random value for a given form field.
-    field: string name of the field (e.g., 'race', 'brawn', 'skills')
-    current_data: optional dict of existing data (unused here)
-    """
-    if field == 'race':
+    """Legacy stub — individual field random fill. Prefer random_fill_all."""
+    if field == "race":
         return random.choice(dnd_data.get_race_list())
-    elif field == 'class':
+    if field == "class":
         return random.choice(dnd_data.get_class_list())
-    elif field == 'background':
+    if field == "background":
         return random.choice(dnd_data.get_background_list())
-    elif field in ('brawn', 'finesse', 'wits', 'will'):
-        # For individual attributes, we don't generate in isolation;
-        # random_attributes handles them together. This function will be called
-        # for each attribute by random_fill_all, but we delegate to the batch.
-        # We'll just return a placeholder; random_fill_all will override.
-        return 1
-    elif field == 'skills':
+    if field == "skills":
         return random_skills()
-    else:
-        # For name or other text fields, return empty (or could generate a random name)
-        return ''
+    if field in ABILITIES:
+        return random_abilities().get(field, 10)
+    return ""
 
-# ----------------------------------------------------------------------
-# Main random fill function: fills all fields with valid OG data
-# ----------------------------------------------------------------------
+
 def random_fill_all(current_data=None):
-    """
-    Return a dictionary with randomly generated values for all character fields.
-    Keys match what the form/context expects:
-        name, race, class, background,
-        brawn, finesse, wits, will,
-        selected_skills (list)
-    Also includes derived fields for compatibility (hit_die, class_skill_*)
-    but those are handled in the endpoint.
-    """
-    attrs = random_attributes()
-    race = random_fill_field('race')
-    class_name = random_fill_field('class')
-    background = random_fill_field('background')
-    skills = random_fill_field('skills')
+    """Return a complete context dict for partials/creation_form.html."""
+    race_name = random.choice(dnd_data.get_race_list())
+    class_name = random.choice(dnd_data.get_class_list())
+    background = random.choice(dnd_data.get_background_list())
 
-    # Generate a simple name
-    name_prefixes = ['Aria', 'Borin', 'Cedric', 'Dorn', 'Elara', 'Finn', 'Greta', 'Hugo']
-    name = random.choice(name_prefixes) + str(random.randint(1, 99))
+    race = dnd_data.Race.get(race_name)
+    racial_choice = []
+    race_choice_options = []
+    race_choice_count = 0
+    if race:
+        spec = race.choice_spec()
+        if spec:
+            race_choice_options = list(spec["from"])
+            race_choice_count = spec["count"]
+            racial_choice = random.sample(spec["from"], spec["count"])
 
-    result = {
-        'name': name,
-        'race': race,
-        'class': class_name,
-        'background': background,
-        'brawn': attrs['brawn'],
-        'finesse': attrs['finesse'],
-        'wits': attrs['wits'],
-        'will': attrs['will'],
-        'selected_skills': skills,
-        'ability_scores': {
-            'brawn': attrs['brawn'],
-            'finesse': attrs['finesse'],
-            'wits': attrs['wits'],
-            'will': attrs['will'],
-        },
-        # These are used by the template if present; we set safe defaults
-        'hit_die': None,
-        'class_skill_choose': 0,
-        'class_skill_options': [],
-        'subraces': [],
-        'fighting_styles': [],
+    abilities = random_abilities()
+
+    prefixes = ["Aria", "Borin", "Cedric", "Dorn", "Elara", "Finn", "Greta", "Hugo"]
+    name = random.choice(prefixes) + str(random.randint(1, 99))
+
+    ability_display = []
+    for ab in ABILITIES:
+        attr = dnd_data.Attribute.get(ab)
+        ability_display.append(attr.name if attr else ab)
+
+    return {
+        "name": name,
+        "race": race_name,
+        "class": class_name,
+        "background": background,
+        "ability_scores": abilities,
+        "ability_names": list(ABILITIES),
+        "ability_display": ability_display,
+        "racial_choice": racial_choice,
+        "race_choice_options": race_choice_options,
+        "race_choice_count": race_choice_count,
+        "selected_skills": random_skills(),
+        "skills_list": dnd_data.get_skill_list(),
+        "races": dnd_data.get_race_list(),
+        "classes": dnd_data.get_class_list(),
+        "backgrounds": dnd_data.get_background_list(),
+        "hit_die": None,
+        "class_skill_choose": 0,
+        "class_skill_options": [],
     }
-    return result
 
-# ----------------------------------------------------------------------
-# Character creation from form data (with validation)
-# ----------------------------------------------------------------------
-def create_character_from_form(form_data, builder=None):
-    """
-    Create a Character object from validated form data.
-    form_data is a dict (already normalized) containing:
-        name, race, class, background,
-        brawn, finesse, wits, will (as ints or strings),
-        skills (list of selected skill names),
-        player_id
-    Returns a dict with 'success', 'character', and optionally 'errors'.
-    """
+
+def create_character_from_form(form_data, builder):
+    """Validate form data and route through CharacterBuilder._create_character_impl."""
     errors = []
 
-    # Validate required fields
-    required = ['name', 'race', 'class', 'background']
-    for field in required:
+    for field in ("name", "race", "class"):
         if not form_data.get(field):
             errors.append(f"Missing {field}")
+    if form_data.get("race") and not dnd_data.validate_race(form_data["race"]):
+        errors.append(f"Invalid race: {form_data['race']}")
+    if form_data.get("class") and not dnd_data.validate_class(form_data["class"]):
+        errors.append(f"Invalid class: {form_data['class']}")
 
-    # Validate race
-    race = form_data.get('race')
-    if race and not dnd_data.validate_race(race):
-        errors.append(f"Invalid race: {race}")
+    abilities = {}
+    for ab in ABILITIES:
+        raw = form_data.get(ab) or form_data.get(ab.lower()) or "10"
+        try:
+            score = int(raw)
+        except (TypeError, ValueError):
+            errors.append(f"{ab} must be an integer")
+            score = 10
+        if not (3 <= score <= 18):
+            errors.append(f"{ab}={score} out of range 3-18")
+        abilities[ab] = score
 
-    # Validate class
-    class_name = form_data.get('class')
-    if class_name and not dnd_data.validate_class(class_name):
-        errors.append(f"Invalid class: {class_name}")
+    racial_choice = form_data.get("racial_choice")
+    if isinstance(racial_choice, str):
+        racial_choice = [s.strip() for s in racial_choice.split(",") if s.strip()]
+    elif racial_choice is None:
+        racial_choice = []
 
-    # Validate background (optional – just check if in list)
-    bg = form_data.get('background')
-    if bg and bg not in dnd_data.get_background_list():
-        errors.append(f"Invalid background: {bg}")
+    skill_profs = form_data.get("skill_proficiencies") or form_data.get("skills") or []
+    if isinstance(skill_profs, str):
+        skill_profs = [skill_profs]
 
-    # Parse attributes (with defaults)
-    try:
-        brawn = int(form_data.get('brawn', 1))
-        finesse = int(form_data.get('finesse', 1))
-        wits = int(form_data.get('wits', 1))
-        will = int(form_data.get('will', 1))
-    except ValueError:
-        errors.append("Attributes must be numbers")
-        # Set defaults to continue validation but will fail anyway
-        brawn = finesse = wits = will = 1
-
-    # Enforce attribute caps
-    total_points = brawn + finesse + wits + will
-    if total_points > 4:
-        errors.append(f"Total attribute points cannot exceed 4 (you have {total_points})")
-    for attr, val in [('brawn', brawn), ('finesse', finesse), ('wits', wits), ('will', will)]:
-        if val < 0 or val > 4:
-            errors.append(f"{attr.capitalize()} must be between 0 and 4 (got {val})")
-
-    # Get selected skills (list)
-    skills = form_data.get('skills', [])
-    if not isinstance(skills, list):
-        skills = [skills] if skills else []
-
-    # Enforce skill limit (OG: 2-3 starting skills)
-    if len(skills) > 3:
-        errors.append(f"You can select at most 3 skills (you selected {len(skills)})")
-    # Validate each skill
-    for skill in skills:
-        if not dnd_data.validate_skill(skill):
-            errors.append(f"Invalid skill: {skill}")
-
-    # If errors, return now
     if errors:
-        logger.warning(f"Character creation failed: {errors}")
-        return {'success': False, 'errors': errors}
+        return {"success": False, "errors": errors}
 
-    # Create character
-    char = Character(
-        name=form_data['name'],
-        race=race,
-        classs=class_name,
-        background=bg,
-        owner_id=form_data.get('player_id'),
-        brawn=brawn,
-        finesse=finesse,
-        wits=wits,
-        will=will,
-        level=1
-    )
-
-    # Add skills
-    for skill in skills:
-        char.add_skill(skill, rank=1)
-
-    logger.info(f"Character created: {char.name} ({char.race} {char.classs.name if char.classs else 'Unknown'})")
-    return {'success': True, 'character': char}
+    try:
+        character = builder._create_character_impl(
+            owner_id=form_data.get("player_id", "unknown"),
+            char_data={
+                "name": form_data["name"],
+                "race": form_data["race"],
+                "class": form_data["class"],
+                "background": form_data.get("background", "unknown"),
+                "abilities": abilities,
+                "racial_choice": list(racial_choice),
+                "skill_proficiencies": list(skill_profs),
+            },
+        )
+        return {"success": True, "character": character}
+    except Exception as e:
+        logger.exception("character creation failed")
+        return {"success": False, "errors": [str(e)]}

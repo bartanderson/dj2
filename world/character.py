@@ -22,30 +22,6 @@ def proficiency_bonus_for_level(level: int) -> int:
     """Level 1-4: +2, 5-8: +3, 9-12: +4, 13-16: +5, 17-20: +6."""
     return 2 + (max(1, min(20, level)) - 1) // 4
 
-
-def _migrate_legacy_attributes(old: Dict[str, Any]) -> Dict[str, int]:
-    """Map old 4-attribute dict (0-4 scale) to new 6-ability dict (3-18 scale).
-    Lossy: Wits maps to both INT and WIS, Will to CHA. Used only on DB load.
-    """
-    if not isinstance(old, dict):
-        return {ab: 10 for ab in ABILITIES}
-    if "STR" in old:  # already new format
-        return {ab: int(old.get(ab, 10)) for ab in ABILITIES}
-
-    def conv(v, default=0):
-        v = v if v is not None else default
-        return max(SCORE_MIN, min(SCORE_MAX, 10 + int(v) * 2))
-
-    return {
-        "STR": conv(old.get("brawn", 0)),
-        "DEX": conv(old.get("finesse", 0)),
-        "CON": conv((old.get("brawn", 0) + old.get("wits", 0)) // 2),
-        "INT": conv(old.get("wits", 0)),
-        "WIS": conv(old.get("wits", 0)),
-        "CHA": conv(old.get("will", 0)),
-    }
-
-
 @dataclass
 class InventoryItem:
     name: str
@@ -89,20 +65,19 @@ class Character:
         vows: Optional[Dict] = None,
         **kwargs,
     ):
-        if kwargs:
-            # Legacy callers still pass brawn=, finesse=, attributes=, inventory=
-            # Translate what we can, log what we cannot.
-            for legacy_key in ("brawn", "finesse", "wits", "will"):
-                if legacy_key in kwargs:
-                    logger.warning(
-                        "Character(%s): legacy attribute kwarg %r ignored. "
-                        "Pass `abilities={...}` instead.", name, legacy_key
-                    )
-            for k in kwargs:
-                if k not in ("brawn", "finesse", "wits", "will",
-                             "attributes", "inventory"):
-                    logger.debug("Character(%s): unknown kwarg %r ignored.", name, k)
 
+        if kwargs:
+            raise TypeError(
+                f"Character({name!r}) received unexpected kwargs: {sorted(kwargs)}. "
+                "Pass `abilities={...}` with STR/DEX/CON/INT/WIS/CHA scores."
+            )
+
+        if abilities is None:
+            raise ValueError(
+                f"Character({name!r}) requires `abilities` (dict of STR/DEX/CON/INT/WIS/CHA)."
+            )
+
+        self.abilities: Dict[str, int] = self._validate_abilities(abilities)
         self.id = str(uuid.uuid4())
         self.owner_id = owner_id or "unknown"
         self.player_id = player_id
@@ -122,17 +97,6 @@ class Character:
             self.classs = classs
 
         self.level = max(1, int(level))
-
-        # Abilities: authoritative post-racial scores.
-        # Legacy fallback: accept kwargs brawn/finesse/wits/will and migrate.
-        if abilities is None and any(k in kwargs for k in ("brawn", "finesse", "wits", "will")):
-            abilities = _migrate_legacy_attributes({
-                "brawn": kwargs.get("brawn", 1),
-                "finesse": kwargs.get("finesse", 1),
-                "wits": kwargs.get("wits", 1),
-                "will": kwargs.get("will", 1),
-            })
-        self.abilities: Dict[str, int] = self._validate_abilities(abilities)
 
         # Proficiencies
         self.proficiency_bonus = proficiency_bonus_for_level(self.level)
@@ -154,6 +118,7 @@ class Character:
         self.defense = self.base_defense
         self.damage_reduction = 0
         self.initiative_bonus = self._calculate_initiative_bonus()
+        self.initiative = 0
 
         # Equipment
         self.inventory: List[InventoryItem] = []
@@ -226,11 +191,6 @@ class Character:
     def _calculate_initiative_bonus(self) -> int:
         base = self.modifier("DEX")
         return base + (self.proficiency_bonus if self.initiative_proficient else 0)
-
-    # Legacy compatibility alias
-    @property
-    def attributes(self) -> Dict[str, int]:
-        return self.abilities
 
     # ---------- Gear ----------
 
@@ -317,6 +277,15 @@ class Character:
     # ---------- Skills / spells ----------
 
     def add_skill(self, skill_name: str, rank: int = 1):
+        if not dnd_data.validate_skill(skill_name):
+            return
+        if rank >= 2:
+            if skill_name not in self.skill_proficiencies:
+                self.skill_proficiencies.append(skill_name)
+            if skill_name not in self.skill_expertise:
+                self.skill_expertise.append(skill_name)
+        elif skill_name not in self.skill_proficiencies:
+            self.skill_proficiencies.append(skill_name)
         if dnd_data.validate_skill(skill_name):
             if skill_name not in self.skill_proficiencies:
                 self.skill_proficiencies.append(skill_name)
@@ -366,6 +335,7 @@ class Character:
                     "name": item.name, "description": item.description,
                     "quantity": item.quantity, "type": item.type,
                     "equipped": item.equipped, "slot": item.slot, "cost": item.cost,
+                    "initiative": self.initiative,
                 }
             return item
         return {
@@ -408,13 +378,11 @@ class Character:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], owner_id: Optional[str] = None) -> "Character":
-        # Accept new schema ("abilities") and old ("attributes" / top-level brawn…).
-        if "abilities" in data and isinstance(data["abilities"], dict):
-            abilities = data["abilities"]
-        elif "attributes" in data and isinstance(data["attributes"], dict):
-            abilities = _migrate_legacy_attributes(data["attributes"])
-        else:
-            abilities = _migrate_legacy_attributes(data)
+        if "abilities" not in data:
+            raise ValueError(
+                f"from_dict: 'abilities' key required. Got keys: {sorted(data)}"
+            )
+        abilities = data["abilities"]
 
         char = cls(
             name=data.get("name", "Unknown"),
@@ -443,6 +411,7 @@ class Character:
         if "id" in data:
             char.id = data["id"]
         char.hp = data.get("hp", char.max_hp)
+        char.initiative = data.get("initiative", 0)
         char.sp = data.get("sp", char.max_sp)
         char.spells_known = list(data.get("spells_known", []))
         char.ai_personality = data.get(
@@ -450,6 +419,12 @@ class Character:
             {"traits": "", "ideals": "", "bonds": "", "flaws": ""},
         )
         char.full_background_story = data.get("full_background_story", "")
+
+        if "abilities" not in data:
+            raise ValueError(
+                f"from_dict: 'abilities' key required. Got keys: {sorted(data)}"
+            )
+        abilities = data["abilities"]
 
         char.inventory = []
         for item_data in data.get("inventory", []):
@@ -465,6 +440,17 @@ class Character:
             except (TypeError, ValueError) as exc:
                 logger.warning("from_dict: skipping invalid custom item %r: %s",
                                item_data, exc)
+
+        for item in char.inventory:
+            if item.equipped and item.slot:
+                char.equipped_gear[item.slot] = item
+                if item.slot == "weapon":
+                    char.weapons.append(item)
+                elif item.slot == "shield":
+                    char.shield = item
+                elif item.slot == "armor":
+                    char.armor = item
+                    char._update_armor_stats(item.name.lower())
 
         char.party_id = data.get("party_id")
         char.position = data.get("position", (0, 0))

@@ -94,12 +94,6 @@ class Attribute:
         self.key = key
         self.name = data.get("name", key)
         self.abbreviation = data.get("abbreviation", key[:1].upper())
-        # Legacy fields default to empty/zero — no longer used but kept for compat
-        self.governs = data.get("governs", [])
-        self.hp_per_point = data.get("hp_per_point", 0)
-        self.sp_per_point = data.get("sp_per_point", 0)
-        self.defense_contribution = data.get("defense_contribution", False)
-        self.initiative_contribution = data.get("initiative_contribution", False)
         self.description = data.get("description", "")
     
     @property
@@ -227,19 +221,6 @@ class Race:
 # ----------------------------------------------------------------------
 # Class
 # ----------------------------------------------------------------------
-_DEFAULT_SAVES = {
-    "warrior": ["STR", "CON"], "rogue": ["DEX", "INT"],
-    "mage": ["INT", "WIS"], "priest": ["WIS", "CHA"],
-    "ranger": ["STR", "WIS"], "bard": ["DEX", "CHA"],
-    "monk": ["STR", "DEX"], "warlock": ["WIS", "CHA"],
-}
-_DEFAULT_CASTING = {
-    "mage": "INT", "priest": "WIS", "ranger": "WIS",
-    "bard": "CHA", "monk": "WIS", "warlock": "CHA",
-}
-_DEFAULT_INIT_PROF = {"rogue", "ranger"}
-
-
 class OGClass:
     def __init__(self, key: str, data: dict):
         self.key = key
@@ -251,12 +232,23 @@ class OGClass:
         self.subclasses = data.get("subclasses", {})
         self.capstones = data.get("capstones", {})
 
-        lower = self.name.lower()
-        self.save_proficiencies = data.get("save_proficiencies") or _DEFAULT_SAVES.get(lower, [])
-        self.spellcasting_ability = data.get("spellcasting_ability") or _DEFAULT_CASTING.get(lower)
-        self.initiative_proficient = data.get(
-            "initiative_proficient", lower in _DEFAULT_INIT_PROF
-        )
+        self.save_proficiencies = list(data.get("save_proficiencies") or [])
+        self.spellcasting_ability = data.get("spellcasting_ability")
+        self.requires_casting_check = bool(data.get("requires_casting_check", False))
+        self.initiative_proficient = bool(data.get("initiative_proficient", False))
+        self.turn_undead = data.get("turn_undead")        # dict or None
+        self.resource_model = data.get("resource_model")  # dict or None
+
+        if not self.save_proficiencies:
+            logger.warning(
+                "OGClass %r has no save_proficiencies; add to 02_classes.json", self.name
+            )
+        if self.sp_per_level > 0 and self.spellcasting_ability is None:
+            logger.warning(
+                "OGClass %r has sp_per_level=%d but no spellcasting_ability",
+                self.name, self.sp_per_level,
+            )
+            
     @property
     def index(self) -> str:
         return self.key

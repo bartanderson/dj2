@@ -60,7 +60,7 @@ class CharacterManager:
 
     def _load_character_from_db(self, character_id):
         from world.db import Database
-        from world.character import Character, _migrate_legacy_attributes, ABILITIES
+        from world.character import Character, ABILITIES
 
         conn = Database.get_connection()
         try:
@@ -83,10 +83,6 @@ class CharacterManager:
                     expertise = attr_blob.get("skill_expertise", [])
                     saved_hp = attr_blob.get("hp")
                     saved_sp = attr_blob.get("sp")
-                else:
-                    abilities = _migrate_legacy_attributes(attr_blob)
-                    saves, skills, expertise = [], [], []
-                    saved_hp = saved_sp = None
 
                 char = Character(
                     name=row[2], race=row[3], classs=row[4], level=row[5],
