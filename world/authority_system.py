@@ -145,6 +145,8 @@ class AuthoritySystem:
                 for ability, score in value.items():
                     from world import dnd_data
                     matched_ability = dnd_data.semantic_match_ability_score(ability)
+                    if not (3 <= score <= 18):
+                        raise ValueError(f"Ability {ability}={score} out of range 3-18")
                     if not matched_ability:
                         return ValidatedAction(valid=False, message=f"'{ability}' is not a valid ability")
                     if not isinstance(score, int) or score < 1 or score > 30:

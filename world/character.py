@@ -1,392 +1,397 @@
-
-# character.py - standalone Character class using OG System data
-"""
-OG System Character class - replaces dnd_character dependency.
-Standalone implementation using OG System attributes and mechanics.
-"""
-
+"""OG System Character class using six-ability model."""
 import uuid
 import random
+import logging
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-# Import OG System data layer
 from world import dnd_data
+
+logger = logging.getLogger(__name__)
+
+ABILITIES = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+SCORE_MIN, SCORE_MAX = 3, 18
+
+
+def ability_modifier(score: int) -> int:
+    """floor((score - 10) / 2). Uses // because Python floors negatives correctly."""
+    return (score - 10) // 2
+
+
+def proficiency_bonus_for_level(level: int) -> int:
+    """Level 1-4: +2, 5-8: +3, 9-12: +4, 13-16: +5, 17-20: +6."""
+    return 2 + (max(1, min(20, level)) - 1) // 4
+
+
+def _migrate_legacy_attributes(old: Dict[str, Any]) -> Dict[str, int]:
+    """Map old 4-attribute dict (0-4 scale) to new 6-ability dict (3-18 scale).
+    Lossy: Wits maps to both INT and WIS, Will to CHA. Used only on DB load.
+    """
+    if not isinstance(old, dict):
+        return {ab: 10 for ab in ABILITIES}
+    if "STR" in old:  # already new format
+        return {ab: int(old.get(ab, 10)) for ab in ABILITIES}
+
+    def conv(v, default=0):
+        v = v if v is not None else default
+        return max(SCORE_MIN, min(SCORE_MAX, 10 + int(v) * 2))
+
+    return {
+        "STR": conv(old.get("brawn", 0)),
+        "DEX": conv(old.get("finesse", 0)),
+        "CON": conv((old.get("brawn", 0) + old.get("wits", 0)) // 2),
+        "INT": conv(old.get("wits", 0)),
+        "WIS": conv(old.get("wits", 0)),
+        "CHA": conv(old.get("will", 0)),
+    }
+
 
 @dataclass
 class InventoryItem:
-    """Simple inventory item"""
     name: str
     description: str = ""
     quantity: int = 1
     type: str = "adventuring_gear"
     equipped: bool = False
-    slot: Optional[str] = None  # "armor", "weapon", "shield", etc.
-    cost: int = 0               # gold value
+    slot: Optional[str] = None
+    cost: int = 0
+
 
 class Character:
-    """
-    OG System Character - standalone, no inheritance.
-    Uses 4 attributes: Brawn, Finesse, Wits, Will
-    """
-    def __init__(self, 
-                 name: str,
-                 race: str,
-                 classs: Any,  # Can be string or OGClass object
-                 level: int = 1,
-                 background: str = "unknown",
-                 player_id: Optional[str] = None,
-                 owner_id: Optional[str] = None,
-                 currency = 100,
-                 # Attributes (0-4 scale in OG System)
-                 brawn: Optional[int] = None,
-                 finesse: Optional[int] = None,
-                 wits: Optional[int] = None,
-                 will: Optional[int] = None,
-                 # Optional fields
-                 age: Optional[int] = None,
-                 gender: Optional[str] = None,
-                 description: Optional[str] = None,
-                 alignment: Optional[str] = None,
-                 # Narrative fields (optional)
-                 backstory: Optional[Dict] = None,
-                 connections: Optional[List] = None,
-                 secrets: Optional[List] = None,
-                 vows: Optional[Dict] = None,
-                 **kwargs):
-        
-        # Core identity
+    """Six-ability OG System character."""
+
+    def __init__(
+        self,
+        name: str,
+        race: str,
+        classs: Any,
+        level: int = 1,
+        background: str = "unknown",
+        player_id: Optional[str] = None,
+        owner_id: Optional[str] = None,
+        currency: int = 100,
+        # ---- Canonical abilities (post-racial) ----
+        abilities: Optional[Dict[str, int]] = None,
+        save_proficiencies: Optional[List[str]] = None,
+        skill_proficiencies: Optional[List[str]] = None,
+        skill_expertise: Optional[List[str]] = None,
+        initiative_proficient: Optional[bool] = None,
+        # ---- Startup control ----
+        add_starting_gear: bool = True,
+        # ---- Narrative / cosmetic ----
+        age: Optional[int] = None,
+        gender: Optional[str] = None,
+        description: Optional[str] = None,
+        alignment: Optional[str] = None,
+        backstory: Optional[Dict] = None,
+        connections: Optional[List] = None,
+        secrets: Optional[List] = None,
+        vows: Optional[Dict] = None,
+        **kwargs,
+    ):
+        if kwargs:
+            # Legacy callers still pass brawn=, finesse=, attributes=, inventory=
+            # Translate what we can, log what we cannot.
+            for legacy_key in ("brawn", "finesse", "wits", "will"):
+                if legacy_key in kwargs:
+                    logger.warning(
+                        "Character(%s): legacy attribute kwarg %r ignored. "
+                        "Pass `abilities={...}` instead.", name, legacy_key
+                    )
+            for k in kwargs:
+                if k not in ("brawn", "finesse", "wits", "will",
+                             "attributes", "inventory"):
+                    logger.debug("Character(%s): unknown kwarg %r ignored.", name, k)
+
         self.id = str(uuid.uuid4())
         self.owner_id = owner_id or "unknown"
+        self.player_id = player_id
         self.name = name
         self.race = race
         self.background = background
-        self.player_id = player_id
         self.currency = currency
-        self.inventory = []   # will be populated later
-        
-        # Handle class (can be string name or OGClass object)
+
+        # Class
         if isinstance(classs, str):
             self.classs = dnd_data.OGClass.get(classs)
             if not self.classs:
-                # Create minimal class object
-                self.classs = dnd_data.OGClass(classs.lower(), {"name": classs, "hp_per_level": 2})
+                self.classs = dnd_data.OGClass(
+                    classs.lower(), {"name": classs, "hp_per_level": 2}
+                )
         else:
             self.classs = classs
-        
-        self.level = level
-        
-        # OG System: 4 attributes, default to 1 if not specified
-        self.brawn = brawn if brawn is not None else 1
-        self.finesse = finesse if finesse is not None else 1
-        self.wits = wits if wits is not None else 1
-        self.will = will if will is not None else 1
-        
-        # Apply racial bonuses
-        self._apply_racial_bonuses()
-        
-        # HP calculation: 6 + (Brawn × 2) + (level × class_hp_per_level)
+
+        self.level = max(1, int(level))
+
+        # Abilities: authoritative post-racial scores.
+        # Legacy fallback: accept kwargs brawn/finesse/wits/will and migrate.
+        if abilities is None and any(k in kwargs for k in ("brawn", "finesse", "wits", "will")):
+            abilities = _migrate_legacy_attributes({
+                "brawn": kwargs.get("brawn", 1),
+                "finesse": kwargs.get("finesse", 1),
+                "wits": kwargs.get("wits", 1),
+                "will": kwargs.get("will", 1),
+            })
+        self.abilities: Dict[str, int] = self._validate_abilities(abilities)
+
+        # Proficiencies
+        self.proficiency_bonus = proficiency_bonus_for_level(self.level)
+        self.save_proficiencies = list(save_proficiencies or [])
+        self.skill_proficiencies = list(skill_proficiencies or [])
+        self.skill_expertise = list(skill_expertise or [])
+        self.initiative_proficient = (
+            bool(initiative_proficient)
+            if initiative_proficient is not None
+            else bool(getattr(self.classs, "initiative_proficient", False))
+        )
+
+        # Derived stats
         self.max_hp = self._calculate_max_hp()
         self.hp = self.max_hp
-        
-        # SP (Spell Points): Will × 2 + (level × class_sp_per_level)
         self.max_sp = self._calculate_max_sp()
         self.sp = self.max_sp
-        
-        # Defense: 10 + Finesse + shield_bonus (calculated later)
-        self.base_defense = 10 + self.finesse
+        self.base_defense = self._calculate_defense()
         self.defense = self.base_defense
-        
-        # Initiative: d20 + Wits (rolled later)
-        self.initiative = 0
-        
-        # Armor and damage reduction
-        self.armor = None
-        self.armor_bonus = 0
-        self.damage_reduction = 0  # From armor type
-        
-        # Inventory and equipment
+        self.damage_reduction = 0
+        self.initiative_bonus = self._calculate_initiative_bonus()
+
+        # Equipment
         self.inventory: List[InventoryItem] = []
         self.weapons: List[InventoryItem] = []
-        self.shield = None
-        self.equipped_gear = {}  # slot -> item
-        
-        # Skills: dict of skill_name -> rank (0-3)
-        self.skills: Dict[str, int] = {}
-        
-        # Spells known (for Mage, Priest, Warlock, Bard)
-        self.spells_known: List[str] = []
-        
-        # Personal details
+        self.shield: Optional[InventoryItem] = None
+        self.equipped_gear: Dict[str, InventoryItem] = {}
+        self.armor: Optional[InventoryItem] = None
+
+        # Narrative
         self.age = age
         self.gender = gender
         self.description = description
         self.alignment = alignment
-        
-        # AI-generated content (your superior features)
-        self.ai_personality = {
-            "traits": "",
-            "ideals": "",
-            "bonds": "",
-            "flaws": ""
-        }
+        self.ai_personality = {"traits": "", "ideals": "", "bonds": "", "flaws": ""}
         self.full_background_story = ""
         self.custom_items: List[InventoryItem] = []
-        
-        # Session/party management
+
+        # Session
         self.party_id = None
-        self.position = (0, 0)  # (x, y) coordinates
-        self.token = None  # URL to token image
+        self.position = (0, 0)
+        self.token = None
         self.avatar_url = "/static/images/default_avatar.png"
-        self.locked_by = None  # Session ID that has control
+        self.locked_by = None
         self.active = False
-        
-        # Conditions (from OG System combat)
         self.conditions: List[str] = []
-        
-        # Narrative fields (Phase 2)
+
         self.backstory = backstory or {}
         self.connections = connections or []
         self.secrets = secrets or []
         self.vows = vows or {}
-        
-        # Add starting gear if class defined
-        if self.classs and hasattr(self.classs, 'starting_gear'):
-            self._add_starting_gear()    
+        self.spells_known: List[str] = []
 
-    def normalize_inventory_item(item):
+        if add_starting_gear and self.classs and getattr(self.classs, "starting_gear", None):
+            self._add_starting_gear()
+
+    # ---------- Validation & derivation ----------
+
+    @staticmethod
+    def _validate_abilities(abilities: Optional[Dict[str, int]]) -> Dict[str, int]:
+        if not abilities:
+            return {ab: 10 for ab in ABILITIES}
+        cleaned = {}
+        for ab in ABILITIES:
+            score = abilities.get(ab, 10)
+            try:
+                score = int(score)
+            except (TypeError, ValueError):
+                raise ValueError(f"Ability {ab} must be an integer, got {score!r}")
+            if not (SCORE_MIN <= score <= SCORE_MAX):
+                raise ValueError(
+                    f"Ability {ab}={score} out of range {SCORE_MIN}-{SCORE_MAX}"
+                )
+            cleaned[ab] = score
+        return cleaned
+
+    def modifier(self, ability: str) -> int:
+        return ability_modifier(self.abilities[ability])
+
+    def _calculate_max_hp(self) -> int:
+        class_hp = getattr(self.classs, "hp_per_level", 2) if self.classs else 2
+        return 6 + (class_hp * self.level) + (2 * self.modifier("CON"))
+
+    def _calculate_max_sp(self) -> int:
+        class_sp = getattr(self.classs, "sp_per_level", 0) if self.classs else 0
+        return class_sp * self.level
+
+    def _calculate_defense(self) -> int:
+        return 10 + self.modifier("DEX")
+
+    def _calculate_initiative_bonus(self) -> int:
+        base = self.modifier("DEX")
+        return base + (self.proficiency_bonus if self.initiative_proficient else 0)
+
+    # Legacy compatibility alias
+    @property
+    def attributes(self) -> Dict[str, int]:
+        return self.abilities
+
+    # ---------- Gear ----------
+
+    @staticmethod
+    def normalize_inventory_item(item) -> InventoryItem:
         if isinstance(item, InventoryItem):
             return item
         if isinstance(item, dict):
-            return InventoryItem(**item)
+            allowed = {"name", "description", "quantity", "type", "equipped", "slot", "cost"}
+            return InventoryItem(**{k: v for k, v in item.items() if k in allowed})
         raise TypeError(f"Invalid inventory item type: {type(item)}")
-    
-    def _apply_racial_bonuses(self):
-        """Apply racial attribute bonuses from OG System"""
-        race_obj = dnd_data.Race.get(self.race)
-        if not race_obj:
-            return
-        
-        bonus = race_obj.mechanical_bonus
-        if not bonus:
-            return
-        
-        bonus_type = bonus.get("type")
-        bonus_value = bonus.get("value", "")
-        
-        if bonus_type == "attribute":
-            # +1 to any attribute (Human)
-            if "+1 any" in bonus_value:
-                # Default to Brawn if not specified, or could be player choice
-                self.brawn = min(4, self.brawn + 1)
-        elif bonus_type == "choice":
-            # Parse choice bonuses like "+1 Brawn or +1 Armor"
-            if "Brawn" in bonus_value and "or" in bonus_value:
-                self.brawn = min(4, self.brawn + 1)
-            elif "Finesse" in bonus_value:
-                self.finesse = min(4, self.finesse + 1)
-            elif "Will" in bonus_value:
-                self.will = min(4, self.will + 1)
-        elif bonus_type == "static":
-            # Special abilities like regeneration
-            pass  # Handled via knacks/tags
-    
-    def _calculate_max_hp(self) -> int:
-        """Calculate max HP: 6 + (Brawn × 2) + (level × class_hp_per_level)"""
-        base = 6
-        brawn_bonus = self.brawn * 2
-        class_bonus = (self.classs.hp_per_level if self.classs else 2) * self.level
-        return base + brawn_bonus + class_bonus
-    
-    def _calculate_max_sp(self) -> int:
-        """Calculate max SP: Will × 2 + (level × class_sp_per_level)"""
-        will_bonus = self.will * 2
-        class_bonus = (self.classs.sp_per_level if self.classs else 0) * self.level
-        return will_bonus + class_bonus
 
-    def add_item(self, item):
-        # 1. Normalize nested dict
-        if isinstance(item, dict):
-            item = InventoryItem(**item)
-
-        # 2. Hard validation
-        if not isinstance(item, InventoryItem):
-            raise TypeError(f"Invalid inventory item: {type(item)}")
-
-        # 3. Canonical append path
+    def add_item(self, item) -> InventoryItem:
+        item = self.normalize_inventory_item(item)
         self.inventory.append(item)
-    
+        return item
+
+    def add_custom_item(self, name: str, description: str,
+                        item_type: str = "adventuring_gear", cost: int = 0) -> InventoryItem:
+        item = InventoryItem(name=name, description=description, type=item_type, cost=cost)
+        self.custom_items.append(item)
+        return item
+
     def _add_starting_gear(self):
-        """Add starting equipment from class definition"""
-        if not self.classs or not hasattr(self.classs, 'starting_gear'):
-            return
-        
-        for gear_name in self.classs.starting_gear:
-            self.add_item(InventoryItem(name=gear_name, description=f"Starting gear: {gear_name}"))
-            
-            # Auto-equip armor and weapons
-            if "armor" in gear_name.lower() or gear_name.lower() in ["mail", "leather", "robes"]:
+        for gear_name in getattr(self.classs, "starting_gear", []) or []:
+            item = self.add_item(InventoryItem(
+                name=gear_name, description=f"Starting gear: {gear_name}",
+            ))
+            lname = gear_name.lower()
+            if lname in ("mail", "leather", "robes") or "armor" in lname:
                 item.slot = "armor"
                 item.equipped = True
                 self.equipped_gear["armor"] = item
-                self._update_armor_stats(gear_name)
-            elif gear_name.lower() in ["longsword", "shortsword", "staff", "mace", "dagger", "bow", "rapier"]:
+                self.armor = item
+                self._update_armor_stats(lname)
+            elif lname in ("longsword", "shortsword", "staff", "mace",
+                           "dagger", "bow", "rapier"):
                 item.slot = "weapon"
                 item.equipped = True
                 self.weapons.append(item)
                 self.equipped_gear["weapon"] = item
-            elif gear_name.lower() in ["shield", "buckler"]:
+            elif lname in ("shield", "buckler"):
                 item.slot = "shield"
                 item.equipped = True
                 self.shield = item
-                self._update_shield_stats(gear_name)
-    
+                self._update_shield_stats(lname)
+
     def _update_armor_stats(self, armor_name: str):
-        """Update defense and damage reduction based on armor"""
-        armor_types = {
-            "mail": {"dr": 2, "move": "-5ft"},
-            "leather": {"dr": 1, "move": "full"},
-            "robes": {"dr": 0, "move": "full"},
-            "medium armor": {"dr": 2, "move": "-5ft"},
-            "heavy armor": {"dr": 3, "move": "-10ft"},
+        table = {
+            "mail": 2, "medium armor": 2,
+            "leather": 1,
+            "robes": 0,
+            "heavy armor": 3,
         }
-        
-        armor_key = armor_name.lower()
-        if armor_key in armor_types:
-            stats = armor_types[armor_key]
-            self.damage_reduction = stats["dr"]
-            # Defense is 10 + Finesse, armor doesn't add in OG System
-            # But heavy armor might limit max Finesse bonus
-    
+        if armor_name in table:
+            self.damage_reduction = table[armor_name]
+
     def _update_shield_stats(self, shield_name: str):
-        """Update defense based on shield"""
-        if "buckler" in shield_name.lower():
+        if "buckler" in shield_name:
             self.defense = self.base_defense + 1
-        elif "shield" in shield_name.lower():
+        elif "shield" in shield_name:
             self.defense = self.base_defense + 2
-            
-    # ------------------------------------------------------------------
-    # Methods for compatibility with dnd_character interface
-    # ------------------------------------------------------------------
-    
+
+    def equip_item(self, item_name: str, slot: str):
+        self.inventory = [self.normalize_inventory_item(i) for i in self.inventory]
+        self.custom_items = [self.normalize_inventory_item(i) for i in self.custom_items]
+        item = next((i for i in self.inventory if i.name == item_name), None) \
+            or next((i for i in self.custom_items if i.name == item_name), None)
+        if not item:
+            logger.warning("equip_item: %r not found", item_name)
+            return
+        item.equipped = True
+        item.slot = slot
+        self.equipped_gear[slot] = item
+        if slot == "armor":
+            self._update_armor_stats(item_name.lower())
+        elif slot == "weapon":
+            if item not in self.weapons:
+                self.weapons.append(item)
+        elif slot == "shield":
+            self.shield = item
+            self._update_shield_stats(item_name.lower())
+
+    # ---------- Skills / spells ----------
+
+    def add_skill(self, skill_name: str, rank: int = 1):
+        if dnd_data.validate_skill(skill_name):
+            if skill_name not in self.skill_proficiencies:
+                self.skill_proficiencies.append(skill_name)
+
+    def get_skill_rank(self, skill_name: str) -> int:
+        if skill_name in self.skill_expertise:
+            return self.proficiency_bonus * 2
+        if skill_name in self.skill_proficiencies:
+            return self.proficiency_bonus
+        return 0
+
+    def learn_spell(self, spell_name: str):
+        if spell_name not in self.spells_known:
+            self.spells_known.append(spell_name)
+
+    # ---------- Session ----------
+
     def lock(self, session_id: str) -> bool:
-        """Attempt to lock the character for a session"""
         if self.locked_by and self.locked_by != session_id:
             return False
         self.locked_by = session_id
         return True
-    
+
     def unlock(self, session_id: str) -> bool:
-        """Release the lock if held by this session"""
         if self.locked_by == session_id:
             self.locked_by = None
             return True
         return False
-    
+
     def roll_initiative(self) -> int:
-        """Roll initiative: d20 + Wits"""
         roll = random.randint(1, 20)
-        self.initiative = roll + self.wits
+        self.initiative = roll + self.initiative_bonus
         return self.initiative
-    
-    def join_party(self, party_id: str):
-        """Join a party"""
-        self.party_id = party_id
-    
-    def leave_party(self):
-        """Leave current party"""
-        self.party_id = None
-    
-    def add_custom_item(self, name: str, description: str, item_type: str = "adventuring_gear", cost: int = 0):
-        """Add a personalized item from AI suggestions"""
-        item = InventoryItem(name=name, description=description, type=item_type, cost=cost)
-        add_item(self, item)
-    
+
+    def join_party(self, party_id: str): self.party_id = party_id
+    def leave_party(self): self.party_id = None
+
     def get_full_inventory(self) -> List[InventoryItem]:
-        """Combine standard and custom items"""
-        return self.inventory + self.custom_items
-    
-    def equip_item(self, item_name: str, slot: str):
-        """Equip an item from inventory"""
+        return list(self.inventory) + list(self.custom_items)
 
-        # Normalize once
-        self.inventory = [normalize_inventory_item(i) for i in self.inventory]
-        self.custom_items = [normalize_inventory_item(i) for i in self.custom_items]
+    # ---------- Persistence ----------
 
-        # Now safe lookup
-        item = next((i for i in self.inventory if i.name == item_name), None)
-
-        if not item:
-            item = next((i for i in self.custom_items if i.name == item_name), None)
-
-        if not item:
-            return  # or raise / log
-        
-        if item:
-            item.equipped = True
-            item.slot = slot
-            self.equipped_gear[slot] = item
-            
-            if slot == "armor":
-                self._update_armor_stats(item_name)
-            elif slot == "weapon":
-                if item not in self.weapons:
-                    self.weapons.append(item)
-            elif slot == "shield":
-                self.shield = item
-                self._update_shield_stats(item_name)
-    
-    def add_skill(self, skill_name: str, rank: int = 1):
-        """Add or improve a skill (max rank 3)"""
-        if dnd_data.validate_skill(skill_name):
-            current = self.skills.get(skill_name, 0)
-            self.skills[skill_name] = min(3, current + rank)
-    
-    def get_skill_rank(self, skill_name: str) -> int:
-        """Get current rank in a skill (0 if not trained)"""
-        return self.skills.get(skill_name, 0)
-    
-    def learn_spell(self, spell_name: str):
-        """Add a spell to spells known"""
-        if spell_name not in self.spells_known:
-            self.spells_known.append(spell_name)
-    
-    def to_dict(self):
-        def _item_to_dict(item):
-            if hasattr(item, 'to_dict'):
-                return item.to_dict()
-            elif isinstance(item, dict):
-                return item
-            else:
-                return vars(item) if hasattr(item, '__dict__') else {'name': str(item)}
-
+    def to_dict(self) -> Dict[str, Any]:
+        def _item(item):
+            if isinstance(item, InventoryItem):
+                return {
+                    "name": item.name, "description": item.description,
+                    "quantity": item.quantity, "type": item.type,
+                    "equipped": item.equipped, "slot": item.slot, "cost": item.cost,
+                }
+            return item
         return {
             "id": self.id,
             "name": self.name,
             "race": self.race,
-            "class": self.classs.name if hasattr(self.classs, 'name') else str(self.classs),
+            "class": self.classs.name if hasattr(self.classs, "name") else str(self.classs),
             "level": self.level,
-            "currency": self.currency,
-            "custom_items": [{"name": i.name, "description": i.description, "type": i.type, "cost": i.cost} for i in self.custom_items],
-            "inventory": self.inventory,
             "background": self.background,
-            "owner_id": getattr(self, 'owner_id', None),
-            "attributes": {
-                "brawn": self.brawn,
-                "finesse": self.finesse,
-                "wits": self.wits,
-                "will": self.will,
-            },
+            "owner_id": self.owner_id,
+            "player_id": self.player_id,
+            "currency": self.currency,
+            "abilities": dict(self.abilities),
+            "save_proficiencies": list(self.save_proficiencies),
+            "skill_proficiencies": list(self.skill_proficiencies),
+            "skill_expertise": list(self.skill_expertise),
+            "initiative_proficient": self.initiative_proficient,
             "hp": self.hp,
             "max_hp": self.max_hp,
             "sp": self.sp,
             "max_sp": self.max_sp,
             "defense": self.defense,
-            "armor": self.armor,
             "damage_reduction": self.damage_reduction,
-            "skills": self.skills,
-            "inventory": [_item_to_dict(i) for i in self.inventory],
-            "spells_known": self.spells_known,
+            "inventory": [_item(i) for i in self.inventory],
+            "custom_items": [_item(i) for i in self.custom_items],
+            "spells_known": list(self.spells_known),
             "age": self.age,
             "gender": self.gender,
             "description": self.description,
@@ -394,82 +399,82 @@ class Character:
             "avatar_url": self.avatar_url,
             "position": self.position,
             "party_id": self.party_id,
-            "conditions": self.conditions,
+            "conditions": list(self.conditions),
             "backstory": self.backstory,
             "connections": self.connections,
             "secrets": self.secrets,
             "vows": self.vows,
         }
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], owner_id: Optional[str] = None) -> 'Character':
-        """Deserialize character from dictionary"""
-        # Create base character
+    def from_dict(cls, data: Dict[str, Any], owner_id: Optional[str] = None) -> "Character":
+        # Accept new schema ("abilities") and old ("attributes" / top-level brawn…).
+        if "abilities" in data and isinstance(data["abilities"], dict):
+            abilities = data["abilities"]
+        elif "attributes" in data and isinstance(data["attributes"], dict):
+            abilities = _migrate_legacy_attributes(data["attributes"])
+        else:
+            abilities = _migrate_legacy_attributes(data)
+
         char = cls(
             name=data.get("name", "Unknown"),
             race=data.get("race", "Human"),
             classs=data.get("class", "Warrior"),
             level=data.get("level", 1),
-            currency = data.get("currency", 100),
-            inventory = data.get("inventory", []),
             background=data.get("background", "unknown"),
+            player_id=data.get("player_id"),
             owner_id=owner_id or data.get("owner_id", "unknown"),
-            brawn=data.get("brawn", 1),
-            finesse=data.get("finesse", 1),
-            wits=data.get("wits", 1),
-            will=data.get("will", 1),
+            currency=data.get("currency", 100),
+            abilities=abilities,
+            save_proficiencies=data.get("save_proficiencies", []),
+            skill_proficiencies=data.get("skill_proficiencies", []),
+            skill_expertise=data.get("skill_expertise", []),
+            initiative_proficient=data.get("initiative_proficient"),
+            add_starting_gear=False,
             age=data.get("age"),
             gender=data.get("gender"),
             description=data.get("description"),
             alignment=data.get("alignment"),
+            backstory=data.get("backstory"),
+            connections=data.get("connections"),
+            secrets=data.get("secrets"),
+            vows=data.get("vows"),
         )
-        
-        # Restore ID if present
         if "id" in data:
             char.id = data["id"]
-        
-        # Restore HP/SP (may have taken damage)
         char.hp = data.get("hp", char.max_hp)
         char.sp = data.get("sp", char.max_sp)
-        
-        # Restore skills
-        char.skills = data.get("skills", {})
-        
-        # Restore spells
-        char.spells_known = data.get("spells_known", [])
-        
-        # Restore AI content
-        char.ai_personality = data.get("ai_personality", {
-            "traits": "", "ideals": "", "bonds": "", "flaws": ""
-        })
+        char.spells_known = list(data.get("spells_known", []))
+        char.ai_personality = data.get(
+            "ai_personality",
+            {"traits": "", "ideals": "", "bonds": "", "flaws": ""},
+        )
         char.full_background_story = data.get("full_background_story", "")
-        
-        char.currency = data.get("currency", 100)
-
-        # Restore custom items
-        char.custom_items = []
-        for item_data in data.get("custom_items", []):
-            char.add_custom_item(
-                item_data.get("name", "Unknown"),
-                item_data.get("description", ""),
-                item_data.get("type", "adventuring_gear"),
-                item_data.get("cost", 0)
-            )
 
         char.inventory = []
         for item_data in data.get("inventory", []):
-            char.add_item(char, item_data)
-        
-        # Restore party/session data
+            try:
+                char.inventory.append(char.normalize_inventory_item(item_data))
+            except (TypeError, ValueError) as exc:
+                logger.warning("from_dict: skipping invalid inventory item %r: %s",
+                               item_data, exc)
+        char.custom_items = []
+        for item_data in data.get("custom_items", []):
+            try:
+                char.custom_items.append(char.normalize_inventory_item(item_data))
+            except (TypeError, ValueError) as exc:
+                logger.warning("from_dict: skipping invalid custom item %r: %s",
+                               item_data, exc)
+
         char.party_id = data.get("party_id")
         char.position = data.get("position", (0, 0))
         char.avatar_url = data.get("avatar_url", "/static/images/default_avatar.png")
         char.token = data.get("token")
         char.active = data.get("active", False)
         char.locked_by = data.get("locked_by")
-        char.conditions = data.get("conditions", [])
-        
+        char.conditions = list(data.get("conditions", []))
         return char
-    
+
     def __repr__(self) -> str:
-        return f"<Character {self.name} ({self.race} {self.classs.name if self.classs else 'Unknown'} L{self.level})>"
+        cname = self.classs.name if self.classs else "Unknown"
+        return f"<Character {self.name} ({self.race} {cname} L{self.level})>"

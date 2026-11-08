@@ -1,0 +1,215 @@
+{
+  "exploration": {
+    "state_machines": {
+      "dungeon_turn": {
+        "states": [
+          "begin",
+          "action",
+          "check",
+          "event",
+          "end"
+        ],
+        "initial": "begin",
+        "duration": "10 minutes",
+        "transitions": {
+          "begin": {
+            "on": "startTurn",
+            "to": "action",
+            "procedure": "consumeLight"
+          },
+          "action": {
+            "on": "declare",
+            "to": "check",
+            "branches": {
+              "move": "checkEncounter",
+              "search": "checkSearch",
+              "rest": "checkRest",
+              "force": "checkForce"
+            }
+          },
+          "check": {
+            "on": "resolve",
+            "to": "event",
+            "procedure": "rollEncounter"
+          },
+          "event": {
+            "on": "trigger",
+            "to": "end",
+            "branches": {
+              "nothing": "end",
+              "encounter": "combatState",
+              "hazard": "hazardResolution",
+              "discovery": "discoveryResolution"
+            }
+          },
+          "end": {
+            "on": "cleanup",
+            "to": "begin",
+            "procedure": "incrementTurnCounter"
+          }
+        }
+      },
+      "hex_crawl": {
+        "states": [
+          "depart",
+          "navigate",
+          "travel",
+          "encounter",
+          "camp"
+        ],
+        "initial": "depart",
+        "transitions": {
+          "depart": {
+            "on": "leave",
+            "to": "navigate",
+            "procedure": "setDestination"
+          },
+          "navigate": {
+            "on": "orient",
+            "to": "travel",
+            "procedure": "navigationCheck",
+            "branches": {
+              "lost": "wander"
+            }
+          },
+          "travel": {
+            "on": "march",
+            "to": "encounter",
+            "procedure": "consumeProvisions",
+            "branches": {
+              "forcedMarch": "exhaustionCheck"
+            }
+          },
+          "encounter": {
+            "on": "roll",
+            "to": "camp",
+            "procedure": "hexEncounterTable"
+          },
+          "camp": {
+            "on": "rest",
+            "to": "depart",
+            "procedure": "overnightChecks"
+          }
+        }
+      }
+    },
+    "procedures": {
+      "consumeLight": {
+        "torch": "6 turns per torch, -1 per turn",
+        "lantern": "24 turns per oil flask",
+        "darkness": "If no light, blinded, Wits checks at -4, monsters attack at advantage"
+      },
+      "rollEncounter": {
+        "baseChance": "1-in-6",
+        "escalated": "1-in-4 if loud action taken this turn",
+        "modifier": "+1 if dungeon level deeper, +1 if cursed, +1 if blood spilled",
+        "roll": "d6, encounter on 1 (or 1-2 escalated)"
+      },
+      "navigationCheck": {
+        "clearTerrain": "Survival TN 8",
+        "difficultTerrain": "Survival TN 12",
+        "featureless": "Survival TN 16, no landmarks",
+        "failure": "Wander 1 hex random direction, lose day"
+      },
+      "forcedMarch": {
+        "firstDay": "Brawn save TN 12 or Exhausted -1",
+        "secondDay": "Brawn save TN 16 or Exhausted -2",
+        "thirdDay": "Automatic Exhausted -3, Brawn save TN 12 or collapse"
+      },
+      "starvation": {
+        "day1": "-1 all rolls",
+        "day2": "-2 all rolls, -1 Brawn",
+        "day3": "-3 all rolls, -1 Brawn, dying without water",
+        "recovery": "Full food and rest restores 1 Brawn per day"
+      }
+    },
+    "tables": {
+      "dungeonHazards": [
+        {
+          "roll": "1",
+          "hazard": "Ceiling collapse",
+          "save": "Finesse 12",
+          "damage": "3d6"
+        },
+        {
+          "roll": "2",
+          "hazard": "Gas pocket",
+          "save": "Brawn 12",
+          "effect": "Poisoned 1 hour"
+        },
+        {
+          "roll": "3",
+          "hazard": "Slime patch",
+          "save": "Finesse 8",
+          "effect": "Prone, lose action"
+        },
+        {
+          "roll": "4",
+          "hazard": "Trap (spikes)",
+          "save": "Wits 12",
+          "damage": "2d6"
+        },
+        {
+          "roll": "5",
+          "hazard": "Illusion pit",
+          "save": "Wits 16",
+          "effect": "Fall 20ft, 2d6, prone"
+        },
+        {
+          "roll": "6",
+          "hazard": "Shadow touch",
+          "save": "Will 12",
+          "effect": "Drained 1 max HP until sunlight"
+        }
+      ],
+      "hexEncounters": {
+        "plains": {
+          "day": "2d6: 2-5 nothing, 6-8 tracks, 9-10 encounter, 11-12 discovery",
+          "night": "2d6: 2-4 nothing, 5-7 sounds, 8-10 encounter, 11-12 discovery"
+        },
+        "forest": {
+          "day": "2d6: 2-4 lost, 5-7 nothing, 8-9 tracks, 10-11 encounter, 12 discovery",
+          "night": "2d6: 2-3 lost, 4-5 nothing, 6-7 sounds, 8-10 encounter, 11-12 discovery"
+        },
+        "mountain": {
+          "day": "2d6: 2-3 weather, 4-5 nothing, 6-8 tracks, 9-10 encounter, 11-12 discovery",
+          "night": "2d6: 2-4 weather, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"
+        },
+        "swamp": {
+          "day": "2d6: 2-3 hazard, 4-5 nothing, 6-7 tracks, 8-10 encounter, 11-12 discovery",
+          "night": "2d6: 2-4 hazard, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"
+        },
+        "desert": {
+          "day": "2d6: 2-3 heat, 4-5 nothing, 6-7 tracks, 8-10 encounter, 11-12 discovery",
+          "night": "2d6: 2-4 cold, 5-6 nothing, 7-8 sounds, 9-11 encounter, 12 discovery"
+        }
+      },
+      "discoveries": [
+        {
+          "type": "ruin",
+          "description": "Ancient structure, possible treasure, definite danger"
+        },
+        {
+          "type": "lair",
+          "description": "Monster home, tracks lead here, high risk/high reward"
+        },
+        {
+          "type": "resource",
+          "description": "Water, food, herbs, ore\u00e2\u20ac\u201dsurvival or crafting material"
+        },
+        {
+          "type": "shrine",
+          "description": "Holy or unholy site, blessing or curse available"
+        },
+        {
+          "type": "settlement",
+          "description": "Remote homestead, hermit, or outpost"
+        },
+        {
+          "type": "oddity",
+          "description": "Weird terrain feature, portal, or impossible geometry"
+        }
+      ]
+    }
+  }
+}

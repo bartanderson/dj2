@@ -90,35 +90,34 @@ def _get_player_narrative_data() -> dict:
 # Attribute (replaces AbilityScore)
 # ----------------------------------------------------------------------
 class Attribute:
-    """OG System attribute: Brawn, Finesse, Wits, Will"""
-    
     def __init__(self, key: str, data: dict):
         self.key = key
-        self.name = data.get("name", key.capitalize())
-        self.abbreviation = data.get("abbreviation", key[0].upper())
+        self.name = data.get("name", key)
+        self.abbreviation = data.get("abbreviation", key[:1].upper())
+        # Legacy fields default to empty/zero — no longer used but kept for compat
         self.governs = data.get("governs", [])
         self.hp_per_point = data.get("hp_per_point", 0)
         self.sp_per_point = data.get("sp_per_point", 0)
         self.defense_contribution = data.get("defense_contribution", False)
         self.initiative_contribution = data.get("initiative_contribution", False)
+        self.description = data.get("description", "")
     
     @property
     def lower_name(self) -> str:
         return self.name.lower()
     
     @classmethod
-    def all(cls) -> List['Attribute']:
+    def all(cls) -> List["Attribute"]:
         core = _get_core_data()
-        attrs = core.get("core_mechanics", {}).get("attributes", {})
+        attrs = core.get("abilities") or core.get("core_mechanics", {}).get("attributes", {})
         return [cls(k, v) for k, v in attrs.items()]
-    
+
     @classmethod
-    def get(cls, key: str) -> Optional['Attribute']:
+    def get(cls, key: str) -> Optional["Attribute"]:
         core = _get_core_data()
-        attrs = core.get("core_mechanics", {}).get("attributes", {})
-        if key.lower() in attrs:
-            return cls(key.lower(), attrs[key.lower()])
-        # Try by name
+        attrs = core.get("abilities") or core.get("core_mechanics", {}).get("attributes", {})
+        if key in attrs:
+            return cls(key, attrs[key])
         for k, v in attrs.items():
             if v.get("name", "").lower() == key.lower():
                 return cls(k, v)
@@ -161,13 +160,14 @@ class Skill:
 # Race
 # ----------------------------------------------------------------------
 class Race:
-    """OG System race with mechanical bonus"""
-    
     def __init__(self, key: str, data: dict):
         self.key = key
         self.name = data.get("name", key.capitalize())
-        self.mechanical_bonus = data.get("mechanical_bonus", {})
-        self.knacks = data.get("knacks", [])
+        # New schema uses `ability_bonus`; old used `mechanical_bonus`.
+        self.ability_bonus = data.get("ability_bonus", {}) or {}
+        self.mechanical_bonus = data.get("mechanical_bonus", {})  # legacy, may be empty
+        self.traits = data.get("traits", data.get("knacks", []))
+        self.knacks = self.traits  # legacy alias
         self.tags = data.get("tags", [])
     
     @property
@@ -177,6 +177,34 @@ class Race:
     def subraces(self) -> List['Race']:
         """OG System doesn't have subraces, return empty list for compatibility"""
         return []
+
+    def fixed_bonuses(self) -> Dict[str, int]:
+        return dict(self.ability_bonus.get("fixed") or {})
+
+    def choice_spec(self) -> Optional[dict]:
+        spec = self.ability_bonus.get("choose")
+        return dict(spec) if spec else None
+
+    def apply_choices(self, selected: List[str]) -> Dict[str, int]:
+        """Validate choices and return the full bonus dict to apply."""
+        bonuses = self.fixed_bonuses()
+        spec = self.choice_spec()
+        if spec:
+            if len(selected) != spec["count"]:
+                raise ValueError(
+                    f"{self.name} requires exactly {spec['count']} "
+                    f"choice(s) from {spec['from']}"
+                )
+            for ab in selected:
+                if ab not in spec["from"]:
+                    raise ValueError(
+                        f"{ab} not a valid choice for {self.name}; "
+                        f"pick from {spec['from']}"
+                    )
+                bonuses[ab] = bonuses.get(ab, 0) + spec["each"]
+        elif selected:
+            raise ValueError(f"{self.name} has no ability choice")
+        return bonuses
     
     @classmethod
     def all(cls) -> List['Race']:
@@ -199,9 +227,20 @@ class Race:
 # ----------------------------------------------------------------------
 # Class
 # ----------------------------------------------------------------------
+_DEFAULT_SAVES = {
+    "warrior": ["STR", "CON"], "rogue": ["DEX", "INT"],
+    "mage": ["INT", "WIS"], "priest": ["WIS", "CHA"],
+    "ranger": ["STR", "WIS"], "bard": ["DEX", "CHA"],
+    "monk": ["STR", "DEX"], "warlock": ["WIS", "CHA"],
+}
+_DEFAULT_CASTING = {
+    "mage": "INT", "priest": "WIS", "ranger": "WIS",
+    "bard": "CHA", "monk": "WIS", "warlock": "CHA",
+}
+_DEFAULT_INIT_PROF = {"rogue", "ranger"}
+
+
 class OGClass:
-    """OG System class: Warrior, Rogue, Mage, Priest, Ranger, Bard, Monk, Warlock"""
-    
     def __init__(self, key: str, data: dict):
         self.key = key
         self.name = data.get("name", key.capitalize())
@@ -211,7 +250,13 @@ class OGClass:
         self.starting_gear = data.get("starting_gear", [])
         self.subclasses = data.get("subclasses", {})
         self.capstones = data.get("capstones", {})
-    
+
+        lower = self.name.lower()
+        self.save_proficiencies = data.get("save_proficiencies") or _DEFAULT_SAVES.get(lower, [])
+        self.spellcasting_ability = data.get("spellcasting_ability") or _DEFAULT_CASTING.get(lower)
+        self.initiative_proficient = data.get(
+            "initiative_proficient", lower in _DEFAULT_INIT_PROF
+        )
     @property
     def index(self) -> str:
         return self.key
@@ -396,15 +441,8 @@ def get_class_description(class_name: str) -> str:
     return f"A {class_name} character."
 
 def get_spellcasting_ability(class_name: str) -> Optional[str]:
-    """OG System: Mages/Priests use Wits, Warlocks use Will"""
     cls = OGClass.get(class_name)
-    if not cls:
-        return None
-    if class_name.lower() in ["mage", "priest"]:
-        return "WITS"
-    elif class_name.lower() == "warlock":
-        return "WILL"
-    return None
+    return cls.spellcasting_ability if cls else None
 
 def get_spell_list() -> List[str]:
     """Return list of all spell effect names"""

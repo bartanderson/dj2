@@ -20,9 +20,8 @@ class CharacterManager:
     def set_world_controller(self, world_controller):
         self.world_controller = world_controller
 
-    def create_character(self, player_id: str, char_data: Dict[str, Any]) -> Character:
-        """Create a new character and save to database"""
-        character = self.character_builder.create_character(player_id, char_data)
+    def create_character(self, player_id: str, char_data: dict) -> Character:
+        character = self.character_builder._create_character_impl(player_id, char_data)
         self.characters[character.id] = character
         self._save_character_to_db(character)
         return character
@@ -60,56 +59,62 @@ class CharacterManager:
         self._save_character_to_db(character)
 
     def _load_character_from_db(self, character_id):
-        """Load a character from the database and cache it."""
         from world.db import Database
-        import json
+        from world.character import Character, _migrate_legacy_attributes, ABILITIES
+
         conn = Database.get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, player_id, name, race, class, level, attributes, inventory, avatar_url,
-                           backstory, connections, secrets, vows
-                    FROM characters WHERE id = %s
-                """, (character_id,))
+                cur.execute(
+                    """SELECT id, player_id, name, race, class, level, attributes,
+                              inventory, avatar_url, backstory, connections, secrets, vows
+                       FROM characters WHERE id = %s""",
+                    (character_id,),
+                )
                 row = cur.fetchone()
                 if not row:
                     return None
-                
-                # Convert JSON fields
-                attributes = row[6] if row[6] else {}
-                inventory = row[7] if row[7] else []
-                backstory = row[9] if row[9] else {}
-                connections = row[10] if row[10] else []
-                secrets = row[11] if row[11] else []
-                vows = row[12] if row[12] else {}
-                
-                # Create a basic character object – you'll need to adjust to match your __init__
-                # This assumes you have a way to create a character from minimal data
-                from world.character import Character
+
+                attr_blob = row[6] or {}
+                if isinstance(attr_blob, dict) and "abilities" in attr_blob:
+                    abilities = attr_blob["abilities"]
+                    saves = attr_blob.get("save_proficiencies", [])
+                    skills = attr_blob.get("skill_proficiencies", [])
+                    expertise = attr_blob.get("skill_expertise", [])
+                    saved_hp = attr_blob.get("hp")
+                    saved_sp = attr_blob.get("sp")
+                else:
+                    abilities = _migrate_legacy_attributes(attr_blob)
+                    saves, skills, expertise = [], [], []
+                    saved_hp = saved_sp = None
+
                 char = Character(
-                    name=row[2],
-                    race=row[3],
-                    classs=row[4],      # class name (string)
-                    level=row[5],
-                    player_id=row[1],
-                    # Pass the already-parsed dicts
-                    backstory=backstory,
-                    connections=connections,
-                    secrets=secrets,
-                    vows=vows
+                    name=row[2], race=row[3], classs=row[4], level=row[5],
+                    player_id=row[1], owner_id=row[1],
+                    abilities=abilities,
+                    save_proficiencies=saves,
+                    skill_proficiencies=skills,
+                    skill_expertise=expertise,
+                    backstory=row[9] or {},
+                    connections=row[10] or [],
+                    secrets=row[11] or [],
+                    vows=row[12] or {},
+                    add_starting_gear=False,
                 )
-                # Override auto‑generated ID
                 char.id = row[0]
-                # Set other fields from JSON
-                char.attributes = attributes
-                char.inventory = inventory
-                # Set avatar_url if present
-                if row[8]:
-                    char.avatar_url = row[8]
-                # If there are other fields like hp, sp, they should be in attributes or recomputed
-                # For now, assume they are in attributes or you'll recompute later
-                
-                # Cache it
+                char.avatar_url = row[8] or "/static/images/default_avatar.png"
+                if saved_hp is not None:
+                    char.hp = saved_hp
+                if saved_sp is not None:
+                    char.sp = saved_sp
+
+                char.inventory = []
+                for item_data in (row[7] or []):
+                    try:
+                        char.inventory.append(char.normalize_inventory_item(item_data))
+                    except (TypeError, ValueError):
+                        pass
+
                 self.characters[char.id] = char
                 return char
         finally:
@@ -178,71 +183,73 @@ class CharacterManager:
         return False
 
     def _save_character_to_db(self, character):
-        """Save character to database."""
         from world.db import Database
         import json
+
         conn = Database.get_connection()
         try:
             with conn.cursor() as cur:
-                # Get class name safely
-                if hasattr(character, 'classs'):
-                    if hasattr(character.classs, 'name'):
-                        class_name = character.classs.name
-                    else:
-                        class_name = str(character.classs)
-                else:
-                    class_name = ''
+                class_name = (
+                    character.classs.name
+                    if hasattr(character.classs, "name")
+                    else str(character.classs)
+                )
 
-                # Prepare data with fallbacks
-                attributes = json.dumps(getattr(character, 'attributes', {}))
-                inventory_list = getattr(character, 'inventory', [])
-                inventory_dicts = []
-                for item in inventory_list:
-                    if hasattr(item, 'to_dict'):
-                        inventory_dicts.append(item.to_dict())
-                    elif isinstance(item, dict):
-                        inventory_dicts.append(item)
-                    else:
-                        # fallback: try to convert using vars or just str
-                        inventory_dicts.append(vars(item) if hasattr(item, '__dict__') else str(item))
-                inventory = json.dumps(inventory_dicts)
-                backstory = json.dumps(getattr(character, 'backstory', {}))
-                connections = json.dumps(getattr(character, 'connections', []))
-                secrets = json.dumps(getattr(character, 'secrets', []))
-                vows = json.dumps(getattr(character, 'vows', {}))
-                avatar_url = getattr(character, 'avatar_url', None)
+                # Serialise abilities + proficiency state + current hp/sp into `attributes`.
+                attr_payload = {
+                    "abilities": character.abilities,
+                    "save_proficiencies": character.save_proficiencies,
+                    "skill_proficiencies": character.skill_proficiencies,
+                    "skill_expertise": character.skill_expertise,
+                    "hp": character.hp,
+                    "sp": character.sp,
+                }
 
-                cur.execute("""
-                    INSERT INTO characters (id, player_id, name, race, class, level, attributes, inventory, avatar_url, backstory, connections, secrets, vows)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        player_id = EXCLUDED.player_id,
-                        name = EXCLUDED.name,
-                        race = EXCLUDED.race,
-                        class = EXCLUDED.class,
-                        level = EXCLUDED.level,
-                        attributes = EXCLUDED.attributes,
-                        inventory = EXCLUDED.inventory,
-                        avatar_url = EXCLUDED.avatar_url,
-                        backstory = EXCLUDED.backstory,
-                        connections = EXCLUDED.connections,
-                        secrets = EXCLUDED.secrets,
-                        vows = EXCLUDED.vows
-                """, (
-                    character.id,
-                    character.player_id,
-                    character.name,
-                    character.race,
-                    class_name,
-                    character.level,
-                    attributes,
-                    inventory,
-                    avatar_url,
-                    backstory,
-                    connections,
-                    secrets,
-                    vows
-                ))
+                def _ser_item(i):
+                    if hasattr(i, "__dict__"):
+                        return {k: v for k, v in vars(i).items() if not k.startswith("_")}
+                    return i
+
+                inventory = json.dumps([_ser_item(i) for i in character.inventory])
+                backstory = json.dumps(getattr(character, "backstory", {}))
+                connections = json.dumps(getattr(character, "connections", []))
+                secrets = json.dumps(getattr(character, "secrets", []))
+                vows = json.dumps(getattr(character, "vows", {}))
+
+                cur.execute(
+                    """INSERT INTO characters
+                           (id, player_id, name, race, class, level, attributes,
+                            inventory, avatar_url, backstory, connections, secrets, vows)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (id) DO UPDATE SET
+                           player_id = EXCLUDED.player_id,
+                           name = EXCLUDED.name,
+                           race = EXCLUDED.race,
+                           class = EXCLUDED.class,
+                           level = EXCLUDED.level,
+                           attributes = EXCLUDED.attributes,
+                           inventory = EXCLUDED.inventory,
+                           avatar_url = EXCLUDED.avatar_url,
+                           backstory = EXCLUDED.backstory,
+                           connections = EXCLUDED.connections,
+                           secrets = EXCLUDED.secrets,
+                           vows = EXCLUDED.vows""",
+                    (
+                        character.id,
+                        character.player_id,
+                        character.name,
+                        character.race,
+                        class_name,
+                        character.level,
+                        json.dumps(attr_payload),
+                        inventory,
+                        getattr(character, "avatar_url", None),
+                        backstory,
+                        connections,
+                        secrets,
+                        vows,
+                    ),
+                )
                 conn.commit()
         finally:
             Database.return_connection(conn)
