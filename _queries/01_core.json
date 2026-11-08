@@ -1,0 +1,497 @@
+{
+  "meta": {
+    "name": "OG",
+    "version": "1.0.0",
+    "description": "Fast, flexible fantasy RPG designed for AI DMing",
+    "core_philosophy": "Roll once, know immediately. Single source of truth.",
+    "json_schema_version": "1.0"
+  },
+  "core_mechanics": {
+    "resolution": {
+      "die": "d20",
+      "formula": "d20 + attribute + skill vs target_number",
+      "target_numbers": {
+        "easy": 8,
+        "medium": 12,
+        "hard": 16,
+        "extreme": 20
+      },
+      "critical_success": {
+        "trigger": "natural_20",
+        "options": [
+          "double_effect",
+          "no_cost",
+          "narrative_control"
+        ]
+      },
+      "critical_failure": {
+        "trigger": "natural_1",
+        "options": [
+          "succeed_with_complication",
+          "fail_with_extra_hurt"
+        ]
+      }
+    },
+    "attributes": {
+      "brawn": {
+        "name": "Brawn",
+        "abbreviation": "B",
+        "governs": [
+          "melee_damage",
+          "carry_capacity",
+          "forced_entry",
+          "poison_resistance"
+        ],
+        "hp_per_point": 2,
+        "sp_per_point": 0,
+        "defense_contribution": false,
+        "initiative_contribution": false
+      },
+      "finesse": {
+        "name": "Finesse",
+        "abbreviation": "F",
+        "governs": [
+          "ranged_damage",
+          "defense",
+          "initiative",
+          "stealth",
+          "delicate_work"
+        ],
+        "hp_per_point": 0,
+        "sp_per_point": 0,
+        "defense_contribution": true,
+        "initiative_contribution": true
+      },
+      "wits": {
+        "name": "Wits",
+        "abbreviation": "W",
+        "governs": [
+          "spellcasting",
+          "knowledge",
+          "perception",
+          "trap_sense",
+          "initiative"
+        ],
+        "hp_per_point": 0,
+        "sp_per_point": 0,
+        "defense_contribution": false,
+        "initiative_contribution": true
+      },
+      "will": {
+        "name": "Will",
+        "abbreviation": "Wi",
+        "governs": [
+          "spell_points",
+          "fear_resistance",
+          "social_dominance",
+          "morale"
+        ],
+        "hp_per_point": 0,
+        "sp_per_point": 2,
+        "defense_contribution": false,
+        "initiative_contribution": false
+      }
+    },
+    "attribute_generation": {
+      "method": "point_buy",
+      "points": 4,
+      "max_in_one": 3,
+      "human_bonus": "+1 to any"
+    }
+  },
+  "skills": {
+    "survival": {
+      "name": "Survival",
+      "covers": [
+        "track",
+        "hunt",
+        "forage",
+        "navigate_wilderness",
+        "handle_animals"
+      ],
+      "typical_tn": "8-12",
+      "max_rank": 3,
+      "starting_ranks": 0
+    },
+    "lore": {
+      "name": "Lore",
+      "covers": [
+        "history",
+        "magic_theory",
+        "legends",
+        "ancient_languages",
+        "appraise"
+      ],
+      "typical_tn": "12-16",
+      "max_rank": 3,
+      "starting_ranks": 0
+    },
+    "social": {
+      "name": "Social",
+      "covers": [
+        "lie",
+        "persuade",
+        "intimidate",
+        "haggle",
+        "gather_rumors"
+      ],
+      "typical_tn": "8-16",
+      "max_rank": 3,
+      "starting_ranks": 0
+    },
+    "craft": {
+      "name": "Craft",
+      "covers": [
+        "build",
+        "repair",
+        "smith",
+        "alchemy_basics",
+        "disarm_traps"
+      ],
+      "typical_tn": "12-16",
+      "max_rank": 3,
+      "starting_ranks": 0
+    },
+    "stealth": {
+      "name": "Stealth",
+      "covers": [
+        "hide",
+        "move_silent",
+        "sleight_of_hand",
+        "pick_pockets",
+        "disguise"
+      ],
+      "typical_tn": "8-16",
+      "max_rank": 3,
+      "starting_ranks": 0
+    },
+    "athletics": {
+      "name": "Athletics",
+      "covers": [
+        "climb",
+        "swim",
+        "jump",
+        "grapple",
+        "forced_march"
+      ],
+      "typical_tn": "8-16",
+      "max_rank": 3,
+      "starting_ranks": 0
+    }
+  },
+  "skill_generation": {
+    "starting_skills": 3,
+    "starting_rank": 1,
+    "per_level_gain": 1
+  },
+  "combat": {
+    "initiative": {
+      "formula": "d20 + Wits",
+      "tiebreaker": [
+        "finesse",
+        "wits",
+        "player_choice"
+      ]
+    },
+    "attack": {
+      "melee": {
+        "formula": "d20 + Brawn",
+        "damage": "weapon_die + Brawn - target_armor"
+      },
+      "ranged": {
+        "formula": "d20 + Finesse",
+        "damage": "weapon_die + Finesse - target_armor"
+      }
+    },
+    "defense": {
+      "base": 10,
+      "formula": "10 + Finesse + shield_bonus",
+      "shield_bonuses": {
+        "buckler": 1,
+        "shield": 2
+      }
+    },
+    "armor": {
+      "unarmored": {
+        "damage_reduction": 0,
+        "movement": "full",
+        "cost": "free",
+        "special": null
+      },
+      "light": {
+        "damage_reduction": 1,
+        "movement": "full",
+        "cost": "cheap",
+        "special": null
+      },
+      "medium": {
+        "damage_reduction": 2,
+        "movement": "-5ft",
+        "cost": "medium",
+        "special": null
+      },
+      "heavy": {
+        "damage_reduction": 3,
+        "movement": "-10ft, cannot_swim",
+        "cost": "expensive",
+        "special": null
+      }
+    },
+    "health": {
+      "base_hp": 6,
+      "formula": "6 + (Brawn \u00c3\u2014 2) + (level \u00c3\u2014 class_hp_per_level)",
+      "wounded_threshold": 0,
+      "dying_threshold": "negative_half_max_hp",
+      "dead_threshold": "negative_max_hp",
+      "death_saves": {
+        "enabled": false,
+        "comment": "Use thresholds instead"
+      }
+    },
+    "healing": {
+      "short_rest": "1 HP per hour",
+      "long_rest": "all_hp",
+      "healer_kit": {
+        "effect": "1d6 HP",
+        "frequency": "once_per_day"
+      }
+    },
+    "conditions": {
+      "blinded": {
+        "source": "flash, gouge, spell",
+        "effect": "Defense 10, no ranged, -4 Wits checks",
+        "removal": "1 minute or healing"
+      },
+      "deafened": {
+        "source": "thunder, blow",
+        "effect": "No initiative bonus, auto-surprised",
+        "removal": "1 minute"
+      },
+      "frightened": {
+        "source": "horror, dragon, magic",
+        "effect": "-2 all rolls, flee if possible",
+        "removal": "Will save or out of sight 1 minute"
+      },
+      "grappled": {
+        "source": "wrestle, tentacles",
+        "effect": "Speed 0, attack at -2",
+        "removal": "Beat Brawn+Athletics"
+      },
+      "prone": {
+        "source": "trip, fall",
+        "effect": "-2 Defense, stand costs half move",
+        "removal": "Stand up"
+      },
+      "restrained": {
+        "source": "net, spell, vines",
+        "effect": "Speed 0, Defense 10, no two-handed",
+        "removal": "Cut free (5 damage) or spell ends"
+      },
+      "stunned": {
+        "source": "bash, turn undead, crit",
+        "effect": "No actions, Defense 10",
+        "removal": "1 round"
+      },
+      "poisoned": {
+        "source": "venom, gas, sting",
+        "effect": "-1 all rolls, 1 HP per turn",
+        "removal": "Antitoxin or long rest"
+      },
+      "exhausted": {
+        "source": "forced march, no sleep, curse",
+        "effect": "-1 all per level (max 6 = dead)",
+        "removal": "1 rest per level"
+      }
+    }
+  },
+  "progression": {
+    "levels": [
+      {
+        "level": 1,
+        "xp": 0,
+        "hp_bonus": 2,
+        "sp_bonus": 2,
+        "skill_points": 3,
+        "attribute_points": 4,
+        "special": "Starting package"
+      },
+      {
+        "level": 2,
+        "xp": 10,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": "Class feature improves"
+      },
+      {
+        "level": 3,
+        "xp": 20,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": "Subclass choice"
+      },
+      {
+        "level": 4,
+        "xp": 35,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 1,
+        "special": null
+      },
+      {
+        "level": 5,
+        "xp": 50,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": "Capstone I"
+      },
+      {
+        "level": 6,
+        "xp": 70,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 7,
+        "xp": 90,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 0,
+        "special": "Class feature improves"
+      },
+      {
+        "level": 8,
+        "xp": 120,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 1,
+        "special": null
+      },
+      {
+        "level": 9,
+        "xp": 150,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 10,
+        "xp": 200,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 0,
+        "special": "Capstone II"
+      },
+      {
+        "level": 11,
+        "xp": 250,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 12,
+        "xp": 310,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 13,
+        "xp": 380,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 1,
+        "special": null
+      },
+      {
+        "level": 14,
+        "xp": 460,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 15,
+        "xp": 550,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": "Capstone III"
+      },
+      {
+        "level": 16,
+        "xp": 650,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 17,
+        "xp": 760,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 18,
+        "xp": 880,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 1,
+        "special": null
+      },
+      {
+        "level": 19,
+        "xp": 1010,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 0,
+        "attribute_points": 0,
+        "special": null
+      },
+      {
+        "level": 20,
+        "xp": 1150,
+        "hp_bonus": 2,
+        "sp_bonus": 1,
+        "skill_points": 1,
+        "attribute_points": 0,
+        "special": "Legend: Immortal, Mythic, or Godslayer"
+      }
+    ],
+    "xp_awards": {
+      "survival": "1",
+      "goal_completion": "2",
+      "clever_play": "1",
+      "boss_defeat": "5"
+    }
+  }
+}

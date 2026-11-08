@@ -1,0 +1,380 @@
+{
+  "engine": {
+    "state_machines": {
+      "encounter": {
+        "states": [
+          "setup",
+          "initiative",
+          "turnCycle",
+          "resolution",
+          "end"
+        ],
+        "initial": "setup",
+        "transitions": {
+          "setup": {
+            "on": "beginCombat",
+            "to": "initiative",
+            "procedure": "encounterSetup"
+          },
+          "initiative": {
+            "on": "rollInitiative",
+            "to": "turnCycle",
+            "procedure": "determineOrder"
+          },
+          "turnCycle": {
+            "on": "nextTurn",
+            "to": "turnCycle",
+            "procedure": "executeTurn",
+            "branches": {
+              "combatEnd": "resolution",
+              "timeout": "resolution"
+            }
+          },
+          "resolution": {
+            "on": "resolve",
+            "to": "end",
+            "procedure": "distributeRewards"
+          },
+          "end": {
+            "on": "cleanup",
+            "to": null,
+            "procedure": "resetState"
+          }
+        }
+      },
+      "turn": {
+        "states": [
+          "start",
+          "action",
+          "bonus",
+          "reaction",
+          "end"
+        ],
+        "initial": "start",
+        "transitions": {
+          "start": {
+            "on": "beginTurn",
+            "to": "action",
+            "procedure": "applyStartEffects"
+          },
+          "action": {
+            "on": "declareAction",
+            "to": "bonus",
+            "procedure": "resolveAction",
+            "branches": {
+              "actionToBonus": "bonus",
+              "actionToReaction": "reaction"
+            }
+          },
+          "bonus": {
+            "on": "declareBonus",
+            "to": "reaction",
+            "procedure": "resolveBonus",
+            "optional": true
+          },
+          "reaction": {
+            "on": "triggerReaction",
+            "to": "end",
+            "procedure": "resolveReaction",
+            "interrupt": true
+          },
+          "end": {
+            "on": "endTurn",
+            "to": null,
+            "procedure": "applyEndEffects"
+          }
+        }
+      },
+      "combatant": {
+        "states": [
+          "healthy",
+          "wounded",
+          "dying",
+          "dead",
+          "removed"
+        ],
+        "initial": "healthy",
+        "transitions": {
+          "healthy": {
+            "on": "hpZero",
+            "to": "wounded",
+            "condition": "hp <= 0 and hp > -halfMax"
+          },
+          "wounded": {
+            "on": "moreDamage",
+            "to": "dying",
+            "condition": "hp <= -halfMax"
+          },
+          "dying": {
+            "on": "stabilize",
+            "to": "wounded",
+            "procedure": "medicineCheck"
+          },
+          "dead": {
+            "on": "resurrect",
+            "to": "wounded",
+            "procedure": "magicResurrection"
+          },
+          "any": {
+            "on": "instantDeath",
+            "to": "dead",
+            "condition": "hp <= -maxHP or massiveDamage"
+          }
+        }
+      }
+    },
+    "procedures": {
+      "encounterSetup": {
+        "inputs": [
+          "party",
+          "monsters",
+          "environment"
+        ],
+        "steps": [
+          "Validate all combatants have required fields: hp, attributes, defense",
+          "Calculate surprise: Compare party Stealth vs monster Wits",
+          "Apply surprise condition to losers: Skip first turn",
+          "Set environment tags: cover, light, terrain",
+          "Initialize turn order array"
+        ],
+        "output": "combatState"
+      },
+      "determineOrder": {
+        "inputs": [
+          "combatants"
+        ],
+        "steps": [
+          "For each combatant: roll d20 + Wits",
+          "Sort descending by result",
+          "Tiebreaker: Higher Finesse, then higher Wits, then player choice",
+          "Store initiative order array with current index"
+        ],
+        "output": "turnOrder"
+      },
+      "executeTurn": {
+        "inputs": [
+          "activeCombatant",
+          "combatState"
+        ],
+        "steps": [
+          "Check conditions: Stunned = skip to end, Prone = -2 Defense until stand",
+          "Present valid actions: Attack, Cast, Move, Use Item, Disengage, Dodge, Help",
+          "Await player declaration or generate AI declaration",
+          "Validate action: Has action? Resources? Range? Line of sight?",
+          "Resolve action via appropriate procedure",
+          "Check state transitions: HP changes, condition applications",
+          "Increment turn index, loop or end"
+        ],
+        "output": "updatedState"
+      },
+      "resolveAction": {
+        "branches": {
+          "attack": "procedure.resolveAttack",
+          "cast": "procedure.resolveSpell",
+          "move": "procedure.resolveMovement",
+          "item": "procedure.resolveItem",
+          "disengage": "procedure.resolveDisengage",
+          "dodge": "procedure.resolveDodge",
+          "help": "procedure.resolveHelp"
+        }
+      },
+      "resolveAttack": {
+        "inputs": [
+          "attacker",
+          "target",
+          "weapon"
+        ],
+        "steps": [
+          "Determine attack attribute: Brawn (melee) or Finesse (ranged)",
+          "Calculate modifier: Attribute + skill if proficient",
+          "Roll d20 + modifier",
+          "Check critical: Natural 20 = crit, Natural 1 = fumble",
+          "Compare vs target Defense",
+          "If hit: Roll weapon damage + attribute - target Armor",
+          "If crit: Choose double dice, max dice, or effect",
+          "If fumble: Determine complication via table or narrative",
+          "Apply damage to target HP, check combatant state transition",
+          "Apply weapon properties: Stun, Cleave, Disarm, etc."
+        ],
+        "output": "damageDealt, newHP, conditions"
+      },
+      "resolveSpell": {
+        "inputs": [
+          "caster",
+          "spell",
+          "targets",
+          "spending"
+        ],
+        "steps": [
+          "Validate caster has SP >= cost",
+          "Determine if Overcast: SP \u00c3\u2014 2, auto-success but take Wound",
+          "If normal cast: Roll Wits vs TN 12",
+          "Check critical: 20 = enhanced effect, 1 = fizzle lose half SP",
+          "If success: Apply spell effect, deduct SP",
+          "If fail: Fizzle, lose half SP (round down)",
+          "Apply scaling: +effect per extra SP spent",
+          "Check spell tags: [Loud] alerts enemies, [Ritual] requires 10min",
+          "Apply conditions, damage, or narrative effect"
+        ],
+        "output": "effectResult, spRemaining, overcastWound"
+      },
+      "resolveMovement": {
+        "inputs": [
+          "combatant",
+          "destination",
+          "terrain"
+        ],
+        "steps": [
+          "Calculate speed: Base 30ft + modifiers - armor penalty",
+          "Check terrain: Difficult = half speed, Impassable = blocked",
+          "Check opportunity attacks: Leaving threatened square triggers",
+          "Resolve opportunity attacks if any",
+          "Update position",
+          "Check hidden enemies: Move through threatened? Perception vs Stealth"
+        ],
+        "output": "newPosition, opportunityAttacksTriggered"
+      },
+      "resolveReaction": {
+        "triggers": [
+          "opportunityAttack",
+          "readiedAction",
+          "spellCounter",
+          "shieldBlock"
+        ],
+        "steps": [
+          "Validate reaction available: Not used this round",
+          "Determine if trigger condition met",
+          "Resolve as normal action but limited options",
+          "Mark reaction consumed"
+        ],
+        "output": "reactionResult"
+      }
+    },
+    "rollProcedures": {
+      "abilityCheck": {
+        "formula": "d20 + attribute(0-4) + skill(0-3)",
+        "target": "TN from context",
+        "degrees": {
+          "failBy5": "Critical failure or extra bad",
+          "fail": "Failure",
+          "success": "Success",
+          "successBy5": "Critical success or extra good"
+        }
+      },
+      "savingThrow": {
+        "formula": "d20 + attribute + bonuses",
+        "types": {
+          "brawn": [
+            "poison",
+            "paralysis",
+            "death"
+          ],
+          "finesse": [
+            "dodge",
+            "reflex",
+            "trap"
+          ],
+          "wits": [
+            "illusion",
+            "charm",
+            "confusion"
+          ],
+          "will": [
+            "fear",
+            "possession",
+            "domination"
+          ]
+        }
+      },
+      "deathSave": {
+        "formula": "d20",
+        "success": "10+",
+        "failure": "1-9",
+        "criticalSuccess": "20: Stabilize and 1 HP",
+        "criticalFailure": "1: Two failures",
+        "track": "3 successes = stable, 3 failures = dead"
+      }
+    },
+    "aiDMFunctions": {
+      "generateMonster": {
+        "inputs": [
+          "cr",
+          "tags",
+          "environment"
+        ],
+        "procedure": "Select base from monsters[], scale HP \u00c2\u00b120% per CR diff, adjust damage die step, add environment synergy"
+      },
+      "scaleEncounter": {
+        "inputs": [
+          "partyLevel",
+          "difficulty",
+          "partySize"
+        ],
+        "procedure": "TargetCR = partyLevel + difficultyMod, Select monsters to sum to TargetCR \u00c3\u2014 partySize multiplier, Adjust for action economy"
+      },
+      "narrate": {
+        "inputs": [
+          "event",
+          "tone",
+          "previousContext"
+        ],
+        "procedure": "Generate 2-3 sensory details, Describe mechanical result in fiction, Foreshadow next threat or opportunity"
+      },
+      "adjudicate": {
+        "inputs": [
+          "playerDeclaration",
+          "currentState"
+        ],
+        "procedure": "Map declaration to closest rule, If gap: Determine appropriate attribute+skill, Set TN based on difficulty, Roll and narrate"
+      }
+    },
+    "stateTracking": {
+      "combatState": {
+        "round": "integer",
+        "turnOrder": [
+          "combatantID"
+        ],
+        "currentIndex": "integer",
+        "combatants": {
+          "id": {
+            "hp": "integer",
+            "maxHP": "integer",
+            "sp": "integer",
+            "conditions": [
+              "conditionID"
+            ],
+            "position": "coordinates",
+            "reactionAvailable": "boolean",
+            "actionAvailable": "boolean",
+            "bonusAvailable": "boolean"
+          }
+        },
+        "environment": {
+          "light": "bright/dim/dark",
+          "terrain": [
+            "difficult",
+            "cover",
+            "hazard"
+          ],
+          "zones": [
+            "description"
+          ]
+        }
+      },
+      "partyState": {
+        "members": [
+          "characterData"
+        ],
+        "resources": {
+          "hp": "pooled or individual",
+          "sp": "individual",
+          "inventory": "shared or individual"
+        },
+        "questFlags": [
+          "string"
+        ],
+        "reputation": "faction scores"
+      }
+    }
+  }
+}

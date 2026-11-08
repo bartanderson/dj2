@@ -267,12 +267,10 @@ class NarrativeSystem:
         if phase == 'welcome':
             responses.append(Dialog(
                 "DM",
-                "Welcome to OG System character creation! I'll guide you through the steps.\n"
-                "First, how would you like to determine your attributes? Options:\n"
-                "- Point Buy: 4 points to spend (max 3 in any attribute)\n"
-                "- Standard Array: 3,2,1,0 (assign to Brawn, Finesse, Wits, Will)\n"
-                "- Manual: Roll 2d6 and assign (you can roll now)",
-                "narration"
+                "First, how would you like to determine your abilities? Options:\n"
+                "- Point Buy: 27 points, scores 8–15 before racial bonuses\n"
+                "- Standard Array: 15, 14, 13, 12, 10, 8 assigned as you like\n"
+                "Abilities are STR, DEX, CON, INT, WIS, CHA. Which method?",
             ))
             creation_state['phase'] = 'attribute_method'
 
@@ -325,22 +323,50 @@ class NarrativeSystem:
                     "narration"
                 ))
             else:
-                race = dnd_data.Race.get(message)
-                if not race:
-                    responses.append(Dialog("DM", f"'{message}' is not a valid race. Try again.", "error"))
-                else:
-                    creation_state['race'] = race.name
-                    # Apply racial attribute bonus if any
-                    for attr, bonus in race.mechanical_bonus.items():
-                        if attr in creation_state['attributes']:
-                            creation_state['attributes'][attr] += bonus
-                    responses.append(Dialog(
-                        "DM",
-                        f"{race.name}: {race.tags}. Knacks: {', '.join(race.knacks)}. "
-                        f"Your attributes adjusted accordingly. Now choose your class.",
-                        "narration"
-                    ))
-                    creation_state['phase'] = 'class_selection'
+race = dnd_data.Race.get(message)
+if not race:
+    responses.append(Dialog("DM", f"'{message}' is not a valid race. Try again.", "error"))
+else:
+    creation_state['race'] = race.name
+    spec = race.choice_spec()
+    if spec:
+        # Ask the player for their choice(s)
+        creation_state['phase'] = 'racial_choice'
+        creation_state['pending_race'] = race
+        if spec['count'] == 1:
+            prompt = f"{race.name} grants +1 to one of: {', '.join(spec['from'])}. Choose one."
+        else:
+            prompt = (f"{race.name} grants +1 to each of {spec['count']} abilities from: "
+                      f"{', '.join(spec['from'])}. Choose {spec['count']}.")
+        responses.append(Dialog("DM", prompt))
+    else:
+        # No choice: apply fixed bonuses immediately
+        bonuses = race.apply_choices([])
+        for ab, bonus in bonuses.items():
+            creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
+        creation_state['phase'] = 'class_selection'
+        responses.append(Dialog("DM", f"{race.name} bonuses applied."))
+    else:
+        # No choice: apply fixed bonuses immediately
+        bonuses = race.apply_choices([])
+        for ab, bonus in bonuses.items():
+            creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
+        creation_state['phase'] = 'class_selection'
+        responses.append(Dialog("DM", f"{race.name} bonuses applied."))
+
+        elif phase == 'racial_choice':
+            race = creation_state['pending_race']
+            spec = race.choice_spec()
+            chosen = [p.strip().upper() for p in message.split(",") if p.strip()]
+            try:
+                bonuses = race.apply_choices(chosen)
+            except ValueError as exc:
+                responses.append(Dialog("DM", str(exc), "error"))
+                return responses
+            for ab, bonus in bonuses.items():
+                creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
+            creation_state['phase'] = 'class_selection'
+            responses.append(Dialog("DM", f"Bonuses applied: {bonuses}. Now choose your class."))
 
         elif phase == 'class_selection':
             if not message:
@@ -497,6 +523,15 @@ class NarrativeSystem:
             connections=[],
             secrets=[],
             vows={}
+        )
+
+        char = Character(
+            name=creation_state['name'],
+            race=creation_state['race'],
+            classs=creation_state['class'],
+            level=1,
+            abilities=creation_state['abilities'],   # <-- was `attributes=`
+            owner_id=owner_id,
         )
         # Add to world
         self.world.character_manager.add_character(character)

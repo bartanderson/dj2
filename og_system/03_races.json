@@ -2,158 +2,84 @@
   "races": {
     "human": {
       "name": "Human",
-      "mechanical_bonus": {
-        "type": "attribute",
-        "value": "+1 any"
+      "ability_bonus": {
+        "fixed": {},
+        "choose": {"count": 2, "from": ["STR","DEX","CON","INT","WIS","CHA"], "each": 1}
       },
-      "knacks": [
-        "Adaptable",
-        "Diplomatic",
-        "Ambitious",
-        "Diverse"
-      ],
-      "tags": [
-        "versatile"
-      ]
+      "traits": ["Adaptable", "Diplomatic", "Ambitious", "Diverse"],
+      "tags": ["versatile"]
     },
     "dwarf": {
       "name": "Dwarf",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Brawn or +1 Armor from toughness"
+      "ability_bonus": {
+        "fixed": {"CON": 2},
+        "choose": {"count": 1, "from": ["STR","WIS"], "each": 1}
       },
-      "knacks": [
-        "Stone-sense",
-        "Darkvision 30ft",
-        "Poison resistance",
-        "Craft memory"
-      ],
-      "tags": [
-        "sturdy",
-        "underground"
-      ]
+      "traits": ["Stone-sense", "Darkvision 30ft", "Poison resistance", "Craft memory"],
+      "tags": ["sturdy", "underground"]
     },
     "elf": {
       "name": "Elf",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Finesse or +1 Initiative"
+      "ability_bonus": {
+        "fixed": {"DEX": 2},
+        "choose": {"count": 1, "from": ["INT","WIS"], "each": 1}
       },
-      "knacks": [
-        "Forest-track",
-        "Keen sight",
-        "Trance rest",
-        "Fae etiquette"
-      ],
-      "tags": [
-        "fey",
-        "perceptive"
-      ]
+      "traits": ["Forest-track", "Keen sight", "Trance rest", "Fae etiquette"],
+      "tags": ["fey", "perceptive"]
     },
     "halfling": {
       "name": "Halfling",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Finesse or Lucky (reroll 1s 1/day)"
+      "ability_bonus": {
+        "fixed": {"DEX": 2},
+        "choose": {"count": 1, "from": ["CHA","WIS"], "each": 1}
       },
-      "knacks": [
-        "Hide in plain sight",
-        "Cook",
-        "Nimble",
-        "Home-sense"
-      ],
-      "tags": [
-        "small",
-        "lucky"
-      ]
+      "traits": ["Hide in plain sight", "Cook", "Nimble", "Home-sense"],
+      "tags": ["small", "lucky"]
     },
     "orc": {
       "name": "Orc",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Brawn or Intimidate without roll vs weak foes"
+      "ability_bonus": {
+        "fixed": {"STR": 2},
+        "choose": {"count": 1, "from": ["CON","DEX"], "each": 1}
       },
-      "knacks": [
-        "War-cry",
-        "Scent-track",
-        "Savage endurance",
-        "Trophy-taker"
-      ],
-      "tags": [
-        "savage",
-        "intimidating"
-      ]
+      "traits": ["War-cry", "Scent-track", "Savage endurance", "Trophy-taker"],
+      "tags": ["savage", "intimidating"]
     },
     "goblin": {
       "name": "Goblin",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Finesse or +2 Move"
+      "ability_bonus": {
+        "fixed": {"DEX": 2},
+        "choose": {"count": 1, "from": ["CON","INT"], "each": 1}
       },
-      "knacks": [
-        "Night sight",
-        "Tinker",
-        "Scurry",
-        "Pack-rat"
-      ],
-      "tags": [
-        "small",
-        "nimble",
-        "urban"
-      ]
+      "traits": ["Night sight", "Tinker", "Scurry", "Pack-rat"],
+      "tags": ["small", "nimble", "urban"]
     },
     "troll_blooded": {
       "name": "Troll-blooded",
-      "mechanical_bonus": {
-        "type": "static",
-        "value": "Regenerate 1 HP/round unless fire/acid"
+      "ability_bonus": {
+        "fixed": {"CON": 2, "STR": 1},
+        "choose": null
       },
-      "knacks": [
-        "Scent",
-        "Iron stomach",
-        "Terrify",
-        "Claws d4 natural"
-      ],
-      "tags": [
-        "regeneration",
-        "monstrous"
-      ]
+      "traits": ["Regenerate 1 HP/round unless fire/acid", "Scent", "Iron stomach", "Terrify", "Claws d4 natural"],
+      "tags": ["regeneration", "monstrous"]
     },
     "construct": {
       "name": "Construct",
-      "mechanical_bonus": {
-        "type": "compound",
-        "value": "No healing potions, immune poison/disease, +1 Armor"
+      "ability_bonus": {
+        "fixed": {"CON": 2, "STR": 1},
+        "choose": null
       },
-      "knacks": [
-        "No sleep",
-        "Perfect memory",
-        "No fear",
-        "Unliving"
-      ],
-      "tags": [
-        "construct",
-        "immune",
-        "relentless"
-      ]
+      "traits": ["No healing potions", "Immune poison/disease", "No sleep", "Perfect memory", "No fear"],
+      "tags": ["construct", "immune", "relentless"]
     },
     "fae_touched": {
       "name": "Fae-touched",
-      "mechanical_bonus": {
-        "type": "choice",
-        "value": "+1 Will or Glamour (disguise self 1/day)"
+      "ability_bonus": {
+        "fixed": {"CHA": 2},
+        "choose": {"count": 1, "from": ["INT","WIS"], "each": 1}
       },
-      "knacks": [
-        "Iron sensitivity",
-        "Speak with beasts",
-        "Moon-sight",
-        "Pact sense"
-      ],
-      "tags": [
-        "fey",
-        "magical",
-        "vulnerable"
-      ]
+      "traits": ["Iron sensitivity", "Speak with beasts", "Moon-sight", "Pact sense"],
+      "tags": ["fey", "magical", "vulnerable"]
     }
   }
 }
