@@ -1,6 +1,10 @@
 {
   "classes": {
     "warrior": {
+      "save_proficiencies": ["STR", "CON"],
+      "spellcasting_ability": null,
+      "requires_casting_check": false,
+      "initiative_proficient": false,
       "name": "Warrior",
       "hp_per_level": 3,
       "sp_per_level": 0,
@@ -39,6 +43,10 @@
       }
     },
     "rogue": {
+      "save_proficiencies": ["DEX", "INT"],
+      "spellcasting_ability": null,
+      "requires_casting_check": false,
+      "initiative_proficient": true,
       "name": "Rogue",
       "hp_per_level": 2,
       "sp_per_level": 0,
@@ -78,6 +86,10 @@
       }
     },
     "mage": {
+      "save_proficiencies": ["INT", "WIS"],
+      "spellcasting_ability": "INT",
+      "requires_casting_check": true,
+      "initiative_proficient": false,
       "name": "Mage",
       "hp_per_level": 1,
       "sp_per_level": 3,
@@ -116,6 +128,15 @@
       }
     },
     "priest": {
+      "save_proficiencies": ["WIS", "CHA"],
+      "spellcasting_ability": "WIS",
+      "requires_casting_check": true,
+      "initiative_proficient": false,
+      "turn_undead": {
+        "dc_formula": "8 + proficiency_bonus + WIS_modifier",
+        "target_save": "WIS",
+        "range_ft": 30
+      },
       "name": "Priest",
       "hp_per_level": 2,
       "sp_per_level": 2,
@@ -154,6 +175,10 @@
       }
     },
     "ranger": {
+      "save_proficiencies": ["STR", "WIS"],
+      "spellcasting_ability": "WIS",
+      "requires_casting_check": true,
+      "initiative_proficient": true,
       "name": "Ranger",
       "hp_per_level": 2,
       "sp_per_level": 1,
@@ -192,6 +217,10 @@
       }
     },
     "bard": {
+      "save_proficiencies": ["DEX", "CHA"],
+      "spellcasting_ability": "CHA",
+      "requires_casting_check": true,
+      "initiative_proficient": false,
       "name": "Bard",
       "hp_per_level": 2,
       "sp_per_level": 2,
@@ -230,6 +259,10 @@
       }
     },
     "monk": {
+      "save_proficiencies": ["STR", "DEX"],
+      "spellcasting_ability": "WIS",
+      "requires_casting_check": true,
+      "initiative_proficient": false,
       "name": "Monk",
       "hp_per_level": 2,
       "sp_per_level": 1,
@@ -267,6 +300,17 @@
       }
     },
     "warlock": {
+      "save_proficiencies": ["WIS", "CHA"],
+      "spellcasting_ability": "CHA",
+      "requires_casting_check": false,
+      "initiative_proficient": false,
+      "resource_model": {
+        "primary": "sp",
+        "overflow": "hp",
+        "overflow_cost_per_sp_level": "1d6",
+        "overflow_note": "After SP pool is exhausted, spells cost HP instead."
+      },
+
       "name": "Warlock",
       "hp_per_level": 2,
       "sp_per_level": 2,

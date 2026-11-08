@@ -1933,6 +1933,9 @@ def submit_character():
         data['skills'] = skills
 
     data['player_id'] = player_id
+    racial_choices = request.form.getlist('racial_choice')
+    if racial_choices:
+        data['racial_choice'] = racial_choices
 
     # ─────────────────────────────
     # 3. Character creation pipeline
@@ -2002,63 +2005,67 @@ def character_creation_form():
 
 @app.route('/character-creation/update-form', methods=['POST'])
 def update_character_form():
-    # Get all form fields (including multi‑value 'skills')
+    from world.character import ABILITIES
+    from world import dnd_data
+
     form_data = request.form.to_dict(flat=False)
-    
-    # Build a dict with single values (except skills)
+
     data = {}
     for key, values in form_data.items():
         if key == 'skills':
-            data['selected_skills'] = values   # keep as list
+            data['selected_skills'] = values
         else:
             data[key] = values[0] if values else ''
-    
-    # Ensure all expected keys exist (set defaults if missing)
+
     data.setdefault('name', '')
     data.setdefault('race', '')
     data.setdefault('class', '')
     data.setdefault('background', '')
-    data.setdefault('brawn', '1')
-    data.setdefault('finesse', '1')
-    data.setdefault('wits', '1')
-    data.setdefault('will', '1')
     data.setdefault('selected_skills', [])
-    
-    # Convert ability scores to int (they come as strings)
-    for attr in ['brawn', 'finesse', 'wits', 'will']:
+
+    # Parse abilities. Accept STR or str form field names.
+    ability_scores = {}
+    for ab in ABILITIES:
+        raw = data.get(ab) or data.get(ab.lower()) or '10'
         try:
-            data[attr] = int(data[attr])
-        except ValueError:
-            data[attr] = 1   # fallback
-    
-    # Build full context for the template
-    from world import dnd_data
+            score = int(raw)
+        except (TypeError, ValueError):
+            score = 10
+        ability_scores[ab] = max(3, min(18, score))
+
+    # Racial choice: comma-separated string or list.
+    raw_choice = data.get('racial_choice', '')
+    if isinstance(raw_choice, str):
+        racial_choice = [s.strip() for s in raw_choice.split(',') if s.strip()]
+    else:
+        racial_choice = list(raw_choice or [])
+
+    # Resolve display names for the six abilities.
+    ability_display = []
+    for ab in ABILITIES:
+        attr = dnd_data.Attribute.get(ab)
+        ability_display.append(attr.name if attr else ab)
+
     context = {
-        # Static lists from og_data (now dnd_data)
         'races': dnd_data.get_race_list(),
         'classes': dnd_data.get_class_list(),
         'backgrounds': dnd_data.get_background_list(),
         'skills_list': dnd_data.get_skill_list(),
-        'ability_names': dnd_data.get_ability_score_lower_names(),   # ['brawn', 'finesse', ...]
-        'ability_display': dnd_data.get_ability_score_full_names(),  # ['Brawn', 'Finesse', ...]
-        
-        # Current values (from form submission)
+        'ability_names': list(ABILITIES),      # ["STR", "DEX", "CON", "INT", "WIS", "CHA"]
+        'ability_display': ability_display,    # ["Strength", "Dexterity", ...]
+
         'name': data['name'],
         'race': data['race'],
         'class': data['class'],
         'background': data['background'],
-        'ability_scores': {
-            'brawn': data['brawn'],
-            'finesse': data['finesse'],
-            'wits': data['wits'],
-            'will': data['will'],
-        },
+        'ability_scores': ability_scores,
+        'racial_choice': racial_choice,
         'selected_skills': data['selected_skills'],
         'hit_die': None,
         'class_skill_choose': 0,
         'class_skill_options': []
     }
-    
+
     return render_template('partials/creation_form.html', **context)
 
 @app.route('/character-creation/help', methods=['POST'])
