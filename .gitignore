@@ -247,3 +247,5 @@ assets/visuals/
 
 # Compiled caches
 Scripts/numba
+_queries/
+dump.bat
