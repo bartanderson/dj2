@@ -3,14 +3,46 @@
 Narrative System – handles backstory, connections, revelations, and pacing.
 Uses OG System data for all mechanical references.
 """
-import uuid
+import logging
 import random
+import re
+import uuid
 from typing import Dict, List, Optional, Any
 
 from world import dnd_data
 from world.ai_dungeon_master import AIDungeonMaster, GameState
 from world.character import Character
 from world.player import Player
+from world.dm_chat_handler import DialogResponse
+
+# Drop-in alias for the many `Dialog(...)` calls in this file that were never
+# defined. DialogResponse(speaker, content, dialog_type) matches positionally.
+
+def Dialog(speaker, content, dialog_type="narration"):
+    """Local 2-or-3-arg shim; defaults dialog_type to 'narration'."""
+    return DialogResponse(speaker=speaker, content=content, dialog_type=dialog_type)
+
+logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# 6-ability system (mirrors world.dm_chat_handler; kept local to avoid coupling)
+# -----------------------------------------------------------------------------
+ABILITY_KEYS = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+ABILITY_ALIASES = {
+    "str": "STR", "strength": "STR",
+    "dex": "DEX", "dexterity": "DEX",
+    "con": "CON", "constitution": "CON",
+    "int": "INT", "intelligence": "INT",
+    "wis": "WIS", "wisdom": "WIS",
+    "cha": "CHA", "charisma": "CHA",
+    # Legacy OG 4-attribute names -> nearest new ability
+    "brawn": "STR", "finesse": "DEX", "wits": "INT", "will": "WIS",
+}
+ABILITY_MIN = 3
+ABILITY_MAX = 18
+STANDARD_ARRAY = (15, 14, 13, 12, 10, 8)
+POINT_BUY_COSTS = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9}
+POINT_BUY_TOTAL = 27
 
 
 class NarrativeGuide:
@@ -201,22 +233,27 @@ class NarrativeSystem:
     def guide_character_creation(self, player_id, message, creation_state):
         """
         Fully guided character creation using OG System data.
-        Returns responses and updated state.
+        Flow: welcome (name) -> attribute_method -> attribute_assignment ->
+              race_selection -> [racial_choice] -> class_selection ->
+              background_selection -> skill_selection -> personality_development ->
+              name_input -> finalization.
+        Returns {responses, new_state}; new_state is None once the character is built.
         """
-        # Initialize state if needed
         if not creation_state:
             creation_state = {
                 'phase': 'welcome',
-                'attributes': {},           # e.g., {"brawn": 2, "finesse": 1, ...}
+                'name': None,
+                'method': None,
+                'abilities': {},
                 'race': None,
                 'class': None,
                 'background': None,
-                'skills': [],                # list of chosen skill names
+                'skills': [],
                 'personality': None,
                 'ideals': None,
                 'bonds': None,
                 'flaws': None,
-                'conversation': []
+                'conversation': [],
             }
 
         if message:
@@ -225,200 +262,202 @@ class NarrativeSystem:
         responses = []
         phase = creation_state['phase']
 
-        # Helper to load data
-        def get_race_guide(race_name):
-            race = dnd_data.Race.get(race_name)
-            if not race:
-                return None
-            return {
-                "description": f"{race.name}: {race.tags}",
-                "traits": race.mechanical_bonus,
-                "knacks": race.knacks,
-                "questions": [
-                    f"What drove your {race.name} to adventure?",
-                    f"How do you embody your people's {race.tags}?"
-                ]
-            }
-
-        def get_class_guide(class_name):
-            cls = dnd_data.OGClass.get(class_name)
-            if not cls:
-                return None
-            return {
-                "description": cls.core_mechanic.get("description", f"A {cls.name}."),
-                "abilities": f"HP per level: {cls.hp_per_level}, SP per level: {cls.sp_per_level}",
-                "playstyle": cls.core_mechanic.get("playstyle", "Versatile."),
-                "archetypes": list(cls.subclasses.keys())
-            }
-
         def get_background_guide(bg_name):
-            # OG System doesn't define backgrounds; we can keep a minimal set or load from elsewhere
-            # For now, use a simple fallback.
             guides = {
                 "acolyte": {"description": "Devoted to a faith.", "skills": ["Lore", "Social"]},
                 "criminal": {"description": "Lived outside the law.", "skills": ["Stealth", "Social"]},
                 "folk hero": {"description": "Champion of the common people.", "skills": ["Athletics", "Survival"]},
                 "sage": {"description": "Scholar of forgotten lore.", "skills": ["Lore", "Craft"]},
-                "soldier": {"description": "Trained for war.", "skills": ["Athletics", "Survival"]}
+                "soldier": {"description": "Trained for war.", "skills": ["Athletics", "Survival"]},
             }
             return guides.get(bg_name.lower(), {"description": bg_name, "skills": []})
 
-        # --- Phase handling ---
+        # --- welcome: collect the character's name ---
         if phase == 'welcome':
-            responses.append(Dialog(
-                "DM",
-                "First, how would you like to determine your abilities? Options:\n"
-                "- Point Buy: 27 points, scores 8–15 before racial bonuses\n"
-                "- Standard Array: 15, 14, 13, 12, 10, 8 assigned as you like\n"
-                "Abilities are STR, DEX, CON, INT, WIS, CHA. Which method?",
-            ))
-            creation_state['phase'] = 'attribute_method'
-
-        elif phase == 'attribute_method':
-            # Simplified: just accept choice and move to attribute assignment
-            # In full implementation, you'd branch on method.
-            creation_state['phase'] = 'attribute_assignment'
-            responses.append(Dialog(
-                "DM",
-                "Let's use point buy. You have 4 points. Attributes are Brawn, Finesse, Wits, Will. "
-                "Max 3 in any. How do you spend them? (e.g., 'brawn 2, finesse 1, wits 1, will 0')",
-                "narration"
-            ))
-
-        elif phase == 'attribute_assignment':
-            # Parse the player's input to assign points
-            # This is a simplified parser – you'd want a more robust one.
-            attrs = {"brawn": 0, "finesse": 0, "wits": 0, "will": 0}
-            points_spent = 0
-            # Very crude parsing – assume message like "brawn 2, finesse 1, wits 1, will 0"
-            import re
-            parts = message.lower().split(',')
-            for part in parts:
-                m = re.search(r'(brawn|finesse|wits|will)\s*(\d+)', part)
-                if m:
-                    attr, val = m.groups()
-                    val = int(val)
-                    if val < 0 or val > 3:
-                        responses.append(Dialog("DM", f"{attr} must be 0-3.", "error"))
-                        break
-                    attrs[attr] = val
-                    points_spent += val
-            if points_spent != 4:
-                responses.append(Dialog("DM", "You must spend exactly 4 points. Try again.", "error"))
+            if not message:
+                responses.append(Dialog("DM", "Welcome, adventurer! What is your name?"))
             else:
-                creation_state['attributes'] = attrs
-                creation_state['phase'] = 'race_selection'
+                creation_state['name'] = message.strip()
+                creation_state['phase'] = 'attribute_method'
                 responses.append(Dialog(
                     "DM",
-                    f"Attributes set: {attrs}. Now choose your race. Available races:\n" +
-                    ", ".join(dnd_data.get_race_list()),
-                    "narration"
+                    f"Pleased to meet you, {creation_state['name']}. "
+                    f"How would you like to determine your abilities?\n"
+                    f"- Standard Array (recommended): {', '.join(map(str, STANDARD_ARRAY))}, freely assignable\n"
+                    f"- Point Buy: {POINT_BUY_TOTAL} points, scores 8-15\n"
+                    f"Which method?"
                 ))
 
+        # --- attribute_method: choose standard array vs point buy ---
+        elif phase == 'attribute_method':
+            method_input = (message or "").strip().lower()
+            if not message:
+                responses.append(Dialog(
+                    "DM",
+                    f"How would you like to determine your abilities?\n"
+                    f"- Standard Array: {', '.join(map(str, STANDARD_ARRAY))}\n"
+                    f"- Point Buy: {POINT_BUY_TOTAL} points, scores 8-15\n"
+                    f"Which method?"
+                ))
+            elif 'point' in method_input or 'buy' in method_input:
+                creation_state['method'] = 'point_buy'
+                creation_state['phase'] = 'attribute_assignment'
+                responses.append(Dialog(
+                    "DM",
+                    f"Point Buy: assign scores 8-15 to STR, DEX, CON, INT, WIS, CHA. "
+                    f"Cost: 8->0, 9->1, 10->2, 11->3, 12->4, 13->5, 14->7, 15->9. "
+                    f"Total must be exactly {POINT_BUY_TOTAL}.\n"
+                    f"Reply like: 'STR 15, DEX 14, CON 13, INT 12, WIS 10, CHA 8'"
+                ))
+            else:
+                creation_state['method'] = 'standard'
+                creation_state['phase'] = 'attribute_assignment'
+                responses.append(Dialog(
+                    "DM",
+                    f"Standard Array: assign these to STR, DEX, CON, INT, WIS, CHA "
+                    f"(one of each): {', '.join(map(str, STANDARD_ARRAY))}.\n"
+                    f"Reply like: 'STR 15, DEX 14, CON 13, INT 12, WIS 10, CHA 8'"
+                ))
+
+        # --- attribute_assignment: parse and validate ---
+        elif phase == 'attribute_assignment':
+            assignments = self._parse_ability_assignments(message)
+            method = creation_state.get('method', 'standard')
+            if not assignments:
+                responses.append(Dialog(
+                    "DM",
+                    "I didn't catch that. Reply like: 'STR 15, DEX 14, CON 13, INT 12, WIS 10, CHA 8'",
+                    "error"
+                ))
+            elif set(assignments.keys()) != set(ABILITY_KEYS):
+                missing = sorted(set(ABILITY_KEYS) - set(assignments.keys()))
+                responses.append(Dialog("DM", f"Missing abilities: {', '.join(missing)}. Try again.", "error"))
+            elif method == 'standard':
+                if sorted(assignments.values()) != sorted(STANDARD_ARRAY):
+                    responses.append(Dialog(
+                        "DM",
+                        f"Standard Array requires exactly one each of {sorted(STANDARD_ARRAY)}. Try again.",
+                        "error"
+                    ))
+                else:
+                    creation_state['abilities'] = dict(assignments)
+                    creation_state['phase'] = 'race_selection'
+                    responses.append(Dialog(
+                        "DM",
+                        f"Abilities set: {assignments}. Now choose your race:\n"
+                        + ", ".join(dnd_data.get_race_list())
+                    ))
+            else:  # point_buy
+                out_of_range = {k: v for k, v in assignments.items() if not (8 <= v <= 15)}
+                if out_of_range:
+                    responses.append(Dialog("DM", f"Point Buy scores must be 8-15: {out_of_range}. Try again.", "error"))
+                else:
+                    total = sum(POINT_BUY_COSTS[v] for v in assignments.values())
+                    if total != POINT_BUY_TOTAL:
+                        responses.append(Dialog("DM", f"Cost is {total}, must be exactly {POINT_BUY_TOTAL}. Try again.", "error"))
+                    else:
+                        creation_state['abilities'] = dict(assignments)
+                        creation_state['phase'] = 'race_selection'
+                        responses.append(Dialog(
+                            "DM",
+                            f"Abilities set: {assignments}. Now choose your race:\n"
+                            + ", ".join(dnd_data.get_race_list())
+                        ))
+
+        # --- race_selection ---
         elif phase == 'race_selection':
             if not message:
                 responses.append(Dialog(
                     "DM",
-                    f"Races: {', '.join(dnd_data.get_race_list())}. Which one calls to you?",
-                    "narration"
+                    f"Races: {', '.join(dnd_data.get_race_list())}. Which one calls to you?"
                 ))
             else:
-race = dnd_data.Race.get(message)
-if not race:
-    responses.append(Dialog("DM", f"'{message}' is not a valid race. Try again.", "error"))
-else:
-    creation_state['race'] = race.name
-    spec = race.choice_spec()
-    if spec:
-        # Ask the player for their choice(s)
-        creation_state['phase'] = 'racial_choice'
-        creation_state['pending_race'] = race
-        if spec['count'] == 1:
-            prompt = f"{race.name} grants +1 to one of: {', '.join(spec['from'])}. Choose one."
-        else:
-            prompt = (f"{race.name} grants +1 to each of {spec['count']} abilities from: "
-                      f"{', '.join(spec['from'])}. Choose {spec['count']}.")
-        responses.append(Dialog("DM", prompt))
-    else:
-        # No choice: apply fixed bonuses immediately
-        bonuses = race.apply_choices([])
-        for ab, bonus in bonuses.items():
-            creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
-        creation_state['phase'] = 'class_selection'
-        responses.append(Dialog("DM", f"{race.name} bonuses applied."))
-    else:
-        # No choice: apply fixed bonuses immediately
-        bonuses = race.apply_choices([])
-        for ab, bonus in bonuses.items():
-            creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
-        creation_state['phase'] = 'class_selection'
-        responses.append(Dialog("DM", f"{race.name} bonuses applied."))
+                race = dnd_data.Race.get(message)
+                if not race:
+                    responses.append(Dialog("DM", f"'{message}' is not a valid race. Try again.", "error"))
+                else:
+                    creation_state['race'] = race.name
+                    spec = race.choice_spec()
+                    if spec:
+                        creation_state['phase'] = 'racial_choice'
+                        creation_state['pending_race'] = race
+                        if spec.get('count', 1) == 1:
+                            prompt = f"{race.name} grants +1 to one of: {', '.join(spec['from'])}. Choose one."
+                        else:
+                            prompt = (
+                                f"{race.name} grants +1 to each of {spec['count']} abilities from: "
+                                f"{', '.join(spec['from'])}. Choose {spec['count']}."
+                            )
+                        responses.append(Dialog("DM", prompt))
+                    else:
+                        bonuses = race.apply_choices([])
+                        self._apply_ability_bonuses(creation_state['abilities'], bonuses)
+                        creation_state['phase'] = 'class_selection'
+                        responses.append(Dialog(
+                            "DM",
+                            f"{race.name} bonuses applied: {bonuses}.\n"
+                            f"Now choose your class: {', '.join(dnd_data.get_class_list())}"
+                        ))
 
+        # --- racial_choice ---
         elif phase == 'racial_choice':
             race = creation_state['pending_race']
-            spec = race.choice_spec()
-            chosen = [p.strip().upper() for p in message.split(",") if p.strip()]
+            chosen = [p.strip() for p in (message or "").split(",") if p.strip()]
             try:
                 bonuses = race.apply_choices(chosen)
             except ValueError as exc:
                 responses.append(Dialog("DM", str(exc), "error"))
-                return responses
-            for ab, bonus in bonuses.items():
-                creation_state['abilities'][ab] = min(18, creation_state['abilities'][ab] + bonus)
+                return self._wrap_creation_response(responses, creation_state, message)
+            self._apply_ability_bonuses(creation_state['abilities'], bonuses)
             creation_state['phase'] = 'class_selection'
-            responses.append(Dialog("DM", f"Bonuses applied: {bonuses}. Now choose your class."))
+            creation_state.pop('pending_race', None)
+            responses.append(Dialog(
+                "DM",
+                f"Bonuses applied: {bonuses}. Now choose your class: {', '.join(dnd_data.get_class_list())}"
+            ))
 
+        # --- class_selection ---
         elif phase == 'class_selection':
             if not message:
-                responses.append(Dialog(
-                    "DM",
-                    f"Classes: {', '.join(dnd_data.get_class_list())}. Which profession?",
-                    "narration"
-                ))
+                responses.append(Dialog("DM", f"Classes: {', '.join(dnd_data.get_class_list())}. Which profession?"))
             else:
                 cls = dnd_data.OGClass.get(message)
                 if not cls:
                     responses.append(Dialog("DM", f"'{message}' is not a valid class.", "error"))
                 else:
                     creation_state['class'] = cls.name
+                    creation_state['phase'] = 'background_selection'
                     responses.append(Dialog(
                         "DM",
                         f"{cls.name}: {cls.core_mechanic.get('description', '')}\n"
                         f"HP per level: {cls.hp_per_level}, SP per level: {cls.sp_per_level}\n"
                         f"Subclasses: {', '.join(cls.subclasses.keys())}\n"
-                        f"Now choose your background.",
-                        "narration"
+                        f"Now choose your background."
                     ))
-                    creation_state['phase'] = 'background_selection'
 
+        # --- background_selection ---
         elif phase == 'background_selection':
             if not message:
-                responses.append(Dialog(
-                    "DM",
-                    "Backgrounds: Acolyte, Criminal, Folk Hero, Sage, Soldier. Which fits your past?",
-                    "narration"
-                ))
+                responses.append(Dialog("DM", "Backgrounds: Acolyte, Criminal, Folk Hero, Sage, Soldier. Which fits your past?"))
             else:
                 bg = get_background_guide(message)
-                if not bg:
+                if not bg or not bg.get('description'):
                     responses.append(Dialog("DM", f"'{message}' not recognized. Choose from: Acolyte, Criminal, Folk Hero, Sage, Soldier.", "error"))
                 else:
                     creation_state['background'] = message
+                    creation_state['phase'] = 'skill_selection'
                     responses.append(Dialog(
                         "DM",
                         f"{message}: {bg['description']}. You gain proficiency in {', '.join(bg['skills'])}.\n"
-                        f"Now select 3 skills to be proficient in. Available: " +
-                        ", ".join([s.name for s in dnd_data.Skill.all()]),
-                        "narration"
+                        f"Now select 3 skills: " + ", ".join(s.name for s in dnd_data.Skill.all())
                     ))
-                    creation_state['phase'] = 'skill_selection'
 
+        # --- skill_selection ---
         elif phase == 'skill_selection':
-            # Player should list 3 skills
             if not message:
-                responses.append(Dialog("DM", "Please list 3 skills (e.g., 'Survival, Lore, Stealth').", "narration"))
+                responses.append(Dialog("DM", "Please list 3 skills (e.g., 'Survival, Lore, Stealth')."))
             else:
-                chosen = [s.strip() for s in message.split(',')]
+                chosen = [s.strip() for s in message.split(',') if s.strip()]
                 valid_skills = [s.name for s in dnd_data.Skill.all()]
                 if len(chosen) != 3 or not all(s in valid_skills for s in chosen):
                     responses.append(Dialog("DM", "Please choose exactly 3 valid skills.", "error"))
@@ -428,112 +467,144 @@ else:
                     responses.append(Dialog(
                         "DM",
                         f"Skills chosen: {', '.join(chosen)}. Now let's develop your personality.\n"
-                        "How would you describe your character's personality? (e.g., brave, cunning, stoic)",
-                        "narration"
+                        "How would you describe your character's personality? (e.g., brave, cunning, stoic)"
                     ))
 
+        # --- personality_development ---
         elif phase == 'personality_development':
-            # Simple sequential prompts for personality, ideals, bonds, flaws
             if not creation_state.get('personality'):
                 creation_state['personality'] = message
-                responses.append(Dialog("DM", "What ideals drive your character? (e.g., justice, freedom)", "narration"))
+                responses.append(Dialog("DM", "What ideals drive your character? (e.g., justice, freedom)"))
             elif not creation_state.get('ideals'):
                 creation_state['ideals'] = message
-                responses.append(Dialog("DM", "What bonds connect your character to the world? (e.g., family, oath)", "narration"))
+                responses.append(Dialog("DM", "What bonds connect your character to the world? (e.g., family, oath)"))
             elif not creation_state.get('bonds'):
                 creation_state['bonds'] = message
-                responses.append(Dialog("DM", "What flaws or weaknesses does your character have? (e.g., pride, fear)", "narration"))
+                responses.append(Dialog("DM", "What flaws or weaknesses does your character have? (e.g., pride, fear)"))
             elif not creation_state.get('flaws'):
                 creation_state['flaws'] = message
-                creation_state['phase'] = 'finalization'
-                # fall through to finalization
+                creation_state['phase'] = 'name_input'
+                responses.append(Dialog("DM", "One last thing -- what is your character's name?"))
 
-        if phase == 'finalization' or (phase == 'personality_development' and creation_state.get('flaws')):
-            # Build character
-            char_data = {
-                'race': creation_state['race'],
-                'class': creation_state['class'],
-                'background': creation_state['background'],
-                'attributes': creation_state['attributes'],
-                'skills': creation_state['skills'],
-                'personality': creation_state['personality'],
-                'ideals': creation_state['ideals'],
-                'bonds': creation_state['bonds'],
-                'flaws': creation_state['flaws']
-            }
-            # Use helper to compute derived stats (HP, SP, etc.)
-            character = self._finalize_character(char_data)
-            responses.append(Dialog(
-                "DM",
-                f"Behold {character.name}, the {character.race} {character.char_class}!\n"
-                f"Your journey begins now.",
-                "narration"
-            ))
-            # Optionally trigger backstory creation next
-            creation_state = None   # reset
+        # --- name_input: build the character ---
+        elif phase == 'name_input':
+            if not message:
+                responses.append(Dialog("DM", "What is your character's name?"))
+            else:
+                creation_state['name'] = message.strip()
+                try:
+                    character = self._finalize_character(creation_state, owner_id=player_id)
+                    class_name = (
+                        character.classs.name
+                        if getattr(character, 'classs', None) else "adventurer"
+                    )
+                    responses.append(Dialog(
+                        "DM",
+                        f"Behold {character.name}, the {character.race} {class_name}!\n"
+                        f"Your journey begins now.",
+                        "narration"
+                    ))
+                    creation_state = None
+                except Exception as exc:
+                    logger.exception("Character finalization failed")
+                    responses.append(Dialog(
+                        "DM",
+                        f"I couldn't complete your character: {exc}. "
+                        f"Let's try again -- what is your character's name?",
+                        "error"
+                    ))
+                    creation_state['name'] = None
 
-        # Add player message to history if exists
+        return self._wrap_creation_response(responses, creation_state, message)
+
+    # ------------------------------------------------------------------
+    # helpers for guide_character_creation
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _apply_ability_bonuses(abilities: dict, bonuses: dict) -> None:
+        """Apply race bonuses in place, translating legacy names (brawn -> STR, etc.)."""
+        for ab, bonus in (bonuses or {}).items():
+            key = ABILITY_ALIASES.get(str(ab).lower(), str(ab).upper())
+            if key in ABILITY_KEYS and key in abilities:
+                abilities[key] = min(ABILITY_MAX, abilities[key] + bonus)
+
+    @staticmethod
+    def _parse_ability_assignments(message: str) -> dict:
+        """Parse 'STR 15, DEX 14, ...' (or full names, or legacy names) -> {'STR': 15, ...}."""
+        if not message:
+            return {}
+        tokens = re.split(r'[,\s;]+', message.strip())
+        result = {}
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            key = ABILITY_ALIASES.get(tok.lower())
+            if key is None and tok.upper() in ABILITY_KEYS:
+                key = tok.upper()
+            if key and i + 1 < len(tokens):
+                try:
+                    result[key] = int(tokens[i + 1])
+                    i += 2
+                    continue
+                except ValueError:
+                    pass
+            i += 1
+        return result
+
+    @staticmethod
+    def _wrap_creation_response(responses, creation_state, message):
+        """Shared return shaping: prepend the player's message, dict-ify DialogResponses."""
         if message:
             responses.insert(0, Dialog("Player", message, "character"))
-
         return {
             "responses": [r.to_dict() for r in responses],
-            "new_state": creation_state
+            "new_state": creation_state,
         }
 
-    def _finalize_character(self, char_data):
+    def _finalize_character(self, char_data, owner_id=None):
         """
-        Create a Character object from collected data, using OG System rules.
+        Build a Character from collected creation data.
+        HP/SP/defense are computed by Character from abilities; not passed as kwargs.
         """
-        # Compute derived stats
-        attributes = char_data['attributes']  # dict like {'brawn':2, ...}
-        race = dnd_data.Race.get(char_data['race'])
-        cls = dnd_data.OGClass.get(char_data['class'])
+        abilities = dict(char_data.get('abilities') or {})
+        for k in ABILITY_KEYS:
+            abilities.setdefault(k, 10)  # safety net; creation flow always fills all 6
 
-        # Starting HP: base from class + Brawn*2
-        base_hp = 6  # from 01_core.json: base_hp = 6
-        brawn = attributes.get('brawn', 0)
-        hp = base_hp + (brawn * 2)  # formula from 01_core.json
+        char_kwargs = {
+            "name": char_data.get('name') or "Unnamed",
+            "race": char_data['race'],
+            "classs": char_data['class'],
+            "level": 1,
+            "abilities": abilities,
+        }
 
-        # Spell points if class uses them
-        sp = 0
-        if cls and cls.sp_per_level > 0:
-            will = attributes.get('will', 0)
-            sp = will * 2  # from 01_core.json: Will gives 2 SP per point
+        # Try with owner_id as a kwarg, fall back to attribute assignment if the
+        # Character signature doesn't accept it.
+        try:
+            character = Character(owner_id=owner_id, **char_kwargs)
+        except TypeError:
+            character = Character(**char_kwargs)
+            if owner_id and hasattr(character, "owner_id"):
+                character.owner_id = owner_id
 
-        # Skills: just store the names
-        skills = char_data.get('skills', [])
+        # Skills dict (matches dm_chat_handler expectations: {name: rank})
+        character.skills = {s: 1 for s in (char_data.get('skills') or [])}
 
-        # Create Character instance
-        from world.character import Character
-        character = Character(
-            id=f"char_{uuid.uuid4().hex[:6]}",
-            name=char_data.get('name', 'Unnamed'),
-            race=char_data['race'],
-            char_class=char_data['class'],
-            level=1,
-            attributes=attributes,
-            skills=skills,
-            hp=hp,
-            max_hp=hp,
-            sp=sp,
-            max_sp=sp,
-            # narrative fields start empty
-            backstory={},
-            connections=[],
-            secrets=[],
-            vows={}
-        )
+        # Narrative fields
+        character.backstory = {
+            "personality": char_data.get('personality'),
+            "ideals": char_data.get('ideals'),
+            "bonds": char_data.get('bonds'),
+            "flaws": char_data.get('flaws'),
+            "background": char_data.get('background'),
+        }
+        if getattr(character, "connections", None) is None:
+            character.connections = []
+        if getattr(character, "secrets", None) is None:
+            character.secrets = []
+        if getattr(character, "vows", None) is None:
+            character.vows = {}
 
-        char = Character(
-            name=creation_state['name'],
-            race=creation_state['race'],
-            classs=creation_state['class'],
-            level=1,
-            abilities=creation_state['abilities'],   # <-- was `attributes=`
-            owner_id=owner_id,
-        )
-        # Add to world
         self.world.character_manager.add_character(character)
         return character
 
@@ -899,7 +970,8 @@ else:
     # ----------------------------------------------------------------------
     def set_current_scene(self, scene_description: str):
         """Update the current scene for narrative context."""
-        self.game_state.current_scene = scene_description
+        if self.game_state is not None:
+            self.game_state.current_scene = scene_description
         if self.dm:
             self.dm.game_state.current_scene = scene_description
 
