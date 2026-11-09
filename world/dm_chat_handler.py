@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import uuid
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -19,6 +20,23 @@ from world.intent_parser import IntentParser
 DEBUG = True # False to turn off debug prints
 
 logger = logging.getLogger(__name__)
+
+# -----------------------------------------------------------------------------
+# New 6-ability system (dj2 ability redesign)
+# -----------------------------------------------------------------------------
+ABILITY_KEYS = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+ABILITY_ALIASES = {
+    "str": "STR", "strength": "STR",
+    "dex": "DEX", "dexterity": "DEX",
+    "con": "CON", "constitution": "CON",
+    "int": "INT", "intelligence": "INT",
+    "wis": "WIS", "wisdom": "WIS",
+    "cha": "CHA", "charisma": "CHA",
+    # Legacy 4-attribute names kept as a migration safety net
+    "brawn": "STR", "finesse": "DEX", "wits": "INT", "will": "WIS",
+}
+ABILITY_MIN = 3
+ABILITY_MAX = 18
 
 @dataclass
 class DialogResponse:
@@ -65,16 +83,18 @@ class DMChatHandler:
         Build a context dictionary of OG System data for the AI prompt.
         Includes lists of races, classes, skills, attributes, spells, etc.
         """
+
         context = {
             "classes": dnd_data.get_class_list(),
             "races": dnd_data.get_race_list(),
             "skills": dnd_data.get_skill_list(),
-            "attributes": dnd_data.get_ability_score_full_names(),  # ['Brawn', 'Finesse', 'Wits', 'Will']
+            "attributes": dnd_data.get_ability_score_full_names(),  # ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
             "spells": dnd_data.get_spell_list(),
             "backgrounds": dnd_data.get_background_list(),
-            "attribute_range": "0-4, total 4 points, max 3 per attribute",
+            "attribute_range": "3-18 per ability (STR, DEX, CON, INT, WIS, CHA)",
             "skill_limit": "2-3 starting skills",
         }
+
         # Add hex info if in world mode
         if not getattr(self.world_controller, 'dungeon_mode', False):
             party_pos = self.world_controller.campaign_state.party_position
@@ -97,12 +117,7 @@ class DMChatHandler:
                 "race": character.race,
                 "class": character.classs.name if character.classs else "Unknown",
                 "level": character.level,
-                "attributes": {
-                    "brawn": character.brawn,
-                    "finesse": character.finesse,
-                    "wits": character.wits,
-                    "will": character.will,
-                },
+                "attributes": dict(character.abilities),
                 "skills": list(character.skills.keys()),
                 "spells": character.spells_known,
                 "hp": f"{character.hp}/{character.max_hp}",
@@ -199,22 +214,30 @@ Your answer:
                     character.background = value
                 else:
                     errors.append(f"Invalid background: {value}")
-            elif field in ("brawn", "finesse", "wits", "will"):
+            elif isinstance(field, str) and field.lower() in ABILITY_ALIASES:
+                abil = ABILITY_ALIASES[field.lower()]
                 try:
                     val = int(value)
-                    if 0 <= val <= 4:
-                        setattr(character, field, val)
-                        # Recalculate derived stats after attribute change
-                        character.max_hp = character._calculate_max_hp()
-                        character.max_sp = character._calculate_max_sp()
-                        character.hp = min(character.hp, character.max_hp)
-                        character.sp = min(character.sp, character.max_sp)
-                        character.base_defense = 10 + character.finesse
-                        character.defense = character.base_defense + (2 if character.shield else 0)
+                except (ValueError, TypeError):
+                    errors.append(f"{abil} must be a number")
+                    continue
+                if ABILITY_MIN <= val <= ABILITY_MAX:
+                    if not hasattr(character, "abilities") or character.abilities is None:
+                        character.abilities = {}
+                    character.abilities[abil] = val
+                    # Recalculate derived stats after ability change
+                    character.max_hp = character._calculate_max_hp()
+                    character.max_sp = character._calculate_max_sp()
+                    character.hp = min(character.hp, character.max_hp)
+                    character.sp = min(character.sp, character.max_sp)
+                    if hasattr(character, "_calculate_defense"):
+                        character.defense = character._calculate_defense()
                     else:
-                        errors.append(f"{field} must be 0-4")
-                except ValueError:
-                    errors.append(f"{field} must be a number")
+                        dex_mod = (character.abilities.get("DEX", 10) - 10) // 2
+                        character.base_defense = 10 + dex_mod
+                        character.defense = character.base_defense + (2 if getattr(character, "shield", False) else 0)
+                else:
+                    errors.append(f"{abil} must be {ABILITY_MIN}-{ABILITY_MAX}")
             elif field == "skills":
                 if isinstance(value, list):
                     # Replace all skills
@@ -612,6 +635,7 @@ Return ONLY valid JSON:
                 )
             ]
         }
+
     # helper
     def _is_rules_question(self, message: str) -> bool:
         """
@@ -628,34 +652,32 @@ Return ONLY valid JSON:
         if not is_question:
             return False
 
-        # 2. Known rule topics (from your dnd_data)
+        def _has_word_boundary(needle: str, haystack: str) -> bool:
+            """True iff `needle` appears in `haystack` not surrounded by letters."""
+            if not needle:
+                return False
+            pattern = rf"(?<![A-Za-z]){re.escape(needle.lower())}(?![A-Za-z])"
+            return re.search(pattern, haystack) is not None
+
+        # 2. Known rule topics (from dnd_data)
         rule_topics = (
-            dnd_data.get_race_list() +
-            dnd_data.get_class_list() +
-            dnd_data.get_skill_list() +
-            dnd_data.get_background_list() +
-            dnd_data.get_spell_list() +
-            dnd_data.get_ability_score_full_names()  # Brawn, Finesse, Wits, Will
+            dnd_data.get_race_list()
+            + dnd_data.get_class_list()
+            + dnd_data.get_skill_list()
+            + dnd_data.get_background_list()
+            + dnd_data.get_spell_list()
+            + dnd_data.get_ability_score_full_names()
         )
-        rule_topics_lower = [t.lower() for t in rule_topics]
 
-        # 3. Check if any rule topic appears as a whole word in the message
-        words = msg.split()
-        for topic in rule_topics_lower:
-            if topic in msg:
-                # make sure it's not part of a larger word (e.g., "spell" inside "spellbook")
-                # simple check: space or punctuation boundaries
-                idx = msg.find(topic)
-                before = msg.idx-1 if idx > 0 else ' '
-                after = msg.idx+len(topic) if idx+len(topic) < len(msg) else ' '
-                if not before.isalpha() and not after.isalpha():
-                    return True
+        # 3. Whole-word match against known topics
+        for topic in rule_topics:
+            if _has_word_boundary(topic, msg):
+                return True
 
-        # 4. Additional explicit known rule names that might be single words
-        # (optional: you can add more like "initiative", "proficiency", etc.)
+        # 4. Additional explicit rule terms
         extra_terms = ["ability score", "attribute", "race", "class", "background", "skill", "spell", "level", "feat", "trait"]
         for term in extra_terms:
-            if term in msg:
+            if _has_word_boundary(term, msg):
                 return True
 
         return False

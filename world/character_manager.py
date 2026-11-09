@@ -128,15 +128,35 @@ class CharacterManager:
                     (player_id,)
                 )
                 for row in cur.fetchall():
+                    attr_blob = row[5] or {}
+                    # Same shim as _load_character_from_db: prefer the nested
+                    # 'abilities' key (post-migration schema). If the blob
+                    # predates the migration, fall back to Character defaults.
+                    if isinstance(attr_blob, dict) and "abilities" in attr_blob:
+                        abilities = attr_blob["abilities"]
+                    else:
+                        abilities = None  # Character() fills in defaults
+
                     character = Character(
                         owner_id=player_id,
                         name=row[1],
                         race=row[2],
                         classs=row[3],
-                        level=row[4]
+                        level=row[4],
+                        abilities=abilities,
                     )
                     character.id = row[0]
-                    character.attributes = row[5] or {}
+
+                    # Restore persisted hp/sp if present (mirrors what
+                    # _save_character_to_db writes into the blob).
+                    if isinstance(attr_blob, dict):
+                        for key in ("hp", "max_hp", "sp", "max_sp"):
+                            if key in attr_blob and hasattr(character, key):
+                                try:
+                                    setattr(character, key, attr_blob[key])
+                                except Exception:
+                                    pass
+
                     if row[6]:
                         for item_data in row[6]:
                             character.add_custom_item(item_data['name'], item_data.get('description', ''))
