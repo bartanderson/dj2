@@ -9,8 +9,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_EQUIP_DRAFT = {
     "weapon": None,
     "armor": None,
-    "shield": False,
-    "status": "in_progress"
+    "pack": None,
+    "gold_remaining": 100,
+    "status": "in_progress" # "in_progress", "ready_to_equip"
 }
 
 class EquipAgent:
@@ -21,19 +22,27 @@ class EquipAgent:
         """
         Returns: (updated_draft, dm_response_text, is_complete)
         """
-        prompt = f"""You are a wise Dungeon Master guiding a newly created character through choosing their starting equipment.
+        class_name = character.classs.name if character.classs else "Adventurer"
         
-Character: {character.name}, a level 1 {character.race} {character.classs.name}.
-
-Here is the current Equipment Draft:
-{json.dumps(draft, indent=2)}
+        # Look up class defaults if available
+        default_gear = "a basic weapon, simple armor, and a standard adventuring pack"
+        if character.classs and hasattr(character.classs, 'starting_gear'):
+            default_gear = str(character.classs.starting_gear)
+            
+        prompt = f"""You are a wise, patient Dungeon Master helping a newly created character pick their starting equipment.
+        
+Character: {character.name}, a level 1 {character.race} {class_name}.
+Current Draft: {json.dumps(draft, indent=2)}
 
 Your task:
 1. Listen to what the player wants (e.g., "I want a longsword and chainmail").
-2. Update the draft with their choice. Keep it simple: just "weapon", "armor", and "shield" (boolean).
-3. If they ask for something a level 1 character wouldn't have (e.g., "a +3 flaming sword"), playfully deny it and offer a basic alternative.
-4. If the draft has a weapon and armor, ask them to confirm the loadout.
-5. If they confirm, set draft["status"] to "ready_to_equip" and tell them they are ready for adventure.
+2. If the player is indecisive (e.g., "I don't know", "what should I get?", "surprise me"), suggest a loadout suitable for a {class_name}. 
+   - Class Defaults: {default_gear}
+   - A standard "Explorer's Pack" (rations, waterskin, bedroll, torches) is recommended for supplies.
+3. If the player says "just give me the defaults" or "skip this", immediately fill the draft with the Class Defaults and a pack, and set status to "ready_to_equip".
+4. Update the draft with their choice. If they buy something expensive, subtract from "gold_remaining" (they start with 100g). 
+5. If the draft has a weapon, armor, and pack, ask them to confirm the loadout. 
+6. If they confirm, set draft["status"] to "ready_to_equip" and tell them they are ready for adventure.
 
 Output ONLY a JSON object with exactly these keys:
 {{
