@@ -1,5 +1,44 @@
 It is your LLM operating procedure for the remainder of stabilization + implementation.
 
+
+## ACTIVE DESIGN TRACK — SIX-ABILITY CHARACTER CONSTRUCTION
+
+When a session works on character mechanics, character creation, ability checks, saves,
+combat ability use, class casting, derived statistics, or related character interfaces,
+it MUST load:
+
+`docs/design/SIX_ABILITY_CHARACTER_CONSTRUCTION_REDESIGN.md`
+
+Treat that document as the working design record for the six-ability redesign. It is
+not optional background reading and must be consulted before proposing changes to
+character mechanics. Also load the applicable authoritative hierarchy documents:
+
+- `docs/design/00A ARCHITECTURAL_CONSTITUTION.md`
+- `docs/design/00B SYSTEM_CONSTRAINTS.md`
+- `docs/design/00C IMPLEMENTATION_SEQUENCE.md`
+- `docs/design/00D TERMINOLOGY.md`
+
+Then load only the additional subsystem documents and code directly relevant to the
+specific question being addressed.
+
+**Current status:** The six-ability conceptual architecture is settled enough for
+numerical design. The design specification is in progress; implementation cutover
+has not started.
+
+**Resume point / next step:** Define concrete character-generation profiles and
+their numerical rules, then build executable probability and balance simulations.
+After that, define the deterministic assignment objective and tie-breaking rules.
+
+Do not reopen settled decisions recorded in the six-ability redesign document:
+six canonical abilities (STR/DEX/CON/INT/WIS/CHA), conversational concept capture
+with deterministic mechanics underneath, AI as interpreter/presenter rather than
+mechanical authority, and separate score-pool generation from exhaustive assignment.
+
+This character-design track does not silently supersede the implementation
+stabilization procedure below. Preserve the project authority hierarchy and
+deterministic ownership boundaries; do not begin broad implementation before the
+numerical model and its invariants are established.
+
 📦 MASTER SESSION FLOW
 
 Each new session should follow this exact pattern:

@@ -554,6 +554,7 @@ Examples:
                         "map_data": None
                     }
 
+<<<<<<< HEAD
             # 2c. Equipment selection (equip_draft is set but not yet complete)
             equip_draft = getattr(session, 'equip_draft', None)
             if equip_draft is not None and final_char is not None:
@@ -597,7 +598,7 @@ Examples:
                         "map_data": None
                     }
 
-            # 2c. Pre-game chat (no character, not creating)
+            # 2d. Pre-game chat (no character, not creating)
             try:
                 prompt = f"""You are the Dungeon Master. The player does not have an active character yet.
 The player says: "{message}"
