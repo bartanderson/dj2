@@ -57,6 +57,52 @@ class DialogResponse:
             "timestamp":self.timestamp
         }
 
+# Pack contents lookup: maps pack names to lists of (name, description, quantity) tuples.
+PACK_CONTENTS = {
+    "explorer": [
+        ("Explorer's Pack", "Standard explorer's gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Hunting Trap", "Wooden snare trap", 2),
+        ("Climber's Chalk", "Chalk bag for scaling", 1),
+    ],
+    "adventurer": [
+        ("Adventurer's Pack", "Standard adventuring gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Hunting Trap", "Wooden snare trap", 2),
+    ],
+    "dungeoneer": [
+        ("Dungeoneer's Pack", "Standard dungeon gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Hempen Rope (50 ft.)", "Rope for climbing and binding", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Chalk", "Marking chalk", 1),
+        ("Flask of Oil", "Small clay oil flask", 1),
+    ],
+}
+
+def _apply_pack_items(pack_name: str, character):
+    """Apply pack items to a character's inventory based on pack type name."""
+    key = next((k for k in PACK_CONTENTS if k in pack_name.lower()), None)
+    if not key:
+        # Default to explorer's pack if no match
+        key = "explorer"
+    from world.character import InventoryItem
+    for item_name, description, quantity in PACK_CONTENTS[key]:
+        character.inventory.append(InventoryItem(
+            name=item_name,
+            description=description,
+            quantity=quantity,
+            type="adventuring_gear",
+        ))
+
 class DMChatHandler:
     """
     Handles DM chat interactions, character creation, and game progression.
@@ -520,7 +566,7 @@ Examples:
                     from world.character import InventoryItem
                     weapon_name = updated_draft.get("weapon")
                     armor_name = updated_draft.get("armor")
-                    want_shield = updated_draft.get("shield", False)
+                    pack_name = updated_draft.get("pack")
 
                     if weapon_name:
                         item = InventoryItem(name=weapon_name, description=f"Equipped weapon: {weapon_name}", slot="weapon", equipped=True)
@@ -537,11 +583,9 @@ Examples:
                         if lname in ("mail", "leather", "robes") or "armor" in lname:
                             final_char._update_armor_stats(lname)
 
-                    if want_shield:
-                        item = InventoryItem(name="shield", description="Equipped shield", slot="shield", equipped=True)
-                        final_char.inventory.append(item)
-                        final_char.shield = item
-                        final_char._update_shield_stats("shield")
+                    # Apply pack items (adventuring gear like rations, waterskin, bedroll, torches)
+                    if pack_name:
+                        _apply_pack_items(pack_name, final_char)
 
                     session.equip_draft = None
                     # Fall through to in-game flow below
