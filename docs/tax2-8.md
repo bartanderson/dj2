@@ -537,6 +537,22 @@ That order is what keeps systems stable under evolution.
 
 ---
 
+## Conversational Agent Implementation Pattern
+
+When mapping complex multi-step flows to Python, use the `CharacterAgent` module as the reference implementation.
+
+**File:** `world/character_agent.py`
+**Class:** `CharacterAgent`
+
+**Contract:**
+```python
+def process_turn(player_message: str, draft: Dict[str, Any]) -> Tuple[Dict[str, Any], str, bool]:
+    # 1. Build system prompt with Draft + Valid Options
+    # 2. Call chat_ai.json_response()
+    # 3. Run _validate_draft() to enforce determinism
+    # 4. Return (validated_draft, narrative_response, is_complete)
+```    
+
 # 🧭 SUMMARY
 
 Right now your job is only:

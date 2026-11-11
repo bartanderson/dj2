@@ -897,25 +897,28 @@ def dm_chat():
         data = request.get_json()
         player_id = data.get('player_id')
         message = data.get('message')
-        
+
         if not player_id or not message:
             return jsonify({'error': 'Missing player_id or message'}), 400
-        
-        # Get chat handler from world controller
+
         chat_handler = current_app.world_controller.dm_chat_handler
-        print("[SESSION DEBUG][APP] session_manager id:", id(app.world_controller.session_manager))
-        print("[SESSION DEBUG][APP] sessions dict id:", id(app.world_controller.session_manager.sessions))
-        responses = chat_handler.process_message(player_id, message)
+        result = chat_handler.process_message(player_id, message)
+
+        # process_message returns a dict with 'responses', 'map_data', etc.
+        responses = result.get("responses", [])
         
         return jsonify({
-            'responses': [{
-                'speaker': r.speaker,
-                'content': r.content,
-                'dialog_type': r.dialog_type
-            } for r in responses]
+            'responses': [
+                r.to_dict() if hasattr(r, 'to_dict') else r 
+                for r in responses
+            ],
+            'map_data': result.get('map_data'),
+            'action': result.get('action')
         })
-        
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 def setup_world_system():
@@ -2112,6 +2115,46 @@ def character_creation_help():
 
     return render_template('partials/chat_message.html', sender='Helper', message=response)
 
+def normalize_responses(responses):
+    import re
+    result = []
+    
+    # 🛡️ Guard against None being passed in
+    if not responses:
+        return result
+
+    for r in responses:
+        content = ""
+        speaker = "DM"
+        dtype = "narration"
+
+        if isinstance(r, DialogResponse):
+            content = r.content
+            speaker = r.speaker
+            dtype = r.dialog_type
+        elif isinstance(r, dict):
+            content = r.get("content", "")
+            speaker = r.get("speaker", "DM")
+            dtype = r.get("dialog_type", "narration")
+        elif isinstance(r, str):
+            content = r
+        else:
+            content = str(r)
+
+        # 🛡️ DEEP UNWRAP: If content is an object, get its .content
+        if isinstance(content, DialogResponse):
+            content = content.content
+
+        # 🛡️ STRING UNWRAP: Extract text if it's a stringified DialogResponse (DOTALL for newlines)
+        if isinstance(content, str) and content.startswith("DialogResponse("):
+            match = re.search(r"content=['\"](.*?)['\"],?\s*(?:dialog_type|timestamp|$)", content, re.DOTALL)
+            if match:
+                content = match.group(1)
+
+        result.append(DialogResponse(speaker=speaker, content=content, dialog_type=dtype))
+        
+    return result  # <--- Only one return statement, at the very end
+
 @app.route('/api/dm-response', methods=['POST'])
 def dm_response():
     try:
@@ -2208,38 +2251,32 @@ def recognize_player(self, session_id, player_data):
     
     return None
 
-# TODO fix character creation to be an interactive conversation
+# TODO fix character creation to be an interactive conversation -- maybe started
 @app.route('/api/guide-character-creation', methods=['POST'])
 def guide_character_creation():
     data = request.get_json()
     message = data.get('message', '')
-    session_obj = wc.session_manager.get_session(session_id)
+    
+    session_id = request.cookies.get("session_id")
+    wc = current_app.world_controller
+    
+    session_obj = wc.session_manager.get_session(session_id) if session_id else None
     player_id = session_obj.player_id if session_obj else 'guest'
-    
-    # Get current creation state
-    session_obj = wc.session_manager.get_session(session_id)
-    creation_state = getattr(session_obj, "creation_state", {
-        'step': 0,
-        'character': {
-            'race': None,
-            'class': None,
-            'background': None,
-            'personality': None,
-            'ideals': None,
-            'bonds': None,
-            'flaws': None
-        }
-    })
-    
+
+    # Get current creation state from the custom session object
+    creation_state = getattr(session_obj, "creation_state", None)
+
     # Process through AI narrative system
-    result = app.world_controller.narrative_system.guide_character_creation(
-        player_id, 
-        message, 
+    result = wc.narrative_system.guide_character_creation(
+        player_id,
+        message,
         creation_state
     )
-    
-    # Update session state
-    session['creation_state'] = result['new_state']
+
+    # Update custom session state
+    if session_obj:
+        session_obj.creation_state = result.get('new_state')
+        
     return jsonify(result)
 
 

@@ -239,7 +239,7 @@ class NarrativeSystem:
               name_input -> finalization.
         Returns {responses, new_state}; new_state is None once the character is built.
         """
-        if not creation_state:
+        if not isinstance(creation_state, dict) or not creation_state:
             creation_state = {
                 'phase': 'welcome',
                 'name': None,
