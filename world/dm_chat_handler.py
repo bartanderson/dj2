@@ -8,9 +8,11 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import time
+import copy
 
 from world import dnd_data
 from world.character import Character
+from world.character_agent import CharacterAgent, DEFAULT_DRAFT
 from world.action_system import ActionPlanner, ActionQueue
 from world.resolver import ResolverLoop
 from world.intent import IntentFrame
@@ -167,20 +169,18 @@ Respond with a JSON object containing "type" and "value". Examples:
         """
         Generate a detailed, engaging answer about a specific topic using AI.
         """
-        prompt = f"""You are a knowledgeable guide for the OG System game.
+        prompt = f"""You are the Dungeon Master in a tabletop RPG.
 The player is asking about {topic_type}: {topic_value}.
-Provide an interesting, helpful, and immersive answer that fits the OG System rules.
-Use the following data for reference:
 
+Answer them conversationally, in-character. 
+Keep it brief (2-3 sentences maximum). Do not use markdown, bullet points, bold text, or emojis. Do not say "Let me guide you" or "Your GM". You are the DM speaking directly to the player.
+
+Here is the actual game data for this topic:
 Races: {', '.join(game_context['races'])}
 Classes: {', '.join(game_context['classes'])}
-Skills: {', '.join(game_context['skills'])}
 Attributes: {', '.join(game_context['attributes'])}
-Backgrounds: {', '.join(game_context['backgrounds'])}
-Spells: {', '.join(game_context['spells'][:10])}... (and more)
 
-Explain what this {topic_type} is, how it works in the game, and maybe give an example or suggestion.
-Keep the tone friendly and immersive, as if you're a wise mentor.
+Explain what this {topic_type} is, how it works in this world, and maybe give one short example. Keep the tone friendly and immersive, as if you're a wise mentor.
 
 Your answer:
 """
@@ -374,84 +374,169 @@ Your answer:
         narrative = self.world_controller.chat_ai.json_response(prompt, None, context)  # adjust parameters as needed
         # Return a list of DialogResponse objects (for consistency)
         return [DialogResponse(speaker="DM", content=narrative, dialog_type="narration")]
+    
+    def _is_creation_intent(self, message: str) -> bool:
+        """
+        Semantic creation intent check. Purely LLM-driven. 
+        If the LLM is unavailable, we fail gracefully and let the caller fall back to pre-game chat.
+        """
+        prompt = f"""Analyze the following message from a player in a tabletop RPG.
+Message: "{message}"
+
+Is the player explicitly ready to START the character creation process right now, or are they just asking questions/discussing it?
+If they are asking questions about classes, races, or how creation works, return false. Only return true if they are committing to the process.
+Respond with a JSON object containing a single boolean key "is_creation".
+Examples:
+- "Let's make a new character" -> {{"is_creation": true}}
+- "I want to roll up a rogue" -> {{"is_creation": true}}
+- "Start character creation" -> {{"is_creation": true}}
+- "I have questions about character creation" -> {{"is_creation": false}}
+- "What classes are available?" -> {{"is_creation": false}}
+- "Hello there" -> {{"is_creation": false}}
+"""
+        try:
+            data = self.world_controller.chat_ai.json_response(prompt)
+            if isinstance(data, dict) and "is_creation" in data:
+                return bool(data["is_creation"])
+            logger.warning(f"_is_creation_intent got non-dict response: {data!r}")
+            return False
+        except Exception as e:
+            logger.error(f"Semantic creation intent check failed: {e}")
+            return False
 
     def process_message(self, session_id: str, message: str, character_id: Optional[str] = None, encounter: Optional[Dict] = None) -> Dict[str, Any]:
+        import copy
         print("[DEBUG] dm_chat_handler.process_message called")
-        print("[SESSION DEBUG] world_controller.session_manager id:", id(self.world_controller.session_manager))
-        print("[SESSION DEBUG] world_controller.sessions dict id:", id(self.world_controller.session_manager.sessions))
-        print("[SESSION DEBUG] world_controller.keys:", list(self.world_controller.session_manager.sessions.keys()))
 
+        # --- Setup ---
         session = self.world_controller.session_manager.get_or_create_session(session_id)
         player_id = session.player_id
-        
-        print("[SESSION TYPE]", type(session))
-        player_id = session.player_id
-
         if not player_id:
             raise Exception(f"Session missing player_id: {session_id}")
 
         player = self.world_controller.get_player_by_id(player_id)
-
         if player is None:
             player = self.world_controller.players.get(player_id)
-
         if player is None:
-            raise Exception(f"Player not found for session: {session_id}")
-
-        # Ensure chat_history exists
-        if not hasattr(session, "chat_history") or session.chat_history is None:
-            session.chat_history = []
-
-        # Prefer cache first, then DB
-        player = self.world_controller.players.get(player_id) \
-            or self.world_controller.get_player_by_id(player_id)
-
-        if player is None:
-            print("[ERROR] Player missing. player_id =", player_id)
-            print("[ERROR] Known players =", list(self.world_controller.players.keys()))
             return {"error": "player_not_loaded"}
 
-        print("[DM DEBUG] session:", session)
-        print("[DM DEBUG] player_id:", player_id)
-        print("[DM DEBUG] wc.players keys:", list(self.world_controller.players.keys()))
-
-        # ❌ REMOVE THIS (very important)
-        # session = self.get_or_create_session(session_id, "Player")
-
+        # --- FSM (combat/dialogue) takes priority ---
         fsm = self.adjudication_engine.active_fsms.get(session_id)
-
         if fsm:
-            if DEBUG:
-                print("[DEBUG] FSM ACTIVE - routing input to FSM")
-
             fsm_result = fsm.handle_input(message, session_id)
-
             return {
-                "responses": [DialogResponse(
-                    speaker="DM",
-                    content=fsm_result.get("message", ""),
-                    dialog_type="narration"
-                )],
+                "responses": [DialogResponse(speaker="DM", content=fsm_result.get("message", ""), dialog_type="narration")],
                 "map_data": fsm_result.get("map_data"),
                 "action": fsm_result.get("action")
             }
 
         self.world_controller.session_manager.add_message(session_id, "Player", message)
 
-        # ------------------------------------------------------------------
-        # 1. DETERMINISTIC MOVEMENT PRE‑PROCESSOR
-        # ------------------------------------------------------------------
+        # --- Load character ---
+        character = None
+        if character_id:
+            character = self.world_controller.character_manager.get_character(character_id)
+        elif session.active_character_id:
+            character = self.world_controller.character_manager.get_character(session.active_character_id)
+
+        game_context = self._build_game_context(session, character)
+        if encounter:
+            game_context["encounter"] = encounter
+            game_context["encounter_description"] = encounter.get("description", "")
+
+        # --- 1. Rules/Lore (works in every phase) ---
+        if self._is_rules_question(message):
+            topic = self._extract_message_topic(message, game_context)
+            if topic and topic["type"] != "general":
+                answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
+                self.world_controller.session_manager.add_message(session_id, "DM", answer)
+                return {"responses": [DialogResponse(speaker="DM", content=answer, dialog_type="narration")], "tool_result": None}
+
+        # --- 2. Pre-Game (creation or chat) ---
+        creation_state = getattr(session, 'creation_state', None)
+        is_pre_game = (not character) or (creation_state is not None)
+
+        if is_pre_game:
+            # 2a. Character creation (in progress OR just triggered)
+            is_creating = (creation_state is not None) or self._is_creation_intent(message)
+
+            if is_creating:
+                ns = getattr(self.world_controller, 'narrative_system', None)
+                if ns:
+                    if creation_state is None:
+                        creation_state = copy.deepcopy(DEFAULT_DRAFT)
+
+                    world_context = {}
+                    try:
+                        ws = self.world_controller.campaign_state
+                        if hasattr(ws, "world_map") and hasattr(ws.world_map, "locations"):
+                            world_context["locations"] = [loc.name for loc in list(ws.world_map.locations.values())[:15]]
+                        if hasattr(ws, "factions"):
+                            world_context["factions"] = [f.name for f in list(ws.factions.values())[:10]]
+                    except Exception:
+                        pass
+
+                    agent = CharacterAgent(self.world_controller.chat_ai, world_context=world_context)
+                    updated_draft, dm_text, ready_to_build = agent.process_turn(message, creation_state)
+                    session.creation_state = updated_draft
+
+                    resp_objs = [DialogResponse(speaker="DM", content=dm_text, dialog_type="narration")]
+
+                    if ready_to_build:
+                        try:
+                            final_char = ns._finalize_character(updated_draft, owner_id=player_id)
+                            session.creation_state = None
+                            resp_objs = [DialogResponse(
+                                speaker="DM",
+                                content=f"Behold {final_char.name}, the {final_char.race} {final_char.classs.name}! Let's get your starting equipment sorted.",
+                                dialog_type="narration"
+                            )]
+                        except Exception as e:
+                            logger.error(f"Finalization failed: {e}")
+                            resp_objs.append(DialogResponse(
+                                speaker="DM",
+                                content=f"I couldn't finish building the character: {e}",
+                                dialog_type="error"
+                            ))
+
+                    return {   # <--- THE MISSING RETURN
+                        "responses": resp_objs,
+                        "action": "create_character",
+                        "map_data": None
+                    }
+
+            # 2b. Pre-game chat (no character, not creating)
+            try:
+                prompt = f"""You are the Dungeon Master. The player does not have an active character yet.
+The player says: "{message}"
+
+Respond warmly. If they asked a question, answer it. Then gently remind them that they can create a character whenever they're ready.
+"""
+                ai_resp = self.world_controller.chat_ai.json_response(prompt)
+                dm_text = None
+                if isinstance(ai_resp, dict):
+                    dm_text = ai_resp.get("narrative") or ai_resp.get("message") or ai_resp.get("response")
+                if not dm_text:
+                    dm_text = "You don't have a character yet. Whenever you're ready, say 'I want to make a character' and we'll begin."
+            except Exception as e:
+                logger.error(f"Pre-game chat failed: {e}")
+                dm_text = "You don't have a character yet. Whenever you're ready, say 'I want to make a character' and we'll begin."
+
+            self.world_controller.session_manager.add_message(session_id, "DM", dm_text)
+            return {
+                "responses": [DialogResponse(speaker="DM", content=dm_text, dialog_type="narration")],
+                "action": "pre_game_chat",
+                "map_data": None
+            }
+
+        # --- 3. In-Game: movement + parser + adjudication ---
         movement_map = {
             "north": "north", "south": "south", "east": "east", "west": "west",
-            "northeast": "northeast", "northwest": "northwest",
-            "southeast": "southeast", "southwest": "southwest",
+            "northeast": "northeast", "northwest": "northwest", "southeast": "southeast", "southwest": "southwest",
             "n": "north", "s": "south", "e": "east", "w": "west",
             "ne": "northeast", "nw": "northwest", "se": "southeast", "sw": "southwest"
         }
-        prefixes = [
-            "go ", "head ", "walk ", "travel ", "climb ", "swim ", "sail ",
-            "roll ", "slide ", "move ", "run ", "crawl ", "creep ", "march "
-        ]
+        prefixes = ["go ", "head ", "walk ", "travel ", "climb ", "swim ", "sail ", "roll ", "slide ", "move ", "run ", "crawl ", "creep ", "march "]
         cmd = message.lower().strip()
         for prefix in prefixes:
             if cmd.startswith(prefix):
@@ -460,66 +545,22 @@ Your answer:
 
         if cmd in movement_map:
             direction = movement_map[cmd]
-            if DEBUG:
-                print(f"[DEBUG] Movement: direction='{direction}'")
-
             frame = IntentFrame(action=f"move {direction}", category="movement", destination=direction)
             result = self.adjudication_engine.process(frame, session_id)
-
-            if DEBUG:
-                print(f"[DEBUG] engine.process returned: {result}")
-
             if result is None:
-                print("[DEBUG] result is None!")
                 result = {"success": False, "message": "Movement failed.", "action": None}
-
-            # IMPORTANT: DO NOT CALL AI HERE
             return {
-                "responses": [DialogResponse(
-                    speaker="DM",
-                    content=result.get("message", ""),
-                    dialog_type="narration"
-                )],
+                "responses": [DialogResponse(speaker="DM", content=result.get("message", ""), dialog_type="narration")],
                 "map_data": result.get("map_data"),
                 "action": result.get("action")
             }
 
-        # ------------------------------------------------------------------
-        # GET ACTIVE CHARACTER & GAME CONTEXT
-        # ------------------------------------------------------------------
-        character = None
-        if character_id:
-            character = self.world_controller.character_manager.get_character(character_id)
-        elif session.active_character_id:
-            character = self.world_controller.character_manager.get_character(session.active_character_id)
-        game_context = self._build_game_context(session, character)
-        if encounter:
-            game_context["encounter"] = encounter
-            game_context["encounter_description"] = encounter.get("description", "")
-
-        # ------------------------------------------------------------------
-        # 3. FAST RULES / LORE DETECTOR (no LLM)
-        # ------------------------------------------------------------------
-        if self._is_rules_question(message):
-            topic = self._extract_message_topic(message, game_context)
-            if topic and topic["type"] != "general":
-                answer = self._answer_with_interest(topic["type"], topic["value"], game_context)
-                responses = [DialogResponse(speaker="DM", content=answer, dialog_type="narration")]
-                self.world_controller.session_manager.add_message(session_id, "DM", answer)
-                return {"responses": responses, "tool_result": None}
-            # If the fast check said it's a rules question but topic extraction failed,
-            # fall through to the gameplay parser (maybe it was a false positive – rare)
-
-        # ------------------------------------------------------------------
-        # PROCEED WITH GAMEPLAY INTENT PARSER (your new IntentParser)
-        # ------------------------------------------------------------------
         parser = IntentParser(self.world_controller.chat_ai)
         conversation_context = self.world_controller.session_manager.get_conversation_context(session_id)
         frame = parser.parse(message, game_context, conversation_context)
         print(f"[DEBUG] Parsed frame: action={frame.action}, target={frame.target}, item={frame.item}")
         if frame.category is None:
             frame.category = "other"
-
 
         if frame.clarification_needed:
             return {
@@ -531,19 +572,21 @@ Your answer:
                 "clarification": True
             }
 
-        # ------------------------------------------------------------------
-        # ADJUDICATION ENGINE
-        # ------------------------------------------------------------------
         result = self.adjudication_engine.process(frame, session_id)
-
         base_message = result.get("message", "")
 
-        # Build unified context for AI path (and to extract salient_events if needed)
+        import re
+        if hasattr(base_message, "content"):
+            base_message = base_message.content
+        if isinstance(base_message, str) and base_message.startswith("DialogResponse("):
+            match = re.search(r"content=['\"](.*?)['\"],?\s*(?:dialog_type|timestamp|$)", base_message, re.DOTALL)
+            if match:
+                base_message = match.group(1)
+
         unified_context = self.adjudication_engine.context_builder.build(session_id)
         salient_events = unified_context.get("salient_events", [])
         context_str = self._format_context(unified_context)
 
-        # --- Skip AI path (deterministic only) ---
         if not self.should_invoke_ai(result):
             return {
                 "responses": [DialogResponse(speaker="DM", content=base_message, dialog_type="narration")],
@@ -552,7 +595,6 @@ Your answer:
                 "salient_events": salient_events
             }
 
-        # --- AI narration path (enriched) ---
         dm_prompt = f"""
 You are the Dungeon Master.
 
@@ -570,27 +612,21 @@ Return ONLY valid JSON:
         if isinstance(ai_response, dict) and "narrative" in ai_response:
             final_text = ai_response["narrative"]
 
-        responses = result.get("responses", [])
-
-        normalized = []
-        for r in responses:
-            if isinstance(r, dict):
-                normalized.append(DialogResponse(
-                    speaker=r.get("speaker", "DM"),
-                    content=r.get("content", ""),
-                    dialog_type=r.get("dialog_type", "narration")
-                ))
-            else:
-                normalized.append(r)
-
-        result["responses"] = normalized
+        if hasattr(final_text, "content"):
+            final_text = final_text.content
+        if isinstance(final_text, str) and final_text.startswith("DialogResponse("):
+            match = re.search(r"content=['\"](.*?)['\"],?\s*(?:dialog_type|timestamp|$)", final_text, re.DOTALL)
+            if match:
+                final_text = match.group(1)
+        if not isinstance(final_text, str):
+            final_text = str(final_text)
 
         return {
             "responses": [DialogResponse(speaker="DM", content=final_text, dialog_type="narration")],
             "map_data": result.get("map_data"),
             "action": result.get("action"),
             "salient_events": salient_events
-        }
+        } 
            
     def handle_confirmation(self, session_id: str, confirmed: bool) -> Dict[str, Any]:
         """Handle player's response to a confirmation request."""

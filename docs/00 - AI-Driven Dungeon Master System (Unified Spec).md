@@ -272,16 +272,25 @@ Combat Rules
 only active actor can enqueue
 reactions still active
 interrupts still valid
-17. Narrative System
-Structured first
-class NarrativeOutput:
-    type: str
-    summary: str
-    details: dict
-LLM role
-describe outcome
-control tone
-no state authority
+
+### 17. The "Draft Object" Conversational Pattern (NEW)
+
+For complex, multi-step conversational flows (e.g., Character Creation, Quest Turn-in), the system prefers the **Draft Object Agentic Loop** over rigid, hardcoded state machines (e.g., `if phase == 'name'`).
+
+**Why rigid state machines fail:**
+They cannot handle out-of-character (OOC) questions, mid-flow changes of mind, or requests to review previous choices without crashing or forcing the user into a loop.
+
+**How the Draft Pattern works:**
+1. **Deterministic Memory:** State is held in a simple JSON "Draft" (e.g., `{"name": None, "race": "Elf", "abilities": {...}}`).
+2. **LLM as Guide:** The LLM receives the Draft, the player's message, and the valid rules. It returns two things:
+   - `updated_draft`: The Draft with new extracted information.
+   - `dm_response`: The conversational prose answering questions and prompting the next step.
+3. **Validation Safety Net (Authority Layer):** The Python backend (`CharacterAgent._validate_draft`) validates the `updated_draft` against `dnd_data`. If the LLM hallucinates an invalid option, the validator nullifies it, forcing the LLM to ask again.
+
+**Architectural Alignment:**
+- This flow is strictly pre-game (or meta-game). It does not use the ActionQueue or Resolver.
+- It respects the **LLM Constraint Spec**: The LLM generates structured JSON (the Draft) and narrative text, but Python retains absolute authority over what is saved to the session.
+
 18. Phase Orchestrator (UPDATED)
 def run_turn(user_input):
 

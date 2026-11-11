@@ -33,6 +33,8 @@ All significant game actions and world changes are recorded as events. Each even
 ### interaction
 - `interaction.dialogue.started`
 - `interaction.dialogue.ended`
+- `interaction.creation.draft_updated`
+- `interaction.creation.finalized`
 - `interaction.trade.offer_made`
 - `interaction.trade.rejected`
 - `interaction.trade.completed`
