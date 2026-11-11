@@ -13,6 +13,7 @@ import copy
 from world import dnd_data
 from world.character import Character
 from world.character_agent import CharacterAgent, DEFAULT_DRAFT
+from world.equip_agent import EquipAgent, DEFAULT_EQUIP_DRAFT
 from world.action_system import ActionPlanner, ActionQueue
 from world.resolver import ResolverLoop
 from world.intent import IntentFrame
@@ -55,6 +56,52 @@ class DialogResponse:
             "dialog_type":self.dialog_type,
             "timestamp":self.timestamp
         }
+
+# Pack contents lookup: maps pack names to lists of (name, description, quantity) tuples.
+PACK_CONTENTS = {
+    "explorer": [
+        ("Explorer's Pack", "Standard explorer's gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Hunting Trap", "Wooden snare trap", 2),
+        ("Climber's Chalk", "Chalk bag for scaling", 1),
+    ],
+    "adventurer": [
+        ("Adventurer's Pack", "Standard adventuring gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Hunting Trap", "Wooden snare trap", 2),
+    ],
+    "dungeoneer": [
+        ("Dungeoneer's Pack", "Standard dungeon gear", 1),
+        ("Rations", "Trail rations (1 day)", 5),
+        ("Water Skin", "Canteen with fresh water", 1),
+        ("Bedroll", "Soft bedroll for resting", 1),
+        ("Hempen Rope (50 ft.)", "Rope for climbing and binding", 1),
+        ("Torch", "Wooden torch (10 ft. light)", 5),
+        ("Chalk", "Marking chalk", 1),
+        ("Flask of Oil", "Small clay oil flask", 1),
+    ],
+}
+
+def _apply_pack_items(pack_name: str, character):
+    """Apply pack items to a character's inventory based on pack type name."""
+    key = next((k for k in PACK_CONTENTS if k in pack_name.lower()), None)
+    if not key:
+        # Default to explorer's pack if no match
+        key = "explorer"
+    from world.character import InventoryItem
+    for item_name, description, quantity in PACK_CONTENTS[key]:
+        character.inventory.append(InventoryItem(
+            name=item_name,
+            description=description,
+            quantity=quantity,
+            type="adventuring_gear",
+        ))
 
 class DMChatHandler:
     """
@@ -462,6 +509,7 @@ Examples:
 
             if is_creating:
                 ns = getattr(self.world_controller, 'narrative_system', None)
+                final_char = None
                 if ns:
                     if creation_state is None:
                         creation_state = copy.deepcopy(DEFAULT_DRAFT)
@@ -486,6 +534,7 @@ Examples:
                         try:
                             final_char = ns._finalize_character(updated_draft, owner_id=player_id)
                             session.creation_state = None
+                            session.equip_draft = copy.deepcopy(DEFAULT_EQUIP_DRAFT)
                             resp_objs = [DialogResponse(
                                 speaker="DM",
                                 content=f"Behold {final_char.name}, the {final_char.race} {final_char.classs.name}! Let's get your starting equipment sorted.",
@@ -505,7 +554,51 @@ Examples:
                         "map_data": None
                     }
 
-            # 2b. Pre-game chat (no character, not creating)
+<<<<<<< HEAD
+            # 2c. Equipment selection (equip_draft is set but not yet complete)
+            equip_draft = getattr(session, 'equip_draft', None)
+            if equip_draft is not None and final_char is not None:
+                equip_agent = EquipAgent(self.world_controller.chat_ai)
+                updated_draft, dm_text, is_complete = equip_agent.process_turn(message, final_char, equip_draft)
+                session.equip_draft = updated_draft
+
+                if is_complete:
+                    # Apply equipment to character using InventoryItem objects
+                    from world.character import InventoryItem
+                    weapon_name = updated_draft.get("weapon")
+                    armor_name = updated_draft.get("armor")
+                    pack_name = updated_draft.get("pack")
+
+                    if weapon_name:
+                        item = InventoryItem(name=weapon_name, description=f"Equipped weapon: {weapon_name}", slot="weapon", equipped=True)
+                        final_char.inventory.append(item)
+                        final_char.weapons.append(item)
+                        final_char.equipped_gear["weapon"] = item
+
+                    if armor_name:
+                        item = InventoryItem(name=armor_name, description=f"Equipped armor: {armor_name}", slot="armor", equipped=True)
+                        final_char.inventory.append(item)
+                        final_char.equipped_gear["armor"] = item
+                        final_char.armor = item
+                        lname = armor_name.lower()
+                        if lname in ("mail", "leather", "robes") or "armor" in lname:
+                            final_char._update_armor_stats(lname)
+
+                    # Apply pack items (adventuring gear like rations, waterskin, bedroll, torches)
+                    if pack_name:
+                        _apply_pack_items(pack_name, final_char)
+
+                    session.equip_draft = None
+                    # Fall through to in-game flow below
+                else:
+                    self.world_controller.session_manager.add_message(session_id, "DM", dm_text)
+                    return {
+                        "responses": [DialogResponse(speaker="DM", content=dm_text, dialog_type="narration")],
+                        "action": "equip_character",
+                        "map_data": None
+                    }
+
+            # 2d. Pre-game chat (no character, not creating)
             try:
                 prompt = f"""You are the Dungeon Master. The player does not have an active character yet.
 The player says: "{message}"

@@ -580,10 +580,11 @@ class NarrativeSystem:
 
         # Try with owner_id as a kwarg, fall back to attribute assignment if the
         # Character signature doesn't accept it.
+        # Pass add_starting_gear=False so the equip agent fully controls gear.
         try:
-            character = Character(owner_id=owner_id, **char_kwargs)
+            character = Character(add_starting_gear=False, owner_id=owner_id, **char_kwargs)
         except TypeError:
-            character = Character(**char_kwargs)
+            character = Character(add_starting_gear=False, **char_kwargs)
             if owner_id and hasattr(character, "owner_id"):
                 character.owner_id = owner_id
 
