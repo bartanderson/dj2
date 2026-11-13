@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
-from dungeon_neo.campaign import Quest, Location, Faction, CampaignState
+from world.campaign import Quest, CampaignState
+from world.world_map import Location
 from dungeon_neo.ai_integration import DungeonAI
 from world.world_session import SessionManager
 
@@ -11,9 +12,9 @@ class NarrativeEngine:
         self.session = session
         self.story_arcs: List[Dict] = []
         self.active_arc: Optional[Dict] = None
-        # self.active_quests: List[str] = []  # Quest IDs
-        # self.completed_quests: List[str] = []  # Quest IDs
-        # self.failed_quests: List[str] = []  # Quest IDs
+        self.active_quests: List[str] = []  # Quest IDs
+        self.completed_quests: List[str] = []  # Quest IDs
+        self.failed_quests: List[str] = []  # Quest IDs
         self.global_events: List[Dict] = []
 
     def generate_story_arc(self, theme: str, scope: str = "regional") -> Dict:
@@ -50,18 +51,28 @@ class NarrativeEngine:
                 self.on_arc_completed()
     
     def on_arc_completed(self):
-        """Handle story arc completion"""
-        # Trigger any completion events
-        pass
+        """Handle story arc completion: log events, clear active arc, trigger next arc"""
+        if not self.active_arc:
+            return
+        arc_name = self.active_arc.get("name", "unknown")
+        self.global_events.append({
+            "type": "arc_completed",
+            "arc_name": arc_name,
+            "message": f"Story arc '{arc_name}' has concluded."
+        })
+        self.active_arc = None
     
     def start_quest(self, quest_id: str):
         """Start tracking a quest"""
         self.session.start_quest(quest_id)
         quest = self.campaign.get_quest(quest_id)
-        
+        if quest is None:
+            return
+
+        archetype = getattr(quest, "archetype", quest_id)
         # Generate quest start event
         event = self.ai.generate_structured_data(
-            f"Create quest start event for: {quest.title}",
+            f"Create quest start event for archetype: {archetype}",
             response_format={
                 "description": "string",
                 "npcs_involved": ["string"],
@@ -74,10 +85,13 @@ class NarrativeEngine:
         """Handle quest completion"""
         self.session.complete_quest(quest_id)
         quest = self.campaign.get_quest(quest_id)
-        
+        if quest is None:
+            return
+
+        archetype = getattr(quest, "archetype", quest_id)
         # Generate quest completion event
         event = self.ai.generate_structured_data(
-            f"Create quest completion event for: {quest.title}",
+            f"Create quest completion event for archetype: {archetype}",
             response_format={
                 "description": "string",
                 "rewards": ["string"],
@@ -93,10 +107,13 @@ class NarrativeEngine:
         """Handle quest failure"""
         self.session.fail_quest(quest_id)
         quest = self.campaign.get_quest(quest_id)
-        
+        if quest is None:
+            return
+
+        archetype = getattr(quest, "archetype", quest_id)
         # Generate quest failure event
         event = self.ai.process_prompt(
-            f"Create quest failure event for: {quest.title}",
+            f"Create quest failure event for archetype: {archetype}",
             response_format={
                 "description": "string",
                 "consequences": ["string"],
@@ -106,36 +123,43 @@ class NarrativeEngine:
         self.global_events.append(event)
     
     def generate_quest(self, location_id: str, context: str = "") -> Quest:
-        """Generate a new quest using AI"""
+        """Generate a new quest using AI and add it to the campaign"""
         location = self.campaign.get_location(location_id)
         quest_data = self.ai.generate_structured_data(
-            f"Generate a quest in {location.name} with context: {context}",
+            f"Generate a quest in {location.name if location else location_id} with context: {context}",
             response_format={
                 "id": "string",
-                "title": "string",
-                "description": "string",
-                "objectives": ["string"],
-                "dungeon_required": "boolean"
+                "archetype": "string",
+                "patron": "string",
+                "target": "string",
+                "opposition": ["string"],
+                "stages": [{"type": "string", "description": "string"}],
+                "consequences": {"success": "string", "failure": "string"},
+                "time_pressure": {"exists": "boolean", "deadline": "string"}
             }
         )
-        return Quest(
+        quest = Quest(
             id=quest_data["id"],
-            title=quest_data["title"],
-            description=quest_data["description"],
-            objectives=quest_data["objectives"],
-            location_id=location_id,
-            dungeon_required=quest_data.get("dungeon_required", False)
+            archetype=quest_data["archetype"],
+            patron=quest_data["patron"],
+            target=quest_data["target"],
+            opposition=quest_data["opposition"],
+            stages=quest_data["stages"],
+            consequences=quest_data["consequences"],
+            time_pressure=quest_data.get("time_pressure", {}),
+            completed=False
         )
+        self.campaign.add_quest(quest)
+        self.active_quests.append(quest.id)
+        return quest
     
     def on_location_discovered(self, location_id: str):
         """Handle location discovery narrative events"""
         location = self.campaign.get_location(location_id)
-        if not location.discovered:
+        if location and not location.discovered:
             location.discovered = True
             # Generate initial quest for new location
-            new_quest = self.generate_quest(location_id, "First discovery")
-            self.campaign.add_quest(new_quest)
-            self.active_quests.append(new_quest.id) # Start tracking the new quest
+            self.generate_quest(location_id, "First discovery") # Start tracking the new quest
     
     def on_quest_completed(self, quest_id: str):
         """Handle quest completion narrative events"""

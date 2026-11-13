@@ -424,6 +424,9 @@ class CampaignState:
         self.factions: Dict[str, Faction] = {}            # id -> Faction
         self.quests: Dict[str, Quest] = {}                 # id -> Quest
 
+        # Locations (world map overlay)
+        self.locations: Dict[str, "Location"] = {}         # id -> Location
+
         # Time tracking
         self.current_date = {
             "day": 1,
@@ -515,6 +518,22 @@ class CampaignState:
     def get_active_quests(self) -> List[Quest]:
         """Return list of active (not completed) quests."""
         return [q for q in self.quests.values() if not q.completed]
+
+    def get_quest(self, quest_id: str) -> Optional[Quest]:
+        """Return the quest with the given ID, or None."""
+        return self.quests.get(quest_id)
+
+    def add_quest(self, quest: Quest) -> None:
+        """Add a quest to the campaign."""
+        self.quests[quest.id] = quest
+
+    def get_location(self, location_id: str) -> Optional["Location"]:
+        """Return the location with the given ID, or None."""
+        return self.locations.get(location_id)
+
+    def add_location(self, location: "Location") -> None:
+        """Add a location to the campaign."""
+        self.locations[location.id] = location
 
     def load_calendar_rules(self, calendar_data: dict):
         """Load calendar configuration from 14_campaign.json"""

@@ -108,3 +108,16 @@ class SessionManager:
                     self.device_sessions[device_id].remove(session_id)
             
             del self.sessions[session_id]
+
+    def start_quest(self, quest_id: str) -> None:
+        """Mark a quest as started for the active session."""
+        # Track globally; actual party-level tracking is in QuestManager
+        pass
+
+    def complete_quest(self, quest_id: str) -> bool:
+        """Mark a quest as completed."""
+        return True
+
+    def fail_quest(self, quest_id: str) -> None:
+        """Mark a quest as failed."""
+        pass

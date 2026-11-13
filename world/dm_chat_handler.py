@@ -554,7 +554,6 @@ Examples:
                         "map_data": None
                     }
 
-<<<<<<< HEAD
             # 2c. Equipment selection (equip_draft is set but not yet complete)
             equip_draft = getattr(session, 'equip_draft', None)
             if equip_draft is not None and final_char is not None:
